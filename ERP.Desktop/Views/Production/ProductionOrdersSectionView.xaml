@@ -1,0 +1,94 @@
+<UserControl x:Class="ERP.Desktop.Views.Production.ProductionOrdersSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Production;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ProductionOrdersSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Style="{StaticResource PrimaryButton}" Command="{Binding NewOrderCommand}" IsEnabled="{Binding CanAdd}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="أمر إنتاج جديد"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="المراحل: مسودة ← بدء التشغيل (صرف المواد) ← فحص المختبر ← التعبئة ← مكتمل" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <DataGrid ItemsSource="{Binding Orders}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="100"/>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="*"/>
+                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="130"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityToProduce, StringFormat=N0}" Width="80"/>
+                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="80"/>
+                        <DataGridTextColumn Header="التشغيلة" Binding="{Binding OutputBatch}" Width="100"/>
+                        <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="200"/>
+                        <DataGridTemplateColumn Header="" Width="112">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Content="&#xE768;" ToolTip="بدء التشغيل (صرف المواد)" Style="{StaticResource RowIconButton}" Tag="#10B981"
+                                                Command="{Binding DataContext.StartCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Button Content="&#xE73E;" ToolTip="إغلاق بما عُبّئ" Style="{StaticResource RowIconButton}" Tag="#0EA5E9"
+                                                Command="{Binding DataContext.CompleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Button Content="&#xE711;" ToolTip="إلغاء الأمر" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                Command="{Binding DataContext.CancelOrderCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="400" Margin="12,0,0,0"
+                Visibility="{Binding IsComposing, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="أمر إنتاج جديد" Style="{StaticResource SectionTitle}"/>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="المنتج النهائي (له قائمة مواد)" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding FinishedItems}" SelectedItem="{Binding FinishedItem}" DisplayMemberPath="ItemName"/>
+                    <TextBlock Text="وصفة مخصصة لعميل (اختياري)" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name"/>
+                    <TextBlock Text="الكمية المطلوب إنتاجها (قطعة)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Quantity}" FlowDirection="LeftToRight"/>
+                    <TextBlock Text="مخزن المواد الأولية" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding RawWarehouses}" SelectedItem="{Binding RawWarehouse}" DisplayMemberPath="Name"/>
+                    <Button Content="معاينة المواد المطلوبة" Style="{StaticResource SecondaryButton}" Command="{Binding PreviewCommand}" Margin="0,10,0,6" HorizontalAlignment="Left"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button Content="إنشاء الأمر" Style="{StaticResource SuccessButton}" Command="{Binding CreateCommand}"/>
+                    <Button Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CancelComposeCommand}"/>
+                </StackPanel>
+                <DataGrid ItemsSource="{Binding Preview}">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSufficient}" Value="False">
+                                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="المادة" Binding="{Binding RawMaterialName}" Width="*"/>
+                        <DataGridTextColumn Header="المطلوب" Binding="{Binding Required, StringFormat=N0}" Width="80"/>
+                        <DataGridTextColumn Header="المتاح" Binding="{Binding Available, StringFormat=N0}" Width="80"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

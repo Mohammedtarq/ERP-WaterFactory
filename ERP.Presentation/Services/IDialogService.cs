@@ -14,4 +14,18 @@ public interface INavigator
     void ShowProjectSelection(ViewModels.Shell.ProjectSelectionViewModel vm);
     void ShowMainShell(ViewModels.Shell.MainShellViewModel vm);
     void ShowLogin();
+
+    /// <summary>معالج الإعداد (أول تشغيل، أو تعذّر الاتصال بقاعدة التحكم).</summary>
+    void ShowSetup(string? reason);
+
+    /// <summary>بعد نجاح الإعداد: يُحفظ الاتصال الجديد ويُعاد فتح شاشة الدخول عليه.</summary>
+    void UseControlConnection(string controlConnectionString);
+}
+
+/// <summary>حفظ/قراءة سلسلة اتصال قاعدة التحكم (ملف إعدادات المستخدم).</summary>
+public interface IConfigStore
+{
+    string? LoadControlConnectionString();
+    void SaveControlConnectionString(string connectionString);
+    string ConfigPath { get; }
 }

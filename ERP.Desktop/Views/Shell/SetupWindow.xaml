@@ -1,0 +1,121 @@
+<Window x:Class="ERP.Desktop.Views.Shell.SetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Shell;assembly=ERP.Presentation"
+        mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:SetupViewModel}"
+        x:Name="Root"
+        Title="إعداد النظام — نظام إدارة الأعمال المتكامل"
+        FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
+        Width="980" Height="720" WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BackgroundBrush}">
+    <DockPanel Margin="28,22">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
+            <StackPanel Orientation="Horizontal">
+                <Border Width="44" Height="44" CornerRadius="11" Background="{StaticResource PrimaryBrush}">
+                    <TextBlock Text="&#xE713;" Style="{StaticResource Icon}" FontSize="20" Foreground="White"/>
+                </Border>
+                <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="إعداد النظام" Style="{StaticResource PageTitle}"/>
+                    <TextBlock Text="خطوة واحدة: اتصل بـ SQL Server، واختر تثبيتًا جديدًا أو الاتصال بنظام قائم." Style="{StaticResource Muted}"/>
+                </StackPanel>
+            </StackPanel>
+            <Border Background="#FEF3C7" CornerRadius="6" Padding="10,8" Margin="0,12,0,0"
+                    Visibility="{Binding Reason, Converter={StaticResource NullToCollapsed}}">
+                <TextBlock Text="{Binding Reason}" Foreground="#92400E" TextWrapping="Wrap"/>
+            </Border>
+        </StackPanel>
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">
+            <Button DockPanel.Dock="Right" Style="{StaticResource SuccessButton}" Command="{Binding FinishCommand}" Padding="22,10" IsDefault="True"
+                    Click="OnFinishClick">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                    <TextBlock Text="تنفيذ الإعداد والمتابعة"/>
+                </StackPanel>
+            </Button>
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource DangerBrush}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        </DockPanel>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 1) الاتصال -->
+            <Border Style="{StaticResource Card}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="1) الاتصال بـ SQL Server" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="اسم السيرفر" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Server, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="أمثلة: localhost  ·  .\SQLEXPRESS  ·  192.168.1.10" Style="{StaticResource Muted}" FontSize="11" FlowDirection="LeftToRight" HorizontalAlignment="Right"/>
+                        <RadioButton Content="مصادقة Windows (موصى بها)" IsChecked="{Binding UseWindowsAuth}" Margin="0,10,0,0" GroupName="auth"/>
+                        <RadioButton Content="مستخدم SQL Server" IsChecked="{Binding UseSqlAuth, Mode=OneWay}" Margin="0,6,0,0" GroupName="auth" Checked="OnSqlAuthChecked"/>
+                        <StackPanel Visibility="{Binding UseSqlAuth, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="اسم المستخدم" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding SqlUser, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                            <TextBlock Text="كلمة المرور" Style="{StaticResource FieldLabel}"/>
+                            <PasswordBox x:Name="SqlPasswordBox" FlowDirection="LeftToRight"/>
+                        </StackPanel>
+                        <TextBlock Text="قاعدة التحكم المركزية" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding ControlDatabase, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                        <Button Content="فحص الاتصال" Style="{StaticResource SecondaryButton}" Command="{Binding TestConnectionCommand}"
+                                Click="OnTestClick" Margin="0,12,0,0" HorizontalAlignment="Left"/>
+                        <TextBlock Text="{Binding ConnectionMessage}" TextWrapping="Wrap" Margin="0,8,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ConnectionOk}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="{Binding ConfigPath, StringFormat='يُحفظ الإعداد في: {0}'}" Style="{StaticResource Muted}" FontSize="11" Margin="0,14,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 2) نوع الإعداد -->
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top">
+                        <TextBlock Text="2) نوع الإعداد" Style="{StaticResource SectionTitle}"/>
+                        <RadioButton Content="تثبيت جديد (قاعدة تحكم + مشروع أول + مستخدم مدير)" IsChecked="{Binding IsNewInstall}" GroupName="mode"/>
+                        <RadioButton Content="الاتصال بنظام مثبّت مسبقًا على هذا السيرفر" IsChecked="{Binding IsConnectExisting}" GroupName="mode" Margin="0,6,0,0"/>
+                    </StackPanel>
+                    <ItemsControl DockPanel.Dock="Bottom" ItemsSource="{Binding Log}" Margin="0,10,0,0" MaxHeight="120">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Style="{StaticResource Muted}" FontSize="12"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding IsNewInstall, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel>
+                            <TextBlock Text="اسم الشركة / المشروع" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding ProjectName, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Text="اسم قاعدة بيانات المشروع (أحرف إنجليزية)" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding ProjectDatabase, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                            <TextBlock Text="اسم المدير" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding AdminFullName, UpdateSourceTrigger=PropertyChanged}"/>
+                            <TextBlock Text="اسم الدخول للمدير" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding AdminUsername, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                            <TextBlock Text="كلمة المرور (6 أحرف على الأقل)" Style="{StaticResource FieldLabel}"/>
+                            <PasswordBox x:Name="AdminPasswordBox" FlowDirection="LeftToRight"/>
+                            <TextBlock Text="تأكيد كلمة المرور" Style="{StaticResource FieldLabel}"/>
+                            <PasswordBox x:Name="AdminPasswordConfirmBox" FlowDirection="LeftToRight"/>
+                            <CheckBox Content="إضافة بيانات تجريبية (أصناف مياه، عملاء، مندوب، وصفة إنتاج) للتجربة" IsChecked="{Binding DemoData}"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

@@ -6,26 +6,40 @@ using ERP.Presentation.ViewModels.Shell;
 
 namespace ERP.Desktop.Services;
 
-/// <summary>كل شاشة في التدفق تفتح التالية ثم تُغلق نفسها.</summary>
+/// <summary>كل شاشة في التدفق تفتح التالية ثم تُغلق نفسها: الإعداد ← الدخول ← المشروع ← الواجهة الرئيسية.</summary>
 public class WpfNavigator : INavigator
 {
-    private readonly AuthService _auth;
     private readonly IDialogService _dialogs;
+    private readonly IConfigStore _config;
+    private AuthService? _auth;
 
-    public WpfNavigator(AuthService auth, IDialogService dialogs)
+    public WpfNavigator(IDialogService dialogs, IConfigStore config, string? controlConnectionString)
     {
-        _auth = auth;
         _dialogs = dialogs;
+        _config = config;
+        if (controlConnectionString is not null) _auth = new AuthService(controlConnectionString);
     }
 
-    public void ShowLogin() => Replace(new LoginWindow { DataContext = new LoginViewModel(_auth, _dialogs, this) });
+    public void ShowLogin()
+    {
+        if (_auth is null) { ShowSetup(null); return; }
+        Replace(new LoginWindow { DataContext = new LoginViewModel(_auth, _dialogs, this) });
+    }
+
+    public void ShowSetup(string? reason) => Replace(new SetupWindow { DataContext = new SetupViewModel(this, _config, reason) });
     public void ShowProjectSelection(ProjectSelectionViewModel vm) => Replace(new ProjectSelectionWindow { DataContext = vm });
     public void ShowMainShell(MainShellViewModel vm) => Replace(new MainWindow { DataContext = vm });
+
+    public void UseControlConnection(string controlConnectionString)
+    {
+        _auth = new AuthService(controlConnectionString);
+        ShowLogin();
+    }
 
     private static void Replace(Window next)
     {
         var app = Application.Current;
-        var previous = app.Windows.OfType<Window>().ToList();
+        var previous = app.Windows.OfType<Window>().Where(w => w != next).ToList();
         app.MainWindow = next;
         next.Show();
         foreach (var w in previous) w.Close();

@@ -72,6 +72,8 @@ public abstract class CrudSectionViewModel<T> : SectionViewModel where T : class
     protected virtual void OnEditorChanged() { }
     /// <summary>تعديلات قبل الحفظ (قيم محسوبة، قص المسافات...).</summary>
     protected virtual Task BeforeSaveAsync(ProjectDbContext db, T entity) => Task.CompletedTask;
+    /// <summary>بعد نجاح الحفظ (للعمليات خارج قاعدة المشروع، مثل حسابات الدخول في قاعدة التحكم). نص = خطأ يُعرض.</summary>
+    protected virtual Task<string?> AfterSaveAsync(T entity, bool isNew) => Task.FromResult<string?>(null);
 
     public override async Task LoadAsync()
     {
@@ -129,6 +131,8 @@ public abstract class CrudSectionViewModel<T> : SectionViewModel where T : class
             bool isNew = GetId(entity) == 0;
             if (isNew) db.Add(entity); else db.Update(entity);
             await db.SaveChangesAsync();
+            var afterError = await AfterSaveAsync(entity, isNew);
+            if (afterError is not null) Dialogs.Error(afterError);
             StatusMessage = isNew ? $"تمت إضافة: {Describe(entity)}" : $"تم حفظ التعديل: {Describe(entity)}";
             Editor = null;
         }

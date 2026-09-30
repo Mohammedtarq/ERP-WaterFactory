@@ -34,6 +34,18 @@ public class RecordingNavigator : INavigator
     public void ShowProjectSelection(ProjectSelectionViewModel vm) => ProjectSelection = vm;
     public void ShowMainShell(MainShellViewModel vm) => Shell = vm;
     public void ShowLogin() => LoginShown++;
+    public string? SetupReason { get; private set; }
+    public string? UsedControlConnection { get; private set; }
+    public void ShowSetup(string? reason) => SetupReason = reason;
+    public void UseControlConnection(string controlConnectionString) => UsedControlConnection = controlConnectionString;
+}
+
+public class MemoryConfigStore : IConfigStore
+{
+    public string? Value { get; set; }
+    public string ConfigPath => "memory";
+    public string? LoadControlConnectionString() => Value;
+    public void SaveControlConnectionString(string connectionString) => Value = connectionString;
 }
 
 /// <summary>

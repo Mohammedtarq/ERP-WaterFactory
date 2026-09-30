@@ -13,7 +13,11 @@
                     xmlns:vmSettings="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
                     xmlns:vSettings="clr-namespace:ERP.Desktop.Views.Settings"
                     xmlns:vmHR="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
-                    xmlns:vHR="clr-namespace:ERP.Desktop.Views.HR">
+                    xmlns:vHR="clr-namespace:ERP.Desktop.Views.HR"
+                    xmlns:vmReps="clr-namespace:ERP.Presentation.ViewModels.Reps;assembly=ERP.Presentation"
+                    xmlns:vReps="clr-namespace:ERP.Desktop.Views.Reps"
+                    xmlns:vmProduction="clr-namespace:ERP.Presentation.ViewModels.Production;assembly=ERP.Presentation"
+                    xmlns:vProduction="clr-namespace:ERP.Desktop.Views.Production">
 
     <!--
         ربط كل ViewModel بشاشته: أي ContentControl أو تبويب يعرض ViewModel يجد شاشته هنا
@@ -62,6 +66,7 @@
     <DataTemplate DataType="{x:Type vmSettings:RolesPermissionsSectionViewModel}"><vSettings:RolesPermissionsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:UsersSectionViewModel}"><vSettings:UsersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:BranchesSectionViewModel}"><vSettings:BranchesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSettings:ProjectsSectionViewModel}"><vSettings:ProjectsSectionView/></DataTemplate>
 
     <!-- HR -->
     <DataTemplate DataType="{x:Type vmHR:AttendanceSectionViewModel}"><vHR:AttendanceSectionView/></DataTemplate>
@@ -74,4 +79,19 @@
     <DataTemplate DataType="{x:Type vmHR:IncentiveSettingsSectionViewModel}"><vHR:IncentiveSettingsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:RepIncentiveRatesSectionViewModel}"><vHR:RepIncentiveRatesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:ManagerTiersSectionViewModel}"><vHR:ManagerTiersSectionView/></DataTemplate>
+
+    <!-- Reps -->
+    <DataTemplate DataType="{x:Type vmReps:VanOperationsSectionViewModel}"><vReps:VanOperationsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:WalletSectionViewModel}"><vReps:WalletSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:TerritoriesSectionViewModel}"><vReps:TerritoriesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:CustomerAssignmentsSectionViewModel}"><vReps:CustomerAssignmentsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:SyncConflictsSectionViewModel}"><vReps:SyncConflictsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:FleetSectionViewModel}"><vReps:FleetSectionView/></DataTemplate>
+
+    <!-- Production -->
+    <DataTemplate DataType="{x:Type vmProduction:ProductionOrdersSectionViewModel}"><vProduction:ProductionOrdersSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:QcSectionViewModel}"><vProduction:QcSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:PackingSectionViewModel}"><vProduction:PackingSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:QualityTestsSectionViewModel}"><vProduction:QualityTestsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:CustomRecipesSectionViewModel}"><vProduction:CustomRecipesSectionView/></DataTemplate>
 </ResourceDictionary>

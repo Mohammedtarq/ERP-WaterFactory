@@ -13,4 +13,9 @@
     </PackageReference>
   </ItemGroup>
 
+  <!-- سكربتات قاعدة البيانات مضمَّنة في البرنامج: يثبّت ويرقّي القواعد بنفسه دون SSMS -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\Database\*.sql" LogicalName="ERP.Database.%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

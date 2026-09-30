@@ -1,7 +1,10 @@
 using System.Collections.ObjectModel;
 using ERP.Data.ProjectDb;
 using ERP.Data.ProjectDb.Entities;
+using ERP.Data.ControlDb;
+using ERP.Data.ControlDb.Entities;
 using ERP.Data.Security;
+using ERP.Data.Setup;
 using ERP.Presentation.Mvvm;
 using ERP.Presentation.Services;
 using ERP.Presentation.ViewModels.Shell;
@@ -17,6 +20,7 @@ public class SettingsModuleViewModel : ModuleViewModel
         Add(new RolesPermissionsSectionViewModel(s, d));
         Add(new UsersSectionViewModel(s, d));
         Add(new BranchesSectionViewModel(s, d));
+        if (s.ControlConnectionString is not null) Add(new ProjectsSectionViewModel(s, d));
     }
 }
 
@@ -154,7 +158,7 @@ public class UsersSectionViewModel : CrudSectionViewModel<User>
     private string _newPassword = "";
 
     public UsersSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.SystemSettings, "المستخدمون", Icons.People, "#0EA5E9", "مستخدمو هذا المشروع وأدوارهم") { }
+        : base(s, d, ModuleCode.SystemSettings, "المستخدمون", Icons.People, "#0EA5E9", "حسابات الدخول وأدوارها في هذا المشروع") { }
 
     public ObservableCollection<Role> Roles { get; } = new();
     public ObservableCollection<Employee> Employees { get; } = new();
@@ -195,6 +199,37 @@ public class UsersSectionViewModel : CrudSectionViewModel<User>
         if (NewPassword.Length > 0) e.PasswordHash = PasswordHasher.Hash(NewPassword);
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// الدخول يتم عبر قاعدة التحكم: كل مستخدم محلي يحصل تلقائيًا على حساب دخول موحّد بنفس الاسم
+    /// وكلمة المرور، مربوط بهذا المشروع. اسم موجود مسبقًا (نفس الشخص في مشروع آخر) يُربط فقط.
+    /// </summary>
+    protected override async Task<string?> AfterSaveAsync(User e, bool isNew)
+    {
+        if (Session.ControlConnectionString is null || Session.ProjectId == 0) return null;
+        await using var cdb = new ControlDbContext(new DbContextOptionsBuilder<ControlDbContext>().UseSqlServer(Session.ControlConnectionString).Options);
+        var global = await cdb.GlobalUsers.FirstOrDefaultAsync(g => g.Username == e.Username);
+        if (global is null)
+        {
+            if (NewPassword.Length == 0) return "حُفظ المستخدم، لكن لا يمكن إنشاء حساب دخول له بلا كلمة مرور";
+            string fullName = e.Username;
+            await using (var db = Session.NewDb())
+                if (e.EmployeeId is int emp)
+                    fullName = await db.Employees.Where(x => x.Id == emp).Select(x => x.FullName).FirstOrDefaultAsync() ?? fullName;
+            cdb.GlobalUsers.Add(global = new GlobalUser { Username = e.Username, FullName = fullName, PasswordHash = PasswordHasher.Hash(NewPassword) });
+            await cdb.SaveChangesAsync();
+        }
+        else if (NewPassword.Length > 0)
+        {
+            global.PasswordHash = PasswordHasher.Hash(NewPassword);   // تغيير كلمة المرور يسري على الدخول
+        }
+
+        var access = await cdb.UserProjectAccesses.FirstOrDefaultAsync(a => a.GlobalUserId == global.Id && a.ProjectId == Session.ProjectId);
+        if (access is null) cdb.UserProjectAccesses.Add(new UserProjectAccess { GlobalUserId = global.Id, ProjectId = Session.ProjectId, LocalUserIdInProject = e.Id });
+        else access.LocalUserIdInProject = e.Id;
+        await cdb.SaveChangesAsync();
+        return null;
+    }
 }
 
 // ============================ الفروع ============================
@@ -207,4 +242,80 @@ public class BranchesSectionViewModel : CrudSectionViewModel<Branch>
     protected override string Describe(Branch e) => e.Name;
     protected override Task<List<Branch>> QueryAsync(ProjectDbContext db) => db.Branches.AsNoTracking().OrderBy(b => b.Name).ToListAsync();
     protected override string? Validate(Branch e) => string.IsNullOrWhiteSpace(e.Name) ? "أدخل اسم الفرع" : null;
+}
+
+// ============================ المشاريع (الشركات) ============================
+public class ProjectRow
+{
+    public int Id { get; init; }
+    public string ProjectName { get; init; } = "";
+    public string DatabaseName { get; init; } = "";
+    public string ServerAddress { get; init; } = "";
+    public bool IsActive { get; init; }
+    public int UsersCount { get; init; }
+    public bool IsCurrent { get; init; }
+}
+
+/// <summary>
+/// كل مشروع/شركة قاعدة بيانات مستقلة. "مشروع جديد" يثبّت قاعدة كاملة بالإعدادات الأساسية
+/// ويمنح المستخدم الحالي دور المدير فيها — جاهزة لشركة أخرى دون أي تعديل في النظام.
+/// </summary>
+public class ProjectsSectionViewModel : SectionViewModel
+{
+    private string _newProjectName = "";
+    private string _newDatabaseName = "";
+    private bool _demoData;
+
+    public ProjectsSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.SystemSettings, "المشاريع والشركات", Icons.Store, "#0F766E", "إضافة شركة/مشروع جديد بقاعدة بيانات مستقلة")
+    {
+        CreateCommand = new AsyncRelayCommand(CreateAsync);
+    }
+
+    public ObservableCollection<ProjectRow> Projects { get; } = new();
+    public ObservableCollection<string> Log { get; } = new();
+    public string NewProjectName { get => _newProjectName; set => SetProperty(ref _newProjectName, value); }
+    public string NewDatabaseName { get => _newDatabaseName; set => SetProperty(ref _newDatabaseName, value); }
+    public bool DemoData { get => _demoData; set => SetProperty(ref _demoData, value); }
+    public AsyncRelayCommand CreateCommand { get; }
+
+    private ControlDbContext NewControlDb() =>
+        new(new DbContextOptionsBuilder<ControlDbContext>().UseSqlServer(Session.ControlConnectionString!).Options);
+
+    public override async Task LoadAsync()
+    {
+        await using var cdb = NewControlDb();
+        var rows = await cdb.Projects.AsNoTracking().OrderBy(p => p.ProjectName)
+            .Select(p => new ProjectRow { Id = p.Id, ProjectName = p.ProjectName, DatabaseName = p.DatabaseName, ServerAddress = p.ServerAddress,
+                                          IsActive = p.IsActive, UsersCount = p.UserAccesses.Count(), IsCurrent = p.Id == Session.ProjectId })
+            .ToListAsync();
+        Projects.Clear();
+        foreach (var r in rows) Projects.Add(r);
+    }
+
+    private async Task CreateAsync()
+    {
+        if (!Require(CanAdd, "إنشاء المشاريع")) return;
+        if (string.IsNullOrWhiteSpace(NewProjectName) || string.IsNullOrWhiteSpace(NewDatabaseName))
+        { Dialogs.Error("أدخل اسم المشروع واسم قاعدة بياناته"); return; }
+        if (!Dialogs.Confirm($"إنشاء قاعدة بيانات جديدة \"{NewDatabaseName.Trim()}\" للمشروع \"{NewProjectName.Trim()}\"؟")) return;
+
+        Log.Clear();
+        IsBusy = true;
+        try
+        {
+            // حساب الدخول الحالي موجود في قاعدة التحكم فيُربط؛ كلمة مرور المستخدم المحلي الجديد لا تُستخدم للدخول
+            var result = await new ProvisioningService().InstallAsync(new InstallRequest(
+                Session.ControlConnectionString!, NewProjectName, NewDatabaseName.Trim(), Session.FullName, Session.GlobalUsername,
+                Guid.NewGuid().ToString("N"), DemoData), new Progress<string>(m => Log.Add(m)));
+            if (!result.Success) { Dialogs.Error(result.ErrorMessage!); return; }
+            StatusMessage = $"أُنشئ المشروع \"{NewProjectName.Trim()}\". سجّل الخروج واختره من شاشة المشاريع.";
+            NewProjectName = NewDatabaseName = "";
+            await LoadAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }

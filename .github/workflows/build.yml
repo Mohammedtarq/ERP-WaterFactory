@@ -1,0 +1,37 @@
+# يبني ويختبر النظام، ثم يُنتج حزمة Windows جاهزة للتنزيل من تبويب Actions
+# (Artifacts ← ERP-WaterFactory-win-x64). لا حاجة لـ Visual Studio على جهازك.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: الاختبارات (SQL Server حقيقي)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: كل الاختبارات
+        run: ./tests/run_tests.sh
+
+  package:
+    name: حزمة Windows
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: النشر (self-contained win-x64)
+        shell: pwsh
+        run: ./tools/publish.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ERP-WaterFactory-win-x64
+          path: dist/ERP-WaterFactory-win-x64
+          retention-days: 30

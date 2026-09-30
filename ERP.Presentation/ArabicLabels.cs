@@ -52,6 +52,11 @@ public static class ArabicLabels
         [PromotionMovementType.AnnualBonus] = "مكافأة سنوية",
         [PromotionApplicationType.PermanentAddition] = "إضافة دائمة للراتب", [PromotionApplicationType.OneTime] = "لمرة واحدة",
         [PayrollRunStatus.Draft] = "مسودة", [PayrollRunStatus.Approved] = "معتمدة",
+        [ProductionOrderStatus.Draft] = "مسودة", [ProductionOrderStatus.InProgress] = "قيد التشغيل",
+        [ProductionOrderStatus.Completed] = "مكتمل", [ProductionOrderStatus.Cancelled] = "ملغى",
+        [QCOverallResult.Passed] = "ناجحة", [QCOverallResult.Rejected] = "مرفوضة",
+        [QCLineResult.Pass] = "ناجح", [QCLineResult.Fail] = "راسب",
+        [SyncConflictStatus.Pending] = "بانتظار التسوية", [SyncConflictStatus.Resolved] = "مسوّى",
         [StockAdjustmentKind.Damaged] = "تالف", [StockAdjustmentKind.Disposal] = "إتلاف", [StockAdjustmentKind.Return] = "إرجاع للمخزن",
     };
 

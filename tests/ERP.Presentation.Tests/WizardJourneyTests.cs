@@ -1,0 +1,210 @@
+using ERP.Data.ProjectDb.Entities;
+using ERP.Data.Services;
+using ERP.Presentation.Mvvm;
+using ERP.Presentation.ViewModels.Production;
+using ERP.Presentation.ViewModels.Reps;
+using ERP.Presentation.ViewModels.Settings;
+using ERP.Presentation.ViewModels.Shell;
+using Microsoft.Data.SqlClient;
+using Xunit;
+
+namespace ERP.Presentation.Tests;
+
+/// <summary>
+/// رحلة المستخدم الحقيقية من الصفر: سيرفر SQL فارغ ← معالج الإعداد ← الدخول ← إنشاء حساب موظفة
+/// من داخل البرنامج ← دخولها بصلاحياتها ← المندوبون ← الإنتاج. نفس الـ ViewModels التي تعرضها النوافذ.
+/// </summary>
+public class WizardJourneyTests : IAsyncLifetime
+{
+    private static string Master => Environment.GetEnvironmentVariable("ERP_TEST_MASTER_CONNECTION")
+        ?? throw new InvalidOperationException("ERP_TEST_MASTER_CONNECTION غير معيّن");
+    private readonly string _suffix = Guid.NewGuid().ToString("N")[..8];
+    private string ControlDb => $"ERP_WizCtl_{_suffix}";
+    private string ProjectDb => $"ERP_WizPrj_{_suffix}";
+
+    public Task InitializeAsync()
+    {
+        AsyncRelayCommand.UnhandledErrorHandler ??= ex => throw ex;
+        return Task.CompletedTask;
+    }
+
+    public async Task DisposeAsync()
+    {
+        SqlConnection.ClearAllPools();
+        await using var conn = new SqlConnection(Master);
+        await conn.OpenAsync();
+        foreach (var db in new[] { ProjectDb, ControlDb })
+        {
+            await using var cmd = new SqlCommand($"IF DB_ID('{db}') IS NOT NULL BEGIN ALTER DATABASE [{db}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{db}]; END", conn);
+            await cmd.ExecuteNonQueryAsync();
+        }
+    }
+
+    private static async Task Open(ModuleViewModel module, SectionViewModel section)
+    {
+        module.SelectedTab = section;
+        await module.IdleAsync();
+        await section.IdleAsync();
+    }
+
+    private static async Task<(MainShellViewModel shell, RecordingDialogs dialogs)> Login(string controlCs, string user, string password)
+    {
+        var dialogs = new RecordingDialogs();
+        var nav = new RecordingNavigator();
+        var login = new LoginViewModel(new AuthService(controlCs), dialogs, nav) { Username = user };
+        await login.LoginCommand.ExecuteAsync(password);
+        Assert.Null(login.ErrorMessage);
+        await nav.ProjectSelection!.OpenCommand.ExecuteAsync(null);
+        Assert.Null(nav.ProjectSelection.ErrorMessage);
+        return (nav.Shell!, dialogs);
+    }
+
+    [Fact]
+    public async Task From_empty_server_to_working_system()
+    {
+        var master = new SqlConnectionStringBuilder(Master);
+
+        // ---------------- 1) معالج الإعداد ----------------
+        var nav = new RecordingNavigator();
+        var config = new MemoryConfigStore();
+        var setup = new SetupViewModel(nav, config, null)
+        {
+            Server = master.DataSource, UseWindowsAuth = false, SqlUser = master.UserID, SqlPassword = master.Password,
+            ControlDatabase = ControlDb, ProjectName = "مصنع مياه الرحلة", ProjectDatabase = ProjectDb,
+            AdminFullName = "المدير", AdminUsername = "owner", AdminPassword = "Owner@2026", AdminPasswordConfirm = "Owner@2026",
+            DemoData = true
+        };
+        Assert.True(setup.IsNewInstall);
+        await setup.TestConnectionCommand.ExecuteAsync();
+        Assert.True(setup.ConnectionOk, setup.ConnectionMessage);
+
+        setup.AdminPasswordConfirm = "خطأ";
+        await setup.FinishCommand.ExecuteAsync();
+        Assert.Contains("غير متطابقتين", setup.ErrorMessage);
+        Assert.Null(config.Value);
+
+        setup.AdminPasswordConfirm = "Owner@2026";
+        await setup.FinishCommand.ExecuteAsync();
+        Assert.True(setup.ErrorMessage is null, setup.ErrorMessage);
+        Assert.Contains(setup.Log, l => l.Contains("اكتمل الإعداد"));
+        Assert.NotNull(config.Value);                                 // الإعداد حُفظ
+        Assert.Equal(config.Value, nav.UsedControlConnection);        // وانتقل للدخول عليه
+        var controlCs = config.Value!;
+
+        // "الاتصال بنظام قائم" على نفس القاعدة ينجح، وعلى قاعدة فارغة يُرفض
+        var reconnect = new SetupViewModel(new RecordingNavigator(), new MemoryConfigStore { Value = controlCs }, "السيرفر توقف");
+        Assert.True(reconnect.IsConnectExisting);
+        Assert.Equal(ControlDb, reconnect.ControlDatabase);
+        reconnect.SqlPassword = master.Password;
+        await reconnect.FinishCommand.ExecuteAsync();
+        Assert.Null(reconnect.ErrorMessage);
+
+        // ---------------- 2) دخول المدير: كل الوحدات حقيقية ----------------
+        var (shell, dialogs) = await Login(controlCs, "owner", "Owner@2026");
+        Assert.Equal(9, shell.NavItems.Count);
+        foreach (var n in shell.NavItems) Assert.IsNotType<PlaceholderModuleViewModel>(shell.Open<object>(n.ModuleCode));
+
+        // ---------------- 3) إنشاء حساب موظفة مبيعات من داخل البرنامج ----------------
+        var settings = shell.Open<SettingsModuleViewModel>(ModuleCode.SystemSettings);
+        var users = settings.Section<UsersSectionViewModel>();
+        await Open(settings, users);
+        await users.NewCommand.ExecuteAsync();
+        users.Editor!.Username = "sara";
+        users.Editor.RoleId = users.Roles.Single(r => r.Name == "موظف مبيعات").Id;
+        users.NewPassword = "Sara@2026";
+        await users.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+
+        var (saraShell, _) = await Login(controlCs, "sara", "Sara@2026");
+        Assert.Equal(new[] { ModuleCode.Dashboard, ModuleCode.Sales }, saraShell.NavItems.Select(n => n.ModuleCode));
+
+        // تغيير كلمة مرورها من الشاشة يسري على الدخول
+        await users.EditCommand.ExecuteAsync(users.Items.Single(u => u.Username == "sara"));
+        users.NewPassword = "Sara@2027";
+        await users.SaveCommand.ExecuteAsync();
+        Assert.False((await new AuthService(controlCs).LoginAsync("sara", "Sara@2026")).Success);
+        Assert.True((await new AuthService(controlCs).LoginAsync("sara", "Sara@2027")).Success);
+
+        // تبويب المشاريع يعرض المشروع الحالي
+        var projects = settings.Section<ProjectsSectionViewModel>();
+        await Open(settings, projects);
+        Assert.Contains(projects.Projects, p => p.IsCurrent && p.DatabaseName == ProjectDb && p.UsersCount == 2);
+
+        // ---------------- 4) المندوبون: تحميل السيارة ثم تسليم نقد ----------------
+        var reps = shell.Open<RepsModuleViewModel>(ModuleCode.Reps);
+        var van = reps.Van;
+        await Open(reps, van);
+        Assert.NotNull(van.Van);
+        van.OtherWarehouse = van.StoreWarehouses.Single(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        van.LineItem = van.ItemsLookup.Single(i => i.ItemCode == "W-500");
+        await van.IdleAsync();
+        Assert.Equal("كارتون", van.LineLevel!.LevelName);
+        van.LineQuantity = 10;
+        await van.AddLineCommand.ExecuteAsync();
+        await van.ExecuteCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(120m, van.VanTotalPieces);
+
+        var wallet = reps.Wallet;
+        await Open(reps, wallet);
+        Assert.Equal(0m, wallet.Balance);
+        wallet.Amount = 1000;
+        await wallet.SubmitCommand.ExecuteAsync();                  // تسليم يفوق الرصيد
+        Assert.Contains(dialogs.Errors, e => e.Contains("رصيد المحفظة"));
+        dialogs.Errors.Clear();
+        wallet.Action = wallet.Actions.Single(a => a.Value == WalletAction.Collection);
+        wallet.Customer = wallet.Customers.Single(c => c.CustomerType == CustomerType.SubCustomer);
+        wallet.Amount = 5000;
+        await wallet.SubmitCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(5000m, wallet.Balance);
+
+        var fleet = reps.Section<FleetSectionViewModel>();
+        await Open(reps, fleet);
+        await fleet.NewCommand.ExecuteAsync();
+        fleet.Editor!.VehicleName = "كيا بونكو";
+        fleet.Editor.PlateNumber = "12345 بصرة";
+        fleet.Editor.VehicleRegistrationExpiry = DateTime.Today.AddDays(10);
+        await fleet.SaveCommand.ExecuteAsync();
+        Assert.True(fleet.HasAlerts);
+        Assert.Contains("سنوية كيا بونكو", fleet.AlertsText);
+
+        // ---------------- 5) الإنتاج: أمر ← تشغيل ← مختبر ← تعبئة ----------------
+        var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
+        var orders = prod.Orders;
+        await Open(prod, orders);
+        orders.NewOrderCommand.Execute(null);
+        orders.FinishedItem = orders.FinishedItems.Single(i => i.ItemCode == "W-500");
+        orders.Quantity = 240;
+        await orders.IdleAsync();
+        Assert.True(orders.AllSufficient);
+        Assert.Equal(3, orders.Preview.Count);
+        await orders.CreateCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        var order = orders.Orders.First();
+        Assert.Contains("مسودة", order.StageText);
+        await orders.StartCommand.ExecuteAsync(order);
+        Assert.Contains("بانتظار فحص المختبر", orders.Orders.First().StageText);
+
+        var qc = prod.Qc;
+        await Open(prod, qc);
+        Assert.Equal(order.Id, qc.Order!.Id);
+        Assert.Equal(3, qc.Lines.Count);
+        qc.Lines.Single(l => l.TestName.StartsWith("درجة")).Measured = "7.4";
+        qc.Lines.Single(l => l.TestName.StartsWith("الأملاح")).Measured = "140";
+        qc.Lines.Single(l => l.TestName.StartsWith("إحكام")).Measured = "سليم";
+        await qc.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Contains("ناجحة", qc.LastResult);
+
+        var packing = prod.Packing;
+        await Open(prod, packing);
+        Assert.Equal(order.Id, packing.Order!.Id);
+        packing.Level = packing.Levels.Single(l => l.LevelName == "كارتون");
+        packing.Units = 20;
+        await packing.PackCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        await Open(prod, orders);
+        Assert.Equal("مكتمل", orders.Orders.Single(o => o.Id == order.Id).StageText);
+    }
+}

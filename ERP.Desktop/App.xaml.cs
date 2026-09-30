@@ -1,10 +1,9 @@
-using System.IO;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
-using ERP.Data.Services;
+using ERP.Data.Setup;
 using ERP.Desktop.Services;
 using ERP.Presentation.Mvvm;
+using Microsoft.Data.SqlClient;
 
 namespace ERP.Desktop;
 
@@ -12,7 +11,7 @@ public partial class App : Application
 {
     private readonly WpfDialogService _dialogs = new();
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
@@ -20,28 +19,38 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandled;
         AsyncRelayCommand.UnhandledErrorHandler = ex => Dispatcher.Invoke(() => ShowUnexpected(ex));
 
-        string? controlCs;
-        try
+        var config = new AppConfigStore();
+        var controlCs = config.LoadControlConnectionString();
+        var navigator = new WpfNavigator(_dialogs, config, controlCs);
+
+        // أول تشغيل: لا يوجد إعداد ← معالج الإعداد
+        if (controlCs is null)
         {
-            controlCs = ReadControlConnectionString();
-        }
-        catch (Exception ex)
-        {
-            _dialogs.Error($"تعذّر قراءة ملف الإعدادات appsettings.json:\n{ex.Message}");
-            Shutdown(1);
+            navigator.ShowSetup(null);
             return;
         }
 
-        // التدفق: تسجيل الدخول ← اختيار المشروع ← الواجهة الرئيسية
-        new WpfNavigator(new AuthService(controlCs), _dialogs).ShowLogin();
+        // إعداد موجود لكن السيرفر لا يستجيب أو قاعدة التحكم غير مثبّتة ← المعالج مع سبب واضح
+        var problem = await CheckControlDatabaseAsync(controlCs);
+        if (problem is not null) navigator.ShowSetup(problem);
+        else navigator.ShowLogin();
     }
 
-    private static string ReadControlConnectionString()
+    private static async Task<string?> CheckControlDatabaseAsync(string controlCs)
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-        using var doc = JsonDocument.Parse(File.ReadAllText(path));
-        return doc.RootElement.GetProperty("ControlDbConnectionString").GetString()
-               ?? throw new InvalidOperationException("ControlDbConnectionString فارغ");
+        var (ok, message) = await ProvisioningService.TestConnectionAsync(controlCs);
+        if (!ok) return $"تعذّر الاتصال بالسيرفر المحفوظ. {message}";
+        try
+        {
+            await using var conn = new SqlConnection(controlCs);
+            await conn.OpenAsync();
+            await using var cmd = new SqlCommand("SELECT OBJECT_ID('Projects', 'U')", conn);
+            return await cmd.ExecuteScalarAsync() is DBNull or null ? "قاعدة التحكم غير مثبّتة على هذا السيرفر." : null;
+        }
+        catch (SqlException ex)
+        {
+            return $"قاعدة التحكم غير متاحة: {ex.Message}";
+        }
     }
 
     private void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
@@ -53,7 +62,7 @@ public partial class App : Application
     private void ShowUnexpected(Exception ex)
     {
         var root = ex.GetBaseException();
-        var hint = root is Microsoft.Data.SqlClient.SqlException
+        var hint = root is SqlException
             ? "تحقق من اتصال قاعدة البيانات، ثم أعد المحاولة."
             : "أرسل نص هذه الرسالة كاملًا للدعم الفني.";
         _dialogs.Error($"حدث خطأ غير متوقع:\n{root.Message}\n\n{hint}");

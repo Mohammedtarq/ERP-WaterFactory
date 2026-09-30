@@ -15,34 +15,48 @@
      LoadingSuppliesCharge   (يُستخدم الحساب الدائن فقط: إيراد مستلزمات التحميل)
    ============================================================ */
 
+-- هذا الملف قابل لإعادة التنفيذ بأمان (كل إضافة محمية بشرط، والإجراءات CREATE OR ALTER)
+-- حتى يرقّي البرنامج أي قاعدة قائمة تلقائيًا إلى آخر نسخة.
+
 -- ============ أعمدة إضافية على رأس الفاتورة (مجاميع + تتبّع الترحيل) ============
-ALTER TABLE SalesInvoices ADD
-    SubTotal        DECIMAL(18,2)   NOT NULL CONSTRAINT DF_SalesInvoices_SubTotal DEFAULT 0,
-    TaxAmount       DECIMAL(18,2)   NOT NULL CONSTRAINT DF_SalesInvoices_TaxAmount DEFAULT 0,
-    TotalAmount     DECIMAL(18,2)   NOT NULL CONSTRAINT DF_SalesInvoices_TotalAmount DEFAULT 0,
-    Notes           NVARCHAR(400)   NULL,
-    PostedByUserId  INT             NULL CONSTRAINT FK_SalesInvoices_PostedBy FOREIGN KEY REFERENCES Users(Id),
-    PostedAt        DATETIME2       NULL;
+IF COL_LENGTH('SalesInvoices', 'SubTotal') IS NULL
+    ALTER TABLE SalesInvoices ADD SubTotal DECIMAL(18,2) NOT NULL CONSTRAINT DF_SalesInvoices_SubTotal DEFAULT 0;
+IF COL_LENGTH('SalesInvoices', 'TaxAmount') IS NULL
+    ALTER TABLE SalesInvoices ADD TaxAmount DECIMAL(18,2) NOT NULL CONSTRAINT DF_SalesInvoices_TaxAmount DEFAULT 0;
+IF COL_LENGTH('SalesInvoices', 'TotalAmount') IS NULL
+    ALTER TABLE SalesInvoices ADD TotalAmount DECIMAL(18,2) NOT NULL CONSTRAINT DF_SalesInvoices_TotalAmount DEFAULT 0;
+IF COL_LENGTH('SalesInvoices', 'Notes') IS NULL
+    ALTER TABLE SalesInvoices ADD Notes NVARCHAR(400) NULL;
+IF COL_LENGTH('SalesInvoices', 'PostedByUserId') IS NULL
+    ALTER TABLE SalesInvoices ADD PostedByUserId INT NULL CONSTRAINT FK_SalesInvoices_PostedBy FOREIGN KEY REFERENCES Users(Id);
+IF COL_LENGTH('SalesInvoices', 'PostedAt') IS NULL
+    ALTER TABLE SalesInvoices ADD PostedAt DATETIME2 NULL;
 GO
 
-ALTER TABLE SalesInvoices ADD CONSTRAINT CK_SalesInvoices_FreeSaleRecipient
-    CHECK (IsFreeSale = 0 OR (FreeSaleRecipient IS NOT NULL AND LEN(LTRIM(FreeSaleRecipient)) > 0));
+IF OBJECT_ID('CK_SalesInvoices_FreeSaleRecipient', 'C') IS NULL
+    ALTER TABLE SalesInvoices ADD CONSTRAINT CK_SalesInvoices_FreeSaleRecipient
+        CHECK (IsFreeSale = 0 OR (FreeSaleRecipient IS NOT NULL AND LEN(LTRIM(FreeSaleRecipient)) > 0));
 GO
 
-CREATE INDEX IX_SalesInvoices_Customer ON SalesInvoices (CustomerId, Status, InvoiceDate);
-CREATE INDEX IX_SalesInvoiceLines_Invoice ON SalesInvoiceLines (SalesInvoiceId);
-CREATE INDEX IX_AgentItemPrices_Item ON AgentItemPrices (ItemId, CustomerId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SalesInvoices_Customer')
+    CREATE INDEX IX_SalesInvoices_Customer ON SalesInvoices (CustomerId, Status, InvoiceDate);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SalesInvoiceLines_Invoice')
+    CREATE INDEX IX_SalesInvoiceLines_Invoice ON SalesInvoiceLines (SalesInvoiceId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AgentItemPrices_Item')
+    CREATE INDEX IX_AgentItemPrices_Item ON AgentItemPrices (ItemId, CustomerId);
 GO
 
 -- ============ الترقيم التلقائي ============
-CREATE SEQUENCE seq_SalesInvoiceNumber AS INT START WITH 1 INCREMENT BY 1;
-CREATE SEQUENCE seq_SalesJournalNumber AS INT START WITH 1 INCREMENT BY 1;
+IF OBJECT_ID('seq_SalesInvoiceNumber', 'SO') IS NULL
+    CREATE SEQUENCE seq_SalesInvoiceNumber AS INT START WITH 1 INCREMENT BY 1;
+IF OBJECT_ID('seq_SalesJournalNumber', 'SO') IS NULL
+    CREATE SEQUENCE seq_SalesJournalNumber AS INT START WITH 1 INCREMENT BY 1;
 GO
 
 /* ============================================================
    الرصيد الحالي للمخزون لكل صنف/مخزن/تشغيلة (من سجل الحركة فقط)
    ============================================================ */
-CREATE VIEW vw_StockBalance AS
+CREATE OR ALTER VIEW vw_StockBalance AS
 SELECT  st.ItemId, st.WarehouseId, st.BatchId,
         SUM(st.QuantityBaseUnits) AS QuantityBaseUnits
 FROM    StockTransactions st
@@ -52,7 +66,7 @@ GO
 /* ============================================================
    صلاحية المستخدم على وحدة (View/Add/Edit/Delete/Post)
    ============================================================ */
-CREATE FUNCTION fn_UserCan (@UserId INT, @ModuleCode NVARCHAR(50), @Action NVARCHAR(10))
+CREATE OR ALTER FUNCTION fn_UserCan (@UserId INT, @ModuleCode NVARCHAR(50), @Action NVARCHAR(10))
 RETURNS BIT
 AS
 BEGIN
@@ -78,7 +92,7 @@ GO
    3) غير ذلك (أو لا يوجد سعر خاص) ← Items.SalePrice
    @UseAgentPricing = 0 يُجبر السعر العادي
    ============================================================ */
-CREATE FUNCTION fn_Sales_BaseUnitPrice (@CustomerId INT, @ItemId INT, @UseAgentPricing BIT)
+CREATE OR ALTER FUNCTION fn_Sales_BaseUnitPrice (@CustomerId INT, @ItemId INT, @UseAgentPricing BIT)
 RETURNS DECIMAL(18,4)
 AS
 BEGIN
@@ -102,7 +116,7 @@ GO
 /* ============================================================
    سعر مستلزمات التحميل الساري في تاريخ معيّن
    ============================================================ */
-CREATE FUNCTION fn_Sales_LoadingRate (@OnDate DATE)
+CREATE OR ALTER FUNCTION fn_Sales_LoadingRate (@OnDate DATE)
 RETURNS DECIMAL(18,2)
 AS
 BEGIN
@@ -115,7 +129,7 @@ GO
 /* ============================================================
    إنشاء فاتورة مبيعات (مسودة)
    ============================================================ */
-CREATE PROCEDURE sp_Sales_CreateInvoice
+CREATE OR ALTER PROCEDURE sp_Sales_CreateInvoice
     @CustomerId             INT,
     @WarehouseId            INT,
     @InvoiceDate            DATE,
@@ -199,7 +213,7 @@ GO
    - @UnitPrice = NULL ← يُحسب تلقائيًا بالتسعير الهرمي × عدد القطع في وحدة البيع
    - @BatchId   = NULL ← تُختار التشغيلات تلقائيًا (FIFO) وقت الترحيل
    ============================================================ */
-CREATE PROCEDURE sp_Sales_AddInvoiceLine
+CREATE OR ALTER PROCEDURE sp_Sales_AddInvoiceLine
     @InvoiceId          INT,
     @ItemId             INT,
     @PackagingLevelId   INT,
@@ -259,7 +273,7 @@ GO
    تعديل رأس فاتورة مسودة (العميل، المخزن، الدفع، الخيارات...)
    نفس تحققات الإنشاء؛ السطور تبقى كما هي وتُعاد تسعيرتها من الواجهة عند الحاجة.
    ============================================================ */
-CREATE PROCEDURE sp_Sales_UpdateDraftHeader
+CREATE OR ALTER PROCEDURE sp_Sales_UpdateDraftHeader
     @InvoiceId              INT,
     @CustomerId             INT,
     @WarehouseId            INT,
@@ -324,7 +338,7 @@ BEGIN
 END;
 GO
 
-CREATE PROCEDURE sp_Sales_DeleteInvoiceLine
+CREATE OR ALTER PROCEDURE sp_Sales_DeleteInvoiceLine
     @LineId INT,
     @UserId INT
 AS
@@ -341,7 +355,7 @@ BEGIN
 END;
 GO
 
-CREATE PROCEDURE sp_Sales_DeleteDraftInvoice
+CREATE OR ALTER PROCEDURE sp_Sales_DeleteDraftInvoice
     @InvoiceId INT,
     @UserId    INT
 AS
@@ -372,7 +386,7 @@ GO
    3) توليد القيد المحاسبي المتوازن وترحيله (عدا المبيعات المجانية)
    4) قيد المبلغ النقدي في محفظة المندوب (عند البيع من كاش فان)
    ============================================================ */
-CREATE PROCEDURE sp_Sales_PostInvoice
+CREATE OR ALTER PROCEDURE sp_Sales_PostInvoice
     @InvoiceId  INT,
     @UserId     INT
 AS
@@ -586,7 +600,7 @@ GO
 /* ============================================================
    معاينة مجاميع الفاتورة قبل الترحيل (للعرض في الشاشة)
    ============================================================ */
-CREATE VIEW vw_SalesInvoiceTotals AS
+CREATE OR ALTER VIEW vw_SalesInvoiceTotals AS
 SELECT  i.Id AS InvoiceId, i.InvoiceNumber, i.Status, i.IsFreeSale,
         CASE WHEN i.Status = N'Posted' THEN i.SubTotal
              WHEN i.IsFreeSale = 1 THEN 0 ELSE ISNULL(l.Sub, 0) END AS SubTotal,
@@ -605,7 +619,7 @@ GO
 /* ============================================================
    قائمة الفواتير (لشاشة البحث/العرض)
    ============================================================ */
-CREATE VIEW vw_SalesInvoiceList AS
+CREATE OR ALTER VIEW vw_SalesInvoiceList AS
 SELECT  i.Id, i.InvoiceNumber, i.InvoiceDate, i.Status,
         i.CustomerId, c.Name AS CustomerName, c.CustomerType,
         w.Name AS WarehouseName, e.FullName AS SalesRepName,
@@ -626,7 +640,7 @@ GO
    كشف حساب العميل (مديونية كل عميل مستقلة — فواتيره وسنداته فقط)
    مدين = قيمة الفاتورة، دائن = المدفوع عند البيع + سندات القبض
    ============================================================ */
-CREATE VIEW vw_CustomerStatement AS
+CREATE OR ALTER VIEW vw_CustomerStatement AS
 SELECT  i.CustomerId, i.InvoiceDate AS TxDate, N'SalesInvoice' AS TxType,
         i.InvoiceNumber AS DocNumber, i.Id AS DocId,
         i.TotalAmount AS Debit, CAST(0 AS DECIMAL(18,2)) AS Credit,
@@ -649,7 +663,7 @@ FROM    Vouchers v
 WHERE   v.PartyType = N'Customer' AND v.PartyId IS NOT NULL;
 GO
 
-CREATE VIEW vw_CustomerBalances AS
+CREATE OR ALTER VIEW vw_CustomerBalances AS
 SELECT  c.Id AS CustomerId, c.Name, c.CustomerType, c.ParentAgentId,
         ISNULL(SUM(s.Debit), 0)  AS TotalDebit,
         ISNULL(SUM(s.Credit), 0) AS TotalCredit,

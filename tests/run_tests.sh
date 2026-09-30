@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # يشغّل كل الاختبارات على SQL Server 2022 حقيقي داخل Docker:
-#   1) ملفات Database/00 → 10 على قاعدة نظيفة + اختبارات SQL (tests/test_sales.sql)
+#   1) ملفات Database/00 → 11 على قاعدة نظيفة + اختبارات SQL (tests/test_sales.sql)
 #   2) بناء كل المشاريع (ومنها ERP.Desktop) + اختبارات تكامل C# + اختبارات الشاشات (ViewModels وفحص ربط XAML)
 # الاستخدام: ./tests/run_tests.sh      (يتطلب Docker فقط)
 set -euo pipefail
@@ -57,6 +57,7 @@ fi
 docker run --rm --network host "${PROXY_ARGS[@]}" \
   -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 \
   -e "ERP_TEST_CONNECTION=${CS_BASE}Database=$NET_DB;" \
+  -e "ERP_TEST_MASTER_CONNECTION=${CS_BASE}Database=master;" \
   -e "ERP_TEST_CONTROL_CONNECTION=${CS_BASE}Database=ERP_ControlDB;" \
   -e "ERP_TEST_PROJECT_CONNECTION=${CS_BASE}Database=$UI_DB;" \
   -v "$ROOT":/src -v erp-nuget:/root/.nuget -w /src mcr.microsoft.com/dotnet/sdk:9.0 sh -c '

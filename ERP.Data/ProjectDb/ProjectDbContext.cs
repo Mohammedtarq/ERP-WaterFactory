@@ -323,6 +323,9 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<CustomRecipe>().HasOne(c => c.Customer).WithMany().HasForeignKey(c => c.CustomerId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<CustomRecipeLine>().HasOne(l => l.CustomRecipe).WithMany(c => c.Lines).HasForeignKey(l => l.CustomRecipeId);
         modelBuilder.Entity<CustomRecipeLine>().HasOne(l => l.ComponentItem).WithMany().HasForeignKey(l => l.ComponentItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<CustomRecipeLine>().HasOne(l => l.ReplacesRawMaterialItem).WithMany().HasForeignKey(l => l.ReplacesRawMaterialItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PackingOrder>().Property(p => p.PackingDate);
+        modelBuilder.Entity<Vehicle>().HasOne(v => v.AssignedEmployee).WithMany().HasForeignKey(v => v.AssignedEmployeeId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<ProductionOrder>().HasIndex(p => p.MONumber).IsUnique();
         modelBuilder.Entity<ProductionOrder>().Property(p => p.Status).HasConversion<string>();

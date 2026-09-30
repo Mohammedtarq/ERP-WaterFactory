@@ -60,6 +60,7 @@ public class ProjectSelectionViewModel : ViewModelBase
     private readonly AuthService _auth;
     private readonly IDialogService _dialogs;
     private readonly INavigator _navigator;
+    private readonly LoginResult _login;
     private ProjectOption? _selectedProject;
     private string? _errorMessage;
 
@@ -68,6 +69,7 @@ public class ProjectSelectionViewModel : ViewModelBase
         _auth = auth;
         _dialogs = dialogs;
         _navigator = navigator;
+        _login = login;
         FullName = login.FullName;
         Projects = login.Projects;
         _selectedProject = Projects.FirstOrDefault();
@@ -105,7 +107,8 @@ public class ProjectSelectionViewModel : ViewModelBase
                 ErrorMessage = error;
                 return;
             }
-            var session = new AppSession(SelectedProject.ProjectName, FullName, info);
+            var session = new AppSession(SelectedProject.ProjectName, FullName, info,
+                                         _auth.ControlConnectionString, _login.Username, SelectedProject.ProjectId);
             _navigator.ShowMainShell(new MainShellViewModel(session, _dialogs, _navigator));
         }
         finally

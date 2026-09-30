@@ -41,7 +41,8 @@ public class ScreenFlowTests
         var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         Assert.Equal(9, shell.NavItems.Count);
         Assert.IsType<DashboardViewModel>(shell.CurrentModule);
-        Assert.IsType<PlaceholderModuleViewModel>(shell.Open<object>(ModuleCode.Reps));
+        Assert.IsType<ERP.Presentation.ViewModels.Reps.RepsModuleViewModel>(shell.Open<object>(ModuleCode.Reps));
+        Assert.IsType<ERP.Presentation.ViewModels.Production.ProductionModuleViewModel>(shell.Open<object>(ModuleCode.Production));
         Assert.IsType<SalesModuleViewModel>(shell.Open<object>(ModuleCode.Sales));
         Assert.Same(shell.CurrentModule, shell.Open<object>(ModuleCode.Sales));   // تُنشأ مرة واحدة
 
@@ -379,7 +380,9 @@ public class ScreenFlowTests
 
         var rules = fin.Section<MappingRulesSectionViewModel>();
         await Open(fin, rules);
-        Assert.Contains("SalesInvoiceElectronic", rules.MissingText);
+        // القواعد الناقصة (مثل الدفع الإلكتروني) تُضاف تلقائيًا عند فتح المشروع
+        Assert.Contains(rules.Items, r => r.TransactionType == "SalesInvoiceElectronic");
+        Assert.Equal("كل القواعد المطلوبة معرّفة ✓", rules.MissingText);
     }
 
     [Fact]
@@ -427,15 +430,15 @@ public class ScreenFlowTests
         var roles = settings.Section<RolesPermissionsSectionViewModel>();
         await Open(settings, roles);
 
-        roles.NewRoleName = "أمين مخزن";
+        roles.NewRoleName = "مراقب الجودة";
         await roles.AddRoleCommand.ExecuteAsync();
-        Assert.Equal("أمين مخزن", roles.SelectedRole!.Name);
+        Assert.Equal("مراقب الجودة", roles.SelectedRole!.Name);
         var whRow = roles.Matrix.Single(m => m.ModuleCode == ModuleCode.Warehouse);
         whRow.CanAdd = true;                                        // بدون عرض — يُضاف تلقائيًا
         await roles.SaveCommand.ExecuteAsync();
 
         await using var db = _f.NewDb();
-        var perm = await db.RolePermissions.SingleAsync(p => p.Role.Name == "أمين مخزن" && p.ModuleCode == ModuleCode.Warehouse);
+        var perm = await db.RolePermissions.SingleAsync(p => p.Role.Name == "مراقب الجودة" && p.ModuleCode == ModuleCode.Warehouse);
         Assert.True(perm.CanView && perm.CanAdd && !perm.CanDelete);
         Assert.Empty(dialogs.Errors);
     }

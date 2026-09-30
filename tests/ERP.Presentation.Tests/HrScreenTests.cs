@@ -92,8 +92,15 @@ public class HrScreenTests
         Assert.Equal(68m, irow.TotalScore);
         Assert.Equal(25_000m, irow.Amount);
 
-        // 6) الرواتب: توليد ← الاعتماد يفشل بلا قاعدة ربط ← إضافتها من العقل المالي ← اعتماد
+        // 6) الرواتب: قاعدة قيد الرواتب تُضاف تلقائيًا عند فتح المشروع (الترقية الذاتية) ← توليد ← اعتماد
+        var fin = shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);
+        var rules = fin.Section<MappingRulesSectionViewModel>();
+        await Open(fin, rules);
+        Assert.Contains(rules.Items, r => r.TransactionType == "PayrollAccrual");
+        Assert.Equal("كل القواعد المطلوبة معرّفة ✓", rules.MissingText);
+
         var pay = hr.Payroll;
+        shell.Open<HrModuleViewModel>(ModuleCode.HR);
         await Open(hr, pay);
         Assert.Null(pay.RunId);
         await pay.GenerateCommand.ExecuteAsync();
@@ -104,21 +111,6 @@ public class HrScreenTests
         Assert.Equal(625_000m, prow.NetSalary);
         Assert.Contains("مسودة", pay.StatusText);
 
-        await pay.ApproveCommand.ExecuteAsync();
-        Assert.Contains(dialogs.Errors, e => e.Contains("PayrollAccrual"));
-        dialogs.Errors.Clear();
-
-        var fin = shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);
-        var rules = fin.Section<MappingRulesSectionViewModel>();
-        await Open(fin, rules);
-        await rules.NewCommand.ExecuteAsync();
-        rules.Editor!.TransactionType = "PayrollAccrual";
-        rules.Editor.DebitAccountId = rules.Accounts.Single(a => a.AccountCode == "5101").Id;
-        rules.Editor.CreditAccountId = rules.Accounts.Single(a => a.AccountCode == "2101").Id;
-        await rules.SaveCommand.ExecuteAsync();
-        Assert.Empty(dialogs.Errors);
-
-        shell.Open<HrModuleViewModel>(ModuleCode.HR);
         await pay.ApproveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.True(pay.IsApproved);

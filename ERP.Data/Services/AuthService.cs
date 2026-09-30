@@ -2,6 +2,7 @@ using ERP.Data.ControlDb;
 using ERP.Data.ProjectDb;
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Security;
+using ERP.Data.Setup;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +10,10 @@ namespace ERP.Data.Services;
 
 public record ProjectOption(int ProjectId, string ProjectName, string DatabaseName, string ServerAddress, int LocalUserId);
 
-public record LoginResult(bool Success, string? ErrorMessage, int GlobalUserId, string FullName, IReadOnlyList<ProjectOption> Projects);
+public record LoginResult(bool Success, string? ErrorMessage, int GlobalUserId, string FullName, IReadOnlyList<ProjectOption> Projects)
+{
+    public string Username { get; init; } = "";
+}
 
 /// <summary>صلاحيات المستخدم داخل مشروع واحد، مفهرسة بكود الوحدة.</summary>
 public class UserPermissions
@@ -43,6 +47,8 @@ public class AuthService
         _controlConnectionString = controlConnectionString;
     }
 
+    public string ControlConnectionString => _controlConnectionString;
+
     private ControlDbContext NewControlDb() =>
         new(new DbContextOptionsBuilder<ControlDbContext>().UseSqlServer(_controlConnectionString).Options);
 
@@ -71,7 +77,7 @@ public class AuthService
         if (projects.Count == 0)
             return new(false, "لا يوجد أي مشروع مرتبط بحسابك بعد", user.Id, user.FullName, projects);
 
-        return new(true, null, user.Id, user.FullName, projects);
+        return new(true, null, user.Id, user.FullName, projects) { Username = user.Username };
     }
 
     /// <summary>سلسلة اتصال المشروع = نفس بيانات اعتماد قاعدة التحكم، بسيرفر وقاعدة المشروع.</summary>
@@ -93,6 +99,11 @@ public class AuthService
         var cs = BuildProjectConnectionString(project);
         try
         {
+            // ترقية تلقائية: أي سكربت جديد أو معدّل يصل للقاعدة، وتُكمل الإعدادات الناقصة (قواعد ربط، أدوار)
+            await DatabaseInstaller.UpgradeProjectAsync(cs);
+            await using (var seedDb = new ProjectDbContext(new DbContextOptionsBuilder<ProjectDbContext>().UseSqlServer(cs).Options))
+                await DefaultConfiguration.SeedAsync(seedDb, includeWarehouses: false);
+
             await using var db = new ProjectDbContext(new DbContextOptionsBuilder<ProjectDbContext>().UseSqlServer(cs).Options);
             var user = await db.Users.AsNoTracking().Include(u => u.Role).ThenInclude(r => r.Permissions)
                 .FirstOrDefaultAsync(u => u.Id == project.LocalUserId);
@@ -107,7 +118,7 @@ public class AuthService
         }
         catch (SqlException ex)
         {
-            return (null, $"تعذّر الاتصال بقاعدة بيانات المشروع: {ex.Message}");
+            return (null, $"تعذّر فتح أو تحديث قاعدة بيانات المشروع: {ex.Message}");
         }
     }
 }

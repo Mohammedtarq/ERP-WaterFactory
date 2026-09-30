@@ -15,6 +15,8 @@ VMNS = {
     'Sales': 'ERP.Presentation.ViewModels.Sales',
     'Settings': 'ERP.Presentation.ViewModels.Settings',
     'HR': 'ERP.Presentation.ViewModels.HR',
+    'Reps': 'ERP.Presentation.ViewModels.Reps',
+    'Production': 'ERP.Presentation.ViewModels.Production',
 }
 
 def a(s): return esc(s, {'"': '&quot;'})
@@ -73,9 +75,10 @@ def indent(text, n):
     pad = ' ' * n
     return '\n'.join(pad + line if line.strip() else line for line in text.split('\n'))
 
-def gen(module, cls, vm, columns, fields, top_extra='', side_extra='', needs_clear=False):
+def gen(module, cls, vm, columns, fields, top_extra='', side_extra='', needs_clear=False, selected=None, bottom_extra=''):
     ns = f'ERP.Desktop.Views.{module}'
     cols = '\n'.join(col(c) for c in columns)
+    sel = f' SelectedItem="{{Binding {selected}}}"' if selected else ''
     flds = '\n'.join(field(f) for f in fields)
     xaml = f'''<UserControl x:Class="{ns}.{cls}"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -111,8 +114,8 @@ def gen(module, cls, vm, columns, fields, top_extra='', side_extra='', needs_cle
                 </DockPanel>
 {indent(top_extra, 16)}
                 <TextBlock DockPanel.Dock="Bottom" Text="{{Binding StatusMessage}}" Style="{{StaticResource StatusText}}"/>
-
-                <DataGrid ItemsSource="{{Binding Items}}">
+{indent(bottom_extra, 16)}
+                <DataGrid ItemsSource="{{Binding Items}}"{sel}>
                     <DataGrid.Columns>
 {indent(cols, 24)}
                         <DataGridTemplateColumn Header="" Width="84">
@@ -356,5 +359,74 @@ gen('Finance', 'ExchangeRatesSectionView', 'ExchangeRatesSectionViewModel',
      ('text', 'السعر بالدينار', 'RateToIQD', '*', 'N2'), ('text', 'أدخله', 'EnteredByUser.Username', 130)],
     [('date', 'تاريخ السريان', 'EffectiveDate'), ('text', 'رمز العملة', 'CurrencyCode', 'ltr'), ('num', 'السعر: 1 من العملة = ? دينار', 'RateToIQD')],
     side_extra='<TextBlock Text="الرواتب تستخدم آخر سعر ساري حتى نهاية الشهر لتحويل رواتب الدولار في قيد الرواتب، ولتحويل الحوافز (المحسوبة بالدينار) لموظفي الدولار." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>')
+
+# ============================ المندوبون ============================
+gen('Reps', 'TerritoriesSectionView', 'TerritoriesSectionViewModel',
+    [('text', 'المندوب', 'Employee.FullName', '*'), ('text', 'المنطقة', 'TerritoryName', '*')],
+    [('lookup', 'المندوب', 'EmployeeId', 'Reps', 'FullName'), ('text', 'اسم المنطقة', 'TerritoryName')])
+
+gen('Reps', 'CustomerAssignmentsSectionView', 'CustomerAssignmentsSectionViewModel',
+    [('text', 'المندوب', 'Employee.FullName', '*'), ('text', 'العميل', 'Customer.Name', '*'), ('text', 'تاريخ التخصيص', 'AssignedAt', 130, 'yyyy/MM/dd')],
+    [('lookup', 'المندوب', 'EmployeeId', 'Reps', 'FullName'), ('lookup', 'العميل', 'CustomerId', 'Customers', 'Name')],
+    side_extra='<TextBlock Text="العميل يمكن أن يُخصص لأكثر من مندوب. الوكيل بلا مندوب ببساطة لا يُخصص لأحد." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>')
+
+gen('Reps', 'FleetSectionView', 'FleetSectionViewModel',
+    [('text', 'السيارة', 'VehicleName', '*'), ('text', 'رقم اللوحة', 'PlateNumber', 110), ('text', 'السائق', 'AssignedEmployee.FullName', 150),
+     ('text', 'انتهاء إجازة السوق', 'DrivingLicenseExpiry', 130, 'yyyy/MM/dd'), ('text', 'انتهاء السنوية', 'VehicleRegistrationExpiry', 120, 'yyyy/MM/dd'),
+     ('check', 'فعّالة', 'IsActive', 55)],
+    [('text', 'اسم/نوع السيارة', 'VehicleName'), ('text', 'رقم اللوحة', 'PlateNumber'),
+     ('lookup', 'السائق/المندوب', 'AssignedEmployeeId', 'Employees', 'FullName', 'nullable'),
+     ('date', 'تاريخ انتهاء إجازة السوق', 'DrivingLicenseExpiry'), ('date', 'تاريخ انتهاء السنوية', 'VehicleRegistrationExpiry'),
+     ('check', 'فعّالة', 'IsActive')],
+    top_extra='''<Border DockPanel.Dock="Top" CornerRadius="6" Padding="10,8" Margin="0,0,0,10" Background="#FFFBEB"
+        Visibility="{Binding HasAlerts, Converter={StaticResource BoolToVisibility}}">
+    <TextBlock Text="{Binding AlertsText}" Foreground="#B45309" TextWrapping="Wrap" FontWeight="SemiBold"/>
+</Border>
+<TextBlock DockPanel.Dock="Top" Text="{Binding AlertsText}" Foreground="{StaticResource SuccessBrush}" Margin="0,0,0,10"
+           Visibility="{Binding HasAlerts, Converter={StaticResource InverseBoolToVisibility}}"/>''')
+
+# ============================ الإنتاج ============================
+gen('Production', 'QualityTestsSectionView', 'QualityTestsSectionViewModel',
+    [('text', 'الاختبار', 'TestName', '*'), ('text', 'المنتج', 'ApplicableItem.ItemName', 150), ('text', 'الحد الأدنى', 'StandardMin', 100, 'N2'),
+     ('text', 'الحد الأعلى', 'StandardMax', 100, 'N2'), ('text', 'النتيجة المقبولة', 'StandardText', 130)],
+    [('text', 'اسم الاختبار', 'TestName'), ('lookup', 'خاص بمنتج (فارغ = كل المنتجات)', 'ApplicableItemId', 'ItemsLookup', 'ItemName', 'nullable'),
+     ('num', 'الحد الأدنى (للاختبار الرقمي)', 'StandardMin'), ('num', 'الحد الأعلى (للاختبار الرقمي)', 'StandardMax'),
+     ('text', 'النتيجة المقبولة (للاختبار الوصفي، مثل: سليم)', 'StandardText')],
+    side_extra='<TextBlock Text="الرقمي: ناجح إذا وقعت القيمة بين الحدين. الوصفي: ناجح إذا طابقت النتيجة المقبولة. فشل اختبار واحد يرفض الدفعة كاملة." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>')
+
+gen('Production', 'CustomRecipesSectionView', 'CustomRecipesSectionViewModel',
+    [('text', 'الوصفة', 'Name', '*'), ('text', 'المنتج', 'FinishedItem.ItemName', 150), ('text', 'العميل', 'Customer.Name', 150), ('check', 'فعّالة', 'IsActive', 55)],
+    [('text', 'اسم الوصفة (مثل: وصفة مطعم الحسون)', 'Name'), ('lookup', 'المنتج', 'FinishedItemId', 'FinishedItems', 'ItemName'),
+     ('lookup', 'العميل صاحب الاسم التجاري', 'CustomerId', 'Customers', 'Name'), ('check', 'فعّالة', 'IsActive')],
+    selected='SelectedRecipe',
+    bottom_extra='''<Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="12" Margin="0,10,0,0" MaxHeight="300">
+    <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="{Binding SelectedRecipe.Name, StringFormat='مكوّنات الوصفة المختارة: {0}', TargetNullValue='اختر وصفة من الجدول لعرض مكوّناتها'}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <ComboBox ItemsSource="{Binding RawItems}" SelectedItem="{Binding NewComponent}" DisplayMemberPath="ItemName" Width="200" Margin="0,0,8,0" ToolTip="المكوّن الخاص"/>
+            <TextBox Text="{Binding NewLabel, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="0,0,8,0" ToolTip="وصف المكوّن: غطاء / لاصق أمامي / لاصق خلفي"/>
+            <TextBox Text="{Binding NewQuantity}" Width="60" Margin="0,0,8,0" ToolTip="الكمية لكل وحدة" FlowDirection="LeftToRight"/>
+            <TextBlock Text="يستبدل:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <ComboBox ItemsSource="{Binding RawItems}" SelectedItem="{Binding NewReplaces}" DisplayMemberPath="ItemName" Width="200" Margin="0,0,8,0" ToolTip="المادة الأساسية التي يحل محلها (فارغ = إضافي)"/>
+            <Button Content="إضافة مكوّن" Style="{StaticResource PrimaryButton}" Command="{Binding AddLineCommand}"/>
+        </WrapPanel>
+        <DataGrid ItemsSource="{Binding Lines}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="المكوّن الخاص" Binding="{Binding ComponentName}" Width="*"/>
+                <DataGridTextColumn Header="الوصف" Binding="{Binding ComponentLabel}" Width="120"/>
+                <DataGridTextColumn Header="لكل وحدة" Binding="{Binding QuantityPerUnit, StringFormat=N2}" Width="80"/>
+                <DataGridTextColumn Header="يستبدل" Binding="{Binding ReplacesName}" Width="*"/>
+                <DataGridTemplateColumn Header="" Width="46">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                    Command="{Binding DataContext.DeleteLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Border>''')
 
 print('generated')

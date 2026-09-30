@@ -1,0 +1,116 @@
+<UserControl x:Class="ERP.Desktop.Views.Production.CustomRecipesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Production;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:CustomRecipesSectionViewModel}"
+             x:Name="Root">
+    <!-- مُولَّد بنمط CRUD الموحّد: الجدول يمينًا، ونموذج الإضافة/التعديل يسارًا عند الفتح -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Style="{StaticResource PrimaryButton}" Command="{Binding NewCommand}" IsEnabled="{Binding CanAdd}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="إضافة"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,8,0"/>
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="260" ToolTip="بحث"/>
+                    </StackPanel>
+                </DockPanel>
+
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="12" Margin="0,10,0,0" MaxHeight="300">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding SelectedRecipe.Name, StringFormat='مكوّنات الوصفة المختارة: {0}', TargetNullValue='اختر وصفة من الجدول لعرض مكوّناتها'}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <ComboBox ItemsSource="{Binding RawItems}" SelectedItem="{Binding NewComponent}" DisplayMemberPath="ItemName" Width="200" Margin="0,0,8,0" ToolTip="المكوّن الخاص"/>
+                            <TextBox Text="{Binding NewLabel, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="0,0,8,0" ToolTip="وصف المكوّن: غطاء / لاصق أمامي / لاصق خلفي"/>
+                            <TextBox Text="{Binding NewQuantity}" Width="60" Margin="0,0,8,0" ToolTip="الكمية لكل وحدة" FlowDirection="LeftToRight"/>
+                            <TextBlock Text="يستبدل:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox ItemsSource="{Binding RawItems}" SelectedItem="{Binding NewReplaces}" DisplayMemberPath="ItemName" Width="200" Margin="0,0,8,0" ToolTip="المادة الأساسية التي يحل محلها (فارغ = إضافي)"/>
+                            <Button Content="إضافة مكوّن" Style="{StaticResource PrimaryButton}" Command="{Binding AddLineCommand}"/>
+                        </WrapPanel>
+                        <DataGrid ItemsSource="{Binding Lines}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="المكوّن الخاص" Binding="{Binding ComponentName}" Width="*"/>
+                                <DataGridTextColumn Header="الوصف" Binding="{Binding ComponentLabel}" Width="120"/>
+                                <DataGridTextColumn Header="لكل وحدة" Binding="{Binding QuantityPerUnit, StringFormat=N2}" Width="80"/>
+                                <DataGridTextColumn Header="يستبدل" Binding="{Binding ReplacesName}" Width="*"/>
+                                <DataGridTemplateColumn Header="" Width="46">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                    Command="{Binding DataContext.DeleteLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Border>
+                <DataGrid ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedRecipe}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الوصفة" Binding="{Binding Name}" Width="*"/>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItem.ItemName}" Width="150"/>
+                        <DataGridTextColumn Header="العميل" Binding="{Binding Customer.Name}" Width="150"/>
+                        <DataGridCheckBoxColumn Header="فعّالة" Binding="{Binding IsActive, Mode=OneWay}" Width="55"/>
+                        <DataGridTemplateColumn Header="" Width="84">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Content="&#xE70F;" ToolTip="تعديل" Style="{StaticResource RowIconButton}" Tag="#0EA5E9"
+                                                Command="{Binding DataContext.EditCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Button Content="&#xE74D;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                Command="{Binding DataContext.DeleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <!-- نموذج الإضافة/التعديل -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="340" Margin="12,0,0,0"
+                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding EditorTitle}" Style="{StaticResource SectionTitle}"/>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="حفظ"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CancelCommand}"/>
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="اسم الوصفة (مثل: وصفة مطعم الحسون)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.Name}"/>
+                        <TextBlock Text="المنتج" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding FinishedItems}" DisplayMemberPath="ItemName" SelectedValuePath="Id" SelectedValue="{Binding Editor.FinishedItemId}"/>
+                        <TextBlock Text="العميل صاحب الاسم التجاري" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding Customers}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Editor.CustomerId}"/>
+                        <CheckBox Content="فعّالة" IsChecked="{Binding Editor.IsActive}"/>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

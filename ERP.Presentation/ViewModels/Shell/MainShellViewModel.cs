@@ -3,6 +3,8 @@ using ERP.Presentation.Mvvm;
 using ERP.Presentation.Services;
 using ERP.Presentation.ViewModels.Finance;
 using ERP.Presentation.ViewModels.HR;
+using ERP.Presentation.ViewModels.Production;
+using ERP.Presentation.ViewModels.Reps;
 using ERP.Presentation.ViewModels.Sales;
 using ERP.Presentation.ViewModels.Settings;
 using ERP.Presentation.ViewModels.Suppliers;
@@ -64,9 +66,9 @@ public class MainShellViewModel : ViewModelBase
             new NavItem(ModuleCode.HR, "الموارد البشرية", Icons.HR, ModuleColors.HR,
                         () => new HrModuleViewModel(session, dialogs)),
             new NavItem(ModuleCode.Reps, "المندوبون", Icons.Reps, ModuleColors.Reps,
-                        () => new PlaceholderModuleViewModel("المندوبون", Icons.Reps, ModuleColors.Reps)),
+                        () => new RepsModuleViewModel(session, dialogs)),
             new NavItem(ModuleCode.Production, "الإنتاج والمختبر", Icons.Production, ModuleColors.Production,
-                        () => new PlaceholderModuleViewModel("الإنتاج والمختبر", Icons.Production, ModuleColors.Production)),
+                        () => new ProductionModuleViewModel(session, dialogs)),
             new NavItem(ModuleCode.SystemSettings, "إعدادات النظام", Icons.Settings, ModuleColors.Settings,
                         () => new SettingsModuleViewModel(session, dialogs)),
         };

@@ -10,8 +10,12 @@ namespace ERP.Presentation.Services;
 /// </summary>
 public class AppSession
 {
-    public AppSession(string projectName, string fullName, ProjectSessionInfo info)
+    public AppSession(string projectName, string fullName, ProjectSessionInfo info,
+                      string? controlConnectionString = null, string? globalUsername = null, int projectId = 0)
     {
+        ControlConnectionString = controlConnectionString;
+        GlobalUsername = globalUsername ?? info.Username;
+        ProjectId = projectId;
         ProjectName = projectName;
         FullName = fullName;
         ConnectionString = info.ConnectionString;
@@ -22,6 +26,10 @@ public class AppSession
     }
 
     public string ProjectName { get; }
+    /// <summary>قاعدة التحكم (لإدارة حسابات الدخول والمشاريع). null في سياقات لا تحتاجها.</summary>
+    public string? ControlConnectionString { get; }
+    public string GlobalUsername { get; }
+    public int ProjectId { get; }
     public string FullName { get; }
     public string ConnectionString { get; }
     public int UserId { get; }

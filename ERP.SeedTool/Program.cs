@@ -1,351 +1,40 @@
-using ERP.Data.ControlDb;
-using ERP.Data.ControlDb.Entities;
-using ERP.Data.ProjectDb;
-using ERP.Data.ProjectDb.Entities;
-using ERP.Data.Security;
-using ERP.Data.Services;
-using Microsoft.EntityFrameworkCore;
+using ERP.Data.Setup;
 
 // ============================================================
-// أداة تزويد بيانات تجريبية — تُشغَّل مرة واحدة فقط من سطر الأوامر
-// (dotnet run --project ERP.SeedTool) لإنشاء مستخدم تجريبي كامل
-// يمكن به تجربة تدفق: تسجيل الدخول ← اختيار المشروع ← الشريط الجانبي.
+// أداة تجهيز من سطر الأوامر — نفس ما يفعله معالج الإعداد داخل البرنامج
+// (مفيدة للتجهيز على سيرفر بدون واجهة، أو لإعادة تجهيز بيئة تجربة).
 //
-// عدّل سلسلتي الاتصال أدناه لتطابقا قواعد بياناتك المحلية التجريبية
-// (ERP_ControlDB وقاعدة مشروع واحدة نفّذتَ عليها ملفات Database/01 حتى 10).
+// الاستخدام:
+//   dotnet run --project ERP.SeedTool
+//   dotnet run --project ERP.SeedTool -- "<سلسلة اتصال قاعدة التحكم>" [--no-demo]
+//
+// آمنة للتكرار: على نظام قائم تُكمل الناقص وترقّي المخطط فقط ولا تكرر شيئًا.
 // ============================================================
 
-const string controlDbConnectionString =
-    "Server=localhost;Database=ERP_ControlDB;Trusted_Connection=True;TrustServerCertificate=True;";
+var controlCs = args.FirstOrDefault(a => !a.StartsWith("--"))
+    ?? "Server=localhost;Database=ERP_ControlDB;Trusted_Connection=True;TrustServerCertificate=True;";
+bool demo = !args.Contains("--no-demo");
 
-const string projectDbConnectionString =
-    "Server=localhost;Database=ERP_Project_WaterFactory;Trusted_Connection=True;TrustServerCertificate=True;";
+const string username = "admin";
+const string password = "Admin@123";
 
-const string testUsername = "admin";
-const string testPassword = "Admin@123";
+var result = await new ProvisioningService().InstallAsync(
+    new InstallRequest(controlCs, "مصنع المياه - البصرة", "ERP_Project_WaterFactory", "مدير النظام", username, password, demo),
+    new Progress<string>(Console.WriteLine));
 
-var controlOptions = new DbContextOptionsBuilder<ControlDbContext>()
-    .UseSqlServer(controlDbConnectionString).Options;
+// Progress<T> يُبلّغ على مجمّع الخيوط؛ مهلة قصيرة حتى تُطبع آخر الرسائل
+await Task.Delay(200);
 
-var projectOptions = new DbContextOptionsBuilder<ProjectDbContext>()
-    .UseSqlServer(projectDbConnectionString).Options;
-
-// ---------- الخطوة 1: إنشاء دور "مدير عام" بكل الصلاحيات داخل قاعدة المشروع ----------
-await using (var projectDb = new ProjectDbContext(projectOptions))
+if (!result.Success)
 {
-    var role = await projectDb.Roles.FirstOrDefaultAsync(r => r.Name == "مدير عام");
-    if (role is null)
-    {
-        role = new Role { Name = "مدير عام" };
-        projectDb.Roles.Add(role);
-        await projectDb.SaveChangesAsync();
-
-        string[] allModules =
-        {
-            ModuleCode.Dashboard, ModuleCode.Warehouse, ModuleCode.Sales, ModuleCode.Suppliers,
-            ModuleCode.Finance, ModuleCode.HR, ModuleCode.Reps, ModuleCode.Production, ModuleCode.SystemSettings
-        };
-
-        foreach (var module in allModules)
-        {
-            projectDb.RolePermissions.Add(new RolePermission
-            {
-                RoleId = role.Id,
-                ModuleCode = module,
-                CanView = true,
-                CanAdd = true,
-                CanEdit = true,
-                CanDelete = true,
-                CanPost = true
-            });
-        }
-
-        await projectDb.SaveChangesAsync();
-        Console.WriteLine("تم إنشاء دور \"مدير عام\" بكل الصلاحيات.");
-    }
-
-    // ---------- الخطوة 1-ب: دليل حسابات أولي بسيط + قاعدة ربط تجريبية للسندات ----------
-    if (!await projectDb.ChartOfAccounts.AnyAsync())
-    {
-        var cash = new ChartOfAccount { AccountCode = "1101", AccountName = "الصندوق - النقدية", AccountType = AccountType.Asset };
-        var customers = new ChartOfAccount { AccountCode = "1201", AccountName = "العملاء", AccountType = AccountType.Asset };
-        var inventory = new ChartOfAccount { AccountCode = "1301", AccountName = "المخزون", AccountType = AccountType.Asset };
-        var advanceToSuppliers = new ChartOfAccount { AccountCode = "1302", AccountName = "دفعات مقدمة للموردين", AccountType = AccountType.Asset };
-        var suppliers = new ChartOfAccount { AccountCode = "2101", AccountName = "الموردون", AccountType = AccountType.Liability };
-        var salesRevenue = new ChartOfAccount { AccountCode = "4101", AccountName = "إيرادات المبيعات", AccountType = AccountType.Revenue };
-        var generalExpense = new ChartOfAccount { AccountCode = "5101", AccountName = "مصروفات عمومية", AccountType = AccountType.Expense };
-
-        projectDb.ChartOfAccounts.AddRange(cash, customers, inventory, advanceToSuppliers, suppliers, salesRevenue, generalExpense);
-        await projectDb.SaveChangesAsync();
-
-        // سند قبض نقدي: مدين الصندوق / دائن العملاء (تحصيل دين مثلاً)
-        projectDb.AccountMappingRules.Add(new AccountMappingRule
-        {
-            TransactionType = "CashReceiptVoucher",
-            DebitAccountId = cash.Id,
-            CreditAccountId = customers.Id
-        });
-        // سند صرف نقدي: مدين مصروفات عمومية / دائن الصندوق
-        projectDb.AccountMappingRules.Add(new AccountMappingRule
-        {
-            TransactionType = "CashPaymentVoucher",
-            DebitAccountId = generalExpense.Id,
-            CreditAccountId = cash.Id
-        });
-        // دفعة مقدمة لمورد: مدين دفعات مقدمة للموردين / دائن الصندوق
-        projectDb.AccountMappingRules.Add(new AccountMappingRule
-        {
-            TransactionType = "SupplierAdvancePayment",
-            DebitAccountId = advanceToSuppliers.Id,
-            CreditAccountId = cash.Id
-        });
-        // استلام بضاعة على الحساب: مدين المخزون / دائن الموردون
-        projectDb.AccountMappingRules.Add(new AccountMappingRule
-        {
-            TransactionType = "GoodsReceiptOnAccount",
-            DebitAccountId = inventory.Id,
-            CreditAccountId = suppliers.Id
-        });
-        // تسوية الدفعة المقدمة عند اكتمال الاستلام: مدين الموردون / دائن دفعات مقدمة للموردين
-        projectDb.AccountMappingRules.Add(new AccountMappingRule
-        {
-            TransactionType = "SupplierAdvanceOffset",
-            DebitAccountId = suppliers.Id,
-            CreditAccountId = advanceToSuppliers.Id
-        });
-
-        await projectDb.SaveChangesAsync();
-        Console.WriteLine("تم إنشاء دليل حسابات أولي (7 حسابات) وقواعد الربط الخمس (سندات + استلام بضاعة + دفعة مقدمة).");
-    }
-
-    // ---------- الخطوة 1-د: مورد تجريبي لاختبار وحدة الموردين فورًا ----------
-    if (!await projectDb.Suppliers.AnyAsync())
-    {
-        projectDb.Suppliers.Add(new Supplier
-        {
-            Name = "شركة الأهرام للتوريدات",
-            Phone = "07701234567",
-            DefaultPaymentTerms = SupplierPaymentTerms.Credit
-        });
-        await projectDb.SaveChangesAsync();
-        Console.WriteLine("تم إنشاء مورد تجريبي: شركة الأهرام للتوريدات.");
-    }
-
-    // ---------- الخطوة 1-هـ: حسابات وقواعد ربط المبيعات (09_sales_logic.sql) + عملاء تجريبيون ----------
-    // تُضاف فقط إن لم تكن موجودة، فتعمل أيضًا على قاعدة سبق تزويدها قبل بناء وحدة المبيعات.
-    async Task<ChartOfAccount> EnsureAccountAsync(string code, string name, AccountType type)
-    {
-        var acc = await projectDb.ChartOfAccounts.FirstOrDefaultAsync(a => a.AccountCode == code);
-        if (acc is null)
-        {
-            acc = new ChartOfAccount { AccountCode = code, AccountName = name, AccountType = type };
-            projectDb.ChartOfAccounts.Add(acc);
-            await projectDb.SaveChangesAsync();
-        }
-        return acc;
-    }
-
-    var salesCash = await EnsureAccountAsync("1101", "الصندوق - النقدية", AccountType.Asset);
-    var salesBank = await EnsureAccountAsync("1102", "البنك / الدفع الإلكتروني", AccountType.Asset);
-    var repCustody = await EnsureAccountAsync("1103", "عهدة المندوبين", AccountType.Asset);
-    var receivables = await EnsureAccountAsync("1201", "العملاء", AccountType.Asset);
-    var taxPayable = await EnsureAccountAsync("2102", "ضريبة مبيعات مستحقة", AccountType.Liability);
-    var revenue = await EnsureAccountAsync("4101", "إيرادات المبيعات", AccountType.Revenue);
-    var loadingRevenue = await EnsureAccountAsync("4102", "إيراد مستلزمات التحميل", AccountType.Revenue);
-
-    // SalesTax و LoadingSuppliesCharge: يُستخدم الحساب الدائن فقط، والمدين يُملأ بالعملاء لأن العمود إلزامي
-    var salesRules = new (string type, int debit, int credit)[]
-    {
-        ("SalesInvoiceCash", salesCash.Id, revenue.Id),
-        ("SalesInvoiceCredit", receivables.Id, revenue.Id),
-        ("SalesInvoiceElectronic", salesBank.Id, revenue.Id),
-        ("SalesInvoiceRepCash", repCustody.Id, revenue.Id),
-        ("SalesTax", receivables.Id, taxPayable.Id),
-        ("LoadingSuppliesCharge", receivables.Id, loadingRevenue.Id),
-    };
-    int addedRules = 0;
-    foreach (var (type, debit, credit) in salesRules)
-    {
-        if (await projectDb.AccountMappingRules.AnyAsync(r => r.TransactionType == type)) continue;
-        projectDb.AccountMappingRules.Add(new AccountMappingRule { TransactionType = type, DebitAccountId = debit, CreditAccountId = credit });
-        addedRules++;
-    }
-    if (!await projectDb.LoadingSuppliesSettings.AnyAsync())
-        projectDb.LoadingSuppliesSettings.Add(new LoadingSuppliesSetting { RatePerPiece = 10, EffectiveDate = new DateTime(DateTime.Today.Year, 1, 1) });
-    await projectDb.SaveChangesAsync();
-    if (addedRules > 0) Console.WriteLine($"تم إنشاء {addedRules} من قواعد ربط المبيعات.");
-
-    if (!await projectDb.Customers.AnyAsync())
-    {
-        var agent = new Customer { Name = "وكيل الزبير", CustomerType = CustomerType.Agent, Province = "البصرة" };
-        projectDb.Customers.AddRange(agent, new Customer { Name = "زبون مباشر", CustomerType = CustomerType.Direct, Province = "البصرة" });
-        await projectDb.SaveChangesAsync();
-        projectDb.Customers.Add(new Customer { Name = "محل أبو حيدر", CustomerType = CustomerType.SubCustomer, ParentAgentId = agent.Id, Province = "البصرة" });
-        await projectDb.SaveChangesAsync();
-        Console.WriteLine("تم إنشاء عملاء تجريبيين: وكيل + عميل فرعي تابع له + زبون مباشر.");
-    }
-
-    // ---------- الخطوة 1-ز: الموارد البشرية — قاعدة قيد الرواتب، شفت افتراضي، أوزان ومقياس الحافز ----------
-    var salaryExpense = await EnsureAccountAsync("5102", "مصروف الرواتب والأجور", AccountType.Expense);
-    var salariesPayable = await EnsureAccountAsync("2103", "رواتب مستحقة الدفع", AccountType.Liability);
-    if (!await projectDb.AccountMappingRules.AnyAsync(r => r.TransactionType == HrRules.PayrollMappingRule))
-    {
-        projectDb.AccountMappingRules.Add(new AccountMappingRule
-        {
-            TransactionType = HrRules.PayrollMappingRule, DebitAccountId = salaryExpense.Id, CreditAccountId = salariesPayable.Id
-        });
-        Console.WriteLine("تم إنشاء قاعدة ربط قيد الرواتب (PayrollAccrual).");
-    }
-    if (!await projectDb.Shifts.AnyAsync())
-        projectDb.Shifts.Add(new Shift
-        {
-            Name = "الشفت الصباحي", CheckInTime = new TimeSpan(8, 0, 0), CheckInGraceMinutes = 10,
-            CheckOutTime = new TimeSpan(16, 0, 0), CheckOutGraceMinutes = 10
-        });
-    if (!await projectDb.IncentiveScoreWeights.AnyAsync())
-        projectDb.IncentiveScoreWeights.Add(new IncentiveScoreWeights());   // 40 / 30 / 30
-    // مقياس تجريبي فقط — عدّله من الموارد البشرية ← إعدادات الحافز الشهري حسب المعتمد لديكم
-    if (!await projectDb.IncentiveScoreToAmountScale.AnyAsync())
-        projectDb.IncentiveScoreToAmountScale.AddRange(
-            new IncentiveScoreToAmountScale { MinScore = 0, MaxScore = 59.99m, Amount = 0 },
-            new IncentiveScoreToAmountScale { MinScore = 60, MaxScore = 79.99m, Amount = 50_000 },
-            new IncentiveScoreToAmountScale { MinScore = 80, MaxScore = 100, Amount = 100_000 });
-    await projectDb.SaveChangesAsync();
-
-    var projectUser = await projectDb.Users.FirstOrDefaultAsync(u => u.Username == testUsername);
-    if (projectUser is null)
-    {
-        projectUser = new User
-        {
-            Username = testUsername,
-            PasswordHash = PasswordHasher.Hash(testPassword),
-            RoleId = role.Id,
-            PreferredLanguage = "ar"
-        };
-        projectDb.Users.Add(projectUser);
-        await projectDb.SaveChangesAsync();
-        Console.WriteLine($"تم إنشاء مستخدم محلي داخل المشروع، معرّفه: {projectUser.Id}");
-    }
-
-    // ---------- الخطوة 1-ج: فرع ومخزن وصنف ورصيد افتتاحي، لعرض بيانات حقيقية في شاشة المخازن ----------
-    if (!await projectDb.Items.AnyAsync())
-    {
-        var branch = await projectDb.Branches.FirstOrDefaultAsync() ?? new Branch { Name = "الفرع الرئيسي - البصرة" };
-        if (branch.Id == 0) projectDb.Branches.Add(branch);
-        await projectDb.SaveChangesAsync();
-
-        var warehouse = new Warehouse
-        {
-            BranchId = branch.Id,
-            Name = "المخزن الرئيسي",
-            WarehouseType = WarehouseType.Main,
-            IsSellableStock = true
-        };
-        projectDb.Warehouses.Add(warehouse);
-
-        // أصناف مياه بهيكلية تعبئة كاملة (قطعة ← كارتون/شرنك) ورصيد افتتاحي — جاهزة للبيع فورًا
-        var samples = new[]
-        {
-            (code: "W-500", name: "ماء 500 مل", price: 250m, level: "كارتون", per: 12m, qty: 2400m),
-            (code: "W-1500", name: "ماء 1.5 لتر", price: 500m, level: "شرنك", per: 6m, qty: 1200m),
-        };
-        foreach (var (code, name, price, level, per, qty) in samples)
-        {
-            var item = new Item
-            {
-                ItemCode = code, ItemName = name, BaseUnitName = "قطعة",
-                SourcingMethod = SourcingMethod.Manufactured, SalePrice = price, MinStockAlertLevel = qty / 10
-            };
-            projectDb.Items.Add(item);
-            await projectDb.SaveChangesAsync();
-
-            var piece = new ItemPackagingLevel { ItemId = item.Id, LevelName = "قطعة", ContainsQuantity = 1, EquivalentBaseUnits = 1 };
-            projectDb.ItemPackagingLevels.Add(piece);
-            await projectDb.SaveChangesAsync();
-            projectDb.ItemPackagingLevels.Add(new ItemPackagingLevel
-            {
-                ItemId = item.Id, LevelName = level, ParentLevelId = piece.Id, ContainsQuantity = per, EquivalentBaseUnits = per
-            });
-
-            var batch = new ItemBatch { ItemId = item.Id, BatchNumber = $"{code}-001", ManufactureDate = DateTime.Today, ExpiryDate = DateTime.Today.AddMonths(12) };
-            projectDb.ItemBatches.Add(batch);
-            await projectDb.SaveChangesAsync();
-
-            projectDb.StockTransactions.Add(new StockTransaction
-            {
-                ItemId = item.Id, WarehouseId = warehouse.Id, BatchId = batch.Id, QuantityBaseUnits = qty,
-                TransactionType = StockTransactionType.Receipt, ReferenceTable = "OpeningBalance", CreatedByUserId = projectUser!.Id
-            });
-            await projectDb.SaveChangesAsync();
-
-            // سعر وكيل تجريبي أقل من السعر العادي بـ 20%
-            var agent = await projectDb.Customers.FirstOrDefaultAsync(c => c.CustomerType == CustomerType.Agent);
-            if (agent is not null)
-                projectDb.AgentItemPrices.Add(new AgentItemPrice { CustomerId = agent.Id, ItemId = item.Id, AgentPrice = price * 0.8m });
-            await projectDb.SaveChangesAsync();
-        }
-
-        Console.WriteLine("تم إنشاء فرع ومخزن رئيسي وصنفَي مياه (قطعة/كارتون/شرنك) برصيد افتتاحي وأسعار وكيل تجريبية.");
-    }
-
-    // ---------- الخطوة 1-و: أي صنف بلا وحدة بيع يحصل على مستوى "قطعة" حتى يظهر في فاتورة المبيعات ----------
-    var itemsWithoutLevels = await projectDb.Items
-        .Where(i => !projectDb.ItemPackagingLevels.Any(p => p.ItemId == i.Id)).ToListAsync();
-    foreach (var i in itemsWithoutLevels)
-        projectDb.ItemPackagingLevels.Add(new ItemPackagingLevel { ItemId = i.Id, LevelName = i.BaseUnitName, ContainsQuantity = 1, EquivalentBaseUnits = 1 });
-    if (itemsWithoutLevels.Count > 0)
-    {
-        await projectDb.SaveChangesAsync();
-        Console.WriteLine($"أُضيفت وحدة البيع الأساسية (قطعة) لـ {itemsWithoutLevels.Count} صنف.");
-    }
-
-    // ---------- الخطوة 2: إنشاء المشروع والمستخدم العام وربطهما في قاعدة التحكم ----------
-    await using var controlDb = new ControlDbContext(controlOptions);
-
-    var project = await controlDb.Projects.FirstOrDefaultAsync(p => p.DatabaseName == "ERP_Project_WaterFactory");
-    if (project is null)
-    {
-        project = new Project
-        {
-            ProjectName = "مصنع المياه - البصرة",
-            DatabaseName = "ERP_Project_WaterFactory",
-            ServerAddress = "localhost"
-        };
-        controlDb.Projects.Add(project);
-        await controlDb.SaveChangesAsync();
-        Console.WriteLine("تم إنشاء سجل المشروع في قاعدة التحكم.");
-    }
-
-    var globalUser = await controlDb.GlobalUsers.FirstOrDefaultAsync(u => u.Username == testUsername);
-    if (globalUser is null)
-    {
-        globalUser = new GlobalUser
-        {
-            FullName = "أحمد (تجريبي)",
-            Username = testUsername,
-            PasswordHash = PasswordHasher.Hash(testPassword)
-        };
-        controlDb.GlobalUsers.Add(globalUser);
-        await controlDb.SaveChangesAsync();
-        Console.WriteLine("تم إنشاء المستخدم العام في قاعدة التحكم.");
-    }
-
-    var access = await controlDb.UserProjectAccesses
-        .FirstOrDefaultAsync(a => a.GlobalUserId == globalUser.Id && a.ProjectId == project.Id);
-    if (access is null)
-    {
-        controlDb.UserProjectAccesses.Add(new UserProjectAccess
-        {
-            GlobalUserId = globalUser.Id,
-            ProjectId = project.Id,
-            LocalUserIdInProject = projectUser.Id
-        });
-        await controlDb.SaveChangesAsync();
-        Console.WriteLine("تم ربط المستخدم بالمشروع.");
-    }
+    Console.WriteLine();
+    Console.WriteLine("فشل التجهيز: " + result.ErrorMessage);
+    return 1;
 }
 
 Console.WriteLine();
 Console.WriteLine("=== جاهز للتجربة ===");
-Console.WriteLine($"اسم المستخدم: {testUsername}");
-Console.WriteLine($"كلمة المرور:  {testPassword}");
+Console.WriteLine($"اسم المستخدم: {username}");
+Console.WriteLine($"كلمة المرور:  {password}");
+Console.WriteLine("(إن كان المستخدم موجودًا مسبقًا تبقى كلمة مروره كما هي)");
+return 0;

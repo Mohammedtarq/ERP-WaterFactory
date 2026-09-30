@@ -29,4 +29,8 @@ public class CustomRecipeLine
 
     public string ComponentLabel { get; set; } = string.Empty;   // غطاء القنينة / لاصق أمامي / لاصق خلفي
     public decimal QuantityPerUnit { get; set; }
+
+    /// <summary>المادة التي يستبدلها هذا المكوّن في الوصفة الأساسية (NULL = مكوّن إضافي). ملف 11.</summary>
+    public int? ReplacesRawMaterialItemId { get; set; }
+    public Item? ReplacesRawMaterialItem { get; set; }
 }
