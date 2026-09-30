@@ -475,6 +475,27 @@ public class ScreenFlowTests
         Assert.DoesNotContain(clerkDash.Tiles, t => t.Title == "آخر نسخة احتياطية");
     }
 
+    /// <summary>فتح كل تبويب في كل وحدة يعمل على SQL Server حقيقي (يلتقط أخطاء ترجمة الاستعلامات).</summary>
+    [Fact]
+    public async Task Every_section_of_every_module_loads()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var opened = 0;
+        foreach (var nav in shell.NavItems)
+        {
+            if (shell.Open<object>(nav.ModuleCode) is not ModuleViewModel m) continue;
+            foreach (var section in m.Tabs.OfType<SectionViewModel>().ToList())
+            {
+                await Open(m, section);
+                await m.LastActivation;
+                opened++;
+            }
+        }
+        Assert.True(opened > 40, $"فُتح {opened} تبويب فقط");
+        Assert.Empty(dialogs.Errors);
+        Assert.Empty(_f.Unhandled);
+    }
+
     [Fact]
     public async Task Backup_section_backs_up_project_and_control_databases()
     {

@@ -364,15 +364,22 @@ public class SyncConflictsSectionViewModel : SectionViewModel
         var rows = await db.SyncConflicts.AsNoTracking()
             .Where(c => ShowResolved || c.Status == SyncConflictStatus.Pending)
             .OrderByDescending(c => c.CreatedAt)
-            .Select(c => new ConflictRow
+            .Select(c => new
             {
-                Id = c.Id, CreatedAt = c.CreatedAt, RepName = c.Employee.FullName, ItemName = c.Item.ItemName,
-                BatchNumber = c.Batch != null ? c.Batch.BatchNumber : null, RequestedQuantity = c.RequestedQuantity,
-                ResultingBalance = c.ResultingBalance, IsPending = c.Status == SyncConflictStatus.Pending,
-                StatusLabel = c.Status == SyncConflictStatus.Pending ? "بانتظار التسوية" : "مسوّى", ResolutionNotes = c.ResolutionNotes
+                c.Id, c.CreatedAt, RepName = c.Employee.FullName, c.Item.ItemName,
+                BatchNumber = c.Batch != null ? c.Batch.BatchNumber : null, c.RequestedQuantity,
+                c.ResultingBalance, c.Status, c.ResolutionNotes
             }).ToListAsync();
+        // مقارنة الحالة (Enum مخزَّن كنص) تتم في الذاكرة: ترجمتها داخل SELECT تفشل على SQL Server
+        var mapped = rows.Select(c => new ConflictRow
+        {
+            Id = c.Id, CreatedAt = c.CreatedAt, RepName = c.RepName, ItemName = c.ItemName, BatchNumber = c.BatchNumber,
+            RequestedQuantity = c.RequestedQuantity, ResultingBalance = c.ResultingBalance,
+            IsPending = c.Status == SyncConflictStatus.Pending,
+            StatusLabel = c.Status == SyncConflictStatus.Pending ? "بانتظار التسوية" : "مسوّى", ResolutionNotes = c.ResolutionNotes
+        }).ToList();
         Rows.Clear();
-        foreach (var r in rows) Rows.Add(r);
+        foreach (var r in mapped) Rows.Add(r);
         OnPropertyChanged(nameof(PendingCount));
     }
 

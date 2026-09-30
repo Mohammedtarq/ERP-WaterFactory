@@ -87,6 +87,7 @@ public class RenderTests
                     var el = (FrameworkElement)Activator.CreateInstance(t)!;
                     if (el is Window w)
                     {
+                        w.WindowState = WindowState.Normal;   // المكبَّرة لا تُعرض مع ShowActivated=false
                         w.ShowActivated = false;
                         w.ShowInTaskbar = false;
                         w.WindowStartupLocation = WindowStartupLocation.Manual;
