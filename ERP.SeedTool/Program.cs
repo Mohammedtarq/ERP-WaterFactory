@@ -215,33 +215,60 @@ await using (var projectDb = new ProjectDbContext(projectOptions))
         };
         projectDb.Warehouses.Add(warehouse);
 
-        var item = new Item
+        // أصناف مياه بهيكلية تعبئة كاملة (قطعة ← كارتون/شرنك) ورصيد افتتاحي — جاهزة للبيع فورًا
+        var samples = new[]
         {
-            ItemCode = "A-1042",
-            ItemName = "دهان بلاستيك أبيض 20ل",
-            BaseUnitName = "قطعة",
-            SourcingMethod = SourcingMethod.Purchased,
-            SalePrice = 210
+            (code: "W-500", name: "ماء 500 مل", price: 250m, level: "كارتون", per: 12m, qty: 2400m),
+            (code: "W-1500", name: "ماء 1.5 لتر", price: 500m, level: "شرنك", per: 6m, qty: 1200m),
         };
-        projectDb.Items.Add(item);
-        await projectDb.SaveChangesAsync();
-
-        var batch = new ItemBatch { ItemId = item.Id, BatchNumber = "B-2312", ExpiryDate = DateTime.Today.AddMonths(8) };
-        projectDb.ItemBatches.Add(batch);
-        await projectDb.SaveChangesAsync();
-
-        projectDb.StockTransactions.Add(new StockTransaction
+        foreach (var (code, name, price, level, per, qty) in samples)
         {
-            ItemId = item.Id,
-            WarehouseId = warehouse.Id,
-            BatchId = batch.Id,
-            QuantityBaseUnits = 50,
-            TransactionType = StockTransactionType.Receipt,
-            CreatedByUserId = projectUser!.Id
-        });
-        await projectDb.SaveChangesAsync();
+            var item = new Item
+            {
+                ItemCode = code, ItemName = name, BaseUnitName = "قطعة",
+                SourcingMethod = SourcingMethod.Manufactured, SalePrice = price, MinStockAlertLevel = qty / 10
+            };
+            projectDb.Items.Add(item);
+            await projectDb.SaveChangesAsync();
 
-        Console.WriteLine("تم إنشاء فرع ومخزن رئيسي وصنف تجريبي برصيد افتتاحي 50 قطعة.");
+            var piece = new ItemPackagingLevel { ItemId = item.Id, LevelName = "قطعة", ContainsQuantity = 1, EquivalentBaseUnits = 1 };
+            projectDb.ItemPackagingLevels.Add(piece);
+            await projectDb.SaveChangesAsync();
+            projectDb.ItemPackagingLevels.Add(new ItemPackagingLevel
+            {
+                ItemId = item.Id, LevelName = level, ParentLevelId = piece.Id, ContainsQuantity = per, EquivalentBaseUnits = per
+            });
+
+            var batch = new ItemBatch { ItemId = item.Id, BatchNumber = $"{code}-001", ManufactureDate = DateTime.Today, ExpiryDate = DateTime.Today.AddMonths(12) };
+            projectDb.ItemBatches.Add(batch);
+            await projectDb.SaveChangesAsync();
+
+            projectDb.StockTransactions.Add(new StockTransaction
+            {
+                ItemId = item.Id, WarehouseId = warehouse.Id, BatchId = batch.Id, QuantityBaseUnits = qty,
+                TransactionType = StockTransactionType.Receipt, ReferenceTable = "OpeningBalance", CreatedByUserId = projectUser!.Id
+            });
+            await projectDb.SaveChangesAsync();
+
+            // سعر وكيل تجريبي أقل من السعر العادي بـ 20%
+            var agent = await projectDb.Customers.FirstOrDefaultAsync(c => c.CustomerType == CustomerType.Agent);
+            if (agent is not null)
+                projectDb.AgentItemPrices.Add(new AgentItemPrice { CustomerId = agent.Id, ItemId = item.Id, AgentPrice = price * 0.8m });
+            await projectDb.SaveChangesAsync();
+        }
+
+        Console.WriteLine("تم إنشاء فرع ومخزن رئيسي وصنفَي مياه (قطعة/كارتون/شرنك) برصيد افتتاحي وأسعار وكيل تجريبية.");
+    }
+
+    // ---------- الخطوة 1-و: أي صنف بلا وحدة بيع يحصل على مستوى "قطعة" حتى يظهر في فاتورة المبيعات ----------
+    var itemsWithoutLevels = await projectDb.Items
+        .Where(i => !projectDb.ItemPackagingLevels.Any(p => p.ItemId == i.Id)).ToListAsync();
+    foreach (var i in itemsWithoutLevels)
+        projectDb.ItemPackagingLevels.Add(new ItemPackagingLevel { ItemId = i.Id, LevelName = i.BaseUnitName, ContainsQuantity = 1, EquivalentBaseUnits = 1 });
+    if (itemsWithoutLevels.Count > 0)
+    {
+        await projectDb.SaveChangesAsync();
+        Console.WriteLine($"أُضيفت وحدة البيع الأساسية (قطعة) لـ {itemsWithoutLevels.Count} صنف.");
     }
 
     // ---------- الخطوة 2: إنشاء المشروع والمستخدم العام وربطهما في قاعدة التحكم ----------

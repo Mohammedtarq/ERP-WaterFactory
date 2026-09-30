@@ -1,0 +1,39 @@
+<UserControl x:Class="ERP.Desktop.Views.Warehouse.CurrentStockSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Warehouse;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:CurrentStockSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="المخزن:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox ItemsSource="{Binding Warehouses}" SelectedItem="{Binding SelectedWarehouse}" DisplayMemberPath="Name" Width="240"/>
+                    <Button Content="كل المخازن" Style="{StaticResource SecondaryButton}" Command="{Binding ClearFilterCommand}" Margin="8,0,0,0"/>
+                </StackPanel>
+            </DockPanel>
+            <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="14,10" Margin="0,10,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding TotalQuantity, StringFormat='إجمالي الكمية: {0:N0} قطعة'}" FontWeight="SemiBold" Margin="0,0,30,0"/>
+                    <TextBlock Text="{Binding TotalValue, StringFormat='القيمة بسعر البيع: {0:N0} د.ع'}" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}"/>
+                </StackPanel>
+            </Border>
+            <DataGrid ItemsSource="{Binding Rows}">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="90"/>
+                    <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
+                    <DataGridTextColumn Header="المخزن" Binding="{Binding WarehouseName}" Width="160"/>
+                    <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="120"/>
+                    <DataGridTextColumn Header="الصلاحية" Binding="{Binding ExpiryDate, StringFormat=yyyy/MM/dd}" Width="100"/>
+                    <DataGridTextColumn Header="الكمية (قطعة)" Binding="{Binding QuantityBaseUnits, StringFormat=N0}" Width="110"/>
+                    <DataGridTextColumn Header="سعر القطعة" Binding="{Binding UnitPrice, StringFormat=N0}" Width="90"/>
+                    <DataGridTextColumn Header="القيمة" Binding="{Binding Value, StringFormat=N0}" Width="120"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

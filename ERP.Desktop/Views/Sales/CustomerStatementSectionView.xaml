@@ -1,0 +1,75 @@
+<UserControl x:Class="ERP.Desktop.Views.Sales.CustomerStatementSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Sales;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:CustomerStatementSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="360"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- الكشف التفصيلي -->
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="العميل:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                        <ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding Customer}" DisplayMemberPath="Name" Width="280" IsTextSearchEnabled="True"/>
+                    </StackPanel>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding CustomerInfo}" Style="{StaticResource Muted}" Margin="0,0,0,10"/>
+
+                <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="14,10" Margin="0,10,0,0">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <TextBlock Text="{Binding TotalDebit, StringFormat='مدين: {0:N0}'}" Margin="0,0,20,0"/>
+                            <TextBlock Text="{Binding TotalCredit, StringFormat='دائن: {0:N0}'}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding BalanceText}" FontWeight="Bold" FontSize="15"
+                                   Foreground="{Binding Balance, Converter={StaticResource SignBrush}}"/>
+                    </DockPanel>
+                </Border>
+
+                <DataGrid ItemsSource="{Binding Rows}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding TxDate, StringFormat=yyyy/MM/dd}" Width="95"/>
+                        <DataGridTextColumn Header="البيان" Binding="{Binding TxType}" Width="130"/>
+                        <DataGridTextColumn Header="رقم المستند" Binding="{Binding DocNumber}" Width="130"/>
+                        <DataGridTextColumn Header="الوصف" Binding="{Binding Description}" Width="*"/>
+                        <DataGridTextColumn Header="مدين" Binding="{Binding Debit, StringFormat=N0}" Width="100"/>
+                        <DataGridTextColumn Header="دائن" Binding="{Binding Credit, StringFormat=N0}" Width="100"/>
+                        <DataGridTextColumn Header="الرصيد" Binding="{Binding RunningBalance, StringFormat=N0}" Width="110"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <!-- أرصدة كل العملاء -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="أرصدة العملاء" Style="{StaticResource SectionTitle}"/>
+                <TextBlock DockPanel.Dock="Top" Text="اضغط على عميل لعرض كشفه" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,0,8"/>
+                <DataGrid ItemsSource="{Binding Balances}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="العميل" Binding="{Binding Name}" Width="*"/>
+                        <DataGridTextColumn Header="النوع" Binding="{Binding CustomerType, Converter={StaticResource EnumArabicConverter}}" Width="75"/>
+                        <DataGridTextColumn Header="الرصيد" Binding="{Binding Balance, StringFormat=N0}" Width="90"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE8A5;" ToolTip="عرض الكشف" Style="{StaticResource RowIconButton}" Tag="#8B5CF6"
+                                            Command="{Binding DataContext.OpenCustomerCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

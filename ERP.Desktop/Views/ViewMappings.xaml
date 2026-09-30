@@ -1,0 +1,63 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vmShell="clr-namespace:ERP.Presentation.ViewModels.Shell;assembly=ERP.Presentation"
+                    xmlns:vShell="clr-namespace:ERP.Desktop.Views.Shell"
+                    xmlns:vmWarehouse="clr-namespace:ERP.Presentation.ViewModels.Warehouse;assembly=ERP.Presentation"
+                    xmlns:vWarehouse="clr-namespace:ERP.Desktop.Views.Warehouse"
+                    xmlns:vmFinance="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+                    xmlns:vFinance="clr-namespace:ERP.Desktop.Views.Finance"
+                    xmlns:vmSuppliers="clr-namespace:ERP.Presentation.ViewModels.Suppliers;assembly=ERP.Presentation"
+                    xmlns:vSuppliers="clr-namespace:ERP.Desktop.Views.Suppliers"
+                    xmlns:vmSales="clr-namespace:ERP.Presentation.ViewModels.Sales;assembly=ERP.Presentation"
+                    xmlns:vSales="clr-namespace:ERP.Desktop.Views.Sales"
+                    xmlns:vmSettings="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
+                    xmlns:vSettings="clr-namespace:ERP.Desktop.Views.Settings">
+
+    <!--
+        ربط كل ViewModel بشاشته: أي ContentControl أو تبويب يعرض ViewModel يجد شاشته هنا
+        تلقائيًا. إضافة شاشة جديدة = سطر واحد هنا. (ModuleViewModel يغطي كل الوحدات لأنه الأب)
+    -->
+
+    <!-- Shell -->
+    <DataTemplate DataType="{x:Type vmShell:ModuleViewModel}"><vShell:ModuleView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmShell:HomeSectionViewModel}"><vShell:HomeSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmShell:DashboardViewModel}"><vShell:DashboardView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmShell:PlaceholderModuleViewModel}"><vShell:PlaceholderModuleView/></DataTemplate>
+
+    <!-- Warehouse -->
+    <DataTemplate DataType="{x:Type vmWarehouse:ItemsSectionViewModel}"><vWarehouse:ItemsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:WarehousesSectionViewModel}"><vWarehouse:WarehousesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:PackagingSectionViewModel}"><vWarehouse:PackagingSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:LocationsSectionViewModel}"><vWarehouse:LocationsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:CurrentStockSectionViewModel}"><vWarehouse:CurrentStockSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:StockAdjustmentSectionViewModel}"><vWarehouse:StockAdjustmentSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:ManufacturingRequirementSectionViewModel}"><vWarehouse:ManufacturingRequirementSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:BomSectionViewModel}"><vWarehouse:BomSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:StockAlertsSectionViewModel}"><vWarehouse:StockAlertsSectionView/></DataTemplate>
+
+    <!-- Finance -->
+    <DataTemplate DataType="{x:Type vmFinance:ChartOfAccountsSectionViewModel}"><vFinance:ChartOfAccountsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:JournalEntriesSectionViewModel}"><vFinance:JournalEntriesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:VouchersSectionViewModel}"><vFinance:VouchersSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:MappingRulesSectionViewModel}"><vFinance:MappingRulesSectionView/></DataTemplate>
+
+    <!-- Suppliers -->
+    <DataTemplate DataType="{x:Type vmSuppliers:SuppliersSectionViewModel}"><vSuppliers:SuppliersSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSuppliers:PurchaseOrdersSectionViewModel}"><vSuppliers:PurchaseOrdersSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSuppliers:GoodsReceiptSectionViewModel}"><vSuppliers:GoodsReceiptSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSuppliers:SupplierStatementSectionViewModel}"><vSuppliers:SupplierStatementSectionView/></DataTemplate>
+
+    <!-- Sales -->
+    <DataTemplate DataType="{x:Type vmSales:SalesInvoiceSectionViewModel}"><vSales:SalesInvoiceSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSales:SalesInvoiceListSectionViewModel}"><vSales:SalesInvoiceListSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSales:CustomerStatementSectionViewModel}"><vSales:CustomerStatementSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSales:CustomersSectionViewModel}"><vSales:CustomersSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSales:AgentPricesSectionViewModel}"><vSales:AgentPricesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSales:LoadingSettingsSectionViewModel}"><vSales:LoadingSettingsSectionView/></DataTemplate>
+
+    <!-- Settings -->
+    <DataTemplate DataType="{x:Type vmSettings:RolesPermissionsSectionViewModel}"><vSettings:RolesPermissionsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSettings:UsersSectionViewModel}"><vSettings:UsersSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSettings:BranchesSectionViewModel}"><vSettings:BranchesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSettings:EmployeesSectionViewModel}"><vSettings:EmployeesSectionView/></DataTemplate>
+</ResourceDictionary>

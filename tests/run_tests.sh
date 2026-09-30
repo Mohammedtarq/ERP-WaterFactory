@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # يشغّل كل الاختبارات على SQL Server 2022 حقيقي داخل Docker:
 #   1) ملفات Database/00 → 10 على قاعدة نظيفة + اختبارات SQL (tests/test_sales.sql)
-#   2) بناء ERP.Data و ERP.SeedTool + اختبارات تكامل C# (tests/ERP.Data.IntegrationTests)
+#   2) بناء كل المشاريع (ومنها ERP.Desktop) + اختبارات تكامل C# + اختبارات الشاشات (ViewModels وفحص ربط XAML)
 # الاستخدام: ./tests/run_tests.sh      (يتطلب Docker فقط)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -43,9 +43,12 @@ new_project_db "$SQL_DB"
 sq -d "$SQL_DB" < tests/test_sales.sql | grep -E '✓|✗|✅|❌|رسالة' || status=1
 sq -Q "DROP DATABASE [$SQL_DB]" >/dev/null
 
-echo "▶ بناء C# واختبارات التكامل"
+echo "▶ بناء C# واختبارات التكامل + اختبارات الشاشات"
 NET_DB="ERP_NetTest_$STAMP"
+UI_DB="ERP_UiTest_$STAMP"
 new_project_db "$NET_DB"
+new_project_db "$UI_DB"
+CS_BASE="Server=localhost,$PORT;User Id=sa;Password=$PASS;TrustServerCertificate=True;"
 PROXY_ARGS=()
 if [ -n "${HTTPS_PROXY:-}" ]; then
   PROXY_ARGS+=(-e "HTTPS_PROXY=$HTTPS_PROXY")
@@ -53,14 +56,19 @@ if [ -n "${HTTPS_PROXY:-}" ]; then
 fi
 docker run --rm --network host "${PROXY_ARGS[@]}" \
   -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 \
-  -e "ERP_TEST_CONNECTION=Server=localhost,$PORT;Database=$NET_DB;User Id=sa;Password=$PASS;TrustServerCertificate=True;" \
+  -e "ERP_TEST_CONNECTION=${CS_BASE}Database=$NET_DB;" \
+  -e "ERP_TEST_CONTROL_CONNECTION=${CS_BASE}Database=ERP_ControlDB;" \
+  -e "ERP_TEST_PROJECT_CONNECTION=${CS_BASE}Database=$UI_DB;" \
   -v "$ROOT":/src -v erp-nuget:/root/.nuget -w /src mcr.microsoft.com/dotnet/sdk:9.0 sh -c '
     set -e
-    dotnet build ERP.Data/ERP.Data.csproj -nologo -v q -warnaserror
-    dotnet build ERP.SeedTool/ERP.SeedTool.csproj -nologo -v q
+    dotnet build ERP.Data/ERP.Data.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
+    dotnet build ERP.Presentation/ERP.Presentation.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
+    dotnet build ERP.SeedTool/ERP.SeedTool.csproj -nologo -v q -p:NuGetAudit=false
+    dotnet build ERP.Desktop/ERP.Desktop.csproj -nologo -v q -p:EnableWindowsTargeting=true -p:NuGetAudit=false
     dotnet test tests/ERP.Data.IntegrationTests -nologo -v q --logger "console;verbosity=normal"
+    dotnet test tests/ERP.Presentation.Tests -nologo -v q --logger "console;verbosity=normal"
   ' || status=1
-sq -Q "DROP DATABASE [$NET_DB]" >/dev/null
+sq -Q "DROP DATABASE [$NET_DB]; DROP DATABASE [$UI_DB]" >/dev/null
 
 [ $status -eq 0 ] && echo "✅ كل الاختبارات نجحت" || echo "❌ يوجد فشل — راجع المخرجات أعلاه"
 exit $status

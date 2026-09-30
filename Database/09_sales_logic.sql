@@ -255,6 +255,75 @@ BEGIN
 END;
 GO
 
+/* ============================================================
+   تعديل رأس فاتورة مسودة (العميل، المخزن، الدفع، الخيارات...)
+   نفس تحققات الإنشاء؛ السطور تبقى كما هي وتُعاد تسعيرتها من الواجهة عند الحاجة.
+   ============================================================ */
+CREATE PROCEDURE sp_Sales_UpdateDraftHeader
+    @InvoiceId              INT,
+    @CustomerId             INT,
+    @WarehouseId            INT,
+    @InvoiceDate            DATE,
+    @PaymentMethod          NVARCHAR(20),
+    @AmountPaidNow          DECIMAL(18,2)   = 0,
+    @TaxEnabled             BIT             = 0,
+    @TaxRate                DECIMAL(5,2)    = 14,
+    @LoadingSuppliesEnabled BIT             = 0,
+    @IsAgentPricing         BIT             = NULL,
+    @IsFreeSale             BIT             = 0,
+    @FreeSaleRecipient      NVARCHAR(200)   = NULL,
+    @SalesRepEmployeeId     INT             = NULL,
+    @Notes                  NVARCHAR(400)   = NULL,
+    @UserId                 INT
+AS
+BEGIN
+    SET NOCOUNT ON; SET XACT_ABORT ON;
+
+    IF dbo.fn_UserCan(@UserId, N'Sales', N'Edit') = 0
+        THROW 51050, N'لا تملك صلاحية تعديل فواتير المبيعات.', 1;
+    IF NOT EXISTS (SELECT 1 FROM SalesInvoices WHERE Id = @InvoiceId AND Status = N'Draft')
+        THROW 51051, N'الفاتورة غير موجودة أو مرحّلة (لا يمكن تعديل فاتورة مرحّلة).', 1;
+
+    DECLARE @custType NVARCHAR(20), @custActive BIT, @parentAgent INT;
+    SELECT @custType = CustomerType, @custActive = IsActive, @parentAgent = ParentAgentId FROM Customers WHERE Id = @CustomerId;
+    IF @custType IS NULL OR @custActive = 0
+        THROW 51001, N'العميل غير موجود أو غير فعّال.', 1;
+    IF @custType = N'SubCustomer' AND NOT EXISTS (SELECT 1 FROM Customers WHERE Id = @parentAgent AND CustomerType = N'Agent')
+        THROW 51002, N'العميل الفرعي يجب أن يكون مرتبطًا بوكيل صحيح.', 1;
+
+    DECLARE @whType NVARCHAR(30), @whSellable BIT, @whOwner INT;
+    SELECT @whType = WarehouseType, @whSellable = IsSellableStock, @whOwner = OwnerEmployeeId
+    FROM Warehouses WHERE Id = @WarehouseId AND IsActive = 1;
+    IF @whType IS NULL THROW 51003, N'المخزن غير موجود أو غير فعّال.', 1;
+    IF @whSellable = 0 THROW 51004, N'لا يمكن البيع من هذا المخزن (مخزون غير قابل للبيع).', 1;
+    IF @IsFreeSale = 1 AND LEN(LTRIM(ISNULL(@FreeSaleRecipient, N''))) = 0
+        THROW 51005, N'المبيعات المجانية تتطلب تحديد الجهة المستفيدة.', 1;
+    IF @PaymentMethod NOT IN (N'Cash', N'Credit', N'Partial', N'Electronic')
+        THROW 51006, N'طريقة دفع غير صحيحة.', 1;
+
+    IF @SalesRepEmployeeId IS NULL AND @whType = N'RepVan' SET @SalesRepEmployeeId = @whOwner;
+    IF @SalesRepEmployeeId IS NOT NULL AND NOT EXISTS
+        (SELECT 1 FROM Employees WHERE Id = @SalesRepEmployeeId AND IsSalesRep = 1 AND IsActive = 1)
+        THROW 51007, N'الموظف المحدد ليس مندوب مبيعات فعّالًا.', 1;
+
+    SET @IsAgentPricing = ISNULL(@IsAgentPricing, CASE WHEN @custType IN (N'Agent', N'SubCustomer') THEN 1 ELSE 0 END);
+
+    UPDATE SalesInvoices SET
+        CustomerId = @CustomerId, WarehouseId = @WarehouseId, InvoiceDate = @InvoiceDate, PaymentMethod = @PaymentMethod,
+        AmountPaidNow = CASE WHEN @PaymentMethod = N'Partial' THEN ISNULL(@AmountPaidNow, 0) ELSE 0 END,
+        TaxEnabled = CASE WHEN @IsFreeSale = 1 THEN 0 ELSE @TaxEnabled END, TaxRate = @TaxRate,
+        LoadingSuppliesEnabled = CASE WHEN @IsFreeSale = 1 THEN 0 ELSE @LoadingSuppliesEnabled END,
+        IsAgentPricing = @IsAgentPricing, IsFreeSale = @IsFreeSale,
+        FreeSaleRecipient = CASE WHEN @IsFreeSale = 1 THEN LTRIM(RTRIM(@FreeSaleRecipient)) END,
+        SalesRepEmployeeId = @SalesRepEmployeeId, Notes = @Notes
+    WHERE Id = @InvoiceId;
+
+    -- المجانية: كل السطور بسعر صفر
+    IF @IsFreeSale = 1
+        UPDATE SalesInvoiceLines SET UnitPrice = 0, LineTotal = 0 WHERE SalesInvoiceId = @InvoiceId;
+END;
+GO
+
 CREATE PROCEDURE sp_Sales_DeleteInvoiceLine
     @LineId INT,
     @UserId INT

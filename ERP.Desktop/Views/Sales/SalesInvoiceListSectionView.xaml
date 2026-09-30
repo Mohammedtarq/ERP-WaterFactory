@@ -1,0 +1,57 @@
+<UserControl x:Class="ERP.Desktop.Views.Sales.SalesInvoiceListSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Sales;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:SalesInvoiceListSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <TextBlock Text="من:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <DatePicker SelectedDate="{Binding FromDate}" Width="140" Margin="0,0,14,0"/>
+                <TextBlock Text="إلى:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <DatePicker SelectedDate="{Binding ToDate}" Width="140" Margin="0,0,14,0"/>
+                <TextBlock Text="العميل:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding CustomerFilter}" DisplayMemberPath="Name" Width="220" Margin="0,0,14,0"/>
+                <Button Content="مسح الفلاتر" Style="{StaticResource SecondaryButton}" Command="{Binding ClearFiltersCommand}"/>
+                <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+            </WrapPanel>
+
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
+                <TextBlock Text="{Binding PostedTotal, StringFormat='إجمالي المرحّل: {0:N0} د.ع'}" FontWeight="SemiBold" Margin="0,0,24,0"/>
+                <TextBlock Text="{Binding DraftCount, StringFormat='مسودات: {0}'}" Style="{StaticResource Muted}" Margin="0,0,24,0"/>
+                <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource SuccessBrush}"/>
+            </StackPanel>
+
+            <DataGrid ItemsSource="{Binding Rows}">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الرقم" Binding="{Binding InvoiceNumber}" Width="130"/>
+                    <DataGridTextColumn Header="التاريخ" Binding="{Binding InvoiceDate, StringFormat=yyyy/MM/dd}" Width="95"/>
+                    <DataGridTextColumn Header="الحالة" Binding="{Binding Status, Converter={StaticResource EnumArabicConverter}}" Width="70"/>
+                    <DataGridTextColumn Header="العميل" Binding="{Binding CustomerName}" Width="*"/>
+                    <DataGridTextColumn Header="النوع" Binding="{Binding CustomerType, Converter={StaticResource EnumArabicConverter}}" Width="85"/>
+                    <DataGridTextColumn Header="المخزن" Binding="{Binding WarehouseName}" Width="130"/>
+                    <DataGridTextColumn Header="الدفع" Binding="{Binding PaymentMethod, Converter={StaticResource EnumArabicConverter}}" Width="80"/>
+                    <DataGridCheckBoxColumn Header="مجاني" Binding="{Binding IsFreeSale, Mode=OneWay}" Width="50"/>
+                    <DataGridTextColumn Header="الإجمالي" Binding="{Binding TotalAmount, StringFormat=N0}" Width="100"/>
+                    <DataGridTextColumn Header="المقبوض" Binding="{Binding AmountPaidNow, StringFormat=N0}" Width="90"/>
+                    <DataGridTextColumn Header="المتبقي" Binding="{Binding AmountDue, StringFormat=N0}" Width="90"/>
+                    <DataGridTemplateColumn Header="" Width="84">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Button Content="&#xE70F;" ToolTip="فتح (المسودة للتعديل، المرحّلة للعرض)" Style="{StaticResource RowIconButton}" Tag="#0EA5E9"
+                                            Command="{Binding DataContext.OpenCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    <Button Content="&#xE74D;" ToolTip="حذف المسودة" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.DeleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

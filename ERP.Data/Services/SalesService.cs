@@ -111,6 +111,16 @@ public class SalesService
         return Math.Round(piecePrice * baseUnits, 2);
     }
 
+    /// <summary>سعر مستلزمات التحميل للقطعة الساري في تاريخ الفاتورة.</summary>
+    public async Task<decimal> GetLoadingRateAsync(DateTime onDate)
+        => await ScalarAsync<decimal?>("SELECT dbo.fn_Sales_LoadingRate(@d)", P("@d", onDate.Date)) ?? 0;
+
+    /// <summary>الرصيد المتاح للبيع (بالقطعة) لصنف في مخزن، اختياريًا لتشغيلة محددة.</summary>
+    public Task<decimal> GetAvailableQuantityAsync(int itemId, int warehouseId, int? batchId = null)
+        => _db.StockTransactions
+            .Where(t => t.ItemId == itemId && t.WarehouseId == warehouseId && (batchId == null || t.BatchId == batchId))
+            .SumAsync(t => t.QuantityBaseUnits);
+
     // ====================== الفاتورة ======================
 
     public async Task<(FinanceOperationResult result, int? invoiceId)> CreateInvoiceAsync(
@@ -128,6 +138,17 @@ public class SalesService
 
         return (result, result.Success ? (int)newId.Value : null);
     }
+
+    public async Task<FinanceOperationResult> UpdateDraftHeaderAsync(int invoiceId, SalesInvoiceHeaderInput h, int userId)
+        => await ExecAsync("sp_Sales_UpdateDraftHeader",
+            P("@InvoiceId", invoiceId),
+            P("@CustomerId", h.CustomerId), P("@WarehouseId", h.WarehouseId),
+            P("@InvoiceDate", h.InvoiceDate.Date), P("@PaymentMethod", h.PaymentMethod.ToString()),
+            P("@AmountPaidNow", h.AmountPaidNow), P("@TaxEnabled", h.TaxEnabled), P("@TaxRate", h.TaxRate),
+            P("@LoadingSuppliesEnabled", h.LoadingSuppliesEnabled), P("@IsAgentPricing", h.IsAgentPricing),
+            P("@IsFreeSale", h.IsFreeSale), P("@FreeSaleRecipient", h.FreeSaleRecipient),
+            P("@SalesRepEmployeeId", h.SalesRepEmployeeId), P("@Notes", h.Notes),
+            P("@UserId", userId));
 
     public async Task<FinanceOperationResult> AddLineAsync(int invoiceId, SalesInvoiceLineInput l, int userId)
         => await ExecAsync("sp_Sales_AddInvoiceLine",

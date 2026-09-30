@@ -1,0 +1,72 @@
+using System.Collections.ObjectModel;
+using ERP.Data.ProjectDb.Entities;
+using ERP.Data.Services;
+using ERP.Presentation.Mvvm;
+using ERP.Presentation.Services;
+using Microsoft.EntityFrameworkCore;
+
+namespace ERP.Presentation.ViewModels.Shell;
+
+public record KpiTile(string Title, string Value, string Glyph, string Color, string Hint);
+public record LowStockRow(string ItemCode, string ItemName, decimal Balance, decimal MinLevel);
+
+public class DashboardViewModel : SessionViewModel
+{
+    public DashboardViewModel(AppSession session, IDialogService dialogs)
+        : base(session, dialogs, ModuleCode.Dashboard)
+    {
+        RefreshCommand = new AsyncRelayCommand(LoadAsync);
+        Background(LoadAsync());
+    }
+
+    public string Title => "لوحة المعلومات";
+    public string Glyph => Icons.Dashboard;
+    public string Color => ModuleColors.Dashboard;
+    public string Greeting => $"أهلًا {Session.FullName} — {Session.ProjectName}";
+
+    public ObservableCollection<KpiTile> Tiles { get; } = new();
+    public ObservableCollection<LowStockRow> LowStock { get; } = new();
+    public ObservableCollection<SalesInvoiceListRow> RecentInvoices { get; } = new();
+    public AsyncRelayCommand RefreshCommand { get; }
+
+    public async Task LoadAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            await using var db = Session.NewDb();
+            var today = DateTime.Today;
+            var sales = new SalesService(db);
+
+            var todayInvoices = await db.SalesInvoices
+                .Where(i => i.Status == DocumentStatus.Posted && i.InvoiceDate == today && !i.IsFreeSale)
+                .Select(i => new { i.TotalAmount, i.AmountPaidNow }).ToListAsync();
+            var receivables = (await sales.GetCustomerBalancesAsync()).Where(b => b.Balance > 0).Sum(b => b.Balance);
+            var low = await new InventoryService(db).GetLowStockAsync();
+            var drafts = await db.SalesInvoices.CountAsync(i => i.Status == DocumentStatus.Draft);
+
+            Tiles.Clear();
+            Tiles.Add(new KpiTile("مبيعات اليوم", $"{todayInvoices.Sum(i => i.TotalAmount):N0} د.ع", Icons.Sales, ModuleColors.Sales,
+                                  $"{todayInvoices.Count} فاتورة مرحّلة"));
+            Tiles.Add(new KpiTile("المقبوض اليوم", $"{todayInvoices.Sum(i => i.AmountPaidNow):N0} د.ع", Icons.Voucher, ModuleColors.Finance,
+                                  "نقدي وإلكتروني عند البيع"));
+            Tiles.Add(new KpiTile("ذمم العملاء", $"{receivables:N0} د.ع", Icons.People, ModuleColors.Suppliers,
+                                  "إجمالي المستحق على العملاء"));
+            Tiles.Add(new KpiTile("تنبيهات المخزون", low.Count.ToString(), Icons.Alert, "#EF4444",
+                                  "أصناف عند حد التنبيه أو أقل"));
+            Tiles.Add(new KpiTile("فواتير مسودة", drafts.ToString(), Icons.Invoice, ModuleColors.Dashboard,
+                                  "بانتظار الترحيل"));
+
+            LowStock.Clear();
+            foreach (var (item, balance) in low.Take(10))
+                LowStock.Add(new LowStockRow(item.ItemCode, item.ItemName, balance, item.MinStockAlertLevel ?? 0));
+
+            RecentInvoices.Clear();
+            foreach (var r in (await sales.GetInvoiceListAsync()).Take(10)) RecentInvoices.Add(r);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+}

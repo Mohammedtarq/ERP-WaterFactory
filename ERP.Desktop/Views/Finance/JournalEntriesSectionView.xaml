@@ -1,0 +1,146 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.JournalEntriesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:JournalEntriesSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- القيود المسجّلة + تفاصيل المختار -->
+        <Border Style="{StaticResource Card}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="3*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="2*"/>
+                </Grid.RowDefinitions>
+                <DockPanel Margin="0,0,0,10">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Style="{StaticResource PrimaryButton}" Command="{Binding NewEntryCommand}" IsEnabled="{Binding CanAdd}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="قيد يدوي جديد"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="القيود المحاسبية" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding Entries}" SelectedItem="{Binding SelectedEntry}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="رقم القيد" Binding="{Binding EntryNumber}" Width="130"/>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding EntryDate, StringFormat=yyyy/MM/dd}" Width="100"/>
+                        <DataGridTextColumn Header="النوع" Binding="{Binding TypeLabel}" Width="120"/>
+                        <DataGridTextColumn Header="البيان" Binding="{Binding Description}" Width="*"/>
+                        <DataGridTextColumn Header="المبلغ" Binding="{Binding Total, StringFormat=N0}" Width="110"/>
+                        <DataGridCheckBoxColumn Header="مرحّل" Binding="{Binding IsPosted, Mode=OneWay}" Width="60"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Grid.Row="2" Text="سطور القيد المحدد" Style="{StaticResource SectionTitle}" Margin="0,12,0,6"/>
+                <DataGrid Grid.Row="3" ItemsSource="{Binding SelectedLines}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="رمز الحساب" Binding="{Binding AccountCode}" Width="100"/>
+                        <DataGridTextColumn Header="الحساب" Binding="{Binding AccountName}" Width="*"/>
+                        <DataGridTextColumn Header="مدين" Binding="{Binding Debit, StringFormat=N0}" Width="120"/>
+                        <DataGridTextColumn Header="دائن" Binding="{Binding Credit, StringFormat=N0}" Width="120"/>
+                        <DataGridTextColumn Header="البيان" Binding="{Binding Description}" Width="200"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Border>
+
+        <!-- إنشاء قيد يدوي -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="520" Margin="12,0,0,0"
+                Visibility="{Binding IsComposing, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="قيد يدوي جديد" Style="{StaticResource SectionTitle}"/>
+                <Grid DockPanel.Dock="Top">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker SelectedDate="{Binding EntryDate}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="البيان" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding EntryDescription}"/>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                    <Border CornerRadius="6" Padding="10,8" Background="#F8FAFC">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <TextBlock Text="{Binding TotalDebit, StringFormat='مدين: {0:N0}'}" Margin="0,0,16,0"/>
+                                <TextBlock Text="{Binding TotalCredit, StringFormat='دائن: {0:N0}'}"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding BalanceText}" FontWeight="Bold">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsBalanced}" Value="True">
+                                                <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DockPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Style="{StaticResource SuccessButton}" Command="{Binding PostCommand}" IsEnabled="{Binding IsBalanced}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="ترحيل القيد"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Content="إضافة سطر" Style="{StaticResource SecondaryButton}" Command="{Binding AddLineCommand}"/>
+                        <Button Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CancelCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                </StackPanel>
+
+                <ItemsControl ItemsSource="{Binding NewLines}" Margin="0,12,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="100"/>
+                                    <ColumnDefinition Width="100"/>
+                                    <ColumnDefinition Width="36"/>
+                                </Grid.ColumnDefinitions>
+                                <ComboBox ItemsSource="{Binding DataContext.Accounts, ElementName=Root}" SelectedItem="{Binding Account}" ToolTip="الحساب">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock>
+                                                <Run Text="{Binding AccountCode, Mode=OneWay}"/>
+                                                <Run Text=" — "/>
+                                                <Run Text="{Binding AccountName, Mode=OneWay}"/>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBox Grid.Column="1" Text="{Binding Debit, UpdateSourceTrigger=PropertyChanged}" ToolTip="مدين" Margin="6,0,0,0" FlowDirection="LeftToRight"/>
+                                <TextBox Grid.Column="2" Text="{Binding Credit, UpdateSourceTrigger=PropertyChanged}" ToolTip="دائن" Margin="6,0,0,0" FlowDirection="LeftToRight"/>
+                                <Button Grid.Column="3" Content="&#xE74D;" ToolTip="حذف السطر" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                        Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

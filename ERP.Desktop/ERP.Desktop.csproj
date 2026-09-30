@@ -7,8 +7,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationTitle>نظام إدارة الأعمال المتكامل</ApplicationTitle>
-    <!-- اتجاه الواجهة الافتراضي للتطبيق بالكامل: من اليمين لليسار -->
     <RootNamespace>ERP.Desktop</RootNamespace>
+    <!-- يسمح ببناء المشروع (للتحقق) على أنظمة غير Windows؛ التشغيل على Windows فقط -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ERP.Data\ERP.Data.csproj" />
+    <ProjectReference Include="..\ERP.Presentation\ERP.Presentation.csproj" />
   </ItemGroup>
 
   <ItemGroup>
