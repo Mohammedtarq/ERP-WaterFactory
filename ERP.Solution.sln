@@ -1,0 +1,34 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ERP.Data", "ERP.Data\ERP.Data.csproj", "{62651105-BDE9-4C6C-9E44-98C752CFDB73}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ERP.Desktop", "ERP.Desktop\ERP.Desktop.csproj", "{1FC71554-CF77-404A-876C-E92CBEA17873}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ERP.SeedTool", "ERP.SeedTool\ERP.SeedTool.csproj", "{4272C398-A39C-4F50-84FA-E908CD2D6E63}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{62651105-BDE9-4C6C-9E44-98C752CFDB73}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{62651105-BDE9-4C6C-9E44-98C752CFDB73}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{62651105-BDE9-4C6C-9E44-98C752CFDB73}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{62651105-BDE9-4C6C-9E44-98C752CFDB73}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FC71554-CF77-404A-876C-E92CBEA17873}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FC71554-CF77-404A-876C-E92CBEA17873}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FC71554-CF77-404A-876C-E92CBEA17873}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FC71554-CF77-404A-876C-E92CBEA17873}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4272C398-A39C-4F50-84FA-E908CD2D6E63}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4272C398-A39C-4F50-84FA-E908CD2D6E63}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4272C398-A39C-4F50-84FA-E908CD2D6E63}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4272C398-A39C-4F50-84FA-E908CD2D6E63}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
