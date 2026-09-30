@@ -1,0 +1,32 @@
+namespace ERP.Data.ProjectDb.Entities;
+
+public class CustomRecipe
+{
+    public int Id { get; set; }
+
+    public int FinishedItemId { get; set; }
+    public Item FinishedItem { get; set; } = null!;
+
+    public int CustomerId { get; set; }
+    public Customer Customer { get; set; } = null!;
+
+    public string Name { get; set; } = string.Empty;   // مثال: وصفة مطعم الحسون
+    public bool IsActive { get; set; } = true;
+
+    public ICollection<CustomRecipeLine> Lines { get; set; } = new List<CustomRecipeLine>();
+}
+
+/// <summary>مكوّن يستبدل مكوّنًا من الوصفة الأساسية (غطاء، لاصق أمامي/خلفي...).</summary>
+public class CustomRecipeLine
+{
+    public int Id { get; set; }
+
+    public int CustomRecipeId { get; set; }
+    public CustomRecipe CustomRecipe { get; set; } = null!;
+
+    public int ComponentItemId { get; set; }   // صنف مادة أولية خاص بهذا العميل (مثل لاصق باسمه)
+    public Item ComponentItem { get; set; } = null!;
+
+    public string ComponentLabel { get; set; } = string.Empty;   // غطاء القنينة / لاصق أمامي / لاصق خلفي
+    public decimal QuantityPerUnit { get; set; }
+}

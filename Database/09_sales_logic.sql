@@ -538,7 +538,7 @@ GO
    ============================================================ */
 CREATE VIEW vw_SalesInvoiceList AS
 SELECT  i.Id, i.InvoiceNumber, i.InvoiceDate, i.Status,
-        c.Name AS CustomerName, c.CustomerType,
+        i.CustomerId, c.Name AS CustomerName, c.CustomerType,
         w.Name AS WarehouseName, e.FullName AS SalesRepName,
         i.PaymentMethod, i.IsFreeSale, i.FreeSaleRecipient, i.IsAgentPricing,
         t.SubTotal, t.TaxAmount, t.LoadingSuppliesAmount,
