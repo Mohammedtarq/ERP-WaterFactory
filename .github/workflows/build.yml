@@ -17,6 +17,33 @@ jobs:
       - name: كل الاختبارات
         run: ./tests/run_tests.sh
 
+  ui:
+    name: رسم الشاشات فعليًا على Windows
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: SQL Server LocalDB
+        uses: potatoqualitee/mssqlsuite@v2
+        with:
+          install: localdb
+      - name: رسم كل الشاشات (بدون بيانات ثم ببيانات تجريبية حقيقية)
+        shell: pwsh
+        env:
+          ERP_UI_SQL_CONNECTION: Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True;
+          ERP_UI_SCREENSHOTS: ${{ github.workspace }}\ui-screenshots
+        run: dotnet test tests/ERP.Desktop.UiTests -p:NuGetAudit=false --logger "console;verbosity=normal"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ERP-WaterFactory-screenshots
+          path: ui-screenshots
+          retention-days: 30
+
   package:
     name: حزمة Windows
     needs: test

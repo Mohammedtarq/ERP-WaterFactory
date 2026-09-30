@@ -34,6 +34,12 @@
                             <TextBlock Text="ترحيل الفاتورة"/>
                         </StackPanel>
                     </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" ToolTip="معاينة وطباعة الفاتورة (أو حفظها PDF)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE749;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="طباعة"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Border Background="#ECFDF5" CornerRadius="6" Padding="10,5">

@@ -106,6 +106,17 @@ public class ScreenFlowTests
         Assert.NotNull(inv.LastPosted.JournalEntryId);
         Assert.Empty(inv.Lines);                                   // الشاشة جاهزة لفاتورة جديدة
 
+        // عرض الطباعة بعد الترحيل: رقم الفاتورة الفعلي، بلا ختم مسودة، والمجاميع كما على الشاشة
+        var printed = Assert.Single(dialogs.Reports);
+        Assert.Equal("فاتورة مبيعات", printed.Title);
+        Assert.Null(printed.Stamp);
+        Assert.Contains(printed.HeaderFields, f => f.Label == "رقم الفاتورة" && f.Value == number);
+        Assert.Contains(printed.HeaderFields, f => f.Label == "العميل" && f.Value == "محل أبو حيدر");
+        Assert.Equal(7, printed.Columns.Count);
+        Assert.Equal(new[] { "1", "ماء 500 مل (W500)", "كارتون", "5", "60", "2,400", "12,000" }, printed.Rows.Single());
+        Assert.Contains(printed.Totals, t => t.Label == "الإجمالي" && t.Value == "14,280 د.ع" && t.Emphasis);
+        Assert.Contains(printed.Totals, t => t.Label == "رسوم التحميل" && t.Value == "600 د.ع");
+
         // كشف حساب العميل يُظهر الفاتورة والرصيد
         await Open(sales, sales.Statement);
         sales.Statement.Customer = sales.Statement.Customers.Single(c => c.Id == _f.SubCustomerId);
@@ -115,6 +126,11 @@ public class ScreenFlowTests
         Assert.Equal(14280m, row.Debit);
         Assert.True(sales.Statement.Balance >= 14280m);
         Assert.Contains(sales.Statement.Balances, b => b.CustomerId == _f.SubCustomerId && b.Balance == sales.Statement.Balance);
+        sales.Statement.PrintCommand.Execute(null);
+        var stmt = dialogs.Reports.Last();
+        Assert.Equal("كشف حساب عميل", stmt.Title);
+        Assert.Equal(sales.Statement.Rows.Count, stmt.Rows.Count);
+        Assert.Contains(stmt.Rows, r => r[2] == number && r[4] == "14,280");
 
         // المخزون خُصم 60 قطعة (يُحدَّث تلقائيًا عند فتح التبويب)
         shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
@@ -449,7 +465,38 @@ public class ScreenFlowTests
         var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var dash = Assert.IsType<DashboardViewModel>(shell.CurrentModule);
         await dash.IdleAsync();
-        Assert.Equal(5, dash.Tiles.Count);
+        Assert.Equal(6, dash.Tiles.Count);                         // + تذكير النسخ الاحتياطي للمدير
         Assert.Contains(dash.Tiles, t => t.Title == "مبيعات اليوم");
+        Assert.Contains(dash.Tiles, t => t.Title == "آخر نسخة احتياطية");
+
+        var (clerkShell, _) = await _f.LoginAsync(AppFixture.ClerkUser, AppFixture.ClerkPassword);
+        var clerkDash = new DashboardViewModel(clerkShell.Session, new RecordingDialogs());   // بلا صلاحية إعدادات النظام
+        await clerkDash.IdleAsync();
+        Assert.DoesNotContain(clerkDash.Tiles, t => t.Title == "آخر نسخة احتياطية");
+    }
+
+    [Fact]
+    public async Task Backup_section_backs_up_project_and_control_databases()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var settings = shell.Open<SettingsModuleViewModel>(ModuleCode.SystemSettings);
+        var backup = settings.Section<BackupSectionViewModel>();
+        await Open(settings, backup);
+        Assert.False(string.IsNullOrWhiteSpace(backup.Folder));    // مجلد السيرفر الافتراضي
+        Assert.Equal("ERP_ControlDB", backup.ControlDatabase);
+
+        await backup.BackupCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(2, backup.Log.Count(l => l.StartsWith("✓")));
+        Assert.Contains(backup.History, h => h.DatabaseName == backup.ProjectDatabase && h.FilePath.EndsWith(".bak"));
+        Assert.Contains(backup.History, h => h.DatabaseName == "ERP_ControlDB");
+        Assert.False(backup.IsOverdue);
+        Assert.StartsWith("✓", backup.LastBackupText);
+
+        // مجلد غير موجود على السيرفر: رسالة واضحة بدل انهيار
+        backup.Folder = "/no/such/folder";
+        await backup.BackupCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("تعذّر النسخ الاحتياطي"));
+        Assert.Empty(_f.Unhandled);
     }
 }

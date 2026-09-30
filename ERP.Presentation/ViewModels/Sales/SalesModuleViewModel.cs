@@ -131,6 +131,11 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         RemoveLineCommand = new RelayCommand(p => { if (p is InvoiceLineDraft l && !IsReadOnly) { Lines.Remove(l); RaiseTotals(); } });
         SaveDraftCommand = new AsyncRelayCommand(async () => { if (await SaveDraftAsync()) StatusMessage = $"تم حفظ المسودة {InvoiceNumber}"; });
         PostCommand = new AsyncRelayCommand(PostAsync);
+        PrintCommand = new RelayCommand(() =>
+        {
+            if (Lines.Count == 0) { Dialogs.Error("لا توجد سطور للطباعة"); return; }
+            Dialogs.ShowReport(BuildReport());
+        });
     }
 
     // ---------------- القوائم ----------------
@@ -274,6 +279,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     public RelayCommand RemoveLineCommand { get; }
     public AsyncRelayCommand SaveDraftCommand { get; }
     public AsyncRelayCommand PostCommand { get; }
+    public RelayCommand PrintCommand { get; }
 
     /// <summary>آخر ملخص ترحيل (للعرض وللاختبارات).</summary>
     public SalesPostingSummary? LastPosted { get; private set; }
@@ -506,7 +512,12 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
                 : $"تم ترحيل الفاتورة {summary!.InvoiceNumber}\nالإجمالي: {summary.TotalAmount:N0} د.ع\n" +
                   $"المقبوض: {summary.AmountPaidNow:N0} د.ع — المتبقي على العميل: {summary.AmountDue:N0} د.ع";
             StatusMessage = msg.Replace('\n', ' ');
-            Dialogs.Info(msg);
+            if (Dialogs.Confirm(msg + "\n\nطباعة الفاتورة الآن؟"))
+            {
+                InvoiceNumber = summary.InvoiceNumber;
+                IsReadOnly = true;
+                Dialogs.ShowReport(BuildReport());
+            }
             ResetForm();
         }
         finally
@@ -562,6 +573,49 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         }
         RaiseTotals();
         StatusMessage = IsReadOnly ? $"عرض الفاتورة المرحّلة {InvoiceNumber} (للقراءة فقط)" : $"تعديل المسودة {InvoiceNumber}";
+    }
+
+    /// <summary>الفاتورة كما تظهر على الشاشة، بصيغة قابلة للطباعة.</summary>
+    public ReportDocument BuildReport()
+    {
+        var r = new ReportDocument
+        {
+            CompanyName = Session.ProjectName,
+            Title = IsFreeSale ? "إذن صرف — بيع مجاني" : "فاتورة مبيعات",
+            Stamp = IsReadOnly ? null : "مسودة — غير مرحّلة",
+            Notes = Notes,
+            PrintedBy = Session.FullName
+        };
+        r.Field("رقم الفاتورة", InvoiceId is null ? "—" : InvoiceNumber)
+         .Field("التاريخ", InvoiceDate.ToString("yyyy/MM/dd"))
+         .Field(IsFreeSale ? "الجهة المستفيدة" : "العميل", IsFreeSale ? FreeSaleRecipient : Customer?.Name)
+         .Field("نوع العميل", Customer is null || IsFreeSale ? null : ArabicLabels.Of(Customer.CustomerType))
+         .Field("طريقة الدفع", IsFreeSale ? null : PaymentMethod.Label)
+         .Field("المخزن", Warehouse?.Name);
+
+        r.Columns.AddRange(IsFreeSale
+            ? new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع" }
+            : new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع", "السعر", "المبلغ" });
+        var i = 0;
+        foreach (var l in Lines)
+        {
+            var row = new List<string> { (++i).ToString(), $"{l.ItemName} ({l.ItemCode})", l.LevelName, $"{l.QuantityInLevel:N0}", $"{l.BaseUnits:N0}" };
+            if (!IsFreeSale) row.AddRange(new[] { $"{l.UnitPrice:N0}", $"{l.LineTotal:N0}" });
+            r.Rows.Add(row);
+        }
+
+        r.Total("إجمالي القطع", $"{TotalPieces:N0}");
+        if (!IsFreeSale)
+        {
+            r.Total("المجموع", $"{SubTotal:N0} د.ع");
+            if (TaxAmount != 0) r.Total($"الضريبة ({TaxRate:0.##}%)", $"{TaxAmount:N0} د.ع");
+            if (LoadingAmount != 0) r.Total("رسوم التحميل", $"{LoadingAmount:N0} د.ع");
+            r.Total("الإجمالي", $"{Total:N0} د.ع", emphasis: true);
+            r.Total("المدفوع", $"{PaidNow:N0} د.ع");
+            r.Total("المتبقي على العميل", $"{AmountDue:N0} د.ع", emphasis: AmountDue > 0);
+        }
+        r.Signatures.AddRange(new[] { "المستلم", "أمين المخزن", "المحاسب" });
+        return r;
     }
 
     private bool ConfirmDiscard() =>
@@ -675,6 +729,31 @@ public class CustomerStatementSectionViewModel : SectionViewModel
         : base(s, d, ModuleCode.Sales, "كشف حساب العميل", Icons.Statement, "#8B5CF6", "الفواتير والمدفوعات والرصيد التراكمي لكل عميل")
     {
         OpenCustomerCommand = new RelayCommand(p => { if (p is CustomerBalanceRow b) Customer = Customers.FirstOrDefault(c => c.Id == b.CustomerId); });
+        PrintCommand = new RelayCommand(() =>
+        {
+            if (Customer is null) { Dialogs.Error("اختر العميل أولًا"); return; }
+            Dialogs.ShowReport(BuildReport());
+        });
+    }
+
+    public RelayCommand PrintCommand { get; }
+
+    public ReportDocument BuildReport()
+    {
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "كشف حساب عميل", PrintedBy = Session.FullName };
+        r.Field("العميل", Customer?.Name)
+         .Field("نوع العميل", Customer is null ? null : ArabicLabels.Of(Customer.CustomerType))
+         .Field("الوكيل", Customer?.ParentAgent?.Name)
+         .Field("الفترة", Rows.Count == 0 ? "لا توجد حركات" : $"{Rows[0].TxDate:yyyy/MM/dd} — {Rows[^1].TxDate:yyyy/MM/dd}");
+        r.Columns.AddRange(new[] { "التاريخ", "النوع", "رقم المستند", "البيان", "مدين", "دائن", "الرصيد" });
+        foreach (var x in Rows)
+            r.Rows.Add(new[] { x.TxDate.ToString("yyyy/MM/dd"), x.TxType, x.DocNumber, x.Description,
+                               x.Debit == 0 ? "" : $"{x.Debit:N0}", x.Credit == 0 ? "" : $"{x.Credit:N0}", $"{x.RunningBalance:N0}" });
+        r.Total("مجموع المدين", $"{TotalDebit:N0} د.ع")
+         .Total("مجموع الدائن", $"{TotalCredit:N0} د.ع")
+         .Total("الرصيد", BalanceText, emphasis: true);
+        r.Signatures.AddRange(new[] { "توقيع العميل", "المحاسب" });
+        return r;
     }
 
     protected override bool ReloadOnActivate => true;

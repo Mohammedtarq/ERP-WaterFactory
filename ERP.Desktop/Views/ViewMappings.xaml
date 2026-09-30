@@ -67,6 +67,7 @@
     <DataTemplate DataType="{x:Type vmSettings:UsersSectionViewModel}"><vSettings:UsersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:BranchesSectionViewModel}"><vSettings:BranchesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:ProjectsSectionViewModel}"><vSettings:ProjectsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSettings:BackupSectionViewModel}"><vSettings:BackupSectionView/></DataTemplate>
 
     <!-- HR -->
     <DataTemplate DataType="{x:Type vmHR:AttendanceSectionViewModel}"><vHR:AttendanceSectionView/></DataTemplate>

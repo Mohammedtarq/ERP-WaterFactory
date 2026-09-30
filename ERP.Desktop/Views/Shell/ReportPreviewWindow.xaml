@@ -1,0 +1,26 @@
+<Window x:Class="ERP.Desktop.Views.Shell.ReportPreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="معاينة الطباعة"
+        FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
+        Width="900" Height="820" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BackgroundBrush}">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,10">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <Button x:Name="PrintButton" Style="{StaticResource PrimaryButton}" Click="OnPrint" IsDefault="True">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE749;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                            <TextBlock Text="طباعة"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Click="OnClose" IsCancel="True" Margin="8,0,0,0" Content="إغلاق"/>
+                </StackPanel>
+                <TextBlock x:Name="TitleText" Style="{StaticResource SectionTitle}" VerticalAlignment="Center"
+                           Text="معاينة — اختر &quot;Microsoft Print to PDF&quot; للحفظ كملف PDF"/>
+            </DockPanel>
+        </Border>
+        <FlowDocumentScrollViewer x:Name="Viewer" Background="#CBD5E1" Padding="16" IsToolBarVisible="True"/>
+    </DockPanel>
+</Window>

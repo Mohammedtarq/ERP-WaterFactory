@@ -57,6 +57,18 @@ public class DashboardViewModel : SessionViewModel
             Tiles.Add(new KpiTile("فواتير مسودة", drafts.ToString(), Icons.Invoice, ModuleColors.Dashboard,
                                   "بانتظار الترحيل"));
 
+            // تذكير النسخ الاحتياطي لمن يدير النظام فقط
+            if (Session.Permissions.CanView(ModuleCode.SystemSettings))
+            {
+                var dbName = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(Session.ConnectionString).InitialCatalog;
+                DateTime? last = null;
+                try { last = (await new BackupService(Session.ConnectionString).GetHistoryAsync(new[] { dbName }, 1)).FirstOrDefault()?.FinishedAt; }
+                catch (Microsoft.Data.SqlClient.SqlException) { }
+                var overdue = last is null || (DateTime.Now - last.Value).TotalDays >= 1;
+                Tiles.Add(new KpiTile("آخر نسخة احتياطية", last?.ToString("yyyy/MM/dd") ?? "لا توجد", Icons.Backup, overdue ? "#EF4444" : "#0EA5E9",
+                                      overdue ? "خذ نسخة من إعدادات النظام ← النسخ الاحتياطي" : "النسخ محدّث"));
+            }
+
             LowStock.Clear();
             foreach (var (item, balance) in low.Take(10))
                 LowStock.Add(new LowStockRow(item.ItemCode, item.ItemName, balance, item.MinStockAlertLevel ?? 0));

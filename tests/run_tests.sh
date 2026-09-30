@@ -66,6 +66,7 @@ docker run --rm --network host "${PROXY_ARGS[@]}" \
     dotnet build ERP.Presentation/ERP.Presentation.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
     dotnet build ERP.SeedTool/ERP.SeedTool.csproj -nologo -v q -p:NuGetAudit=false
     dotnet build ERP.Desktop/ERP.Desktop.csproj -nologo -v q -p:EnableWindowsTargeting=true -p:NuGetAudit=false
+    dotnet build tests/ERP.Desktop.UiTests -nologo -v q -p:EnableWindowsTargeting=true -p:NuGetAudit=false
     dotnet test tests/ERP.Data.IntegrationTests -nologo -v q --logger "console;verbosity=normal"
     dotnet test tests/ERP.Presentation.Tests -nologo -v q --logger "console;verbosity=normal"
   ' || status=1

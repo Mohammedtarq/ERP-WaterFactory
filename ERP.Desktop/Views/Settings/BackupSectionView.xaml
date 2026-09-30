@@ -1,0 +1,65 @@
+<UserControl x:Class="ERP.Desktop.Views.Settings.BackupSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:BackupSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="400"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    <TextBlock Text="سجل النسخ الاحتياطية" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+                <DataGrid ItemsSource="{Binding History}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="قاعدة البيانات" Binding="{Binding DatabaseName}" Width="170"/>
+                        <DataGridTextColumn Header="الوقت" Binding="{Binding FinishedAt, StringFormat=yyyy/MM/dd HH:mm}" Width="140"/>
+                        <DataGridTextColumn Header="الحجم (MB)" Binding="{Binding SizeMb, StringFormat=N2}" Width="90"/>
+                        <DataGridTextColumn Header="الملف على السيرفر" Binding="{Binding FilePath}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="نسخة احتياطية الآن" Style="{StaticResource SectionTitle}"/>
+                    <Border CornerRadius="6" Padding="10,8" Margin="0,0,0,8" Background="#F0F9FF">
+                        <TextBlock Text="{Binding LastBackupText}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                    </Border>
+                    <TextBlock Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"
+                               Text="تُنسخ قاعدة المشروع وقاعدة التحكم معًا. المجلد على جهاز السيرفر (SQL Server هو من يكتب الملف)."/>
+                    <TextBlock Text="قاعدة المشروع" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Text="{Binding ProjectDatabase}" FlowDirection="LeftToRight" HorizontalAlignment="Right"/>
+                    <TextBlock Text="قاعدة التحكم" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Text="{Binding ControlDatabase}" FlowDirection="LeftToRight" HorizontalAlignment="Right"/>
+                    <TextBlock Text="مجلد الحفظ على السيرفر" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Folder, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding BackupCommand}" Margin="0,14,0,0" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="نسخ احتياطي الآن"/>
+                        </StackPanel>
+                    </Button>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                    <TextBlock Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Text="الاستعادة: من SSMS ← زر يمين على Databases ← Restore Database ← اختر ملف .bak (بعد إغلاق البرنامج على كل الأجهزة)."/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Log}" Margin="0,10,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" FlowDirection="LeftToRight" HorizontalAlignment="Right"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

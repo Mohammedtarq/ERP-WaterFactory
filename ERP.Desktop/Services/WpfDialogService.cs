@@ -16,6 +16,13 @@ public class WpfDialogService : IDialogService
     public void Error(string message) => Show(message, MessageBoxButton.OK, MessageBoxImage.Warning);
     public bool Confirm(string message) => Show(message, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 
+    public void ShowReport(ReportDocument report)
+    {
+        var w = new Views.Shell.ReportPreviewWindow(report);
+        if (Owner is { } owner) w.Owner = owner;
+        w.ShowDialog();
+    }
+
     private static MessageBoxResult Show(string message, MessageBoxButton buttons, MessageBoxImage icon) =>
         Owner is { } owner
             ? MessageBox.Show(owner, message, Caption, buttons, icon, MessageBoxResult.None, Rtl)

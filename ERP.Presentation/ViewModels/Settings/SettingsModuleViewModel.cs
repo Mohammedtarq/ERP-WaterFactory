@@ -4,7 +4,9 @@ using ERP.Data.ProjectDb.Entities;
 using ERP.Data.ControlDb;
 using ERP.Data.ControlDb.Entities;
 using ERP.Data.Security;
+using ERP.Data.Services;
 using ERP.Data.Setup;
+using Microsoft.Data.SqlClient;
 using ERP.Presentation.Mvvm;
 using ERP.Presentation.Services;
 using ERP.Presentation.ViewModels.Shell;
@@ -21,6 +23,7 @@ public class SettingsModuleViewModel : ModuleViewModel
         Add(new UsersSectionViewModel(s, d));
         Add(new BranchesSectionViewModel(s, d));
         if (s.ControlConnectionString is not null) Add(new ProjectsSectionViewModel(s, d));
+        Add(new BackupSectionViewModel(s, d));
     }
 }
 
@@ -312,6 +315,85 @@ public class ProjectsSectionViewModel : SectionViewModel
             StatusMessage = $"أُنشئ المشروع \"{NewProjectName.Trim()}\". سجّل الخروج واختره من شاشة المشاريع.";
             NewProjectName = NewDatabaseName = "";
             await LoadAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+}
+
+// ============================ النسخ الاحتياطي ============================
+/// <summary>
+/// نسخة كاملة لقاعدة المشروع وقاعدة التحكم بضغطة واحدة، مع سجل آخر النسخ وتنبيه إن تأخرت.
+/// الملفات تُكتب على جهاز السيرفر (SQL Server هو من يكتبها).
+/// </summary>
+public class BackupSectionViewModel : SectionViewModel
+{
+    private string _folder = "";
+    private string _lastBackupText = "";
+    private bool _isOverdue;
+
+    public BackupSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.SystemSettings, "النسخ الاحتياطي", Icons.Backup, "#0EA5E9", "نسخة كاملة لقواعد البيانات بضغطة واحدة وسجل النسخ السابقة")
+    {
+        BackupCommand = new AsyncRelayCommand(BackupAsync);
+    }
+
+    protected override bool ReloadOnActivate => true;
+
+    public ObservableCollection<BackupHistoryRow> History { get; } = new();
+    public ObservableCollection<string> Log { get; } = new();
+    public string Folder { get => _folder; set => SetProperty(ref _folder, value); }
+    public string LastBackupText { get => _lastBackupText; private set => SetProperty(ref _lastBackupText, value); }
+    public bool IsOverdue { get => _isOverdue; private set => SetProperty(ref _isOverdue, value); }
+    public AsyncRelayCommand BackupCommand { get; }
+
+    public string ProjectDatabase => new SqlConnectionStringBuilder(Session.ConnectionString).InitialCatalog;
+    public string? ControlDatabase => Session.ControlConnectionString is null ? null : new SqlConnectionStringBuilder(Session.ControlConnectionString).InitialCatalog;
+    private IEnumerable<string> Databases => ControlDatabase is null ? new[] { ProjectDatabase } : new[] { ProjectDatabase, ControlDatabase };
+
+    public override async Task LoadAsync()
+    {
+        var svc = new BackupService(Session.ConnectionString);
+        if (string.IsNullOrWhiteSpace(Folder)) Folder = await svc.GetDefaultFolderAsync() ?? "";
+        History.Clear();
+        List<BackupHistoryRow> rows;
+        try { rows = await svc.GetHistoryAsync(Databases); }
+        catch (SqlException) { rows = new(); }   // لا صلاحية قراءة msdb: السجل يبقى فارغًا
+        foreach (var r in rows) History.Add(r);
+
+        var last = rows.Where(r => r.DatabaseName == ProjectDatabase).Select(r => (DateTime?)r.FinishedAt).FirstOrDefault();
+        IsOverdue = last is null || (DateTime.Now - last.Value).TotalDays >= 1;
+        LastBackupText = last is null
+            ? "⚠ لا توجد أي نسخة احتياطية لقاعدة المشروع — خذ نسخة الآن"
+            : IsOverdue ? $"⚠ آخر نسخة قبل {(int)(DateTime.Now - last.Value).TotalDays} يوم ({last:yyyy/MM/dd HH:mm}) — يُنصح بنسخة يومية"
+                        : $"✓ آخر نسخة: {last:yyyy/MM/dd HH:mm}";
+    }
+
+    private async Task BackupAsync()
+    {
+        if (!Require(CanEdit, "النسخ الاحتياطي")) return;
+        if (string.IsNullOrWhiteSpace(Folder)) { Dialogs.Error("حدد مجلد الحفظ على جهاز السيرفر"); return; }
+        Log.Clear();
+        IsBusy = true;
+        try
+        {
+            var svc = new BackupService(Session.ConnectionString);
+            foreach (var db in Databases)
+            {
+                Log.Add($"جاري نسخ {db}...");
+                var path = await svc.BackupAsync(db, Folder);
+                Log.Add($"✓ {path}");
+            }
+            StatusMessage = "اكتمل النسخ الاحتياطي. انسخ الملفات دوريًا إلى قرص خارجي أو جهاز آخر.";
+            await LoadAsync();
+        }
+        catch (SqlException ex)
+        {
+            Log.Add("✗ " + ex.Message);
+            Dialogs.Error("تعذّر النسخ الاحتياطي:\n" + ex.Message +
+                          "\n\nتأكد أن المجلد موجود على جهاز السيرفر وأن لخدمة SQL Server صلاحية الكتابة فيه، وأن لحسابك صلاحية النسخ.");
         }
         finally
         {

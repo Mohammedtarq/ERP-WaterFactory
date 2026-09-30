@@ -6,6 +6,9 @@ public interface IDialogService
     void Info(string message);
     void Error(string message);
     bool Confirm(string message);
+
+    /// <summary>معاينة مستند قبل طباعته (فاتورة، كشف حساب...).</summary>
+    void ShowReport(ReportDocument report);
 }
 
 /// <summary>التنقل بين نوافذ التدفق الرئيسي (دخول ← مشروع ← الواجهة الرئيسية).</summary>
