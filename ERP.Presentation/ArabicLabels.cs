@@ -46,6 +46,12 @@ public static class ArabicLabels
         [StockTransactionType.RepDamaged] = "تالف مندوب", [StockTransactionType.RepReturn] = "مرتجع مندوب",
         [StockTransactionType.SyncConflictAdjustment] = "تسوية تعارض مزامنة",
         [DamageReason.Transit] = "أثناء النقل", [DamageReason.Warehouse] = "داخل المخزن", [DamageReason.Production] = "أثناء الإنتاج",
+        [AttendanceStatus.Present] = "حاضر", [AttendanceStatus.Late] = "متأخر", [AttendanceStatus.Absent] = "غائب",
+        [AttendanceStatus.ApprovedLeave] = "إجازة معتمدة",
+        [PromotionMovementType.Promotion] = "ترقية", [PromotionMovementType.AnnualRaise] = "علاوة سنوية",
+        [PromotionMovementType.AnnualBonus] = "مكافأة سنوية",
+        [PromotionApplicationType.PermanentAddition] = "إضافة دائمة للراتب", [PromotionApplicationType.OneTime] = "لمرة واحدة",
+        [PayrollRunStatus.Draft] = "مسودة", [PayrollRunStatus.Approved] = "معتمدة",
         [StockAdjustmentKind.Damaged] = "تالف", [StockAdjustmentKind.Disposal] = "إتلاف", [StockAdjustmentKind.Return] = "إرجاع للمخزن",
     };
 

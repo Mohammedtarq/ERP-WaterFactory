@@ -18,6 +18,7 @@ public class FinanceModuleViewModel : ModuleViewModel
         Add(new JournalEntriesSectionViewModel(s, d));
         Add(new VouchersSectionViewModel(s, d));
         Add(new MappingRulesSectionViewModel(s, d));
+        Add(new ExchangeRatesSectionViewModel(s, d));
     }
 }
 
@@ -396,6 +397,33 @@ public class MappingRulesSectionViewModel : CrudSectionViewModel<AccountMappingR
     protected override Task BeforeSaveAsync(ProjectDbContext db, AccountMappingRule e)
     {
         e.TransactionType = e.TransactionType.Trim();
+        return Task.CompletedTask;
+    }
+}
+
+// ============================ أسعار الصرف ============================
+public class ExchangeRatesSectionViewModel : CrudSectionViewModel<ExchangeRate>
+{
+    public ExchangeRatesSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.Finance, "أسعار الصرف", Icons.Currency, "#0EA5E9", "سعر الدولار بالدينار بتاريخ سريان (لرواتب الدولار)") { }
+
+    protected override int GetId(ExchangeRate e) => e.Id;
+    protected override string Describe(ExchangeRate e) => $"{e.CurrencyCode} = {e.RateToIQD:N0} د.ع من {e.EffectiveDate:yyyy/MM/dd}";
+    protected override Task<List<ExchangeRate>> QueryAsync(ProjectDbContext db) =>
+        db.ExchangeRates.AsNoTracking().Include(r => r.EnteredByUser).OrderByDescending(r => r.EffectiveDate).ToListAsync();
+    protected override ExchangeRate CreateNew() => new() { EffectiveDate = DateTime.Today, CurrencyCode = "USD" };
+
+    protected override string? Validate(ExchangeRate e)
+    {
+        if (e.RateToIQD <= 0) return "أدخل سعرًا أكبر من صفر";
+        if (string.IsNullOrWhiteSpace(e.CurrencyCode) || e.CurrencyCode.Trim().Length != 3) return "رمز العملة من 3 أحرف (مثل USD)";
+        return null;
+    }
+
+    protected override Task BeforeSaveAsync(ProjectDbContext db, ExchangeRate e)
+    {
+        e.CurrencyCode = e.CurrencyCode.Trim().ToUpperInvariant();
+        e.EnteredByUserId = Session.UserId;
         return Task.CompletedTask;
     }
 }

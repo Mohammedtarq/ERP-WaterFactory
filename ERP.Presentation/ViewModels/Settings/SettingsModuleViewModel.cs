@@ -17,7 +17,6 @@ public class SettingsModuleViewModel : ModuleViewModel
         Add(new RolesPermissionsSectionViewModel(s, d));
         Add(new UsersSectionViewModel(s, d));
         Add(new BranchesSectionViewModel(s, d));
-        Add(new EmployeesSectionViewModel(s, d));
     }
 }
 
@@ -208,31 +207,4 @@ public class BranchesSectionViewModel : CrudSectionViewModel<Branch>
     protected override string Describe(Branch e) => e.Name;
     protected override Task<List<Branch>> QueryAsync(ProjectDbContext db) => db.Branches.AsNoTracking().OrderBy(b => b.Name).ToListAsync();
     protected override string? Validate(Branch e) => string.IsNullOrWhiteSpace(e.Name) ? "أدخل اسم الفرع" : null;
-}
-
-// ============================ الموظفون (البيانات الأساسية) ============================
-public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
-{
-    public EmployeesSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.SystemSettings, "الموظفون", Icons.HR, "#EC4899", "البيانات الأساسية وعلامة المندوب/مدير المبيعات") { }
-
-    public ObservableCollection<Branch> Branches { get; } = new();
-    public IReadOnlyList<SalaryCurrency> Currencies { get; } = Enum.GetValues<SalaryCurrency>();
-
-    protected override int GetId(Employee e) => e.Id;
-    protected override string Describe(Employee e) => e.FullName;
-    protected override bool Matches(Employee e, string t) => base.Matches(e, t) || (e.JobTitle?.Contains(t) ?? false);
-
-    protected override async Task LoadLookupsAsync(ProjectDbContext db)
-    {
-        Branches.Clear();
-        foreach (var b in await db.Branches.AsNoTracking().OrderBy(b => b.Name).ToListAsync()) Branches.Add(b);
-    }
-
-    protected override Task<List<Employee>> QueryAsync(ProjectDbContext db) =>
-        db.Employees.AsNoTracking().Include(e => e.Branch).OrderBy(e => e.FullName).ToListAsync();
-
-    protected override Employee CreateNew() => new() { HireDate = DateTime.Today, BranchId = Branches.FirstOrDefault()?.Id };
-    protected override string? Validate(Employee e) =>
-        string.IsNullOrWhiteSpace(e.FullName) ? "أدخل اسم الموظف" : e.BaseSalary < 0 ? "الراتب لا يمكن أن يكون سالبًا" : null;
 }

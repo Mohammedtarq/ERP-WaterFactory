@@ -3,6 +3,7 @@ using ERP.Data.ControlDb.Entities;
 using ERP.Data.ProjectDb;
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Security;
+using ERP.Data.Services;
 using Microsoft.EntityFrameworkCore;
 
 // ============================================================
@@ -183,6 +184,33 @@ await using (var projectDb = new ProjectDbContext(projectOptions))
         await projectDb.SaveChangesAsync();
         Console.WriteLine("تم إنشاء عملاء تجريبيين: وكيل + عميل فرعي تابع له + زبون مباشر.");
     }
+
+    // ---------- الخطوة 1-ز: الموارد البشرية — قاعدة قيد الرواتب، شفت افتراضي، أوزان ومقياس الحافز ----------
+    var salaryExpense = await EnsureAccountAsync("5102", "مصروف الرواتب والأجور", AccountType.Expense);
+    var salariesPayable = await EnsureAccountAsync("2103", "رواتب مستحقة الدفع", AccountType.Liability);
+    if (!await projectDb.AccountMappingRules.AnyAsync(r => r.TransactionType == HrRules.PayrollMappingRule))
+    {
+        projectDb.AccountMappingRules.Add(new AccountMappingRule
+        {
+            TransactionType = HrRules.PayrollMappingRule, DebitAccountId = salaryExpense.Id, CreditAccountId = salariesPayable.Id
+        });
+        Console.WriteLine("تم إنشاء قاعدة ربط قيد الرواتب (PayrollAccrual).");
+    }
+    if (!await projectDb.Shifts.AnyAsync())
+        projectDb.Shifts.Add(new Shift
+        {
+            Name = "الشفت الصباحي", CheckInTime = new TimeSpan(8, 0, 0), CheckInGraceMinutes = 10,
+            CheckOutTime = new TimeSpan(16, 0, 0), CheckOutGraceMinutes = 10
+        });
+    if (!await projectDb.IncentiveScoreWeights.AnyAsync())
+        projectDb.IncentiveScoreWeights.Add(new IncentiveScoreWeights());   // 40 / 30 / 30
+    // مقياس تجريبي فقط — عدّله من الموارد البشرية ← إعدادات الحافز الشهري حسب المعتمد لديكم
+    if (!await projectDb.IncentiveScoreToAmountScale.AnyAsync())
+        projectDb.IncentiveScoreToAmountScale.AddRange(
+            new IncentiveScoreToAmountScale { MinScore = 0, MaxScore = 59.99m, Amount = 0 },
+            new IncentiveScoreToAmountScale { MinScore = 60, MaxScore = 79.99m, Amount = 50_000 },
+            new IncentiveScoreToAmountScale { MinScore = 80, MaxScore = 100, Amount = 100_000 });
+    await projectDb.SaveChangesAsync();
 
     var projectUser = await projectDb.Users.FirstOrDefaultAsync(u => u.Username == testUsername);
     if (projectUser is null)

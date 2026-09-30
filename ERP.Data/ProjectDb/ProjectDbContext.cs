@@ -40,6 +40,7 @@ public class ProjectDbContext : DbContext
     public DbSet<JournalEntryLine> JournalEntryLines => Set<JournalEntryLine>();
     public DbSet<Voucher> Vouchers => Set<Voucher>();
     public DbSet<AccountMappingRule> AccountMappingRules => Set<AccountMappingRule>();
+    public DbSet<ExchangeRate> ExchangeRates => Set<ExchangeRate>();
 
     // ---- الموردون ----
     public DbSet<Supplier> Suppliers => Set<Supplier>();
@@ -270,6 +271,15 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<AttendanceRecord>().HasOne(a => a.Employee).WithMany().HasForeignKey(a => a.EmployeeId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<PayrollRun>().HasIndex(p => new { p.PeriodMonth, p.PeriodYear }).IsUnique();
+        // الأعمدة في SQL من نوع TINYINT/SMALLINT بينما الخاصية int — بدون التحويل تفشل القراءة عند أول صف
+        modelBuilder.Entity<PayrollRun>().Property(p => p.PeriodMonth).HasConversion<byte>();
+        modelBuilder.Entity<PayrollRun>().Property(p => p.PeriodYear).HasConversion<short>();
+        modelBuilder.Entity<MonthlyIncentiveEvaluation>().Property(m => m.PeriodMonth).HasConversion<byte>();
+        modelBuilder.Entity<MonthlyIncentiveEvaluation>().Property(m => m.PeriodYear).HasConversion<short>();
+        modelBuilder.Entity<PayrollRun>().HasOne(p => p.ApprovedByUser).WithMany().HasForeignKey(p => p.ApprovedByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PayrollRun>().HasOne(p => p.JournalEntry).WithMany().HasForeignKey(p => p.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ExchangeRate>().HasOne(r => r.EnteredByUser).WithMany().HasForeignKey(r => r.EnteredByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<AttendanceRecord>().Property(a => a.AttendanceDate).HasColumnType("date");
         modelBuilder.Entity<PayrollRun>().Property(p => p.Status).HasConversion<string>();
         modelBuilder.Entity<PayrollLine>().HasOne(l => l.PayrollRun).WithMany(p => p.Lines).HasForeignKey(l => l.PayrollRunId);
         modelBuilder.Entity<PayrollLine>().HasOne(l => l.Employee).WithMany().HasForeignKey(l => l.EmployeeId).OnDelete(DeleteBehavior.Restrict);

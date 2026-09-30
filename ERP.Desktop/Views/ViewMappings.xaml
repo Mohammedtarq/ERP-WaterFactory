@@ -11,7 +11,9 @@
                     xmlns:vmSales="clr-namespace:ERP.Presentation.ViewModels.Sales;assembly=ERP.Presentation"
                     xmlns:vSales="clr-namespace:ERP.Desktop.Views.Sales"
                     xmlns:vmSettings="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
-                    xmlns:vSettings="clr-namespace:ERP.Desktop.Views.Settings">
+                    xmlns:vSettings="clr-namespace:ERP.Desktop.Views.Settings"
+                    xmlns:vmHR="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+                    xmlns:vHR="clr-namespace:ERP.Desktop.Views.HR">
 
     <!--
         ربط كل ViewModel بشاشته: أي ContentControl أو تبويب يعرض ViewModel يجد شاشته هنا
@@ -40,6 +42,7 @@
     <DataTemplate DataType="{x:Type vmFinance:JournalEntriesSectionViewModel}"><vFinance:JournalEntriesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:VouchersSectionViewModel}"><vFinance:VouchersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:MappingRulesSectionViewModel}"><vFinance:MappingRulesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:ExchangeRatesSectionViewModel}"><vFinance:ExchangeRatesSectionView/></DataTemplate>
 
     <!-- Suppliers -->
     <DataTemplate DataType="{x:Type vmSuppliers:SuppliersSectionViewModel}"><vSuppliers:SuppliersSectionView/></DataTemplate>
@@ -59,5 +62,16 @@
     <DataTemplate DataType="{x:Type vmSettings:RolesPermissionsSectionViewModel}"><vSettings:RolesPermissionsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:UsersSectionViewModel}"><vSettings:UsersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:BranchesSectionViewModel}"><vSettings:BranchesSectionView/></DataTemplate>
-    <DataTemplate DataType="{x:Type vmSettings:EmployeesSectionViewModel}"><vSettings:EmployeesSectionView/></DataTemplate>
+
+    <!-- HR -->
+    <DataTemplate DataType="{x:Type vmHR:AttendanceSectionViewModel}"><vHR:AttendanceSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:MonthlyIncentiveSectionViewModel}"><vHR:MonthlyIncentiveSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:PayrollSectionViewModel}"><vHR:PayrollSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:PromotionsSectionViewModel}"><vHR:PromotionsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:EmployeesSectionViewModel}"><vHR:EmployeesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:ShiftsSectionViewModel}"><vHR:ShiftsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:DepartmentsSectionViewModel}"><vHR:DepartmentsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:IncentiveSettingsSectionViewModel}"><vHR:IncentiveSettingsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:RepIncentiveRatesSectionViewModel}"><vHR:RepIncentiveRatesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:ManagerTiersSectionViewModel}"><vHR:ManagerTiersSectionView/></DataTemplate>
 </ResourceDictionary>

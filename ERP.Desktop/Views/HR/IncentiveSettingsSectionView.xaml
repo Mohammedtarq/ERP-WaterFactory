@@ -1,10 +1,10 @@
-<UserControl x:Class="ERP.Desktop.Views.Settings.EmployeesSectionView"
+<UserControl x:Class="ERP.Desktop.Views.HR.IncentiveSettingsSectionView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
-             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:EmployeesSectionViewModel}"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:IncentiveSettingsSectionViewModel}"
              x:Name="Root">
     <!-- مُولَّد بنمط CRUD الموحّد: الجدول يمينًا، ونموذج الإضافة/التعديل يسارًا عند الفتح -->
     <Grid>
@@ -30,18 +30,29 @@
                         <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="260" ToolTip="بحث"/>
                     </StackPanel>
                 </DockPanel>
-
+                <Border DockPanel.Dock="Top" Background="#F8FAFC" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="أوزان العوامل (المجموع 100)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <WrapPanel>
+                            <TextBlock Text="الانضباط:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBox Text="{Binding AttendanceWeight, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,16,0" FlowDirection="LeftToRight"/>
+                            <TextBlock Text="الأداء:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBox Text="{Binding PerformanceWeight, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,16,0" FlowDirection="LeftToRight"/>
+                            <TextBlock Text="المهارات:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBox Text="{Binding SkillsWeight, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,16,0" FlowDirection="LeftToRight"/>
+                            <Button Content="حفظ الأوزان" Style="{StaticResource SuccessButton}" Command="{Binding SaveWeightsCommand}"/>
+                            <TextBlock Text="{Binding WeightsTotalText}" VerticalAlignment="Center" Style="{StaticResource Muted}"/>
+                        </WrapPanel>
+                        <TextBlock Text="مقياس التحويل: كل شريحة نقاط تقابل مبلغًا ثابتًا (الجدول أدناه)." Style="{StaticResource Muted}" FontSize="11" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
 
                 <DataGrid ItemsSource="{Binding Items}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="الموظف" Binding="{Binding FullName}" Width="*"/>
-                        <DataGridTextColumn Header="الوظيفة" Binding="{Binding JobTitle}" Width="140"/>
-                        <DataGridTextColumn Header="الهاتف" Binding="{Binding Phone}" Width="120"/>
-                        <DataGridTextColumn Header="الفرع" Binding="{Binding Branch.Name}" Width="130"/>
-                        <DataGridCheckBoxColumn Header="مندوب" Binding="{Binding IsSalesRep, Mode=OneWay}" Width="60"/>
-                        <DataGridCheckBoxColumn Header="مدير مبيعات" Binding="{Binding IsSalesManager, Mode=OneWay}" Width="80"/>
-                        <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="50"/>
+                        <DataGridTextColumn Header="من (نقاط)" Binding="{Binding MinScore, StringFormat=N2}" Width="110"/>
+                        <DataGridTextColumn Header="إلى (نقاط)" Binding="{Binding MaxScore, StringFormat=N2}" Width="110"/>
+                        <DataGridTextColumn Header="مبلغ الحافز (د.ع)" Binding="{Binding Amount, StringFormat=N0}" Width="*"/>
                         <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -75,27 +86,12 @@
                 </StackPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
-                        <TextBlock Text="الاسم الكامل" Style="{StaticResource FieldLabel}"/>
-                        <TextBox Text="{Binding Editor.FullName}"/>
-                        <TextBlock Text="المسمى الوظيفي" Style="{StaticResource FieldLabel}"/>
-                        <TextBox Text="{Binding Editor.JobTitle}"/>
-                        <TextBlock Text="الهاتف" Style="{StaticResource FieldLabel}"/>
-                        <TextBox Text="{Binding Editor.Phone}" FlowDirection="LeftToRight"/>
-                        <TextBlock Text="الفرع" Style="{StaticResource FieldLabel}"/>
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="بدون" Style="{StaticResource RowIconButton}" Tag="#64748B"
-                                    Click="ClearCombo" Margin="4,0,0,0"/>
-                            <ComboBox ItemsSource="{Binding Branches}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Editor.BranchId}"/>
-                        </DockPanel>
-                        <TextBlock Text="عملة الراتب" Style="{StaticResource FieldLabel}"/>
-                        <ComboBox ItemsSource="{Binding Currencies}" SelectedItem="{Binding Editor.SalaryCurrency}"/>
-                        <TextBlock Text="الراتب الأساسي" Style="{StaticResource FieldLabel}"/>
-                        <TextBox Text="{Binding Editor.BaseSalary, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
-                        <TextBlock Text="تاريخ التعيين" Style="{StaticResource FieldLabel}"/>
-                        <DatePicker SelectedDate="{Binding Editor.HireDate}"/>
-                        <CheckBox Content="مندوب مبيعات (كاش فان)" IsChecked="{Binding Editor.IsSalesRep}"/>
-                        <CheckBox Content="مدير مبيعات" IsChecked="{Binding Editor.IsSalesManager}"/>
-                        <CheckBox Content="فعّال" IsChecked="{Binding Editor.IsActive}"/>
+                        <TextBlock Text="من (نقاط)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.MinScore, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <TextBlock Text="إلى (نقاط)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.MaxScore, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <TextBlock Text="مبلغ الحافز (د.ع)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.Amount, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
 
                     </StackPanel>
                 </ScrollViewer>

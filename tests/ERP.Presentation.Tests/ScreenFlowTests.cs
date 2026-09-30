@@ -41,7 +41,7 @@ public class ScreenFlowTests
         var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         Assert.Equal(9, shell.NavItems.Count);
         Assert.IsType<DashboardViewModel>(shell.CurrentModule);
-        Assert.IsType<PlaceholderModuleViewModel>(shell.Open<object>(ModuleCode.HR));
+        Assert.IsType<PlaceholderModuleViewModel>(shell.Open<object>(ModuleCode.Reps));
         Assert.IsType<SalesModuleViewModel>(shell.Open<object>(ModuleCode.Sales));
         Assert.Same(shell.CurrentModule, shell.Open<object>(ModuleCode.Sales));   // تُنشأ مرة واحدة
 

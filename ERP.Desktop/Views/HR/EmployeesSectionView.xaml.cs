@@ -1,6 +1,6 @@
 using System.Windows.Controls;
 
-namespace ERP.Desktop.Views.Settings;
+namespace ERP.Desktop.Views.HR;
 
 public partial class EmployeesSectionView : UserControl
 {

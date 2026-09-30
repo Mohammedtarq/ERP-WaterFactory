@@ -1,0 +1,50 @@
+<UserControl x:Class="ERP.Desktop.Views.HR.AttendanceSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:AttendanceSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="تعبئة الحضور للجميع" Style="{StaticResource SecondaryButton}" Command="{Binding AllPresentCommand}"
+                            ToolTip="يضع وقت بداية الشفت لكل من لم يُسجَّل له دخول"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="حفظ حضور اليوم"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="اليوم:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                    <DatePicker SelectedDate="{Binding Date}" Width="150"/>
+                </StackPanel>
+            </DockPanel>
+            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,8" FontSize="12"
+                       Text="اكتب وقت الدخول والخروج بصيغة 08:30. الحالة تُحسب تلقائيًا من الشفت (حاضر/متأخر)، وبلا وقت دخول = غائب، إلا إذا اخترت &quot;إجازة معتمدة&quot;."/>
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+            <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الشفت" Binding="{Binding ShiftText}" Width="150" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الدخول ✎" Binding="{Binding CheckIn, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
+                    <DataGridTextColumn Header="الخروج ✎" Binding="{Binding CheckOut, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
+                    <DataGridTemplateColumn Header="حالة خاصة" Width="150">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ComboBox ItemsSource="{Binding DataContext.ForcedOptions, ElementName=Root}" SelectedItem="{Binding Forced, UpdateSourceTrigger=PropertyChanged}"
+                                          DisplayMemberPath="Label" BorderThickness="0" ToolTip="فارغ = تلقائي"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="الحالة المحفوظة" Binding="{Binding SavedStatus}" Width="120" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="تأخير (د)" Binding="{Binding SavedLateMinutes}" Width="80" IsReadOnly="True"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

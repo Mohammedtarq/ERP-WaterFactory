@@ -5,39 +5,44 @@ namespace ERP.Presentation.ViewModels.Shell;
 /// </summary>
 public static class Icons
 {
-    public const string Home = "";
-    public const string Dashboard = "";
-    public const string Warehouse = "";
-    public const string Sales = "";
-    public const string Suppliers = "";
-    public const string Finance = "";
-    public const string HR = "";
-    public const string Reps = "";
-    public const string Production = "";
-    public const string Settings = "";
+    public const string Home = "\uE80F";
+    public const string Dashboard = "\uE9D2";
+    public const string Warehouse = "\uE7B8";
+    public const string Sales = "\uE719";
+    public const string Suppliers = "\uE7BF";
+    public const string Finance = "\uE825";
+    public const string HR = "\uE716";
+    public const string Reps = "\uE804";
+    public const string Production = "\uE9F5";
+    public const string Settings = "\uE713";
 
-    public const string Item = "";
-    public const string Store = "";
-    public const string Layers = "";
-    public const string Location = "";
-    public const string Stock = "";
-    public const string Adjust = "";
-    public const string Factory = "";
-    public const string Recipe = "";
-    public const string Alert = "";
-    public const string Accounts = "";
-    public const string Journal = "";
-    public const string Voucher = "";
-    public const string Brain = "";
-    public const string People = "";
-    public const string Order = "";
-    public const string Receive = "";
-    public const string Statement = "";
-    public const string Invoice = "";
-    public const string List = "";
-    public const string Price = "";
-    public const string Truck = "";
-    public const string Lock = "";
+    public const string Item = "\uE8EC";
+    public const string Store = "\uE7B8";
+    public const string Layers = "\uE81E";
+    public const string Location = "\uE81D";
+    public const string Stock = "\uE9D9";
+    public const string Adjust = "\uE8AB";
+    public const string Factory = "\uE9F5";
+    public const string Recipe = "\uE8FD";
+    public const string Alert = "\uE7BA";
+    public const string Accounts = "\uE8FD";
+    public const string Journal = "\uE8EF";
+    public const string Voucher = "\uE8C7";
+    public const string Brain = "\uE71B";
+    public const string People = "\uE716";
+    public const string Order = "\uE7BF";
+    public const string Receive = "\uE896";
+    public const string Statement = "\uE8A5";
+    public const string Invoice = "\uE8A5";
+    public const string List = "\uE8FD";
+    public const string Price = "\uE8EC";
+    public const string Truck = "\uE804";
+    public const string Lock = "\uE72E";
+    public const string Calendar = "\uE787";
+    public const string Star = "\uE734";
+    public const string Up = "\uE74A";
+    public const string Clock = "\uE823";
+    public const string Currency = "\uE8C7";
 }
 
 /// <summary>لون مميز لكل وحدة — نفس اللون في الشريط الجانبي وتبويبات الوحدة.</summary>

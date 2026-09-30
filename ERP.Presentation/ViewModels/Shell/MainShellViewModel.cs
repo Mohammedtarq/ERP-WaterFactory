@@ -2,6 +2,7 @@ using ERP.Data.ProjectDb.Entities;
 using ERP.Presentation.Mvvm;
 using ERP.Presentation.Services;
 using ERP.Presentation.ViewModels.Finance;
+using ERP.Presentation.ViewModels.HR;
 using ERP.Presentation.ViewModels.Sales;
 using ERP.Presentation.ViewModels.Settings;
 using ERP.Presentation.ViewModels.Suppliers;
@@ -61,7 +62,7 @@ public class MainShellViewModel : ViewModelBase
             new NavItem(ModuleCode.Finance, "المالية", Icons.Finance, ModuleColors.Finance,
                         () => new FinanceModuleViewModel(session, dialogs)),
             new NavItem(ModuleCode.HR, "الموارد البشرية", Icons.HR, ModuleColors.HR,
-                        () => new PlaceholderModuleViewModel("الموارد البشرية", Icons.HR, ModuleColors.HR)),
+                        () => new HrModuleViewModel(session, dialogs)),
             new NavItem(ModuleCode.Reps, "المندوبون", Icons.Reps, ModuleColors.Reps,
                         () => new PlaceholderModuleViewModel("المندوبون", Icons.Reps, ModuleColors.Reps)),
             new NavItem(ModuleCode.Production, "الإنتاج والمختبر", Icons.Production, ModuleColors.Production,
