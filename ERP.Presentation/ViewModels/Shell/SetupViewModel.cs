@@ -75,6 +75,12 @@ public class SetupViewModel : ViewModelBase
     public string AdminPasswordConfirm { get; set; } = "";
     public bool DemoData { get => _demoData; set => SetProperty(ref _demoData, value); }
 
+    /// <summary>
+    /// إن كان اسم الدخول موجودًا من تثبيت سابق في نفس قاعدة التحكم: تُستبدل كلمة مروره بالمدخلة.
+    /// بدونه يُرفض التثبيت إن اختلفت كلمة المرور (بدل أن ينجح بحساب لا يمكن الدخول به).
+    /// </summary>
+    public bool ResetExistingAdminPassword { get; set; }
+
     public string? ConnectionMessage { get => _connectionMessage; private set => SetProperty(ref _connectionMessage, value); }
     public bool ConnectionOk { get => _connectionOk; private set => SetProperty(ref _connectionOk, value); }
     public string? ErrorMessage { get => _errorMessage; private set => SetProperty(ref _errorMessage, value); }
@@ -130,7 +136,8 @@ public class SetupViewModel : ViewModelBase
                 if (AdminPassword != AdminPasswordConfirm) { ErrorMessage = "كلمتا مرور المدير غير متطابقتين"; return; }
                 var progress = new Progress<string>(m => Log.Add(m));
                 var result = await new ProvisioningService().InstallAsync(new InstallRequest(
-                    controlCs, ProjectName, ProjectDatabase.Trim(), AdminFullName, AdminUsername, AdminPassword, DemoData), progress);
+                    controlCs, ProjectName, ProjectDatabase.Trim(), AdminFullName, AdminUsername, AdminPassword, DemoData,
+                    ResetExistingAdminPassword ? ExistingAdminPolicy.ResetPassword : ExistingAdminPolicy.RequireSamePassword), progress);
                 if (!result.Success) { ErrorMessage = result.ErrorMessage; return; }
             }
             else

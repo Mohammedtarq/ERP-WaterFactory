@@ -310,7 +310,7 @@ public class ProjectsSectionViewModel : SectionViewModel
             // حساب الدخول الحالي موجود في قاعدة التحكم فيُربط؛ كلمة مرور المستخدم المحلي الجديد لا تُستخدم للدخول
             var result = await new ProvisioningService().InstallAsync(new InstallRequest(
                 Session.ControlConnectionString!, NewProjectName, NewDatabaseName.Trim(), Session.FullName, Session.GlobalUsername,
-                Guid.NewGuid().ToString("N"), DemoData), new Progress<string>(m => Log.Add(m)));
+                Guid.NewGuid().ToString("N"), DemoData, ExistingAdminPolicy.LinkWithoutPassword), new Progress<string>(m => Log.Add(m)));
             if (!result.Success) { Dialogs.Error(result.ErrorMessage!); return; }
             StatusMessage = $"أُنشئ المشروع \"{NewProjectName.Trim()}\". سجّل الخروج واختره من شاشة المشاريع.";
             NewProjectName = NewDatabaseName = "";

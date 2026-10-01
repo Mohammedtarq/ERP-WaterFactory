@@ -21,6 +21,7 @@ public class WizardJourneyTests : IAsyncLifetime
     private readonly string _suffix = Guid.NewGuid().ToString("N")[..8];
     private string ControlDb => $"ERP_WizCtl_{_suffix}";
     private string ProjectDb => $"ERP_WizPrj_{_suffix}";
+    private string ProjectDb2 => $"ERP_WizPrj2_{_suffix}";
 
     public Task InitializeAsync()
     {
@@ -33,7 +34,7 @@ public class WizardJourneyTests : IAsyncLifetime
         SqlConnection.ClearAllPools();
         await using var conn = new SqlConnection(Master);
         await conn.OpenAsync();
-        foreach (var db in new[] { ProjectDb, ControlDb })
+        foreach (var db in new[] { ProjectDb, ProjectDb2, ControlDb })
         {
             await using var cmd = new SqlCommand($"IF DB_ID('{db}') IS NOT NULL BEGIN ALTER DATABASE [{db}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{db}]; END", conn);
             await cmd.ExecuteNonQueryAsync();
@@ -206,5 +207,55 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Empty(dialogs.Errors);
         await Open(prod, orders);
         Assert.Equal("مكتمل", orders.Orders.Single(o => o.Id == order.Id).StageText);
+    }
+
+    private SetupViewModel Wizard(RecordingNavigator nav, MemoryConfigStore config, string projectDb, string password)
+    {
+        var master = new SqlConnectionStringBuilder(Master);
+        return new SetupViewModel(nav, config, null)
+        {
+            Server = master.DataSource, UseWindowsAuth = false, SqlUser = master.UserID, SqlPassword = master.Password,
+            ControlDatabase = ControlDb, ProjectName = "مصنع مياه البصرة", ProjectDatabase = projectDb,
+            AdminFullName = "المدير", AdminUsername = "admin", AdminPassword = password, AdminPasswordConfirm = password, DemoData = true
+        };
+    }
+
+    /// <summary>
+    /// البلاغ الفعلي: تثبيت جديد بمشروع ERP_Basra_V2 على قاعدة تحكم فيها "admin" من تثبيت سابق ←
+    /// كان المعالج ينجح ثم ترفض شاشة الدخول نفس القيم. الآن: رفض واضح، ثم إعادة تعيين صريحة والدخول يعمل فورًا.
+    /// </summary>
+    [Fact]
+    public async Task Wizard_then_login_screen_with_the_same_values_on_a_server_with_a_previous_install()
+    {
+        // تثبيت سابق بكلمة مرور قديمة
+        var old = Wizard(new RecordingNavigator(), new MemoryConfigStore(), ProjectDb, "OldPass@2025");
+        await old.FinishCommand.ExecuteAsync();
+        Assert.True(old.ErrorMessage is null, old.ErrorMessage);
+
+        // تثبيت جديد بكلمة مرور جديدة: لا يُعلن النجاح ولا ينتقل للدخول
+        var nav = new RecordingNavigator();
+        var config = new MemoryConfigStore();
+        var setup = Wizard(nav, config, ProjectDb2, "Basra@2026");
+        await setup.FinishCommand.ExecuteAsync();
+        Assert.Contains("موجود مسبقًا", setup.ErrorMessage);
+        Assert.Null(nav.UsedControlConnection);
+
+        // المستخدم يفعّل إعادة التعيين ← ينجح ← شاشة الدخول بنفس القيم تدخل وتفتح المشروع الجديد
+        setup.ResetExistingAdminPassword = true;
+        await setup.FinishCommand.ExecuteAsync();
+        Assert.True(setup.ErrorMessage is null, setup.ErrorMessage);
+        Assert.Contains(setup.Log, l => l.Contains("تحقق الدخول"));
+        Assert.NotNull(nav.UsedControlConnection);
+
+        var loginNav = new RecordingNavigator();
+        var login = new LoginViewModel(new AuthService(nav.UsedControlConnection!), new RecordingDialogs(), loginNav) { Username = "admin" };
+        await login.LoginCommand.ExecuteAsync("Basra@2026");
+        Assert.Null(login.ErrorMessage);
+        var ps = loginNav.ProjectSelection!;
+        Assert.Contains(ps.Projects, p => p.DatabaseName == ProjectDb2);
+        ps.SelectedProject = ps.Projects.Single(p => p.DatabaseName == ProjectDb2);
+        await ps.OpenCommand.ExecuteAsync(null);
+        Assert.Null(ps.ErrorMessage);
+        Assert.Equal(9, loginNav.Shell!.NavItems.Count);
     }
 }

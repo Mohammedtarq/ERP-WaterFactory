@@ -112,6 +112,9 @@
                             <TextBlock Text="تأكيد كلمة المرور" Style="{StaticResource FieldLabel}"/>
                             <PasswordBox x:Name="AdminPasswordConfirmBox" FlowDirection="LeftToRight"/>
                             <CheckBox Content="إضافة بيانات تجريبية (أصناف مياه، عملاء، مندوب، وصفة إنتاج) للتجربة" IsChecked="{Binding DemoData}"/>
+                            <CheckBox IsChecked="{Binding ResetExistingAdminPassword}" Margin="0,8,0,0">
+                                <TextBlock TextWrapping="Wrap" Text="إعادة تعيين كلمة مرور الحساب الموجود — إن كان اسم الدخول مستخدمًا في تثبيت سابق على نفس السيرفر، تُستبدل كلمة مروره بهذه"/>
+                            </CheckBox>
                         </StackPanel>
                     </ScrollViewer>
                 </DockPanel>

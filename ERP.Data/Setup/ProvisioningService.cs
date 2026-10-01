@@ -16,7 +16,19 @@ public record InstallRequest(
     string AdminFullName,
     string AdminUsername,
     string AdminPassword,
-    bool DemoData);
+    bool DemoData,
+    ExistingAdminPolicy ExistingAdmin = ExistingAdminPolicy.RequireSamePassword);
+
+/// <summary>ماذا يحدث إن كان اسم دخول المدير موجودًا مسبقًا في قاعدة التحكم (من تثبيت سابق).</summary>
+public enum ExistingAdminPolicy
+{
+    /// <summary>يُربط المشروع بالحساب فقط إن كانت كلمة المرور المدخلة هي كلمته الحالية؛ وإلا يُرفض التثبيت برسالة واضحة.</summary>
+    RequireSamePassword,
+    /// <summary>طلب صريح من المعالج: تُستبدل كلمة مرور الحساب الموجود بالمدخلة.</summary>
+    ResetPassword,
+    /// <summary>"مشروع جديد" من داخل البرنامج: المستخدم الحالي داخل أصلًا، يُربط حسابه دون كلمة مرور.</summary>
+    LinkWithoutPassword
+}
 
 public record InstallResult(bool Success, string? ErrorMessage, string ProjectConnectionString, IReadOnlyList<string> Log);
 
@@ -43,6 +55,21 @@ public class ProvisioningService
             Say("تجهيز قاعدة التحكم المركزية...");
             await DatabaseInstaller.EnsureControlSchemaAsync(req.ControlConnectionString);
 
+            // حساب بنفس الاسم من تثبيت سابق: يُحسم قبل إنشاء أي شيء، فلا ينتهي التثبيت "بنجاح"
+            // بحساب لا تعمل معه كلمة المرور التي أُدخلت للتو
+            await using (var check = new ControlDbContext(new DbContextOptionsBuilder<ControlDbContext>().UseSqlServer(req.ControlConnectionString).Options))
+            {
+                var existing = await check.GlobalUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Username == req.AdminUsername.Trim());
+                if (existing is not null && req.ExistingAdmin == ExistingAdminPolicy.RequireSamePassword
+                    && !PasswordHasher.Verify(req.AdminPassword, existing.PasswordHash))
+                {
+                    var controlDb = new SqlConnectionStringBuilder(req.ControlConnectionString).InitialCatalog;
+                    return Fail($"اسم الدخول \"{existing.Username}\" موجود مسبقًا في قاعدة التحكم {controlDb} (من تثبيت سابق) بكلمة مرور مختلفة.\n" +
+                                "إما أن تُدخل كلمة مروره الحالية ليُربط المشروع الجديد به، أو تفعّل خيار " +
+                                "\"إعادة تعيين كلمة مرور الحساب الموجود\"، أو تختار اسم دخول آخر.");
+                }
+            }
+
             Say($"إنشاء قاعدة المشروع {req.ProjectDatabaseName}...");
             if (await DatabaseInstaller.EnsureDatabaseAsync(projectCs, req.ProjectDatabaseName)) Say("أُنشئت قاعدة جديدة.");
             var applied = await DatabaseInstaller.UpgradeProjectAsync(projectCs);
@@ -53,6 +80,11 @@ public class ProvisioningService
             var adminRole = await DefaultConfiguration.SeedAsync(db);
 
             var localUser = await db.Users.FirstOrDefaultAsync(u => u.Username == req.AdminUsername.Trim());
+            if (localUser is not null && req.ExistingAdmin == ExistingAdminPolicy.ResetPassword)
+            {
+                localUser.PasswordHash = PasswordHasher.Hash(req.AdminPassword);
+                await db.SaveChangesAsync();
+            }
             if (localUser is null)
             {
                 localUser = new User { Username = req.AdminUsername.Trim(), PasswordHash = PasswordHasher.Hash(req.AdminPassword), RoleId = adminRole.Id };
@@ -84,10 +116,25 @@ public class ProvisioningService
                 cdb.GlobalUsers.Add(global);
                 await cdb.SaveChangesAsync();
             }
+            else if (req.ExistingAdmin == ExistingAdminPolicy.ResetPassword)
+            {
+                global.PasswordHash = PasswordHasher.Hash(req.AdminPassword);
+                global.IsActive = true;
+                await cdb.SaveChangesAsync();
+                Say($"أُعيد تعيين كلمة مرور الحساب الموجود {global.Username}.");
+            }
             if (!await cdb.UserProjectAccesses.AnyAsync(a => a.GlobalUserId == global.Id && a.ProjectId == project.Id))
             {
                 cdb.UserProjectAccesses.Add(new UserProjectAccess { GlobalUserId = global.Id, ProjectId = project.Id, LocalUserIdInProject = localUser.Id });
                 await cdb.SaveChangesAsync();
+            }
+            // تحقق نهائي بنفس طريقة شاشة الدخول: لا يُعلن النجاح إلا إن كان الدخول سيعمل فعلًا
+            if (req.ExistingAdmin != ExistingAdminPolicy.LinkWithoutPassword)
+            {
+                var login = await new AuthService(req.ControlConnectionString).LoginAsync(req.AdminUsername, req.AdminPassword);
+                if (!login.Success || login.Projects.All(p => p.DatabaseName != req.ProjectDatabaseName))
+                    return Fail($"اكتمل التثبيت لكن تحقق الدخول النهائي فشل: {login.ErrorMessage ?? "المشروع غير مرتبط بالحساب"}");
+                Say($"تحقق الدخول: {global.Username} يدخل إلى \"{project.ProjectName}\" ✓");
             }
             Say("اكتمل الإعداد ✓");
             return new InstallResult(true, null, projectCs, log);
