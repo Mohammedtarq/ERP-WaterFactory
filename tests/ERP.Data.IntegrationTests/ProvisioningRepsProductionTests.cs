@@ -289,6 +289,68 @@ public class ProductionServiceTests
         Assert.Equal(capNow, await Balance(fresh, cap.Id, raw.Id));
     }
 
+    /// <summary>
+    /// الخلل المبلّغ عنه (MO-00002): الأمر مرتبط بمخزن مواد أولية فارغ بينما الرصيد في مخزن مواد أولية آخر —
+    /// شاشة الاحتياجات تقول "متوفر" وبدء التشغيل يقول "المتاح 0". الآن المحرك واحد للثلاثة.
+    /// </summary>
+    [Fact]
+    public async Task Start_uses_the_same_availability_as_requirements_across_raw_warehouses()
+    {
+        await using var db = _f.NewDb();
+        var user = _f.AdminLocalId;
+        var branchId = (await db.Warehouses.FirstAsync()).BranchId;
+        var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var preform = new Item { ItemCode = "RM-PRE-T", ItemName = "امبولة 14 غم (اختبار)", SourcingMethod = SourcingMethod.Purchased };
+        var bottle = new Item { ItemCode = "W-330-T", ItemName = "ماء 330 مل (اختبار)", SourcingMethod = SourcingMethod.Manufactured };
+        var empty = new Warehouse { BranchId = branchId, Name = "أ- مخزن الأغطية (فارغ)", WarehouseType = WarehouseType.RawMaterial };
+        var stocked = new Warehouse { BranchId = branchId, Name = "مخزن المواد الأولية 2", WarehouseType = WarehouseType.RawMaterial };
+        db.AddRange(preform, bottle, empty, stocked);
+        await db.SaveChangesAsync();
+        var bom = new BillOfMaterials { FinishedItemId = bottle.Id };
+        bom.Lines.Add(new BOMLine { RawMaterialItemId = preform.Id, QuantityPerUnit = 1 });
+        db.BillOfMaterials.Add(bom);
+        var late = new ItemBatch { ItemId = preform.Id, BatchNumber = "PRE-LATE", ExpiryDate = DateTime.Today.AddYears(2) };
+        var soon = new ItemBatch { ItemId = preform.Id, BatchNumber = "PRE-SOON", ExpiryDate = DateTime.Today.AddMonths(3) };
+        db.ItemBatches.AddRange(late, soon);
+        await db.SaveChangesAsync();
+        StockTransaction In(int wh, int? batch, decimal q) => new() { ItemId = preform.Id, WarehouseId = wh, BatchId = batch, QuantityBaseUnits = q,
+                                                                     TransactionType = StockTransactionType.Receipt, CreatedByUserId = user };
+        db.StockTransactions.AddRange(In(stocked.Id, late.Id, 3000), In(stocked.Id, soon.Id, 1500), In(fg.Id, null, 900));
+        await db.SaveChangesAsync();
+
+        // شاشة الاحتياجات ومعاينة الأمر: المتاح من مخازن المواد الأولية فقط (900 في مخزن المنتج التام لا تُحسب)
+        var req = (await new ManufacturingRequirementService(db).CalculateAsync(bottle.Id, 2000, null, empty.Id)).Single();
+        Assert.Equal(4500m, req.QuantityAvailable);
+        Assert.Equal(900m, req.ElsewhereQuantity);
+        Assert.True(req.IsSufficient);
+        Assert.Contains("مخزن المواد الأولية 2", req.WhereText);
+
+        // الأمر مرتبط بالمخزن الفارغ ← البدء ينجح ويصرف من المخزن الآخر بترتيب الصلاحية (الأقرب انتهاءً أولًا)
+        var prod = new ProductionService(db);
+        var (cr, orderId) = await prod.CreateOrderAsync(bottle.Id, 2000, null, empty.Id, user);
+        Assert.True(cr.Success, cr.ErrorMessage);
+        var start = await prod.StartAsync(orderId!.Value, user);
+        Assert.True(start.Success, start.ErrorMessage);
+        await using var check = _f.NewDb();
+        var consumed = await check.StockTransactions.Where(t => t.ReferenceTable == "ProductionOrders" && t.ReferenceId == orderId && t.ItemId == preform.Id).ToListAsync();
+        Assert.Equal(-2000m, consumed.Sum(t => t.QuantityBaseUnits));
+        Assert.All(consumed, t => Assert.Equal(stocked.Id, t.WarehouseId));
+        Assert.Equal(-1500m, consumed.Single(t => t.BatchId == soon.Id).QuantityBaseUnits);
+        Assert.Equal(-500m, consumed.Single(t => t.BatchId == late.Id).QuantityBaseUnits);
+        Assert.Equal(900m, await Balance(check, preform.Id, fg.Id));
+
+        // النقص: رسالة توضح المتاح في مخازن المواد الأولية والرصيد الموجود في مخازن أخرى، ولا صرف جزئي
+        var (_, big) = await prod.CreateOrderAsync(bottle.Id, 3000, null, empty.Id, user);
+        var error = (await prod.StartAsync(big!.Value, user)).ErrorMessage;
+        Assert.Contains("المتاح في مخازن المواد الأولية 2500", error);
+        Assert.Contains("يوجد 900 في مخازن أخرى", error);
+        Assert.Equal(2500m, await Balance(check, preform.Id, stocked.Id));
+
+        empty.IsActive = false;
+        stocked.IsActive = false;
+        await db.SaveChangesAsync();
+    }
+
     [Fact]
     public async Task Custom_recipe_replaces_the_named_component()
     {

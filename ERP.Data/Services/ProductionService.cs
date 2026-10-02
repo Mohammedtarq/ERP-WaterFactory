@@ -94,13 +94,15 @@ public class ProductionService
         if (order is null) return FinanceOperationResult.Fail("أمر الإنتاج غير موجود");
         if (order.Status != ProductionOrderStatus.Draft) return FinanceOperationResult.Fail("لا يُبدأ إلا أمر في حالة مسودة");
 
+        // نفس محرك التوفر المستخدم في "احتياجات التصنيع" ومعاينة الأمر — يصرف من كل مخازن المواد الأولية (FEFO)
+        var availability = new MaterialAvailabilityService(_db);
         foreach (var c in order.Consumptions)
         {
-            var (alloc, error) = await LedgerHelper.AllocateAsync(_db, c.RawMaterialItemId, order.RawMaterialsWarehouseId, null, c.QuantityRequired);
+            var (alloc, error) = await availability.AllocateAsync(c.RawMaterialItemId, c.QuantityRequired, order.RawMaterialsWarehouseId);
             if (error is not null) return FinanceOperationResult.Fail(error);
-            foreach (var (batchId, qty) in alloc)
-                _db.StockTransactions.Add(new StockTransaction { ItemId = c.RawMaterialItemId, WarehouseId = order.RawMaterialsWarehouseId, BatchId = batchId,
-                                                                 QuantityBaseUnits = -qty, TransactionType = StockTransactionType.ProductionConsume,
+            foreach (var a in alloc)
+                _db.StockTransactions.Add(new StockTransaction { ItemId = c.RawMaterialItemId, WarehouseId = a.WarehouseId, BatchId = a.BatchId,
+                                                                 QuantityBaseUnits = -a.Quantity, TransactionType = StockTransactionType.ProductionConsume,
                                                                  ReferenceTable = "ProductionOrders", ReferenceId = order.Id, CreatedByUserId = userId });
             c.QuantityConsumed = c.QuantityRequired;
             await _db.SaveChangesAsync();

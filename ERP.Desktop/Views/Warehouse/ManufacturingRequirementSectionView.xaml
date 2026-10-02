@@ -35,7 +35,9 @@
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="المادة الأولية" Binding="{Binding RawMaterialName}" Width="*"/>
                     <DataGridTextColumn Header="المطلوب" Binding="{Binding QuantityRequired, StringFormat=N2}" Width="120"/>
-                    <DataGridTextColumn Header="المتوفر" Binding="{Binding QuantityAvailable, StringFormat=N2}" Width="120"/>
+                    <DataGridTextColumn Header="المتوفر في مخازن المواد الأولية" Binding="{Binding QuantityAvailable, StringFormat=N2}" Width="120"/>
+                    <DataGridTextColumn Header="التوزيع على المخازن" Binding="{Binding WhereText}" Width="220"/>
+                    <DataGridTextColumn Header="في مخازن أخرى" Binding="{Binding ElsewhereQuantity, StringFormat=N2}" Width="110"/>
                     <DataGridTextColumn Header="العجز" Binding="{Binding Shortfall, StringFormat=N2}" Width="120"/>
                     <DataGridCheckBoxColumn Header="كافٍ" Binding="{Binding IsSufficient, Mode=OneWay}" Width="60"/>
                 </DataGrid.Columns>

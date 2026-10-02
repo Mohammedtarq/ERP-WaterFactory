@@ -33,6 +33,7 @@ public class RequirementPreview
     public string RawMaterialName { get; init; } = "";
     public decimal Required { get; init; }
     public decimal Available { get; init; }
+    public string WhereText { get; init; } = "";
     public bool IsSufficient => Available >= Required;
 }
 
@@ -120,14 +121,12 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         Preview.Clear();
         if (FinishedItem is null || RawWarehouse is null || Quantity <= 0) { OnPropertyChanged(nameof(AllSufficient)); return; }
         await using var db = Session.NewDb();
-        var (lines, error) = await new ProductionService(db).MergeRecipeAsync(FinishedItem.Id, Recipe?.Id);
+        var service = new ManufacturingRequirementService(db);
+        var (_, error) = await new ProductionService(db).MergeRecipeAsync(FinishedItem.Id, Recipe?.Id);
         if (error is not null) { StatusMessage = error; OnPropertyChanged(nameof(AllSufficient)); return; }
-        var ids = lines.Select(l => l.rawItemId).ToList();
-        var names = await db.Items.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.ItemName);
-        var balances = await db.StockTransactions.Where(t => ids.Contains(t.ItemId) && t.WarehouseId == RawWarehouse.Id)
-            .GroupBy(t => t.ItemId).Select(g => new { g.Key, Qty = g.Sum(t => t.QuantityBaseUnits) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
-        foreach (var (rawItemId, perUnit) in lines)
-            Preview.Add(new RequirementPreview { RawMaterialName = names[rawItemId], Required = perUnit * Quantity, Available = balances.GetValueOrDefault(rawItemId) });
+        // نفس محرك التوفر المستخدم في "احتياجات التصنيع" وفي بدء التشغيل
+        foreach (var r in await service.CalculateAsync(FinishedItem.Id, Quantity, Recipe?.Id, RawWarehouse.Id))
+            Preview.Add(new RequirementPreview { RawMaterialName = r.RawMaterialName, Required = r.QuantityRequired, Available = r.QuantityAvailable, WhereText = r.WhereText });
         OnPropertyChanged(nameof(AllSufficient));
     }
 
