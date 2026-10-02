@@ -24,6 +24,7 @@ public class SettingsModuleViewModel : ModuleViewModel
         Add(new BranchesSectionViewModel(s, d));
         if (s.ControlConnectionString is not null) Add(new ProjectsSectionViewModel(s, d));
         Add(new BackupSectionViewModel(s, d));
+        Add(new BrandingSectionViewModel(s, d));
     }
 }
 

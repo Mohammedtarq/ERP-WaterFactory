@@ -592,7 +592,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             Title = IsFreeSale ? "إذن صرف — بيع مجاني" : "فاتورة مبيعات",
             Stamp = IsReadOnly ? null : "مسودة — غير مرحّلة",
             Notes = Notes,
-            PrintedBy = Session.FullName
+            PrintedBy = Session.FullName,
+            Key = "SalesInvoice", ReceiptCapable = true,
+            ReceiptColumns = IsFreeSale ? new[] { 1, 2, 3 } : new[] { 1, 3, 5, 6 }   // الصنف، الكمية، السعر، المبلغ
         };
         r.Field("رقم الفاتورة", InvoiceId is null ? "—" : InvoiceNumber)
          .Field("التاريخ", InvoiceDate.ToString("yyyy/MM/dd"))

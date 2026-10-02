@@ -206,6 +206,7 @@
     <DataTemplate DataType="{x:Type vmSettings:BranchesSectionViewModel}"><vSettings:BranchesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:ProjectsSectionViewModel}"><vSettings:ProjectsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:BackupSectionViewModel}"><vSettings:BackupSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSettings:BrandingSectionViewModel}"><vSettings:BrandingSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:WarehouseWorkspaceSectionViewModel}"><vWarehouse:WarehouseWorkspaceSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:CashBoxesSectionViewModel}"><vFinance:CashBoxesSectionView/></DataTemplate>
 

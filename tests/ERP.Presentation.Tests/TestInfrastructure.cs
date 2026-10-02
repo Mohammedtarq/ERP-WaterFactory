@@ -25,6 +25,8 @@ public class RecordingDialogs : IDialogService
     public bool Confirm(string message) => ConfirmAnswer;
     public List<ReportDocument> Reports { get; } = new();
     public void ShowReport(ReportDocument report) => Reports.Add(report);
+    public string? ImageToPick { get; set; }
+    public string? PickImageFile() => ImageToPick;
 }
 
 public class RecordingNavigator : INavigator

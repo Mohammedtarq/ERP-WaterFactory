@@ -9,6 +9,9 @@ public interface IDialogService
 
     /// <summary>معاينة مستند قبل طباعته (فاتورة، كشف حساب...).</summary>
     void ShowReport(ReportDocument report);
+
+    /// <summary>اختيار صورة (PNG/JPG) من الجهاز — يعيد مسارها أو null عند الإلغاء.</summary>
+    string? PickImageFile();
 }
 
 /// <summary>التنقل بين نوافذ التدفق الرئيسي (دخول ← مشروع ← الواجهة الرئيسية).</summary>

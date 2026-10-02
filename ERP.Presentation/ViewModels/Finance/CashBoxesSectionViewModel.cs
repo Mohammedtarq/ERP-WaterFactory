@@ -351,7 +351,8 @@ public class CashBoxesSectionViewModel : SectionViewModel
         var r = new ReportDocument
         {
             CompanyName = Session.ProjectName, Title = title, PrintedBy = Session.FullName,
-            Stamp = t.IsVoided ? $"ملغاة — {t.VoidReason}" : t.ModifiedAt is not null ? "معدّلة" : null, Notes = t.Description
+            Stamp = t.IsVoided ? $"ملغاة — {t.VoidReason}" : t.ModifiedAt is not null ? "معدّلة" : null, Notes = t.Description,
+            Key = "CashBoxReceipt", ReceiptCapable = true
         };
         var transfer = t.TxType is CashBoxTxType.TransferOut or CashBoxTxType.TransferIn;
         r.Field("رقم الحركة", t.TxNumber)

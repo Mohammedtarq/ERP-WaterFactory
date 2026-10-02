@@ -50,6 +50,9 @@ public class MainShellViewModel : ViewModelBase
         Session = session;
         _dialogs = dialogs;
         _navigator = navigator;
+        // هوية الطباعة (شعار، اسم، اتصال، لون) لكل المستندات المطبوعة في هذه الجلسة
+        ReportBranding.Current = ReportBranding.Fallback(session.ProjectName);
+        Background(ReportBranding.RefreshAsync(session));
 
         var all = new[]
         {

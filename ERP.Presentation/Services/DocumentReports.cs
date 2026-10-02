@@ -121,7 +121,11 @@ public static class DocumentReports
             _ => null
         };
         var receipt = v.VoucherType == VoucherType.Receipt;
-        var r = New(s, receipt ? "سند قبض" : "سند صرف", notes: v.Notes);
+        var r = new ReportDocument
+        {
+            CompanyName = s.ProjectName, Title = receipt ? "سند قبض" : "سند صرف", Notes = v.Notes, PrintedBy = s.FullName,
+            Key = "Voucher", ReceiptCapable = true
+        };
         r.Field("رقم السند", v.VoucherNumber)
          .Field("التاريخ", v.VoucherDate.ToString("yyyy/MM/dd"))
          .Field(receipt ? "استلمنا من" : "صرفنا إلى", party ?? ArabicLabels.Of(v.PartyType))
@@ -222,7 +226,12 @@ public static class DocumentReports
             .FirstOrDefaultAsync(x => x.Id == invoiceId);
         if (inv is null) return null;
         var posted = inv.Status == DocumentStatus.Posted;
-        var r = New(s, inv.IsFreeSale ? "إذن صرف — بيع مجاني" : "فاتورة مبيعات", posted ? null : "مسودة — غير مرحّلة", inv.Notes);
+        var r = new ReportDocument
+        {
+            CompanyName = s.ProjectName, Title = inv.IsFreeSale ? "إذن صرف — بيع مجاني" : "فاتورة مبيعات", Stamp = posted ? null : "مسودة — غير مرحّلة",
+            Notes = inv.Notes, PrintedBy = s.FullName, Key = "SalesInvoice", ReceiptCapable = true,
+            ReceiptColumns = inv.IsFreeSale ? new[] { 1, 2, 3 } : new[] { 1, 3, 5, 6 }
+        };
         r.Field("رقم الفاتورة", inv.InvoiceNumber).Field("التاريخ", inv.InvoiceDate.ToString("yyyy/MM/dd"))
          .Field(inv.IsFreeSale ? "الجهة المستفيدة" : "العميل", inv.IsFreeSale ? inv.FreeSaleRecipient : inv.Customer.Name)
          .Field("نوع العميل", inv.IsFreeSale ? null : ArabicLabels.Of(inv.Customer.CustomerType))

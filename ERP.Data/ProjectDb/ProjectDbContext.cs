@@ -88,6 +88,7 @@ public class ProjectDbContext : DbContext
     public DbSet<StockDocumentLine> StockDocumentLines => Set<StockDocumentLine>();
     public DbSet<CashBox> CashBoxes => Set<CashBox>();
     public DbSet<CashBoxTransaction> CashBoxTransactions => Set<CashBoxTransaction>();
+    public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -204,6 +205,12 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<Voucher>()
             .HasIndex(v => v.VoucherNumber)
             .IsUnique();
+        modelBuilder.Entity<CompanyProfile>(e =>
+        {
+            e.ToTable("CompanyProfile");
+            e.Property(p => p.Id).ValueGeneratedNever();
+        });
+
         // ---- مستندات المخزن والصناديق (12_warehouse_docs_cashboxes.sql) ----
         modelBuilder.Entity<StockDocument>(e =>
         {

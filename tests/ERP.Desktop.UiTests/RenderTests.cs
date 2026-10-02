@@ -21,6 +21,7 @@ public class NullDialogs : IDialogService
     public void Error(string message) => Messages.Add("خطأ: " + message);
     public bool Confirm(string message) => false;      // لا ترحيل ولا حذف أثناء التصوير
     public void ShowReport(ReportDocument report) { }
+    public string? PickImageFile() => null;
 }
 
 public class CapturingNavigator : INavigator
@@ -135,12 +136,6 @@ public class RenderTests
             await UiThread.SettleAsync();
             UiThread.Save((FrameworkElement)preview.Content, "00-empty/ReportPreview_with_invoice.png");
             preview.Close();
-            var page = new FlowDocumentScrollViewer { Document = ReportRenderer.Render(report), Width = ReportRenderer.PageWidth, Height = 700, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
-            var host2 = new Window { Content = page, SizeToContent = SizeToContent.WidthAndHeight, ShowActivated = false, ShowInTaskbar = false, Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual };
-            host2.Show();
-            await UiThread.SettleAsync();
-            UiThread.Save(page, "00-empty/Printed_invoice_A4.png");
-            host2.Close();
         });
 
         _out.WriteLine($"رُسمت {count} شاشة → {UiThread.OutputDir}");

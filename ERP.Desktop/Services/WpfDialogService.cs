@@ -23,6 +23,16 @@ public class WpfDialogService : IDialogService
         w.ShowDialog();
     }
 
+    public string? PickImageFile()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "اختر شعار الشركة",
+            Filter = "صور (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg"
+        };
+        return dlg.ShowDialog(Owner) == true ? dlg.FileName : null;
+    }
+
     private static MessageBoxResult Show(string message, MessageBoxButton buttons, MessageBoxImage icon) =>
         Owner is { } owner
             ? MessageBox.Show(owner, message, Caption, buttons, icon, MessageBoxResult.None, Rtl)

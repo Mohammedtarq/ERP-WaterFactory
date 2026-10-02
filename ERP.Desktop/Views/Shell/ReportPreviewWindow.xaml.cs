@@ -1,33 +1,133 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Printing;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Documents;
 using ERP.Desktop.Printing;
 using ERP.Presentation.Services;
 
 namespace ERP.Desktop.Views.Shell;
 
+public class ColumnOption : INotifyPropertyChanged
+{
+    private bool _isVisible = true;
+    public int Index { get; init; }
+    public string Name { get; init; } = "";
+    public bool IsVisible { get => _isVisible; set { _isVisible = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsVisible))); } }
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+/// <summary>
+/// معاينة قبل الطباعة: اختيار A4 أو كاشير 80mm، إظهار/إخفاء الأعمدة، إخفاء الصفوف الصفرية، وحفظ الإعداد
+/// كافتراضي لهذا النوع من المستندات. المعاينة هي ناتج الطباعة نفسه (XPS)، لا رسم تقريبي.
+/// </summary>
 public partial class ReportPreviewWindow : Window
 {
     private readonly ReportDocument _report;
+    private readonly ObservableCollection<ColumnOption> _columns;
+    private XpsOutput? _xps;
+    private bool _ready;
 
     public ReportPreviewWindow(ReportDocument report)
     {
         InitializeComponent();
         _report = report;
         Title = $"معاينة — {report.Title}";
-        Viewer.Document = ReportRenderer.Render(report);
+        DocTitle.Text = report.Title;
+
+        var pref = PrintPreferences.For(report.Key);
+        _columns = new ObservableCollection<ColumnOption>(report.Columns.Select((c, i) => new ColumnOption
+        {
+            Index = i, Name = c == "#" ? "# (الترقيم)" : c, IsVisible = !pref.HiddenColumns.Contains(c)
+        }));
+        ColumnsList.ItemsSource = _columns;
+        ColumnsPanel.Visibility = report.Columns.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        HideZeroBox.IsChecked = pref.HideZeroRows;
+        ReceiptRadio.IsEnabled = report.ReceiptCapable;
+        ReceiptHint.Visibility = report.ReceiptCapable ? Visibility.Collapsed : Visibility.Visible;
+        (pref.Printer == PrinterKind.Receipt80 && report.ReceiptCapable ? ReceiptRadio : A4Radio).IsChecked = true;
+        _ready = true;
+        Render();
+        Closed += (_, _) => _xps?.Dispose();
     }
 
-    private void OnPrint(object sender, RoutedEventArgs e)
+    public PrinterKind Printer => ReceiptRadio.IsChecked == true ? PrinterKind.Receipt80 : PrinterKind.A4;
+
+    /// <summary>المستند بعد تطبيق الأعمدة الظاهرة وإخفاء الصفوف الصفرية.</summary>
+    public ReportDocument Visible =>
+        _report.WithVisibility(_columns.Where(c => !c.IsVisible).Select(c => c.Index).ToHashSet(), HideZeroBox.IsChecked == true);
+
+    private void OnOptionChanged(object sender, RoutedEventArgs e)
+    {
+        if (_ready) Render();
+    }
+
+    private void Render()
+    {
+        var doc = Visible;
+        if (Printer == PrinterKind.A4)
+        {
+            _xps?.Dispose();
+            _xps = new XpsOutput(ReportRenderer.A4(doc));
+            Viewer.Document = _xps.Document;
+            Viewer.Visibility = Visibility.Visible;
+            ReceiptHost.Visibility = Visibility.Collapsed;
+            PagesText.Text = $"عدد الصفحات: {_xps.PageCount} (A4)";
+        }
+        else
+        {
+            var receipt = ReportRenderer.Receipt(doc);
+            ReceiptFrame.Child = receipt;
+            Viewer.Visibility = Visibility.Collapsed;
+            ReceiptHost.Visibility = Visibility.Visible;
+            PagesText.Text = $"إيصال 80mm — الطول {receipt.ActualHeight / 96 * 25.4:0} مم";
+        }
+        StatusText.Text = "";
+    }
+
+    private void OnSaveDefault(object sender, RoutedEventArgs e) => SaveAsDefault();
+
+    /// <summary>حفظ نوع الطابعة والأعمدة المخفية وإخفاء الصفوف الصفرية كافتراضي لهذا النوع من المستندات.</summary>
+    public void SaveAsDefault()
+    {
+        PrintPreferences.Save(_report.Key, new ReportPreference
+        {
+            Printer = Printer, HideZeroRows = HideZeroBox.IsChecked == true,
+            HiddenColumns = _columns.Where(c => !c.IsVisible).Select(c => _report.Columns[c.Index]).ToList()
+        });
+        StatusText.Text = "حُفظ كإعداد افتراضي لهذا النوع من المستندات";
+    }
+
+    private void OnPrint(object sender, RoutedEventArgs e) => Print(null);
+
+    private void OnSavePdf(object sender, RoutedEventArgs e) => Print("Microsoft Print to PDF");
+
+    private void Print(string? queueName)
     {
         var dialog = new PrintDialog();
-        if (dialog.ShowDialog() != true) return;
-        // مستند جديد بحجم الورق المختار (المعروض في المعاينة يبقى كما هو)
-        var doc = ReportRenderer.Render(_report);
-        doc.PageWidth = dialog.PrintableAreaWidth;
-        doc.PageHeight = dialog.PrintableAreaHeight;
-        doc.ColumnWidth = dialog.PrintableAreaWidth;
-        dialog.PrintDocument(((IDocumentPaginatorSource)doc).DocumentPaginator, _report.Title);
+        if (queueName is not null)
+        {
+            try { dialog.PrintQueue = new LocalPrintServer().GetPrintQueue(queueName); }
+            catch (Exception ex) when (ex is PrintQueueException or PrintSystemException or ArgumentException) { /* يختار المستخدم الطابعة */ }
+        }
+        var doc = Visible;
+        if (Printer == PrinterKind.A4)
+        {
+            try { dialog.PrintTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4); } catch (Exception) { }
+            if (dialog.ShowDialog() != true) return;
+            dialog.PrintDocument(ReportRenderer.A4(doc), _report.Title);
+        }
+        else
+        {
+            var receipt = ReportRenderer.Receipt(doc);
+            try { dialog.PrintTicket.PageMediaSize = new PageMediaSize(ReportRenderer.ReceiptWidth, Math.Ceiling(receipt.ActualHeight) + 16); } catch (Exception) { }
+            if (dialog.ShowDialog() != true) return;
+            dialog.PrintVisual(receipt, _report.Title);
+        }
+        // آخر نوع طابعة لهذا المستند يُتذكّر تلقائيًا
+        var pref = PrintPreferences.For(_report.Key);
+        pref.Printer = Printer;
+        PrintPreferences.Save(_report.Key, pref);
         Close();
     }
 
