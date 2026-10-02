@@ -242,6 +242,11 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Equal("مكتمل", orders.Orders.Single(o => o.Id == order.Id).StageText);
         Assert.Equal("نافخة 1", orders.Orders.Single(o => o.Id == order.Id).MachineName);
 
+        // لوحة المختبر: دفعة واحدة فُحصت ونجحت ← نسبة النجاح 100%
+        await prod.Dashboard!.LoadAsync();
+        Assert.Contains(prod.Dashboard.Tiles, t => t.Title == "المختبر — فحوصات الشهر" && t.Value == "1");
+        Assert.Contains(prod.Dashboard.Tiles, t => t.Title == "المختبر — نسبة النجاح" && t.Value == "100%");
+
         // تعديل رقم الدفعة من الشاشة ← يظهر في السجل وفي شهادة المختبر المطبوعة
         await orders.EditBatchCommand.ExecuteAsync(orders.Orders.Single(o => o.Id == order.Id));
         Assert.True(orders.IsEditingBatch);

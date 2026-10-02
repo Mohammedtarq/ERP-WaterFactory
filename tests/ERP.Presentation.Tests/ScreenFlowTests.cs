@@ -2,6 +2,7 @@ using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
 using ERP.Presentation.Services;
 using ERP.Presentation.ViewModels.Finance;
+using ERP.Presentation.ViewModels.Production;
 using ERP.Presentation.ViewModels.Sales;
 using ERP.Presentation.ViewModels.Settings;
 using ERP.Presentation.ViewModels.Shell;
@@ -509,6 +510,56 @@ public class ScreenFlowTests
         Assert.DoesNotContain(clerkDash.Tiles, t => t.Title == "آخر نسخة احتياطية");
     }
 
+    /// <summary>
+    /// لوحة كل وحدة تُحمَّل على SQL Server حقيقي برسمين يوميين على الأقل، ولوحة الإنتاج تضم المختبر؛
+    /// وزر إظهار/إخفاء "القوائم الفرعية" يُحفظ لكل وحدة.
+    /// </summary>
+    [Fact]
+    public async Task Every_module_dashboard_loads_with_more_charts_and_sections_toggle_persists()
+    {
+        var settings = Path.Combine(Path.GetTempPath(), $"ui-{Guid.NewGuid():N}.json");
+        Environment.SetEnvironmentVariable("ERP_UI_SETTINGS", settings);
+        UiPreferences.Reset();
+        try
+        {
+            var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+            var dashboards = 0;
+            foreach (var nav in shell.NavItems)
+            {
+                if (shell.Open<object>(nav.ModuleCode) is not ModuleViewModel m || m.Dashboard is null) continue;
+                await m.Dashboard.LoadAsync();
+                Assert.True(m.Dashboard.Error is null, $"{m.Title}: {m.Dashboard.Error}");
+                Assert.True(m.Dashboard.Columns.Count >= 2, $"{m.Title}: رسم يومي واحد فقط");
+                Assert.True(m.Dashboard.Ranks.Count >= 2, $"{m.Title}: ترتيب واحد فقط");
+                dashboards++;
+            }
+            Assert.True(dashboards >= 6);
+
+            var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
+            await prod.Dashboard!.LoadAsync();
+            Assert.Contains(prod.Dashboard.Tiles, t => t.Title == "المختبر — نسبة النجاح");
+            Assert.Contains(prod.Dashboard.Columns, c => c.Title.StartsWith("المختبر — نتائج الفحص اليومية"));
+            Assert.Contains(prod.Dashboard.Ranks, r => r.Title.StartsWith("المختبر — الاختبارات الأكثر رسوبًا"));
+
+            // إخفاء القوائم الفرعية في وحدة يُحفظ لها وحدها
+            Assert.True(prod.Home.ShowSections);
+            prod.Home.ToggleSectionsCommand.Execute(null);
+            Assert.False(prod.Home.ShowSections);
+            Assert.Equal("إظهار القوائم الفرعية", prod.Home.ToggleSectionsText);
+            UiPreferences.Reset();
+            Assert.False(new HomeSectionViewModel(prod).ShowSections);
+            Assert.True(new HomeSectionViewModel(shell.Open<SalesModuleViewModel>(ModuleCode.Sales)).ShowSections);
+            Assert.True(File.Exists(settings));
+            Assert.Empty(dialogs.Errors);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("ERP_UI_SETTINGS", null);
+            UiPreferences.Reset();
+            File.Delete(settings);
+        }
+    }
+
     /// <summary>فتح كل تبويب في كل وحدة يعمل على SQL Server حقيقي (يلتقط أخطاء ترجمة الاستعلامات).</summary>
     [Fact]
     public async Task Every_section_of_every_module_loads()
@@ -536,10 +587,13 @@ public class ScreenFlowTests
             await dash.IdleAsync();
             Assert.True(dash.Error is null, $"{m.Title}: {dash.Error}");
             Assert.NotEmpty(dash.Tiles);
-            var chart = Assert.Single(dash.Columns);
-            Assert.Equal(14, chart.Categories.Count);
-            Assert.Equal(DateTime.Today.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture), chart.Categories[^1].Label);
-            Assert.All(chart.Categories.SelectMany(c => c.Bars), b => Assert.InRange(b.Height, 0, 150));
+            Assert.True(dash.Columns.Count >= 2, $"{m.Title}: رسم يومي واحد فقط");
+            foreach (var chart in dash.Columns)
+            {
+                Assert.Equal(14, chart.Categories.Count);
+                Assert.Equal(DateTime.Today.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture), chart.Categories[^1].Label);
+                Assert.All(chart.Categories.SelectMany(c => c.Bars), b => Assert.InRange(b.Height, 0, 150));
+            }
             Assert.True(m.Home.HasDashboard);
             dashboards++;
         }

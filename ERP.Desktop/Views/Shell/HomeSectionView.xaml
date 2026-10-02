@@ -9,8 +9,11 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
             <ContentControl Content="{Binding Dashboard}" Visibility="{Binding HasDashboard, Converter={StaticResource BoolToVisibility}}"/>
-            <TextBlock Text="القوائم الفرعية" Style="{StaticResource SectionTitle}"/>
-            <ItemsControl ItemsSource="{Binding Sections}">
+            <DockPanel Margin="0,4,0,0">
+                <Button DockPanel.Dock="Left" Content="{Binding ToggleSectionsText}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleSectionsCommand}"/>
+                <TextBlock Text="القوائم الفرعية" Style="{StaticResource SectionTitle}"/>
+            </DockPanel>
+            <ItemsControl ItemsSource="{Binding Sections}" Visibility="{Binding ShowSections, Converter={StaticResource BoolToVisibility}}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <WrapPanel/>

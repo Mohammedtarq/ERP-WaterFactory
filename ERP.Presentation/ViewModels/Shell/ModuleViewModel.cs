@@ -100,7 +100,26 @@ public class HomeSectionViewModel : ObservableObject
     {
         Owner = owner;
         OpenSectionCommand = new RelayCommand(p => { if (p is SectionViewModel s) owner.SelectedTab = s; });
+        _showSections = Services.UiPreferences.Get(PreferenceKey, true);
+        ToggleSectionsCommand = new RelayCommand(() => ShowSections = !ShowSections);
     }
+
+    private bool _showSections;
+    private string PreferenceKey => $"home.sections.{Owner.Title}";
+
+    /// <summary>إظهار/إخفاء شبكة "القوائم الفرعية" في رئيسية الوحدة — يُحفظ لكل وحدة على هذا الجهاز.</summary>
+    public bool ShowSections
+    {
+        get => _showSections;
+        set
+        {
+            if (!SetProperty(ref _showSections, value)) return;
+            Services.UiPreferences.Set(PreferenceKey, value);
+            OnPropertyChanged(nameof(ToggleSectionsText));
+        }
+    }
+    public string ToggleSectionsText => ShowSections ? "إخفاء القوائم الفرعية" : "إظهار القوائم الفرعية";
+    public RelayCommand ToggleSectionsCommand { get; }
 
     public ModuleViewModel Owner { get; }
     public string Title => "الرئيسية";
