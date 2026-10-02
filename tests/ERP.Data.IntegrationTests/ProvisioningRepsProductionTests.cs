@@ -716,6 +716,61 @@ public class ProductionServiceTests
         Assert.Contains("قبل بدء التشغيل", (await templates.OverrideOrderComponentAsync(lineId, capRed.Id, capBlue.Id, "رجوع", user)).ErrorMessage);
     }
 
+    /// <summary>
+    /// تعديل المشرف لأعداد تحت التصنيع (المتبقي / التالف): للمشرف أو الأدمن فقط، السبب إلزامي، وسجل تدقيق
+    /// كامل (قبل/بعد/من/متى)، والتعديل جزء مفسَّر من المطابقة فلا يرفع تنبيهًا.
+    /// </summary>
+    [Fact]
+    public async Task Supervisor_adjusts_remaining_and_damaged_with_reason_and_full_audit()
+    {
+        await using var db = _f.NewDb();
+        var admin = _f.AdminLocalId;
+        var machines = new MachineService(db);
+        var cap = await db.Items.FirstAsync(i => i.ItemCode == "RM-CAP");
+        var (_, machineId) = await machines.SaveAsync(null, "ماكينة الجرد", "نفخ", null, null, true);
+        var machine = await db.Machines.AsNoTracking().SingleAsync(m => m.Id == machineId);
+        db.StockTransactions.Add(new StockTransaction { ItemId = cap.Id, WarehouseId = machine.WipWarehouseId, QuantityBaseUnits = 100,
+                                                        TransactionType = StockTransactionType.WipIssue, CreatedByUserId = admin });
+        // مستخدم عادي بلا صلاحية مشرف
+        var role = new Role { Name = "عامل خط" };
+        role.Permissions.Add(new RolePermission { ModuleCode = ModuleCode.Production, CanView = true, CanAdd = true, CanEdit = true });
+        db.Roles.Add(role);
+        await db.SaveChangesAsync();
+        var worker = new User { Username = $"worker-{Guid.NewGuid():N}"[..20], PasswordHash = "x", RoleId = role.Id };
+        db.Users.Add(worker);
+        await db.SaveChangesAsync();
+
+        Assert.True(await machines.IsSupervisorAsync(admin));
+        Assert.False(await machines.IsSupervisorAsync(worker.Id));
+        Assert.Contains("للمشرف أو الأدمن فقط", (await machines.AdjustRemainingAsync(machine.Id, cap.Id, 90, "جرد", worker.Id)).ErrorMessage);
+        Assert.Contains("إلزامي", (await machines.AdjustRemainingAsync(machine.Id, cap.Id, 90, "  ", admin)).ErrorMessage);
+        Assert.False((await machines.AdjustRemainingAsync(machine.Id, cap.Id, -1, "جرد", admin)).Success);
+
+        // المتبقي 100 ← الجرد الفعلي 94
+        Assert.True((await machines.AdjustRemainingAsync(machine.Id, cap.Id, 94, "جرد نهاية الوردية", admin)).Success);
+        Assert.Equal(94m, await Balance(db, cap.Id, machine.WipWarehouseId));
+        // التالف 0 ← 10 (يخصم من المتبقي)، ثم تصحيحه إلى 4 (يعيد 6)
+        Assert.True((await machines.AdjustDamagedAsync(machine.Id, cap.Id, null, 10, "كسر لم يُسجَّل", admin)).Success);
+        Assert.Equal(84m, await Balance(db, cap.Id, machine.WipWarehouseId));
+        Assert.True((await machines.AdjustDamagedAsync(machine.Id, cap.Id, null, 4, "خطأ عدّ التالف", admin)).Success);
+        Assert.Equal(90m, await Balance(db, cap.Id, machine.WipWarehouseId));
+        Assert.Contains("غير كافٍ", (await machines.AdjustDamagedAsync(machine.Id, cap.Id, null, 500, "تالف كبير", admin)).ErrorMessage);
+
+        // سجل التدقيق: قبل/بعد/السبب/المستخدم/الوقت لكل تعديل، الأحدث أولًا
+        var audit = await machines.GetAdjustmentsAsync(machine.Id);
+        Assert.Equal(3, audit.Count);
+        Assert.Equal((WipAdjustmentKind.Remaining, 100m, 94m, "جرد نهاية الوردية"), (audit[2].Kind, audit[2].BeforeQuantity, audit[2].AfterQuantity, audit[2].Reason));
+        Assert.Equal((WipAdjustmentKind.Damaged, 0m, 10m), (audit[1].Kind, audit[1].BeforeQuantity, audit[1].AfterQuantity));
+        Assert.Equal((WipAdjustmentKind.Damaged, 10m, 4m), (audit[0].Kind, audit[0].BeforeQuantity, audit[0].AfterQuantity));
+        Assert.All(audit, a => Assert.Equal(admin, a.ChangedByUserId));
+        Assert.All(audit, a => Assert.True(a.ChangedAt > DateTime.UtcNow.AddMinutes(-5)));
+
+        // المطابقة: مصروف 100 + تعديل −6 − تالف 4 = متبقٍّ 90 ← مطابق بلا تنبيه
+        var row = (await machines.GetWipSummaryAsync(DateTime.Today, DateTime.Today, machine.Id)).Single(r => r.RawItemId == cap.Id);
+        Assert.Equal((100m, -6m, 4m, 90m), (row.Issued, row.Adjusted, row.Damaged, row.Remaining));
+        Assert.True(row.IsReconciled);
+    }
+
     [Fact]
     public async Task Custom_recipe_replaces_the_named_component()
     {

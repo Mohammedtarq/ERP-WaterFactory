@@ -60,6 +60,8 @@ public static class ArabicLabels
         [StockAdjustmentKind.Damaged] = "تالف", [StockAdjustmentKind.Disposal] = "إتلاف", [StockAdjustmentKind.Return] = "إرجاع للمخزن",
         [StockTransactionType.Issue] = "إخراج مخزني",
         [StockTransactionType.WipIssue] = "صرف لأمر إنتاج", [StockTransactionType.WipReturn] = "إرجاع من تحت التصنيع",
+        [StockTransactionType.WipAdjust] = "تعديل مشرف (تحت التصنيع)",
+        [WipAdjustmentKind.Remaining] = "المتبقي", [WipAdjustmentKind.Damaged] = "التالف",
         [StockDocumentType.Receipt] = "إدخال مخزني", [StockDocumentType.Issue] = "إخراج مخزني",
         [StockDocumentType.Transfer] = "مناقلة إلى مخزن آخر", [StockDocumentType.Damaged] = "تالف",
         [StockDocumentType.FreeIssue] = "مسحوب مجاني",

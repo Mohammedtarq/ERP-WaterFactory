@@ -85,6 +85,7 @@ public class ProjectDbContext : DbContext
     public DbSet<ProductionOrderConsumption> ProductionOrderConsumptions => Set<ProductionOrderConsumption>();
     public DbSet<ProductionOrderLine> ProductionOrderLines => Set<ProductionOrderLine>();
     public DbSet<Machine> Machines => Set<Machine>();
+    public DbSet<WipAdjustment> WipAdjustments => Set<WipAdjustment>();
     public DbSet<BatchNumberChange> BatchNumberChanges => Set<BatchNumberChange>();
     public DbSet<QualityTest> QualityTests => Set<QualityTest>();
     public DbSet<QCBatchResult> QCBatchResults => Set<QCBatchResult>();
@@ -394,6 +395,13 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.RawMaterialsWarehouse).WithMany().HasForeignKey(p => p.RawMaterialsWarehouseId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.Machine).WithMany().HasForeignKey(p => p.MachineId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Machine>().HasIndex(m => m.Name).IsUnique();
+        modelBuilder.Entity<WipAdjustment>().Property(a => a.Kind).HasConversion<string>();
+        modelBuilder.Entity<WipAdjustment>().Property(a => a.BeforeQuantity).HasPrecision(18, 3);
+        modelBuilder.Entity<WipAdjustment>().Property(a => a.AfterQuantity).HasPrecision(18, 3);
+        modelBuilder.Entity<WipAdjustment>().HasOne(a => a.Machine).WithMany().HasForeignKey(a => a.MachineId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<WipAdjustment>().HasOne(a => a.Item).WithMany().HasForeignKey(a => a.ItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<WipAdjustment>().HasOne(a => a.ProductionOrder).WithMany().HasForeignKey(a => a.ProductionOrderId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<WipAdjustment>().HasOne(a => a.ChangedByUser).WithMany().HasForeignKey(a => a.ChangedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BatchNumberChange>().HasOne(c => c.Batch).WithMany().HasForeignKey(c => c.BatchId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BatchNumberChange>().HasOne(c => c.ChangedByUser).WithMany().HasForeignKey(c => c.ChangedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Machine>().HasIndex(m => m.WipWarehouseId).IsUnique();

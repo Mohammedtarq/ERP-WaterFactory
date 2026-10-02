@@ -384,6 +384,7 @@ public class WarehouseDocumentService
         StockTransactionType.ProductionConsume => "استهلاك إنتاج",
         StockTransactionType.WipIssue => qty > 0 ? "وارد تحت التصنيع" : "صرف لأمر إنتاج",
         StockTransactionType.WipReturn => qty > 0 ? "إرجاع من تحت التصنيع" : "إرجاع للمخزن",
+        StockTransactionType.WipAdjust => "تعديل مشرف",
         StockTransactionType.ProductionOutput => "ناتج إنتاج",
         StockTransactionType.Packing => "تعبئة",
         StockTransactionType.ReturnToWarehouse => "إرجاع للمخزن",

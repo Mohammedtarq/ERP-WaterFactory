@@ -260,6 +260,25 @@ public class WizardJourneyTests : IAsyncLifetime
         wip.PrintCommand.Execute(null);
         Assert.Equal("تقرير تحت التصنيع حسب الماكينة", dialogs.Reports.Last().Title);
 
+        // تعديل المشرف (الأدمن): المتبقي الفعلي بعد الجرد 5 بدل 0، بسبب إلزامي، ويظهر في السجل وفي المطابقة
+        Assert.True(wip.IsSupervisor);
+        wip.ActionMachine = wip.Machines.Single(m => m.Name == "نافخة 1");
+        await wip.IdleAsync();
+        wip.ActionItem = wip.ActionItems.First();
+        wip.AdjustNewQuantity = 5;
+        await wip.AdjustCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("إلزامي"));
+        dialogs.Errors.Clear();
+        wip.AdjustReason = "جرد الوردية";
+        await wip.AdjustCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        var adj = Assert.Single(wip.Adjustments);
+        Assert.Equal((0m, 5m, "جرد الوردية"), (adj.BeforeQuantity, adj.AfterQuantity, adj.Reason));
+        Assert.Contains(wip.Rows, r => r.Adjusted == 5 && r.Remaining == 5 && r.IsReconciled);
+        Assert.False(wip.HasAlert);
+        wip.PrintAdjustmentsCommand.Execute(null);
+        Assert.Equal("سجل تعديلات المشرف — تحت التصنيع", dialogs.Reports.Last().Title);
+
         // ماكينة جديدة من تبويب الماكينات تظهر في أمر الإنتاج
         var machinesTab = prod.Machines;
         await Open(prod, machinesTab);

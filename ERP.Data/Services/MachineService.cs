@@ -23,9 +23,11 @@ public class MachineWipRow
     public decimal Returned { get; init; }
     public decimal Consumed { get; init; }
     public decimal Damaged { get; init; }
+    /// <summary>تعديلات المشرف المسجلة (بسبب وسجل تدقيق) — جزء مفسَّر من المعادلة.</summary>
+    public decimal Adjusted { get; init; }
     public decimal Other { get; init; }
     public decimal Remaining { get; init; }
-    public decimal Expected => CarriedOver + Issued - Returned - Consumed - Damaged;
+    public decimal Expected => CarriedOver + Issued - Returned - Consumed - Damaged + Adjusted;
     /// <summary>المطابقة: المصروف (مع المرحّل) = المستهلك + التالف + المُرجَع + المتبقي.</summary>
     public bool IsReconciled => Expected == Remaining;
     public decimal Difference => Remaining - Expected;
@@ -113,12 +115,13 @@ public class MachineService
     }
 
     /// <summary>رصيد تحت التصنيع الحالي لماكينة لكل مادة.</summary>
-    public async Task<Dictionary<int, decimal>> BalancesAsync(int machineId)
+    /// <param name="includeZero">يشمل المواد التي تحركت على الماكينة ورصيدها الآن صفر (لتعديل الجرد).</param>
+    public async Task<Dictionary<int, decimal>> BalancesAsync(int machineId, bool includeZero = false)
     {
         var wip = await _db.Machines.Where(m => m.Id == machineId).Select(m => m.WipWarehouseId).FirstAsync();
         return await _db.StockTransactions.Where(t => t.WarehouseId == wip)
             .GroupBy(t => t.ItemId).Select(g => new { g.Key, Qty = g.Sum(t => t.QuantityBaseUnits) })
-            .Where(x => x.Qty != 0).ToDictionaryAsync(x => x.Key, x => x.Qty);
+            .Where(x => includeZero || x.Qty != 0).ToDictionaryAsync(x => x.Key, x => x.Qty);
     }
 
     /// <summary>
@@ -156,7 +159,8 @@ public class MachineService
                 var returned = Sum(StockTransactionType.WipReturn, -1);
                 var consumed = Sum(StockTransactionType.ProductionConsume, -1);
                 var damaged = Sum(StockTransactionType.Damaged, -1);
-                var known = new[] { StockTransactionType.WipIssue, StockTransactionType.WipReturn, StockTransactionType.ProductionConsume, StockTransactionType.Damaged };
+                var adjusted = Sum(StockTransactionType.WipAdjust, 1);
+                var known = new[] { StockTransactionType.WipIssue, StockTransactionType.WipReturn, StockTransactionType.ProductionConsume, StockTransactionType.Damaged, StockTransactionType.WipAdjust };
                 var other = period.Where(x => !known.Contains(x.TransactionType)).Sum(x => x.QuantityBaseUnits);
                 var carried = g.Where(x => x.TransactionDate < fromUtc).Sum(x => x.QuantityBaseUnits);
                 var remaining = g.Sum(x => x.QuantityBaseUnits);
@@ -169,7 +173,7 @@ public class MachineService
                                                             .Select(x => orderProducts.GetValueOrDefault(x.ReferenceId!.Value))
                                                             .Where(n => n != null).Distinct()),
                     CarriedOver = carried, Issued = issued, Returned = returned, Consumed = consumed, Damaged = damaged,
-                    Other = other, Remaining = remaining
+                    Adjusted = adjusted, Other = other, Remaining = remaining
                 });
             }
         }
@@ -224,6 +228,98 @@ public class MachineService
         await _db.SaveChangesAsync();
         return FinanceOperationResult.Ok();
     }
+
+    /// <summary>المشرف/الأدمن: دوره يملك تعديل إعدادات النظام، أو الترحيل في وحدة الإنتاج.</summary>
+    public Task<bool> IsSupervisorAsync(int userId) =>
+        _db.Users.Where(u => u.Id == userId)
+           .AnyAsync(u => u.Role.Permissions.Any(p => (p.ModuleCode == ModuleCode.SystemSettings && p.CanEdit)
+                                                   || (p.ModuleCode == ModuleCode.Production && p.CanPost)));
+
+    private async Task<decimal> DamagedTotalAsync(int wipId, int itemId, int? orderId) =>
+        -(await _db.StockTransactions.Where(t => t.WarehouseId == wipId && t.ItemId == itemId && t.TransactionType == StockTransactionType.Damaged
+                                                 && (orderId == null || (t.ReferenceTable == "ProductionOrders" && t.ReferenceId == orderId)))
+                                     .SumAsync(t => (decimal?)t.QuantityBaseUnits) ?? 0);
+
+    /// <summary>
+    /// تعديل المشرف للمتبقي تحت التصنيع إلى العدد الفعلي بعد الجرد: يُسجَّل الفرق كحركة "تعديل مشرف"،
+    /// ويُحفظ في سجل التدقيق قبل/بعد/السبب/من/متى. المشرف أو الأدمن فقط، والسبب إلزامي.
+    /// </summary>
+    public async Task<FinanceOperationResult> AdjustRemainingAsync(int machineId, int itemId, decimal newRemaining, string reason, int userId)
+    {
+        var check = await ValidateAdjustmentAsync(machineId, reason, userId);
+        if (check.error is not null) return FinanceOperationResult.Fail(check.error);
+        if (newRemaining < 0) return FinanceOperationResult.Fail("المتبقي لا يكون سالبًا");
+        var machine = check.machine!;
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var before = await LedgerHelper.BalanceAsync(_db, itemId, machine.WipWarehouseId);
+        var delta = newRemaining - before;
+        if (delta == 0) return FinanceOperationResult.Fail("العدد الجديد مطابق للمتبقي الحالي");
+        var error = await PostWipDeltaAsync(machine, itemId, delta, StockTransactionType.WipAdjust, null, userId);
+        if (error is not null) return FinanceOperationResult.Fail(error);
+        _db.WipAdjustments.Add(new WipAdjustment { MachineId = machineId, ItemId = itemId, Kind = WipAdjustmentKind.Remaining,
+                                                   BeforeQuantity = before, AfterQuantity = newRemaining, Reason = reason.Trim(), ChangedByUserId = userId });
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>
+    /// تعديل المشرف لإجمالي التالف المسجل لمادة على ماكينة (أو لأمر محدد): الزيادة تُخصم من المتبقي، والنقص يعيده.
+    /// المشرف أو الأدمن فقط، والسبب إلزامي، مع سجل تدقيق كامل.
+    /// </summary>
+    public async Task<FinanceOperationResult> AdjustDamagedAsync(int machineId, int itemId, int? orderId, decimal newDamaged, string reason, int userId)
+    {
+        var check = await ValidateAdjustmentAsync(machineId, reason, userId);
+        if (check.error is not null) return FinanceOperationResult.Fail(check.error);
+        if (newDamaged < 0) return FinanceOperationResult.Fail("التالف لا يكون سالبًا");
+        var machine = check.machine!;
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var before = await DamagedTotalAsync(machine.WipWarehouseId, itemId, orderId);
+        var delta = newDamaged - before;
+        if (delta == 0) return FinanceOperationResult.Fail("العدد الجديد مطابق للتالف الحالي");
+        // زيادة التالف = خصم من المتبقي، وتخفيضه = إعادة للمتبقي (نفس نوع الحركة وسببها)
+        var error = await PostWipDeltaAsync(machine, itemId, -delta, StockTransactionType.Damaged, orderId, userId);
+        if (error is not null) return FinanceOperationResult.Fail(error);
+        _db.WipAdjustments.Add(new WipAdjustment { MachineId = machineId, ItemId = itemId, ProductionOrderId = orderId, Kind = WipAdjustmentKind.Damaged,
+                                                   BeforeQuantity = before, AfterQuantity = newDamaged, Reason = reason.Trim(), ChangedByUserId = userId });
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
+
+    private async Task<(Machine? machine, string? error)> ValidateAdjustmentAsync(int machineId, string reason, int userId)
+    {
+        if (!await IsSupervisorAsync(userId)) return (null, "تعديل الأعداد للمشرف أو الأدمن فقط");
+        if (string.IsNullOrWhiteSpace(reason)) return (null, "سبب التعديل إلزامي");
+        var machine = await _db.Machines.FirstOrDefaultAsync(m => m.Id == machineId);
+        return machine is null ? (null, "اختر الماكينة") : (machine, null);
+    }
+
+    /// <summary>حركة على تحت التصنيع بفرق موجب (إضافة بلا تشغيلة) أو سالب (خصم بترتيب الصلاحية).</summary>
+    private async Task<string?> PostWipDeltaAsync(Machine machine, int itemId, decimal delta, StockTransactionType type, int? orderId, int userId)
+    {
+        var reference = orderId is null ? (MachinesTable, machine.Id) : ("ProductionOrders", orderId.Value);
+        StockTransaction Tx(int? batchId, decimal q) => new()
+        {
+            ItemId = itemId, WarehouseId = machine.WipWarehouseId, BatchId = batchId, QuantityBaseUnits = q, TransactionType = type,
+            DamageReason = type == StockTransactionType.Damaged ? DamageReason.Production : null,
+            ReferenceTable = reference.Item1, ReferenceId = reference.Item2, CreatedByUserId = userId
+        };
+        if (delta > 0) _db.StockTransactions.Add(Tx(null, delta));
+        else
+        {
+            var (alloc, error) = await LedgerHelper.AllocateAsync(_db, itemId, machine.WipWarehouseId, null, -delta);
+            if (error is not null) return error.Replace("الرصيد غير كافٍ", $"رصيد تحت التصنيع في {machine.Name} غير كافٍ");
+            foreach (var (batchId, q) in alloc) _db.StockTransactions.Add(Tx(batchId, -q));
+        }
+        await _db.SaveChangesAsync();
+        return null;
+    }
+
+    /// <summary>سجل تدقيق تعديلات المشرف.</summary>
+    public Task<List<WipAdjustment>> GetAdjustmentsAsync(int? machineId = null) =>
+        _db.WipAdjustments.AsNoTracking().Include(a => a.Machine).Include(a => a.Item).Include(a => a.ChangedByUser).Include(a => a.ProductionOrder)
+           .Where(a => machineId == null || a.MachineId == machineId).OrderByDescending(a => a.Id).ToListAsync();
 
     /// <summary>إرجاع متبقٍّ من تحت التصنيع إلى مخزن مواد أولية.</summary>
     public async Task<FinanceOperationResult> ReturnToWarehouseAsync(int machineId, int rawItemId, decimal quantity, int warehouseId, int userId)

@@ -9,7 +9,9 @@ public enum StockTransactionType
     /// <summary>إخراج مخزني: صرف لجهة أو غرض من واجهة المخزن (12_warehouse_docs_cashboxes.sql)</summary>
     Issue,
     /// <summary>صرف مواد لأمر إنتاج إلى تحت تصنيع الماكينة، وإرجاع المتبقي منه (15_machines_wip.sql)</summary>
-    WipIssue, WipReturn
+    WipIssue, WipReturn,
+    /// <summary>تعديل مشرف لرصيد تحت التصنيع بعد الجرد (19_wip_adjustments.sql)</summary>
+    WipAdjust
 }
 
 public enum DamageReason { Transit, Warehouse, Production }

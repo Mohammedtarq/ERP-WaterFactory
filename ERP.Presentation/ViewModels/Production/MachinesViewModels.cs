@@ -65,10 +65,62 @@ public class MachineWipSectionViewModel : SectionViewModel
         ReturnCommand = new AsyncRelayCommand(ReturnAsync);
         IssueMoreCommand = new AsyncRelayCommand(IssueMoreAsync);
         PrintCommand = new RelayCommand(() => Dialogs.ShowReport(BuildReport()));
+        AdjustCommand = new AsyncRelayCommand(AdjustAsync);
+        PrintAdjustmentsCommand = new RelayCommand(() => Dialogs.ShowReport(BuildAdjustmentsReport()));
+        _adjustKind = AdjustKindOptions[0];
+    }
+
+    // ---------------- تعديل المشرف (المتبقي / التالف) مع سجل التدقيق ----------------
+    private bool _isSupervisor;
+    private Option<WipAdjustmentKind> _adjustKind;
+    private decimal? _adjustNewQuantity;
+    private string _adjustReason = "";
+    public bool IsSupervisor { get => _isSupervisor; private set => SetProperty(ref _isSupervisor, value); }
+    public IReadOnlyList<Option<WipAdjustmentKind>> AdjustKindOptions { get; } = ArabicLabels.OptionsOf<WipAdjustmentKind>();
+    public Option<WipAdjustmentKind> AdjustKind { get => _adjustKind; set => SetProperty(ref _adjustKind, value); }
+    /// <summary>العدد الصحيح الجديد (المتبقي الفعلي بعد الجرد، أو إجمالي التالف الصحيح).</summary>
+    public decimal? AdjustNewQuantity { get => _adjustNewQuantity; set => SetProperty(ref _adjustNewQuantity, value); }
+    public string AdjustReason { get => _adjustReason; set => SetProperty(ref _adjustReason, value); }
+    public ObservableCollection<WipAdjustment> Adjustments { get; } = new();
+    public AsyncRelayCommand AdjustCommand { get; }
+    public RelayCommand PrintAdjustmentsCommand { get; }
+
+    private async Task AdjustAsync()
+    {
+        if (!IsSupervisor) { Dialogs.Error("تعديل الأعداد للمشرف أو الأدمن فقط"); return; }
+        if (ActionMachine is null || ActionItem is null) { Dialogs.Error("اختر الماكينة والمادة"); return; }
+        if (AdjustNewQuantity is null) { Dialogs.Error("أدخل العدد الصحيح الجديد"); return; }
+        var (machine, item, qty, reason) = (ActionMachine, ActionItem, AdjustNewQuantity.Value, AdjustReason);
+        var damaged = AdjustKind.Value == WipAdjustmentKind.Damaged;
+        await using var db = Session.NewDb();
+        var service = new MachineService(db);
+        if (await RunOperationAsync(() => damaged
+                ? service.AdjustDamagedAsync(machine.Id, item.ItemId, ActionOrder?.Id, qty, reason, Session.UserId)
+                : service.AdjustRemainingAsync(machine.Id, item.ItemId, qty, reason, Session.UserId),
+                $"عُدّل {AdjustKind.Label} لـ {item.ItemName} على {machine.Name} إلى {qty:N0} — سُجّل في سجل التدقيق"))
+        {
+            AdjustNewQuantity = null;
+            AdjustReason = "";
+            await LoadAsync();
+        }
+    }
+
+    public ReportDocument BuildAdjustmentsReport()
+    {
+        var r = new ReportDocument { Key = "wip-adjustments", CompanyName = Session.ProjectName, Title = "سجل تعديلات المشرف — تحت التصنيع", PrintedBy = Session.FullName };
+        r.Field("الماكينة", Machine?.Name ?? "كل الماكينات");
+        r.Columns.AddRange(new[] { "التاريخ", "الماكينة", "المادة", "النوع", "الأمر", "قبل", "بعد", "الفرق", "السبب", "المستخدم" });
+        foreach (var a in Adjustments)
+            r.Rows.Add(new[] { a.ChangedAt.ToLocalTime().ToString("yyyy/MM/dd HH:mm"), a.Machine.Name, a.Item.ItemName, ArabicLabels.Of(a.Kind),
+                               a.ProductionOrder?.MONumber ?? "", $"{a.BeforeQuantity:N0}", $"{a.AfterQuantity:N0}", $"{a.AfterQuantity - a.BeforeQuantity:+#,0;-#,0;0}",
+                               a.Reason, a.ChangedByUser.Username });
+        r.Total("عدد التعديلات", Adjustments.Count.ToString(), true);
+        r.Signatures.AddRange(new[] { "المشرف", "المدقق" });
+        return r;
     }
 
     protected override bool ReloadOnActivate => true;
-    protected override bool HasPendingInput => ActionQuantity != 0;
+    protected override bool HasPendingInput => ActionQuantity != 0 || AdjustNewQuantity is not null;
 
     public ObservableCollection<Machine> Machines { get; } = new();
     public ObservableCollection<MachineWipRow> Rows { get; } = new();
@@ -120,6 +172,9 @@ public class MachineWipSectionViewModel : SectionViewModel
         _actionOrder = ActiveOrders.FirstOrDefault(o => o.Id == orderId);
         OnPropertyChanged(nameof(ActionOrder));
 
+        IsSupervisor = await new MachineService(db).IsSupervisorAsync(Session.UserId);
+        Adjustments.Clear();
+        foreach (var a in await new MachineService(db).GetAdjustmentsAsync(Machine?.Id)) Adjustments.Add(a);
         Rows.Clear();
         foreach (var r in await new MachineService(db).GetWipSummaryAsync(From, To, Machine?.Id)) Rows.Add(r);
         var bad = Rows.Where(r => !r.IsReconciled).ToList();
@@ -136,7 +191,7 @@ public class MachineWipSectionViewModel : SectionViewModel
         ActionItems.Clear();
         if (ActionMachine is null) return;
         await using var db = Session.NewDb();
-        var balances = await new MachineService(db).BalancesAsync(ActionMachine.Id);
+        var balances = await new MachineService(db).BalancesAsync(ActionMachine.Id, includeZero: true);
         // مكونات الأوامر القائمة على الماكينة تظهر أيضًا (للصرف الإضافي) حتى لو كان رصيدها صفرًا
         var orderItems = await db.ProductionOrderConsumptions.Where(c => c.ProductionOrder.MachineId == ActionMachine.Id
                                                                        && c.ProductionOrder.Status == ProductionOrderStatus.InProgress)
@@ -199,10 +254,10 @@ public class MachineWipSectionViewModel : SectionViewModel
     {
         var r = new ReportDocument { Key = "machine-wip", CompanyName = Session.ProjectName, Title = "تقرير تحت التصنيع حسب الماكينة", PrintedBy = Session.FullName };
         r.Field("الماكينة", Machine?.Name ?? "كل الماكينات").Field("الفترة", $"{From:yyyy/MM/dd} — {To:yyyy/MM/dd}");
-        r.Columns.AddRange(new[] { "الماكينة", "النوع", "المادة الأولية", "المنتج", "المرحّل", "المصروف", "المستهلك فعليًا", "التالف", "المُرجَع", "المتبقي", "المطابقة" });
+        r.Columns.AddRange(new[] { "الماكينة", "النوع", "المادة الأولية", "المنتج", "المرحّل", "المصروف", "المستهلك فعليًا", "التالف", "المُرجَع", "تعديل مشرف", "المتبقي", "المطابقة" });
         foreach (var x in Rows)
             r.Rows.Add(new[] { x.MachineName, x.MachineType, x.RawItemName, x.ProductsText, $"{x.CarriedOver:N0}", $"{x.Issued:N0}", $"{x.Consumed:N0}",
-                               $"{x.Damaged:N0}", $"{x.Returned:N0}", $"{x.Remaining:N0}", x.IsReconciled ? "مطابق" : $"فرق {x.Difference:N0}" });
+                               $"{x.Damaged:N0}", $"{x.Returned:N0}", $"{x.Adjusted:+#,0;-#,0;0}", $"{x.Remaining:N0}", x.IsReconciled ? "مطابق" : $"فرق {x.Difference:N0}" });
         r.Total("إجمالي المصروف", $"{Rows.Sum(x => x.Issued):N0}")
          .Total("إجمالي المستهلك", $"{Rows.Sum(x => x.Consumed):N0}")
          .Total("إجمالي التالف", $"{Rows.Sum(x => x.Damaged):N0}")
