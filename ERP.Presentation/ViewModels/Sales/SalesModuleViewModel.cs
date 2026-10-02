@@ -746,6 +746,67 @@ public class CustomerStatementSectionViewModel : SectionViewModel
             if (Customer is null) { Dialogs.Error("اختر العميل أولًا"); return; }
             Dialogs.ShowReport(BuildReport());
         });
+        PrintInvoicesCommand = new RelayCommand(() =>
+        {
+            if (Customer is null) { Dialogs.Error("اختر العميل أولًا"); return; }
+            Dialogs.ShowReport(BuildInvoicesReport());
+        });
+        AllocateCommand = new AsyncRelayCommand(AllocateAsync);
+        ResetAutoCommand = new AsyncRelayCommand(p => p is CustomerPaymentRow r ? ResetAutoAsync(r) : Task.CompletedTask);
+    }
+
+    // ---------------- الفواتير والمدفوعات والتوزيع ----------------
+    private CustomerPaymentRow? _allocVoucher;
+    private CustomerInvoiceRow? _allocInvoice;
+    private decimal _allocAmount;
+    public ObservableCollection<CustomerInvoiceRow> Invoices { get; } = new();
+    public ObservableCollection<CustomerPaymentRow> Payments { get; } = new();
+    public CustomerPaymentRow? AllocVoucher { get => _allocVoucher; set => SetProperty(ref _allocVoucher, value); }
+    public CustomerInvoiceRow? AllocInvoice { get => _allocInvoice; set { if (SetProperty(ref _allocInvoice, value) && value is not null && AllocAmount == 0) AllocAmount = value.Remaining; } }
+    public decimal AllocAmount { get => _allocAmount; set => SetProperty(ref _allocAmount, value); }
+    public RelayCommand PrintInvoicesCommand { get; }
+    public AsyncRelayCommand AllocateCommand { get; }
+    public AsyncRelayCommand ResetAutoCommand { get; }
+    public decimal OpenInvoicesTotal => Invoices.Sum(i => i.Remaining);
+    public decimal UnallocatedCredit => Payments.Sum(p => p.Unallocated);
+    public string DebtHeadline => Customer is null ? "" :
+        $"إجمالي الدين: {Math.Max(0, Balance):N0} د.ع — فواتير مفتوحة: {Invoices.Count(i => i.Remaining > 0)}" +
+        (UnallocatedCredit > 0 ? $" — رصيد دفعات غير موزع: {UnallocatedCredit:N0} د.ع" : "");
+
+    private async Task AllocateAsync()
+    {
+        if (!Require(CanEdit, "التوزيع اليدوي للدفعات")) return;
+        if (AllocVoucher is null || AllocInvoice is null) { Dialogs.Error("اختر سند القبض والفاتورة"); return; }
+        await using var db = Session.NewDb();
+        var (voucher, invoice, amount) = (AllocVoucher, AllocInvoice, AllocAmount);
+        if (await RunOperationAsync(() => new CustomerAccountService(db).AllocateManualAsync(voucher.VoucherId, invoice.InvoiceId, amount, Session.UserId),
+                                    $"وُزّع {amount:N0} من {voucher.VoucherNumber} على {invoice.InvoiceNumber} يدويًا"))
+        {
+            AllocAmount = 0;
+            await LoadStatementAsync();
+        }
+    }
+
+    private async Task ResetAutoAsync(CustomerPaymentRow row)
+    {
+        if (!Require(CanEdit, "التوزيع اليدوي للدفعات")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new CustomerAccountService(db).ResetToAutomaticAsync(row.VoucherId), $"أُعيد توزيع {row.VoucherNumber} تلقائيًا (الأقدم أولًا)"))
+            await LoadStatementAsync();
+    }
+
+    public ReportDocument BuildInvoicesReport()
+    {
+        var r = new ReportDocument { Key = "customer-invoices", CompanyName = Session.ProjectName, Title = "كشف فواتير عميل (المدفوع والمتبقي)", PrintedBy = Session.FullName };
+        r.Field("العميل", Customer?.Name).Field("الوكيل", Customer?.ParentAgent?.Name);
+        r.Columns.AddRange(new[] { "رقم الفاتورة", "التاريخ", "القيمة", "المدفوع", "المتبقي", "الحالة" });
+        foreach (var i in Invoices)
+            r.Rows.Add(new[] { i.InvoiceNumber, i.InvoiceDate.ToString("yyyy/MM/dd"), $"{i.Total:N0}", $"{i.Paid:N0}", $"{i.Remaining:N0}", i.StatusText });
+        r.Total("إجمالي الفواتير", $"{Invoices.Sum(i => i.Total):N0} د.ع")
+         .Total("إجمالي المدفوع", $"{Invoices.Sum(i => i.Paid):N0} د.ع")
+         .Total("إجمالي الدين", $"{Math.Max(0, Balance):N0} د.ع", true);
+        r.Signatures.AddRange(new[] { "توقيع العميل", "المحاسب" });
+        return r;
     }
 
     public RelayCommand PrintCommand { get; }
@@ -813,15 +874,30 @@ public class CustomerStatementSectionViewModel : SectionViewModel
     public async Task LoadStatementAsync()
     {
         Rows.Clear();
+        Invoices.Clear();
+        Payments.Clear();
         if (Customer is not null)
         {
             await using var db = Session.NewDb();
+            var account = new CustomerAccountService(db);
+            await account.SyncAsync(Customer.Id);   // التوزيع الأقدم أولًا محدَّث دائمًا قبل العرض
             foreach (var r in await new SalesService(db).GetCustomerStatementAsync(Customer.Id))
             {
                 r.TxType = ArabicLabels.Of(r.TxType);
                 Rows.Add(r);
             }
+            foreach (var i in await account.GetInvoicesAsync(Customer.Id)) Invoices.Add(i);
+            foreach (var p in await account.GetPaymentsAsync(Customer.Id)) Payments.Add(p);
         }
+        var voucherId = AllocVoucher?.VoucherId;
+        var invoiceId = AllocInvoice?.InvoiceId;
+        _allocVoucher = Payments.FirstOrDefault(p => p.VoucherId == voucherId);
+        _allocInvoice = Invoices.FirstOrDefault(i => i.InvoiceId == invoiceId);
+        OnPropertyChanged(nameof(AllocVoucher));
+        OnPropertyChanged(nameof(AllocInvoice));
+        OnPropertyChanged(nameof(OpenInvoicesTotal));
+        OnPropertyChanged(nameof(UnallocatedCredit));
+        OnPropertyChanged(nameof(DebtHeadline));
         OnPropertyChanged(nameof(TotalDebit));
         OnPropertyChanged(nameof(TotalCredit));
         OnPropertyChanged(nameof(Balance));

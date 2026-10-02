@@ -37,6 +37,10 @@ public class SalesInvoice
     public decimal SubTotal { get; set; }
     public decimal TaxAmount { get; set; }
     public decimal TotalAmount { get; set; }
+    /// <summary>المدفوع التراكمي (المدفوع عند البيع + ما وُزّع عليها من سندات القبض) — 20_payment_allocations.sql.</summary>
+    public decimal AmountSettled { get; set; }
+    /// <summary>المتبقي = الإجمالي − المدفوع (عمود محسوب في قاعدة البيانات).</summary>
+    public decimal AmountRemaining { get; private set; }
     public string? Notes { get; set; }
 
     public int? PostedByUserId { get; set; }

@@ -25,7 +25,7 @@ for _ in $(seq 1 60); do sq -Q "SELECT 1" >/dev/null 2>&1 && break; sleep 2; don
 
 new_project_db() {
   sq -Q "CREATE DATABASE [$1] COLLATE Arabic_CI_AS" >/dev/null
-  for f in Database/0[1-9]_*.sql Database/1[0-9]_*.sql; do
+  for f in Database/0[1-9]_*.sql Database/[1-9][0-9]_*.sql; do
     [ -e "$f" ] || continue
     sq -d "$1" < "$f" >/dev/null
   done

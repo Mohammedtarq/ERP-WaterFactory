@@ -132,6 +132,14 @@ public class ScreenFlowTests
         Assert.Equal(sales.Statement.Rows.Count, stmt.Rows.Count);
         Assert.Contains(stmt.Rows, r => r[2] == number && r[4] == "14,280");
 
+        // الفواتير بالمدفوع والمتبقي والحالة، وإجمالي الدين في أعلى الكشف
+        var invoiceRow = Assert.Single(sales.Statement.Invoices, i => i.InvoiceNumber == number);
+        Assert.Equal(14280m, invoiceRow.Total);
+        Assert.Equal(invoiceRow.Total - invoiceRow.Paid, invoiceRow.Remaining);
+        Assert.Contains("إجمالي الدين", sales.Statement.DebtHeadline);
+        sales.Statement.PrintInvoicesCommand.Execute(null);
+        Assert.Equal("كشف فواتير عميل (المدفوع والمتبقي)", dialogs.Reports.Last().Title);
+
         // المخزون خُصم 60 قطعة (يُحدَّث تلقائيًا عند فتح التبويب)
         shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
         await Open(warehouse, warehouse.Home.Sections.OfType<ItemsSectionViewModel>().Single());
@@ -338,6 +346,7 @@ public class ScreenFlowTests
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var wh = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
+        await wh.IdleAsync();   // تبويبات المخازن تُضاف في الخلفية — لا نعدّد التبويبات أثناء إضافتها
         Assert.DoesNotContain(wh.Tabs, t => t is StockAdjustmentSectionViewModel);    // مخفية من الوحدة مؤقتًا
         var adj = wh.LegacyAdjustment;
         await Open(wh, adj);
@@ -398,6 +407,10 @@ public class ScreenFlowTests
         sales.Statement.Customer = sales.Statement.Customers.Single(c => c.Id == _f.DirectId);
         await sales.Statement.IdleAsync();
         Assert.Contains(sales.Statement.Rows, r => r.TxType == "سند قبض" && r.Credit == 750);
+        // السند يظهر في الدفعات بتوزيعه (الأقدم أولًا) على فواتير العميل إن وُجدت
+        var paymentRow = Assert.Single(sales.Statement.Payments, p => p.Amount == 750);
+        Assert.Equal(750m, paymentRow.Allocated + paymentRow.Unallocated);
+        Assert.Equal(sales.Statement.Invoices.Sum(i => i.Paid), sales.Statement.Invoices.Sum(i => i.Total) - sales.Statement.Invoices.Sum(i => i.Remaining));
 
         // طباعة السند (بالمبلغ كتابةً) والقيد
         await v.PrintCommand.ExecuteAsync(v.Vouchers.First(x => x.Amount == 750));

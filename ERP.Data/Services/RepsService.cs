@@ -188,6 +188,7 @@ public class RepsService
         _db.RepWalletTransactions.Add(new RepWalletTransaction { EmployeeId = repId, TransactionDate = date, Description = description, AmountIn = amount,
                                                                  JournalEntryId = entry!.Id, ReferenceTable = "Vouchers", ReferenceId = voucher.Id });
         await _db.SaveChangesAsync();
+        await new CustomerAccountService(_db).SyncAsync(customerId);
         await tx.CommitAsync();
         return FinanceOperationResult.Ok();
     }

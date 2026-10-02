@@ -85,6 +85,7 @@ public class ProjectDbContext : DbContext
     public DbSet<ProductionOrderConsumption> ProductionOrderConsumptions => Set<ProductionOrderConsumption>();
     public DbSet<ProductionOrderLine> ProductionOrderLines => Set<ProductionOrderLine>();
     public DbSet<Machine> Machines => Set<Machine>();
+    public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
     public DbSet<WipAdjustment> WipAdjustments => Set<WipAdjustment>();
     public DbSet<BatchNumberChange> BatchNumberChanges => Set<BatchNumberChange>();
     public DbSet<QualityTest> QualityTests => Set<QualityTest>();
@@ -395,6 +396,13 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.RawMaterialsWarehouse).WithMany().HasForeignKey(p => p.RawMaterialsWarehouseId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.Machine).WithMany().HasForeignKey(p => p.MachineId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Machine>().HasIndex(m => m.Name).IsUnique();
+        modelBuilder.Entity<SalesInvoice>().Property(i => i.AmountSettled).HasPrecision(18, 2);
+        modelBuilder.Entity<SalesInvoice>().Property(i => i.AmountRemaining).HasPrecision(18, 2)
+            .HasComputedColumnSql("[TotalAmount] - [AmountSettled]").ValueGeneratedOnAddOrUpdate();
+        modelBuilder.Entity<PaymentAllocation>().Property(a => a.Amount).HasPrecision(18, 2);
+        modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.Voucher).WithMany().HasForeignKey(a => a.VoucherId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.SalesInvoice).WithMany().HasForeignKey(a => a.SalesInvoiceId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.AllocatedByUser).WithMany().HasForeignKey(a => a.AllocatedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<WipAdjustment>().Property(a => a.Kind).HasConversion<string>();
         modelBuilder.Entity<WipAdjustment>().Property(a => a.BeforeQuantity).HasPrecision(18, 3);
         modelBuilder.Entity<WipAdjustment>().Property(a => a.AfterQuantity).HasPrecision(18, 3);

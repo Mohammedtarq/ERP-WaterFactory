@@ -192,6 +192,12 @@ public class SalesService
                 };
             }
         });
+        // فاتورة آجلة/جزئية جديدة ← تأخذ نصيبها من أي رصيد دائن للعميل (الأقدم أولًا)
+        if (result.Success)
+        {
+            var customerId = await _db.SalesInvoices.Where(i => i.Id == invoiceId).Select(i => i.CustomerId).FirstAsync();
+            await new CustomerAccountService(_db).SyncAsync(customerId);
+        }
         return (result, summary);
     }
 

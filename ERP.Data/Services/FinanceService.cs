@@ -121,6 +121,10 @@ public class FinanceService
                 null, $"{(voucherType == VoucherType.Receipt ? "سند قبض" : "سند صرف")} {voucher.VoucherNumber}" + (string.IsNullOrWhiteSpace(notes) ? "" : $" — {notes}"),
                 entry.Id);
 
+        // سند على عميل ← يُعاد توزيع دفعاته على فواتيره الأقدم أولًا
+        if (partyType == VoucherPartyType.Customer && partyId is int customerId)
+            await new CustomerAccountService(_db).SyncAsync(customerId);
+
         return FinanceOperationResult.Ok();
     }
 
