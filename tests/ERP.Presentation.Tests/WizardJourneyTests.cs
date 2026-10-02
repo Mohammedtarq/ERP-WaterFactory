@@ -29,8 +29,15 @@ public class WizardJourneyTests : IAsyncLifetime
         return Task.CompletedTask;
     }
 
+    /// <summary>كل واجهة فُتحت في الاختبار: تُنتظر أعمالها الخلفية (لوحات الأقسام) قبل حذف القاعدة،
+    /// وإلا قتل الحذف استعلامًا جاريًا وظهر خطأه في اختبارات أخرى.</summary>
+    private static readonly List<MainShellViewModel> Shells = new();
+
     public async Task DisposeAsync()
     {
+        List<MainShellViewModel> shells;
+        lock (Shells) { shells = Shells.ToList(); Shells.Clear(); }
+        foreach (var s in shells) await s.IdleAllAsync();
         SqlConnection.ClearAllPools();
         await using var conn = new SqlConnection(Master);
         await conn.OpenAsync();
@@ -73,6 +80,7 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Null(login.ErrorMessage);
         await nav.ProjectSelection!.OpenCommand.ExecuteAsync(null);
         Assert.Null(nav.ProjectSelection.ErrorMessage);
+        lock (Shells) Shells.Add(nav.Shell!);
         return (nav.Shell!, dialogs);
     }
 
@@ -290,6 +298,7 @@ public class WizardJourneyTests : IAsyncLifetime
         ps.SelectedProject = ps.Projects.Single(p => p.DatabaseName == ProjectDb2);
         await ps.OpenCommand.ExecuteAsync(null);
         Assert.Null(ps.ErrorMessage);
+        lock (Shells) Shells.Add(loginNav.Shell!);
         Assert.Equal(9, loginNav.Shell!.NavItems.Count);
     }
 }

@@ -105,6 +105,21 @@ public class MainShellViewModel : ViewModelBase
     public RelayCommand LogoutCommand { get; }
 
     /// <summary>فتح وحدة بكودها (للاختبارات وللروابط بين الشاشات).</summary>
+    /// <summary>ينتظر كل أعمال الخلفية في الوحدات المفتوحة (لوحاتها وتبويباتها) — قبل الخروج أو حذف قاعدة تجريبية.</summary>
+    public async Task IdleAllAsync()
+    {
+        await IdleAsync();
+        foreach (var module in _modules.Values.ToList())
+        {
+            if (module is ViewModelBase vm) await vm.IdleAsync();
+            if (module is ModuleViewModel m)
+            {
+                if (m.Dashboard is { } d) await d.IdleAsync();
+                foreach (var s in m.Tabs.OfType<SectionViewModel>().ToList()) await s.IdleAsync();
+            }
+        }
+    }
+
     public T Open<T>(string moduleCode) where T : class
     {
         SelectedItem = NavItems.Single(n => n.ModuleCode == moduleCode);
