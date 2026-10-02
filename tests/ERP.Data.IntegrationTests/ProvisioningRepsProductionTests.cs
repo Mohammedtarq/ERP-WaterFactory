@@ -242,10 +242,11 @@ public class ProductionServiceTests
         var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
         var carton = await db.ItemPackagingLevels.FirstAsync(l => l.ItemId == w500.Id && l.LevelName == "كارتون");
         var piece = await db.ItemPackagingLevels.FirstAsync(l => l.ItemId == w500.Id && l.EquivalentBaseUnits == 1);
+        var machineId = (int?)(await db.Machines.FirstAsync(m => m.Name == "نافخة 1")).Id;
         var capBefore = await Balance(db, cap.Id, raw.Id);
         var fgBefore = await Balance(db, w500.Id, fg.Id);
 
-        var (cr, orderId) = await prod.CreateOrderAsync(w500.Id, 1000, null, raw.Id, user);
+        var (cr, orderId) = await prod.CreateOrderAsync(w500.Id, 1000, null, raw.Id, machineId, user);
         Assert.True(cr.Success, cr.ErrorMessage);
         Assert.Equal(3, await db.ProductionOrderConsumptions.CountAsync(c => c.ProductionOrderId == orderId));
 
@@ -273,7 +274,7 @@ public class ProductionServiceTests
         Assert.Equal(order.Id, order.OutputBatch.ProductionOrderId);
 
         // أمر ثانٍ: pH خارج الحدود ← الدفعة مرفوضة ← لا تعبئة ← الإلغاء مسموح
-        var (_, second) = await prod.CreateOrderAsync(w500.Id, 100, null, raw.Id, user);
+        var (_, second) = await prod.CreateOrderAsync(w500.Id, 100, null, raw.Id, machineId, user);
         await prod.StartAsync(second!.Value, user);
         var (_, bad) = await prod.RecordQcAsync(second.Value, new[] { For("درجة", "9.1"), For("الأملاح", "120"), For("إحكام", "سليم") }, user);
         Assert.Equal(QCOverallResult.Rejected, bad);
@@ -282,7 +283,7 @@ public class ProductionServiceTests
         Assert.Contains((await prod.GetOrdersAsync()), o => o.Id == second && o.StageText == "ملغى");
 
         // نقص مواد أولية ← البدء يُرفض دون أي صرف جزئي
-        var (_, huge) = await prod.CreateOrderAsync(w500.Id, 1_000_000, null, raw.Id, user);
+        var (_, huge) = await prod.CreateOrderAsync(w500.Id, 1_000_000, null, raw.Id, machineId, user);
         var capNow = await Balance(db, cap.Id, raw.Id);
         Assert.Contains("الرصيد غير كافٍ", (await prod.StartAsync(huge!.Value, user)).ErrorMessage);
         await using var fresh = _f.NewDb();
@@ -300,6 +301,7 @@ public class ProductionServiceTests
         var user = _f.AdminLocalId;
         var branchId = (await db.Warehouses.FirstAsync()).BranchId;
         var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var machineId = (int?)(await db.Machines.FirstAsync(m => m.Name == "تعبئة 1")).Id;
         var preform = new Item { ItemCode = "RM-PRE-T", ItemName = "امبولة 14 غم (اختبار)", SourcingMethod = SourcingMethod.Purchased };
         var bottle = new Item { ItemCode = "W-330-T", ItemName = "ماء 330 مل (اختبار)", SourcingMethod = SourcingMethod.Manufactured };
         var empty = new Warehouse { BranchId = branchId, Name = "أ- مخزن الأغطية (فارغ)", WarehouseType = WarehouseType.RawMaterial };
@@ -327,12 +329,13 @@ public class ProductionServiceTests
 
         // الأمر مرتبط بالمخزن الفارغ ← البدء ينجح ويصرف من المخزن الآخر بترتيب الصلاحية (الأقرب انتهاءً أولًا)
         var prod = new ProductionService(db);
-        var (cr, orderId) = await prod.CreateOrderAsync(bottle.Id, 2000, null, empty.Id, user);
+        var (cr, orderId) = await prod.CreateOrderAsync(bottle.Id, 2000, null, empty.Id, machineId, user);
         Assert.True(cr.Success, cr.ErrorMessage);
         var start = await prod.StartAsync(orderId!.Value, user);
         Assert.True(start.Success, start.ErrorMessage);
         await using var check = _f.NewDb();
-        var consumed = await check.StockTransactions.Where(t => t.ReferenceTable == "ProductionOrders" && t.ReferenceId == orderId && t.ItemId == preform.Id).ToListAsync();
+        var consumed = await check.StockTransactions.Where(t => t.ReferenceTable == "ProductionOrders" && t.ReferenceId == orderId && t.ItemId == preform.Id
+                                                                   && t.QuantityBaseUnits < 0).ToListAsync();
         Assert.Equal(-2000m, consumed.Sum(t => t.QuantityBaseUnits));
         Assert.All(consumed, t => Assert.Equal(stocked.Id, t.WarehouseId));
         Assert.Equal(-1500m, consumed.Single(t => t.BatchId == soon.Id).QuantityBaseUnits);
@@ -340,7 +343,7 @@ public class ProductionServiceTests
         Assert.Equal(900m, await Balance(check, preform.Id, fg.Id));
 
         // النقص: رسالة توضح المتاح في مخازن المواد الأولية والرصيد الموجود في مخازن أخرى، ولا صرف جزئي
-        var (_, big) = await prod.CreateOrderAsync(bottle.Id, 3000, null, empty.Id, user);
+        var (_, big) = await prod.CreateOrderAsync(bottle.Id, 3000, null, empty.Id, machineId, user);
         var error = (await prod.StartAsync(big!.Value, user)).ErrorMessage;
         Assert.Contains("المتاح في مخازن المواد الأولية 2500", error);
         Assert.Contains("يوجد 900 في مخازن أخرى", error);
@@ -349,6 +352,108 @@ public class ProductionServiceTests
         empty.IsActive = false;
         stocked.IsActive = false;
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// تحت التصنيع لكل ماكينة: الصرف لأمر إنتاج ← الاستهلاك = قائمة المواد × المُنتَج فعلًا ← التالف من تحت التصنيع ←
+    /// المتبقي مرحّل على الماكينة ← المطابقة: المصروف = المستهلك + التالف + المتبقي. ولا صرف حر من مخزن المواد الأولية.
+    /// </summary>
+    [Fact]
+    public async Task Machine_wip_issue_consume_by_produced_damage_carry_over_and_reconcile()
+    {
+        await using var db = _f.NewDb();
+        var user = _f.AdminLocalId;
+        var prod = new ProductionService(db);
+        var machines = new MachineService(db);
+        var w500 = await db.Items.FirstAsync(i => i.ItemCode == "W-500");
+        var cap = await db.Items.FirstAsync(i => i.ItemCode == "RM-CAP");
+        var preformId = (await db.Items.FirstAsync(i => i.ItemCode == "RM-PRE")).Id;
+        var raw = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial && w.Name == "مخزن المواد الأولية");
+        var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var piece = await db.ItemPackagingLevels.FirstAsync(l => l.ItemId == w500.Id && l.EquivalentBaseUnits == 1);
+
+        // ماكينة جديدة ← مخزن تحت تصنيع خاص بها، لا يظهر كنوع عادي ولا يقبل مستندات المخزن
+        var (mr, machineId) = await machines.SaveAsync(null, "نافخة اختبار", "نفخ", "الخط الثاني", null, true);
+        Assert.True(mr.Success, mr.ErrorMessage);
+        Assert.False((await machines.SaveAsync(null, "نافخة اختبار", "نفخ", null, null, true)).result.Success);
+        var machine = await db.Machines.AsNoTracking().Include(m => m.WipWarehouse).SingleAsync(m => m.Id == machineId);
+        Assert.Equal(WarehouseType.WorkInProcess, machine.WipWarehouse.WarehouseType);
+        Assert.Equal("تحت التصنيع — نافخة اختبار", machine.WipWarehouse.Name);
+        var wip = machine.WipWarehouseId;
+
+        var docs = new WarehouseDocumentService(db);
+        var capPiece = await db.ItemPackagingLevels.FirstAsync(l => l.ItemId == cap.Id && l.EquivalentBaseUnits == 1);
+        var capLine = new[] { new StockDocumentLineInput(cap.Id, capPiece.Id, 10) };
+        var freeIssue = await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.Issue, raw.Id, DateTime.Today, capLine, user, PartyName: "أي جهة"));
+        Assert.Contains("لا يُسمح بالصرف الحر", freeIssue.result.ErrorMessage);
+        var toWip = await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.Receipt, wip, DateTime.Today, capLine, user));
+        Assert.False(toWip.result.Success);
+
+        // أمر بلا ماكينة يُرفض
+        Assert.Contains("اختر الماكينة", (await prod.CreateOrderAsync(w500.Id, 100, null, raw.Id, null, user)).result.ErrorMessage);
+
+        // صرف 500 لكل مادة ← تنتقل من مخزن المواد إلى تحت التصنيع
+        var capRawBefore = await Balance(db, cap.Id, raw.Id);
+        var (_, orderId) = await prod.CreateOrderAsync(w500.Id, 500, null, raw.Id, machineId, user);
+        Assert.True((await prod.StartAsync(orderId!.Value, user)).Success);
+        Assert.Equal(capRawBefore - 500, await Balance(db, cap.Id, raw.Id));
+        Assert.Equal(500m, await Balance(db, cap.Id, wip));
+
+        var tests = await prod.GetApplicableTestsAsync(w500.Id);
+        QcInput For(string name, string value) => new(tests.Single(t => t.TestName.StartsWith(name)).Id, value);
+        Assert.True((await prod.RecordQcAsync(orderId.Value, new[] { For("درجة", "7.2"), For("الأملاح", "120"), For("إحكام", "سليم") }, user)).result.Success);
+
+        // إنتاج 300 فعليًا ← يُستهلك 300 من كل مادة فقط، ويبقى 200 على الماكينة
+        Assert.True((await prod.PackAsync(orderId.Value, piece.Id, 300, fg.Id, user)).Success);
+        Assert.Equal(200m, await Balance(db, cap.Id, wip));
+
+        // تالف إنتاج 30 غطاء من تحت التصنيع، ولا يتجاوز المتبقي
+        Assert.True((await machines.RecordDamageAsync(machineId!.Value, cap.Id, 30, orderId, user)).Success);
+        Assert.Contains("تحت التصنيع", (await machines.RecordDamageAsync(machineId.Value, cap.Id, 1000, null, user)).ErrorMessage);
+        Assert.Equal(170m, await Balance(db, cap.Id, wip));
+
+        // إنتاج 200 أخرى يحتاج 200 غطاء والمتبقي 170 ← يُرفض بلا أي خصم، ثم صرف إضافي 30 يكمل
+        var shortage = await prod.PackAsync(orderId.Value, piece.Id, 200, fg.Id, user);
+        Assert.Contains("اصرف كمية إضافية", shortage.ErrorMessage);
+        await using (var fresh = _f.NewDb()) Assert.Equal(170m, await Balance(fresh, cap.Id, wip));
+        Assert.True((await prod.IssueAdditionalAsync(orderId.Value, cap.Id, 30, user)).Success);
+        Assert.True((await prod.PackAsync(orderId.Value, piece.Id, 150, fg.Id, user)).Success);
+        Assert.Equal(50m, await Balance(db, cap.Id, wip));
+
+        // مطابقة الأمر: المصروف 530 = المستهلك 450 + التالف 30 + المتبقي 50
+        var materials = await machines.GetOrderMaterialsAsync(orderId.Value);
+        var capRow = materials.Single(m => m.RawItemId == cap.Id);
+        Assert.Equal((530m, 450m, 30m, 50m), (capRow.Issued, capRow.Consumed, capRow.Damaged, capRow.Remaining));
+        var preformRow = materials.Single(m => m.RawItemId == preformId);
+        Assert.Equal((500m, 450m, 50m), (preformRow.Issued, preformRow.Consumed, preformRow.Remaining));
+
+        // عرض الماكينة: المصروف والمستهلك والتالف والمتبقي، والمطابقة سليمة
+        var summary = await machines.GetWipSummaryAsync(DateTime.Today.AddDays(-1), DateTime.Today, machineId);
+        var capWip = summary.Single(r => r.RawItemId == cap.Id);
+        Assert.Equal((0m, 530m, 450m, 30m, 50m), (capWip.CarriedOver, capWip.Issued, capWip.Consumed, capWip.Damaged, capWip.Remaining));
+        Assert.True(capWip.IsReconciled);
+        Assert.Equal("نافخة اختبار", capWip.MachineName);
+        Assert.Equal("نفخ", capWip.MachineType);
+        Assert.Contains(w500.ItemName, capWip.ProductsText);
+        Assert.All(summary, r => Assert.True(r.IsReconciled));
+
+        // الفترة التالية: المتبقي يظهر كمرحّل
+        var next = (await machines.GetWipSummaryAsync(DateTime.Today.AddDays(1), DateTime.Today.AddDays(2), machineId)).Single(r => r.RawItemId == cap.Id);
+        Assert.Equal((50m, 0m, 50m), (next.CarriedOver, next.Issued, next.Remaining));
+
+        // إرجاع المتبقي للمخزن ← يصفر رصيد الماكينة
+        Assert.True((await machines.ReturnToWarehouseAsync(machineId.Value, cap.Id, 50, raw.Id, user)).Success);
+        Assert.Equal(0m, await Balance(db, cap.Id, wip));
+        var afterReturn = (await machines.GetWipSummaryAsync(DateTime.Today, DateTime.Today, machineId)).Single(r => r.RawItemId == cap.Id);
+        Assert.Equal((50m, 0m), (afterReturn.Returned, afterReturn.Remaining));
+        Assert.True(afterReturn.IsReconciled);
+
+        // حركة غير مصنّفة على تحت التصنيع ← تنبيه عدم مطابقة
+        db.StockTransactions.Add(new StockTransaction { ItemId = cap.Id, WarehouseId = wip, QuantityBaseUnits = 7, TransactionType = StockTransactionType.Receipt, CreatedByUserId = user });
+        await db.SaveChangesAsync();
+        var unexplained = (await machines.GetWipSummaryAsync(DateTime.Today, DateTime.Today, machineId)).Single(r => r.RawItemId == cap.Id);
+        Assert.False(unexplained.IsReconciled);
+        Assert.Equal(7m, unexplained.Difference);
     }
 
     [Fact]

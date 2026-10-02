@@ -16,6 +16,7 @@ public class ProductionOrderRow
     public decimal PackedQuantity { get; init; }
     public ProductionOrderStatus Status { get; init; }
     public string? OutputBatch { get; init; }
+    public string? MachineName { get; init; }
     public QCOverallResult? LastQc { get; init; }
     public string StageText { get; init; } = "";
 }
@@ -63,11 +64,13 @@ public class ProductionService
     }
 
     public async Task<(FinanceOperationResult result, int? orderId)> CreateOrderAsync(
-        int finishedItemId, decimal quantity, int? customRecipeId, int rawWarehouseId, int userId)
+        int finishedItemId, decimal quantity, int? customRecipeId, int rawWarehouseId, int? machineId, int userId)
     {
         if (quantity <= 0) return (FinanceOperationResult.Fail("كمية الإنتاج يجب أن تكون أكبر من صفر"), null);
         var raw = await _db.Warehouses.FindAsync(rawWarehouseId);
         if (raw is null) return (FinanceOperationResult.Fail("اختر مخزن المواد الأولية"), null);
+        var machine = machineId is int mid ? await _db.Machines.FindAsync(mid) : null;
+        if (machine is null || !machine.IsActive) return (FinanceOperationResult.Fail("اختر الماكينة التي سيُصرف لها ويُنتج عليها (الإنتاج ← الماكينات)"), null);
 
         var (lines, error) = await MergeRecipeAsync(finishedItemId, customRecipeId);
         if (error is not null) return (FinanceOperationResult.Fail(error), null);
@@ -77,7 +80,7 @@ public class ProductionService
         {
             MONumber = $"MO-{await _db.ProductionOrders.CountAsync() + 1:D5}",
             FinishedItemId = finishedItemId, BOMId = bomId, CustomRecipeId = customRecipeId, QuantityToProduce = quantity,
-            RawMaterialsWarehouseId = rawWarehouseId, CreatedByUserId = userId
+            RawMaterialsWarehouseId = rawWarehouseId, MachineId = machine.Id, CreatedByUserId = userId
         };
         foreach (var (rawItemId, perUnit) in lines)
             order.Consumptions.Add(new ProductionOrderConsumption { RawMaterialItemId = rawItemId, QuantityRequired = Math.Round(perUnit * quantity, 4) });
@@ -86,26 +89,24 @@ public class ProductionService
         return (FinanceOperationResult.Ok(), order.Id);
     }
 
-    /// <summary>بدء التشغيل: يصرف كل المواد الأولية (بترتيب الصلاحية) وينشئ تشغيلة الناتج — كله أو لا شيء.</summary>
+    /// <summary>
+    /// بدء التشغيل = صرف مواد لأمر إنتاج: تُنقل المواد الأولية (بترتيب الصلاحية، من كل مخازن المواد الأولية)
+    /// إلى رصيد "تحت التصنيع" للماكينة، وتُنشأ تشغيلة الناتج — كله أو لا شيء. الاستهلاك الفعلي يُسجَّل لاحقًا
+    /// بقدر الإنتاج الفعلي عند التعبئة، والمتبقي يبقى على الماكينة.
+    /// </summary>
     public async Task<FinanceOperationResult> StartAsync(int orderId, int userId)
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
-        var order = await _db.ProductionOrders.Include(o => o.Consumptions).Include(o => o.FinishedItem).FirstOrDefaultAsync(o => o.Id == orderId);
+        var order = await _db.ProductionOrders.Include(o => o.Consumptions).Include(o => o.FinishedItem).Include(o => o.Machine)
+                                              .FirstOrDefaultAsync(o => o.Id == orderId);
         if (order is null) return FinanceOperationResult.Fail("أمر الإنتاج غير موجود");
         if (order.Status != ProductionOrderStatus.Draft) return FinanceOperationResult.Fail("لا يُبدأ إلا أمر في حالة مسودة");
+        if (order.Machine is null) return FinanceOperationResult.Fail("الأمر غير مرتبط بماكينة — ألغه وأنشئ أمرًا جديدًا مع اختيار الماكينة");
 
-        // نفس محرك التوفر المستخدم في "احتياجات التصنيع" ومعاينة الأمر — يصرف من كل مخازن المواد الأولية (FEFO)
-        var availability = new MaterialAvailabilityService(_db);
         foreach (var c in order.Consumptions)
         {
-            var (alloc, error) = await availability.AllocateAsync(c.RawMaterialItemId, c.QuantityRequired, order.RawMaterialsWarehouseId);
+            var error = await IssueToMachineAsync(order, c.RawMaterialItemId, c.QuantityRequired, userId);
             if (error is not null) return FinanceOperationResult.Fail(error);
-            foreach (var a in alloc)
-                _db.StockTransactions.Add(new StockTransaction { ItemId = c.RawMaterialItemId, WarehouseId = a.WarehouseId, BatchId = a.BatchId,
-                                                                 QuantityBaseUnits = -a.Quantity, TransactionType = StockTransactionType.ProductionConsume,
-                                                                 ReferenceTable = "ProductionOrders", ReferenceId = order.Id, CreatedByUserId = userId });
-            c.QuantityConsumed = c.QuantityRequired;
-            await _db.SaveChangesAsync();
         }
 
         var batch = new ItemBatch
@@ -120,6 +121,75 @@ public class ProductionService
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>
+    /// صرف مادة لأمر إنتاج: من مخازن المواد الأولية (نفس محرك التوفر المستخدم في "احتياجات التصنيع"، FEFO)
+    /// إلى رصيد تحت التصنيع للماكينة، بنفس التشغيلة، وكلا الطرفين مرجعهما الأمر.
+    /// </summary>
+    private async Task<string?> IssueToMachineAsync(ProductionOrder order, int rawItemId, decimal quantity, int userId)
+    {
+        var (alloc, error) = await new MaterialAvailabilityService(_db).AllocateAsync(rawItemId, quantity, order.RawMaterialsWarehouseId);
+        if (error is not null) return error;
+        foreach (var a in alloc)
+        {
+            _db.StockTransactions.Add(new StockTransaction { ItemId = rawItemId, WarehouseId = a.WarehouseId, BatchId = a.BatchId, QuantityBaseUnits = -a.Quantity,
+                                                             TransactionType = StockTransactionType.WipIssue, ReferenceTable = "ProductionOrders", ReferenceId = order.Id, CreatedByUserId = userId });
+            _db.StockTransactions.Add(new StockTransaction { ItemId = rawItemId, WarehouseId = order.Machine!.WipWarehouseId, BatchId = a.BatchId, QuantityBaseUnits = a.Quantity,
+                                                             TransactionType = StockTransactionType.WipIssue, ReferenceTable = "ProductionOrders", ReferenceId = order.Id, CreatedByUserId = userId });
+        }
+        await _db.SaveChangesAsync();
+        return null;
+    }
+
+    /// <summary>صرف إضافي لأمر قيد التشغيل (مثلًا بعد تالف أكبر من المتوقع) — يذهب لتحت تصنيع ماكينة الأمر.</summary>
+    public async Task<FinanceOperationResult> IssueAdditionalAsync(int orderId, int rawItemId, decimal quantity, int userId)
+    {
+        if (quantity <= 0) return FinanceOperationResult.Fail("الكمية يجب أن تكون أكبر من صفر");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var order = await _db.ProductionOrders.Include(o => o.Consumptions).Include(o => o.Machine).FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order is null) return FinanceOperationResult.Fail("أمر الإنتاج غير موجود");
+        if (order.Status != ProductionOrderStatus.InProgress || order.Machine is null)
+            return FinanceOperationResult.Fail("الصرف الإضافي يكون لأمر قيد التشغيل مرتبط بماكينة");
+        if (order.Consumptions.All(c => c.RawMaterialItemId != rawItemId))
+            return FinanceOperationResult.Fail("المادة ليست من مكونات هذا الأمر");
+        var error = await IssueToMachineAsync(order, rawItemId, quantity, userId);
+        if (error is not null) return FinanceOperationResult.Fail(error);
+        await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>
+    /// الاستهلاك الفعلي = قائمة المواد × الكمية المُنتَجة فعلًا، يُخصم من تحت تصنيع ماكينة الأمر.
+    /// يرفض إن لم يكفِ رصيد الماكينة (يُصرف إضافي أولًا) دون أي خصم جزئي.
+    /// </summary>
+    private async Task<string?> ConsumeForProducedAsync(ProductionOrder order, decimal pieces, int userId)
+    {
+        if (order.Machine is null) return null;   // أمر قديم: استُهلكت مواده كاملة عند البدء
+        var plan = new List<(ProductionOrderConsumption c, decimal qty)>();
+        foreach (var c in order.Consumptions)
+        {
+            var qty = Math.Round(c.QuantityRequired / order.QuantityToProduce * pieces, 3);
+            if (qty <= 0) continue;
+            var balance = await LedgerHelper.BalanceAsync(_db, c.RawMaterialItemId, order.Machine.WipWarehouseId);
+            if (balance < qty)
+            {
+                var name = await _db.Items.Where(i => i.Id == c.RawMaterialItemId).Select(i => i.ItemName).FirstAsync();
+                return $"رصيد تحت التصنيع في {order.Machine.Name} لا يكفي من \"{name}\": المطلوب للإنتاج {qty:0.###}، المتبقي {balance:0.###} — اصرف كمية إضافية للأمر أولًا";
+            }
+            plan.Add((c, qty));
+        }
+        foreach (var (c, qty) in plan)
+        {
+            var (alloc, error) = await LedgerHelper.AllocateAsync(_db, c.RawMaterialItemId, order.Machine.WipWarehouseId, null, qty);
+            if (error is not null) return error;
+            foreach (var (batchId, q) in alloc)
+                _db.StockTransactions.Add(new StockTransaction { ItemId = c.RawMaterialItemId, WarehouseId = order.Machine.WipWarehouseId, BatchId = batchId,
+                                                                 QuantityBaseUnits = -q, TransactionType = StockTransactionType.ProductionConsume,
+                                                                 ReferenceTable = "ProductionOrders", ReferenceId = order.Id, CreatedByUserId = userId });
+            c.QuantityConsumed += qty;
+        }
+        return null;
     }
 
     public Task<List<QualityTest>> GetApplicableTestsAsync(int finishedItemId) =>
@@ -176,7 +246,7 @@ public class ProductionService
     {
         if (units <= 0) return FinanceOperationResult.Fail("عدد الوحدات المعبّأة يجب أن يكون أكبر من صفر");
         await using var tx = await _db.Database.BeginTransactionAsync();
-        var order = await _db.ProductionOrders.FirstOrDefaultAsync(o => o.Id == orderId);
+        var order = await _db.ProductionOrders.Include(o => o.Consumptions).Include(o => o.Machine).FirstOrDefaultAsync(o => o.Id == orderId);
         if (order is null) return FinanceOperationResult.Fail("أمر الإنتاج غير موجود");
         if (order.Status != ProductionOrderStatus.InProgress) return FinanceOperationResult.Fail("التعبئة تكون لأمر قيد التشغيل");
 
@@ -194,6 +264,9 @@ public class ProductionService
         var packed = await PackedQuantityAsync(orderId);
         if (packed + pieces > order.QuantityToProduce)
             return FinanceOperationResult.Fail($"التعبئة تتجاوز كمية الأمر: المتبقي {order.QuantityToProduce - packed:N0} قطعة فقط");
+
+        var consumeError = await ConsumeForProducedAsync(order, pieces, userId);
+        if (consumeError is not null) return FinanceOperationResult.Fail(consumeError);
 
         _db.PackingOrders.Add(new PackingOrder { ProductionOrderId = orderId, PackagingLevelId = level.Id, UnitsPackaged = units,
                                                  ResultingFinishedGoodsWarehouseId = fg.Id, CreatedByUserId = userId });
@@ -238,6 +311,7 @@ public class ProductionService
             {
                 o.Id, o.MONumber, Item = o.FinishedItem.ItemName, Recipe = o.CustomRecipe != null ? o.CustomRecipe.Name : null,
                 o.QuantityToProduce, o.Status, Batch = o.OutputBatch != null ? o.OutputBatch.BatchNumber : null,
+                Machine = o.Machine != null ? o.Machine.Name : null,
                 LastQc = _db.QCBatchResults.Where(q => q.ProductionOrderId == o.Id).OrderByDescending(q => q.Id).Select(q => (QCOverallResult?)q.OverallResult).FirstOrDefault(),
                 Packed = _db.PackingOrders.Where(p => p.ProductionOrderId == o.Id).Sum(p => (decimal?)(p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits)) ?? 0
             })
@@ -246,7 +320,7 @@ public class ProductionService
         return orders.Select(o => new ProductionOrderRow
         {
             Id = o.Id, MONumber = o.MONumber, FinishedItemName = o.Item, RecipeName = o.Recipe, QuantityToProduce = o.QuantityToProduce,
-            PackedQuantity = o.Packed, Status = o.Status, OutputBatch = o.Batch, LastQc = o.LastQc,
+            PackedQuantity = o.Packed, Status = o.Status, OutputBatch = o.Batch, LastQc = o.LastQc, MachineName = o.Machine,
             StageText = o.Status switch
             {
                 ProductionOrderStatus.Draft => "مسودة — بانتظار بدء التشغيل",

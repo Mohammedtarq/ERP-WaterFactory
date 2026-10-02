@@ -64,6 +64,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         WarehouseId = warehouse.Id;
         WarehouseType = warehouse.WarehouseType;
+        OperationOptions = OperationsFor(warehouse.WarehouseType);
         _operation = OperationOptions[0];
         _damageReason = ReasonOptions[1];
         DocumentFilters = new[] { new Option<StockDocumentType>(default, "كل الأنواع") }.Concat(OperationOptions).ToList();
@@ -117,7 +118,13 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public int LowCount { get => _lowCount; private set => SetProperty(ref _lowCount, value); }
 
     // ---------------- عملية جديدة ----------------
-    public IReadOnlyList<Option<StockDocumentType>> OperationOptions { get; } = ArabicLabels.OptionsOf<StockDocumentType>();
+    public IReadOnlyList<Option<StockDocumentType>> OperationOptions { get; }
+
+    /// <summary>مخزن المواد الأولية بلا إخراج حر ولا مسحوب مجاني: المواد تُصرف فقط لأمر إنتاج.</summary>
+    public static IReadOnlyList<Option<StockDocumentType>> OperationsFor(WarehouseType type) =>
+        ArabicLabels.OptionsOf<StockDocumentType>()
+            .Where(o => type != WarehouseType.RawMaterial || o.Value is not (StockDocumentType.Issue or StockDocumentType.FreeIssue))
+            .ToList();
     public IReadOnlyList<Option<DamageReason>> ReasonOptions { get; } = ArabicLabels.OptionsOf<DamageReason>();
     public ObservableCollection<WarehouseEntity> OtherWarehouses { get; } = new();
     public ObservableCollection<Item> ItemsLookup { get; } = new();
@@ -230,7 +237,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         }
         var counterId = CounterWarehouse?.Id;
         OtherWarehouses.Clear();
-        foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.Id != WarehouseId).OrderBy(w => w.Name).ToListAsync())
+        foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.Id != WarehouseId && w.WarehouseType != WarehouseType.WorkInProcess).OrderBy(w => w.Name).ToListAsync())
             OtherWarehouses.Add(w);
         _counterWarehouse = OtherWarehouses.FirstOrDefault(w => w.Id == counterId);
         OnPropertyChanged(nameof(CounterWarehouse));

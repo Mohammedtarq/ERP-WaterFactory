@@ -236,4 +236,6 @@
     <DataTemplate DataType="{x:Type vmProduction:PackingSectionViewModel}"><vProduction:PackingSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmProduction:QualityTestsSectionViewModel}"><vProduction:QualityTestsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmProduction:CustomRecipesSectionViewModel}"><vProduction:CustomRecipesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:MachinesSectionViewModel}"><vProduction:MachinesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:MachineWipSectionViewModel}"><vProduction:MachineWipSectionView/></DataTemplate>
 </ResourceDictionary>

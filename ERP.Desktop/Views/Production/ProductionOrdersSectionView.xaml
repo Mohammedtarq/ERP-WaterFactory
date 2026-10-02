@@ -31,6 +31,7 @@
                         <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="100"/>
                         <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="*"/>
                         <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="130"/>
+                        <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="100"/>
                         <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityToProduce, StringFormat=N0}" Width="80"/>
                         <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="80"/>
                         <DataGridTextColumn Header="التشغيلة" Binding="{Binding OutputBatch}" Width="100"/>
@@ -82,6 +83,8 @@
                     <TextBox Text="{Binding Quantity}" FlowDirection="LeftToRight"/>
                     <TextBlock Text="مخزن المواد الأولية المفضّل (يُصرف من كل مخازن المواد الأولية بترتيب الصلاحية)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
                     <ComboBox ItemsSource="{Binding RawWarehouses}" SelectedItem="{Binding RawWarehouse}" DisplayMemberPath="Name"/>
+                    <TextBlock Text="الماكينة (تُصرف المواد إلى رصيدها تحت التصنيع)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                    <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding Machine}" DisplayMemberPath="Name"/>
                     <Button Content="معاينة المواد المطلوبة" Style="{StaticResource SecondaryButton}" Command="{Binding PreviewCommand}" Margin="0,10,0,6" HorizontalAlignment="Left"/>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">

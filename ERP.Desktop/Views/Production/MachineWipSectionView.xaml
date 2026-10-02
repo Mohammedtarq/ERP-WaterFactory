@@ -1,0 +1,96 @@
+<UserControl x:Class="ERP.Desktop.Views.Production.MachineWipSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Production;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:MachineWipSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <DockPanel>
+            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10">
+                <WrapPanel Orientation="Horizontal">
+                    <TextBlock Text="الماكينة" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding Machine}" DisplayMemberPath="Name" Width="170"/>
+                    <Button Content="كل الماكينات" Style="{StaticResource SecondaryButton}" Command="{Binding AllMachinesCommand}" Margin="6,0,0,0"/>
+                    <TextBlock Text="من" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                    <DatePicker SelectedDate="{Binding From}" Width="130"/>
+                    <TextBlock Text="إلى" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                    <DatePicker SelectedDate="{Binding To}" Width="130"/>
+                    <Button Style="{StaticResource PrimaryButton}" Command="{Binding LoadReportCommand}" Margin="12,0,0,0" Content="عرض"/>
+                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="6,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE749;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="طباعة"/>
+                        </StackPanel>
+                    </Button>
+                </WrapPanel>
+            </Border>
+
+            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,0,10" BorderBrush="{StaticResource DangerBrush}" BorderThickness="1"
+                    Visibility="{Binding HasAlert, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding AlertText}" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap"
+                               Text="المرحّل + المصروف − المستهلك فعليًا (قائمة المواد × المُنتَج) − التالف − المُرجَع = المتبقي تحت التصنيع. السطر الأحمر غير مطابق."/>
+                    <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsReconciled}" Value="False">
+                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="110"/>
+                            <DataGridTextColumn Header="النوع" Binding="{Binding MachineType}" Width="80"/>
+                            <DataGridTextColumn Header="المادة الأولية" Binding="{Binding RawItemName}" Width="*"/>
+                            <DataGridTextColumn Header="المنتج" Binding="{Binding ProductsText}" Width="120"/>
+                            <DataGridTextColumn Header="المرحّل" Binding="{Binding CarriedOver, StringFormat=N0}" Width="80"/>
+                            <DataGridTextColumn Header="المصروف" Binding="{Binding Issued, StringFormat=N0}" Width="80"/>
+                            <DataGridTextColumn Header="المستهلك فعليًا" Binding="{Binding Consumed, StringFormat=N0}" Width="95"/>
+                            <DataGridTextColumn Header="التالف" Binding="{Binding Damaged, StringFormat=N0}" Width="70"/>
+                            <DataGridTextColumn Header="المُرجَع" Binding="{Binding Returned, StringFormat=N0}" Width="70"/>
+                            <DataGridTextColumn Header="المتبقي" Binding="{Binding Remaining, StringFormat=N0}" Width="80"/>
+                            <DataGridCheckBoxColumn Header="مطابق" Binding="{Binding IsReconciled, Mode=OneWay}" Width="55"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+        </DockPanel>
+
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="320" Margin="12,0,0,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="حركة على تحت التصنيع" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="الماكينة" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding ActionMachine}" DisplayMemberPath="Name"/>
+                    <TextBlock Text="المادة" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding ActionItems}" SelectedItem="{Binding ActionItem}" DisplayMemberPath="Display"/>
+                    <TextBlock Text="الكمية (قطعة)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding ActionQuantity}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                    <TextBlock Text="أمر الإنتاج (للتالف اختياري، وللصرف الإضافي إلزامي)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                    <ComboBox ItemsSource="{Binding ActiveOrders}" SelectedItem="{Binding ActionOrder}" DisplayMemberPath="MONumber"/>
+                    <Button Content="تسجيل تالف إنتاج" Style="{StaticResource DangerButton}" Command="{Binding DamageCommand}" Margin="0,12,0,0" HorizontalAlignment="Stretch"/>
+                    <Button Content="صرف إضافي للأمر" Style="{StaticResource PrimaryButton}" Command="{Binding IssueMoreCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
+                    <TextBlock Text="مخزن المواد المستلم (للإرجاع)" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding RawWarehouses}" SelectedItem="{Binding ReturnWarehouse}" DisplayMemberPath="Name"/>
+                    <Button Content="إرجاع المتبقي للمخزن" Style="{StaticResource SecondaryButton}" Command="{Binding ReturnCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
+                    <TextBlock Style="{StaticResource Muted}" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap"
+                               Text="الصرف الأساسي يتم عند بدء تشغيل أمر الإنتاج. الاستهلاك الفعلي يُخصم تلقائيًا عند التعبئة بقدر الكمية المُنتَجة، والمتبقي يبقى على الماكينة للفترة التالية."/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

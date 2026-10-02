@@ -201,6 +201,7 @@ public class WizardJourneyTests : IAsyncLifetime
         orders.NewOrderCommand.Execute(null);
         orders.FinishedItem = orders.FinishedItems.Single(i => i.ItemCode == "W-500");
         orders.Quantity = 240;
+        orders.Machine = orders.Machines.Single(m => m.Name == "نافخة 1");
         await orders.IdleAsync();
         Assert.True(orders.AllSufficient);
         Assert.Equal(3, orders.Preview.Count);
@@ -231,12 +232,35 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Empty(dialogs.Errors);
         await Open(prod, orders);
         Assert.Equal("مكتمل", orders.Orders.Single(o => o.Id == order.Id).StageText);
+        Assert.Equal("نافخة 1", orders.Orders.Single(o => o.Id == order.Id).MachineName);
+
+        // تحت التصنيع: صُرف 240 من كل مادة واستُهلك 240 (المُنتَج فعلًا) ← المتبقي صفر والمطابقة سليمة
+        var wip = prod.Wip;
+        await Open(prod, wip);
+        Assert.Equal(3, wip.Rows.Count);
+        Assert.All(wip.Rows, r => Assert.Equal((240m, 240m, 0m, true), (r.Issued, r.Consumed, r.Remaining, r.IsReconciled)));
+        Assert.False(wip.HasAlert);
+        wip.PrintCommand.Execute(null);
+        Assert.Equal("تقرير تحت التصنيع حسب الماكينة", dialogs.Reports.Last().Title);
+
+        // ماكينة جديدة من تبويب الماكينات تظهر في أمر الإنتاج
+        var machinesTab = prod.Machines;
+        await Open(prod, machinesTab);
+        await machinesTab.NewCommand.ExecuteAsync();
+        machinesTab.Editor!.Name = "تغليف 1";
+        machinesTab.Editor.MachineType = "تغليف";
+        await machinesTab.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        await Open(prod, orders);
+        Assert.Contains(orders.Machines, m => m.Name == "تغليف 1");
 
         // ---------------- 6) الطباعة: أمر الإنتاج، شهادة المختبر، محضر التعبئة، المحفظة، جرد السيارة ----------------
         await orders.PrintCommand.ExecuteAsync(orders.Orders.Single(o => o.Id == order.Id));
         var mo = dialogs.Reports.Last();
         Assert.Equal("أمر إنتاج", mo.Title);
         Assert.Equal(3, mo.Rows.Count);
+        Assert.Contains(mo.HeaderFields, f => f.Label == "الماكينة" && f.Value == "نافخة 1");
+        Assert.Contains("المستهلك فعليًا", mo.Columns);
         Assert.Contains(mo.HeaderFields, f => f.Label == "نتيجة المختبر" && f.Value == "ناجحة");
         await Open(prod, qc);
         await qc.PrintCommand.ExecuteAsync(qc.History.First());

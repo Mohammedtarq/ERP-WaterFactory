@@ -80,6 +80,7 @@ public class ProjectDbContext : DbContext
     public DbSet<CustomRecipeLine> CustomRecipeLines => Set<CustomRecipeLine>();
     public DbSet<ProductionOrder> ProductionOrders => Set<ProductionOrder>();
     public DbSet<ProductionOrderConsumption> ProductionOrderConsumptions => Set<ProductionOrderConsumption>();
+    public DbSet<Machine> Machines => Set<Machine>();
     public DbSet<QualityTest> QualityTests => Set<QualityTest>();
     public DbSet<QCBatchResult> QCBatchResults => Set<QCBatchResult>();
     public DbSet<QCTestResultLine> QCTestResultLines => Set<QCTestResultLine>();
@@ -372,6 +373,10 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.BOM).WithMany().HasForeignKey(p => p.BOMId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.CustomRecipe).WithMany().HasForeignKey(p => p.CustomRecipeId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.RawMaterialsWarehouse).WithMany().HasForeignKey(p => p.RawMaterialsWarehouseId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrder>().HasOne(p => p.Machine).WithMany().HasForeignKey(p => p.MachineId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Machine>().HasIndex(m => m.Name).IsUnique();
+        modelBuilder.Entity<Machine>().HasIndex(m => m.WipWarehouseId).IsUnique();
+        modelBuilder.Entity<Machine>().HasOne(m => m.WipWarehouse).WithMany().HasForeignKey(m => m.WipWarehouseId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.OutputBatch).WithMany().HasForeignKey(p => p.OutputBatchId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.CreatedByUser).WithMany().HasForeignKey(p => p.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrderConsumption>().HasOne(c => c.ProductionOrder).WithMany(p => p.Consumptions).HasForeignKey(c => c.ProductionOrderId);

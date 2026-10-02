@@ -69,7 +69,9 @@ public class MaterialAvailabilityService
         var sources = await SourceWarehousesAsync(preferredWarehouseId);
         var sourceIds = sources.Select(w => w.Id).ToList();
         var names = await _db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.ItemName);
-        var totals = await _db.StockTransactions.Where(t => itemIds.Contains(t.ItemId))
+        // "في مخازن أخرى" لا يشمل رصيد تحت التصنيع (مصروف للماكينات أصلًا)
+        var wipIds = await _db.Machines.Select(m => m.WipWarehouseId).ToListAsync();
+        var totals = await _db.StockTransactions.Where(t => itemIds.Contains(t.ItemId) && !wipIds.Contains(t.WarehouseId))
             .GroupBy(t => t.ItemId).Select(g => new { g.Key, Qty = g.Sum(t => t.QuantityBaseUnits) })
             .ToDictionaryAsync(x => x.Key, x => x.Qty);
 

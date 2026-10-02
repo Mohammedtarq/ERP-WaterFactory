@@ -395,5 +395,10 @@ public static class DemoData
                                           new RepItemIncentiveRate { ItemId = w1500.Id, IncentiveRatePerUnit = 10 });
         db.RepTerritories.Add(new RepTerritory { EmployeeId = rep.Id, TerritoryName = "الزبير" });
         await db.SaveChangesAsync();
+
+        // ماكينات الخط الأول (لكل ماكينة رصيد تحت تصنيع خاص بها)
+        var machines = new MachineService(db);
+        await machines.SaveAsync(null, "نافخة 1", "نفخ", "الخط الأول", null, true);
+        await machines.SaveAsync(null, "تعبئة 1", "تعبئة", "الخط الأول", null, true);
     }
 }

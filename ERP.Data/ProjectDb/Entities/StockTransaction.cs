@@ -7,7 +7,9 @@ public enum StockTransactionType
     RepLoad, RepSale, RepFreeSale, RepDamaged, RepReturn,
     SyncConflictAdjustment,
     /// <summary>إخراج مخزني: صرف لجهة أو غرض من واجهة المخزن (12_warehouse_docs_cashboxes.sql)</summary>
-    Issue
+    Issue,
+    /// <summary>صرف مواد لأمر إنتاج إلى تحت تصنيع الماكينة، وإرجاع المتبقي منه (15_machines_wip.sql)</summary>
+    WipIssue, WipReturn
 }
 
 public enum DamageReason { Transit, Warehouse, Production }

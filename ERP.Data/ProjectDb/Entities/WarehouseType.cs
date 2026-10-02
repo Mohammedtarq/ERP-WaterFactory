@@ -10,5 +10,7 @@ public enum WarehouseType
     Transit,
     RepVan,
     RawMaterial,
-    FinishedGoods
+    FinishedGoods,
+    /// <summary>تحت التصنيع: مخزن داخلي لكل ماكينة (15_machines_wip.sql) — لا يظهر في قوائم المخازن العادية</summary>
+    WorkInProcess
 }

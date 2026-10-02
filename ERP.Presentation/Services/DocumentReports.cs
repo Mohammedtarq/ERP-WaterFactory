@@ -1,5 +1,6 @@
 using ERP.Data.ProjectDb;
 using ERP.Data.ProjectDb.Entities;
+using ERP.Data.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace ERP.Presentation.Services;
@@ -22,7 +23,7 @@ public static class DocumentReports
     {
         var o = await db.ProductionOrders.AsNoTracking()
             .Include(x => x.FinishedItem).Include(x => x.RawMaterialsWarehouse).Include(x => x.OutputBatch)
-            .Include(x => x.CustomRecipe).Include(x => x.CreatedByUser)
+            .Include(x => x.CustomRecipe).Include(x => x.CreatedByUser).Include(x => x.Machine)
             .Include(x => x.Consumptions).ThenInclude(c => c.RawMaterialItem)
             .FirstOrDefaultAsync(x => x.Id == orderId);
         if (o is null) return null;
@@ -37,15 +38,18 @@ public static class DocumentReports
          .Field("الحالة", ArabicLabels.Of(o.Status))
          .Field("الوصفة", o.CustomRecipe?.Name ?? "الوصفة الأساسية")
          .Field("مخزن المواد", o.RawMaterialsWarehouse.Name)
+         .Field("الماكينة", o.Machine?.Name)
          .Field("التشغيلة الناتجة", o.OutputBatch?.BatchNumber)
          .Field("نتيجة المختبر", qc is null ? "لم يُفحص بعد" : ArabicLabels.Of(qc.OverallResult))
          .Field("المعبّأ", packed.Count == 0 ? null : $"{Q(packed.Sum())} قطعة")
          .Field("أنشأه", o.CreatedByUser.Username);
-        r.Columns.AddRange(new[] { "#", "المادة الأولية", "الكود", "المطلوب", "المصروف", "الفرق" });
+        // مطابقة المواد: المصروف لتحت تصنيع الماكينة = المستهلك فعليًا + التالف + المُرجَع + المتبقي على الماكينة
+        r.Columns.AddRange(new[] { "#", "المادة الأولية", "الكود", "المطلوب", "المصروف", "المستهلك فعليًا", "التالف", "المتبقي على الماكينة" });
+        var codes = o.Consumptions.ToDictionary(c => c.RawMaterialItemId, c => c.RawMaterialItem.ItemCode);
         var i = 0;
-        foreach (var c in o.Consumptions.OrderBy(c => c.RawMaterialItem.ItemName))
-            r.Rows.Add(new[] { (++i).ToString(), c.RawMaterialItem.ItemName, c.RawMaterialItem.ItemCode, Q(c.QuantityRequired), Q(c.QuantityConsumed),
-                               Q(c.QuantityConsumed - c.QuantityRequired) });
+        foreach (var m in await new MachineService(db).GetOrderMaterialsAsync(orderId))
+            r.Rows.Add(new[] { (++i).ToString(), m.RawItemName, codes.GetValueOrDefault(m.RawItemId, ""), Q(m.Required), Q(m.Issued),
+                               Q(m.Consumed), Q(m.Damaged), Q(m.Remaining) });
         r.Total("عدد المواد", o.Consumptions.Count.ToString()).Total("الكمية المطلوبة", $"{Q(o.QuantityToProduce)} قطعة", true);
         r.Signatures.AddRange(new[] { "مسؤول الإنتاج", "أمين مخزن المواد", "مراقب الجودة" });
         return r;

@@ -147,7 +147,7 @@ public class PurchaseOrdersSectionViewModel : SectionViewModel
         {
             SuppliersLookup.Clear(); Warehouses.Clear(); ItemsLookup.Clear();
             foreach (var x in await db.Suppliers.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync()) SuppliersLookup.Add(x);
-            foreach (var x in await db.Warehouses.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync()) Warehouses.Add(x);
+            foreach (var x in await db.Warehouses.AsNoTracking().Where(x => x.IsActive && x.WarehouseType != WarehouseType.WorkInProcess).OrderBy(x => x.Name).ToListAsync()) Warehouses.Add(x);
             foreach (var x in await db.Items.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.ItemName).ToListAsync()) ItemsLookup.Add(x);
         }
         var rows = await db.PurchaseOrders.AsNoTracking().OrderByDescending(p => p.OrderDate).ThenByDescending(p => p.Id)

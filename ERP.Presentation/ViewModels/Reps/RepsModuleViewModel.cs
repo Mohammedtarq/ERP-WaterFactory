@@ -114,7 +114,7 @@ public class VanOperationsSectionViewModel : SectionViewModel
         foreach (var v in await db.Warehouses.AsNoTracking().Include(w => w.OwnerEmployee)
                      .Where(w => w.IsActive && w.WarehouseType == WarehouseType.RepVan).OrderBy(w => w.Name).ToListAsync()) Vans.Add(v);
         StoreWarehouses.Clear();
-        foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.WarehouseType != WarehouseType.RepVan)
+        foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.WorkInProcess)
                      .OrderBy(w => w.Name).ToListAsync()) StoreWarehouses.Add(w);
         if (ItemsLookup.Count == 0)
             foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync()) ItemsLookup.Add(i);

@@ -121,7 +121,7 @@ public class ModuleDashboardViewModel : SessionViewModel
         var damagedMonth = -(await db.StockTransactions.Where(x => x.TransactionDate >= monthStart && x.QuantityBaseUnits < 0 &&
                                                                (x.TransactionType == StockTransactionType.Damaged || x.TransactionType == StockTransactionType.RepDamaged))
                                                     .SumAsync(x => (decimal?)x.QuantityBaseUnits) ?? 0);
-        var warehouses = await db.Warehouses.CountAsync(w => w.IsActive);
+        var warehouses = await db.Warehouses.CountAsync(w => w.IsActive && w.WarehouseType != WarehouseType.WorkInProcess);
 
         d.Tile("المخازن الفعّالة", warehouses.ToString(), Icons.Store, ModuleColors.Warehouse, "لكل مخزن تبويب خاص");
         d.Tile("إجمالي المخزون", $"{byWarehouse.Sum(x => x.Qty):N0} قطعة", Icons.Stock, "#6366F1", "كل المخازن");

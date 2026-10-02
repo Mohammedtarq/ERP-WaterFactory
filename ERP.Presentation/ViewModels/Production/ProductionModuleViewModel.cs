@@ -18,6 +18,8 @@ public class ProductionModuleViewModel : ModuleViewModel
         Orders = Add(new ProductionOrdersSectionViewModel(s, d));
         Qc = Add(new QcSectionViewModel(s, d));
         Packing = Add(new PackingSectionViewModel(s, d));
+        Wip = Add(new MachineWipSectionViewModel(s, d));
+        Machines = Add(new MachinesSectionViewModel(s, d));
         Add(new QualityTestsSectionViewModel(s, d));
         Add(new CustomRecipesSectionViewModel(s, d));
     }
@@ -25,6 +27,8 @@ public class ProductionModuleViewModel : ModuleViewModel
     public ProductionOrdersSectionViewModel Orders { get; }
     public QcSectionViewModel Qc { get; }
     public PackingSectionViewModel Packing { get; }
+    public MachineWipSectionViewModel Wip { get; }
+    public MachinesSectionViewModel Machines { get; }
 }
 
 // ============================ أوامر الإنتاج ============================
@@ -44,6 +48,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private CustomRecipe? _recipe;
     private decimal _quantity = 1000;
     private Data.ProjectDb.Entities.Warehouse? _rawWarehouse;
+    private Machine? _machine;
 
     public ProductionOrdersSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Production, "أوامر الإنتاج", Icons.Factory, "#14B8A6", "إنشاء الأمر من قائمة المواد، بدء التشغيل، والإغلاق")
@@ -66,6 +71,8 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public ObservableCollection<CustomRecipe> Recipes { get; } = new();
     public ObservableCollection<Data.ProjectDb.Entities.Warehouse> RawWarehouses { get; } = new();
     public ObservableCollection<RequirementPreview> Preview { get; } = new();
+    public ObservableCollection<Machine> Machines { get; } = new();
+    public Machine? Machine { get => _machine; set => SetProperty(ref _machine, value); }
 
     public bool IsComposing { get => _isComposing; private set => SetProperty(ref _isComposing, value); }
     public Item? FinishedItem { get => _finishedItem; set { if (SetProperty(ref _finishedItem, value)) Background(LoadRecipesAsync()); } }
@@ -93,10 +100,17 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
             foreach (var i in await db.Items.AsNoTracking().Where(i => withBom.Contains(i.Id)).OrderBy(i => i.ItemName).ToListAsync()) FinishedItems.Add(i);
             // الترتيب في الذاكرة: نوع المخزن مخزّن نصًا، ومقارنته داخل ORDER BY لا تُترجم لـ SQL
             var candidates = await db.Warehouses.AsNoTracking()
-                .Where(w => w.IsActive && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.Damaged).ToListAsync();
+                .Where(w => w.IsActive && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.Damaged
+                         && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.FinishedGoods).ToListAsync();
             foreach (var w in candidates.OrderBy(w => w.WarehouseType != WarehouseType.RawMaterial).ThenBy(w => w.Name)) RawWarehouses.Add(w);
             RawWarehouse ??= RawWarehouses.FirstOrDefault();
         }
+        // الماكينات تُحدَّث في كل تحميل (قد تُضاف ماكينة من تبويب الماكينات)
+        var machineId = Machine?.Id;
+        Machines.Clear();
+        foreach (var m in await new MachineService(db).GetAllAsync(activeOnly: true)) Machines.Add(m);
+        _machine = Machines.FirstOrDefault(m => m.Id == machineId) ?? Machines.FirstOrDefault();
+        OnPropertyChanged(nameof(Machine));
         Orders.Clear();
         foreach (var o in await new ProductionService(db).GetOrdersAsync()) Orders.Add(o);
     }
@@ -133,8 +147,9 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private async Task CreateAsync()
     {
         if (FinishedItem is null || RawWarehouse is null) { Dialogs.Error("اختر المنتج ومخزن المواد الأولية"); return; }
+        if (Machine is null) { Dialogs.Error("اختر الماكينة (أضفها من تبويب الماكينات إن لم توجد)"); return; }
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(async () => (await new ProductionService(db).CreateOrderAsync(FinishedItem.Id, Quantity, Recipe?.Id, RawWarehouse.Id, Session.UserId)).result,
+        if (await RunOperationAsync(async () => (await new ProductionService(db).CreateOrderAsync(FinishedItem.Id, Quantity, Recipe?.Id, RawWarehouse.Id, Machine.Id, Session.UserId)).result,
                                     "تم إنشاء أمر الإنتاج — ابدأ تشغيله من الجدول"))
         {
             IsComposing = false;
@@ -145,7 +160,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private async Task StartAsync(ProductionOrderRow row)
     {
         if (!Require(CanEdit, "بدء التشغيل")) return;
-        if (!Dialogs.Confirm($"بدء تشغيل {row.MONumber}؟ ستُصرف المواد الأولية من المخزن فورًا.")) return;
+        if (!Dialogs.Confirm($"بدء تشغيل {row.MONumber}؟ ستُصرف المواد الأولية من المخزن إلى تحت تصنيع الماكينة {row.MachineName} فورًا.")) return;
         await using var db = Session.NewDb();
         if (await RunOperationAsync(() => new ProductionService(db).StartAsync(row.Id, Session.UserId), $"بدأ تشغيل {row.MONumber} — أرسل عينة للمختبر"))
             await LoadAsync();

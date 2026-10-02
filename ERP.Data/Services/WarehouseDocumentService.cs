@@ -92,6 +92,11 @@ public class WarehouseDocumentService
         if (r.Lines.Any(l => l.QuantityInLevel <= 0)) return (FinanceOperationResult.Fail("الكمية يجب أن تكون أكبر من صفر في كل السطور"), null);
         var warehouse = await _db.Warehouses.FindAsync(r.WarehouseId);
         if (warehouse is null || !warehouse.IsActive) return (FinanceOperationResult.Fail("المخزن غير موجود أو موقوف"), null);
+        if (warehouse.WarehouseType == WarehouseType.WorkInProcess)
+            return (FinanceOperationResult.Fail("رصيد تحت التصنيع يُدار من الإنتاج ← الماكينات وتحت التصنيع فقط"), null);
+        // لا صرف حر للمواد الأولية: خروجها من المخزن يكون فقط "صرف مواد لأمر إنتاج"
+        if (warehouse.WarehouseType == WarehouseType.RawMaterial && r.Type is StockDocumentType.Issue or StockDocumentType.FreeIssue)
+            return (FinanceOperationResult.Fail("لا يُسمح بالصرف الحر من مخزن المواد الأولية — المواد تُصرف فقط لأمر إنتاج (بدء التشغيل)"), null);
 
         Warehouse? counter = null;
         if (r.Type == StockDocumentType.Transfer)
@@ -100,6 +105,8 @@ public class WarehouseDocumentService
             if (r.CounterWarehouseId == r.WarehouseId) return (FinanceOperationResult.Fail("لا يمكن المناقلة إلى نفس المخزن"), null);
             counter = await _db.Warehouses.FindAsync(r.CounterWarehouseId);
             if (counter is null || !counter.IsActive) return (FinanceOperationResult.Fail("المخزن المستلم غير موجود أو موقوف"), null);
+            if (counter.WarehouseType == WarehouseType.WorkInProcess)
+                return (FinanceOperationResult.Fail("الصرف لتحت التصنيع يكون من أمر الإنتاج فقط"), null);
         }
         if (r.Type == StockDocumentType.Damaged && r.DamageReason is null)
             return (FinanceOperationResult.Fail("حدّد سبب التلف (نقل / مخزن / إنتاج)"), null);
@@ -374,7 +381,9 @@ public class WarehouseDocumentService
         StockTransactionType.Transfer => qty > 0 ? "مناقلة واردة" : "مناقلة صادرة",
         StockTransactionType.Damaged => qty > 0 ? "تالف وارد" : "تالف",
         StockTransactionType.FreeIssue => "مسحوب مجاني",
-        StockTransactionType.ProductionConsume => "صرف للإنتاج",
+        StockTransactionType.ProductionConsume => "استهلاك إنتاج",
+        StockTransactionType.WipIssue => qty > 0 ? "وارد تحت التصنيع" : "صرف لأمر إنتاج",
+        StockTransactionType.WipReturn => qty > 0 ? "إرجاع من تحت التصنيع" : "إرجاع للمخزن",
         StockTransactionType.ProductionOutput => "ناتج إنتاج",
         StockTransactionType.Packing => "تعبئة",
         StockTransactionType.ReturnToWarehouse => "إرجاع للمخزن",

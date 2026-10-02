@@ -21,6 +21,10 @@ public class ProductionOrder
     public int RawMaterialsWarehouseId { get; set; }   // WarehouseType = RawMaterial
     public Warehouse RawMaterialsWarehouse { get; set; } = null!;
 
+    /// <summary>الماكينة التي يُصرف لها ويُنتج عليها (فارغ في الأوامر القديمة قبل 15_machines_wip.sql).</summary>
+    public int? MachineId { get; set; }
+    public Machine? Machine { get; set; }
+
     public int? OutputBatchId { get; set; }
     public ItemBatch? OutputBatch { get; set; }
 

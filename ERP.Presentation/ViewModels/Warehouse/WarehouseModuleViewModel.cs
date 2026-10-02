@@ -49,7 +49,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
     public async Task RefreshWorkspacesAsync()
     {
         await using var db = _session.NewDb();
-        var warehouses = (await db.Warehouses.AsNoTracking().Where(w => w.IsActive).OrderBy(w => w.Name).ToListAsync())
+        var warehouses = (await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.WarehouseType != WarehouseType.WorkInProcess).OrderBy(w => w.Name).ToListAsync())
             // ترتيب ثابت: المنتج التام، المواد الأولية، ثم بقية المخازن، والكاش فان أخيرًا
             .OrderBy(w => w.WarehouseType switch { WarehouseType.FinishedGoods => 0, WarehouseType.RawMaterial => 1, WarehouseType.RepVan => 3, _ => 2 })
             .ThenBy(w => w.Name).ToList();
@@ -124,14 +124,16 @@ public class WarehousesSectionViewModel : CrudSectionViewModel<Data.ProjectDb.En
         return null;
     }
 
-    public IReadOnlyList<Option<WarehouseType>> TypeOptions { get; } = ArabicLabels.OptionsOf<WarehouseType>();
+    // مخزن "تحت التصنيع" يُنشأ تلقائيًا مع كل ماكينة ولا يُضاف يدويًا
+    public IReadOnlyList<Option<WarehouseType>> TypeOptions { get; } =
+        ArabicLabels.OptionsOf<WarehouseType>().Where(o => o.Value != WarehouseType.WorkInProcess).ToList();
     public ObservableCollection<Branch> Branches { get; } = new();
     public ObservableCollection<Employee> Employees { get; } = new();
 
     protected override int GetId(Data.ProjectDb.Entities.Warehouse e) => e.Id;
     protected override string Describe(Data.ProjectDb.Entities.Warehouse e) => e.Name;
     protected override Task<List<Data.ProjectDb.Entities.Warehouse>> QueryAsync(ProjectDbContext db) =>
-        db.Warehouses.AsNoTracking().Include(w => w.Branch).Include(w => w.OwnerEmployee).OrderBy(w => w.Name).ToListAsync();
+        db.Warehouses.AsNoTracking().Include(w => w.Branch).Include(w => w.OwnerEmployee).Where(w => w.WarehouseType != WarehouseType.WorkInProcess).OrderBy(w => w.Name).ToListAsync();
 
     protected override async Task LoadLookupsAsync(ProjectDbContext db)
     {
@@ -149,6 +151,7 @@ public class WarehousesSectionViewModel : CrudSectionViewModel<Data.ProjectDb.En
         if (string.IsNullOrWhiteSpace(e.Name)) return "أدخل اسم المخزن";
         if (e.BranchId == 0) return "اختر الفرع (أضف فرعًا من إعدادات النظام إن لم يوجد)";
         if (e.WarehouseType == WarehouseType.RepVan && e.OwnerEmployeeId is null) return "الكاش فان يحتاج تحديد المندوب صاحبه";
+        if (e.WarehouseType == WarehouseType.WorkInProcess) return "مخزن تحت التصنيع يُنشأ تلقائيًا مع الماكينة (الإنتاج ← الماكينات)";
         return null;
     }
 
@@ -157,7 +160,7 @@ public class WarehousesSectionViewModel : CrudSectionViewModel<Data.ProjectDb.En
         e.Name = e.Name.Trim();
         // مخازن التالف والفحص والمرتجعات والمواد الأولية والطريق لا يُباع منها أبدًا
         if (e.WarehouseType is WarehouseType.Damaged or WarehouseType.UnderInspection or WarehouseType.Returns
-            or WarehouseType.RawMaterial or WarehouseType.Transit)
+            or WarehouseType.RawMaterial or WarehouseType.Transit or WarehouseType.WorkInProcess)
             e.IsSellableStock = false;
         if (e.WarehouseType != WarehouseType.RepVan) e.OwnerEmployeeId = null;
         return Task.CompletedTask;
@@ -239,7 +242,7 @@ public class LocationsSectionViewModel : CrudSectionViewModel<WarehouseLocation>
     protected override async Task LoadLookupsAsync(ProjectDbContext db)
     {
         Warehouses.Clear();
-        foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive).OrderBy(w => w.Name).ToListAsync()) Warehouses.Add(w);
+        foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.WarehouseType != WarehouseType.WorkInProcess).OrderBy(w => w.Name).ToListAsync()) Warehouses.Add(w);
     }
 
     protected override Task<List<WarehouseLocation>> QueryAsync(ProjectDbContext db) =>
@@ -361,7 +364,7 @@ public class StockAdjustmentSectionViewModel : SectionViewModel
         if (ItemsLookup.Count == 0)
         {
             foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync()) ItemsLookup.Add(i);
-            foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive).OrderBy(w => w.Name).ToListAsync()) Warehouses.Add(w);
+            foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.WarehouseType != WarehouseType.WorkInProcess).OrderBy(w => w.Name).ToListAsync()) Warehouses.Add(w);
         }
         var types = new[] { StockTransactionType.Damaged, StockTransactionType.ReturnToWarehouse };
         var rows = await db.StockTransactions.AsNoTracking()
