@@ -37,6 +37,14 @@ public class AppSession
     public string RoleName { get; }
     public UserPermissions Permissions { get; }
 
+    private long _dataVersion;
+    private DataChangeInterceptor? _interceptor;
+
+    /// <summary>يزيد بعد كل عملية كتابة ناجحة في هذه الجلسة — الشاشات تُحدَّث عند فتحها إن تغيّر.</summary>
+    public long DataVersion => Interlocked.Read(ref _dataVersion);
+    public void MarkDataChanged() => Interlocked.Increment(ref _dataVersion);
+
     public ProjectDbContext NewDb() =>
-        new(new DbContextOptionsBuilder<ProjectDbContext>().UseSqlServer(ConnectionString).Options);
+        new(new DbContextOptionsBuilder<ProjectDbContext>().UseSqlServer(ConnectionString)
+                .AddInterceptors(_interceptor ??= new DataChangeInterceptor(this)).Options);
 }

@@ -19,7 +19,16 @@ public abstract class SectionViewModel : SessionViewModel
         Glyph = glyph;
         Color = color;
         Description = description;
-        RefreshCommand = new AsyncRelayCommand(LoadAsync);
+        RefreshCommand = new AsyncRelayCommand(LoadCoalescedAsync);
+    }
+
+    private Task? _inflight;
+
+    /// <summary>تحميل واحد في الوقت نفسه للشاشة: الفتح التلقائي وزر التحديث يشتركان فيه بدل تحميلين متداخلين.</summary>
+    public Task LoadCoalescedAsync()
+    {
+        if (_inflight is { IsCompleted: false }) return _inflight;
+        return _inflight = LoadAsync();
     }
 
     public string Title { get; }
@@ -28,14 +37,48 @@ public abstract class SectionViewModel : SessionViewModel
     public string Description { get; }
     public AsyncRelayCommand RefreshCommand { get; }
 
+    private long _loadedVersion = -1;
+
     /// <summary>الأقسام التي تعرض أرصدة/كشوفًا تتغير من شاشات أخرى تُحدَّث عند كل فتح.</summary>
     protected virtual bool ReloadOnActivate => false;
 
-    public async Task ActivateAsync()
+    /// <summary>
+    /// نموذج إدخال قيد التعبئة (فاتورة فيها سطور، محرر مفتوح...): لا يُعاد تحميل القوائم تحته حتى لا يضيع الاختيار؛
+    /// يُحدَّث بعد الحفظ.
+    /// </summary>
+    protected virtual bool HasPendingInput => false;
+
+    /// <summary>
+    /// يُحمَّل عند أول فتح، ثم يُحدَّث تلقائيًا عند الفتح إن حُفظت أي عملية في أي شاشة منذ آخر تحميل
+    /// (ودائمًا للأقسام التي تطلب ذلك) — بلا زر تحديث وبلا استعلامات زائدة إن لم يتغير شيء.
+    /// </summary>
+    private Task? _activation;
+
+    /// <summary>تفعيلان متزامنان (نقرات سريعة بين الشاشات) يشتركان في تحميل واحد بدل تحميلين يكرران الصفوف.</summary>
+    public Task ActivateAsync()
     {
-        if (_loaded && !ReloadOnActivate) return;
+        if (_activation is { IsCompleted: false }) return _activation;
+        return _activation = ActivateCoreAsync();
+    }
+
+    private DateTime _loadedAt;
+
+    /// <summary>
+    /// شاشات الأرصدة والكشوف تُحدَّث عند الفتح حتى بلا تغيير من هذا الجهاز (لترى عمليات المستخدمين الآخرين)،
+    /// لكن ليس أكثر من مرة كل هذه المدة عند التنقل السريع بين التبويبات.
+    /// </summary>
+    public static TimeSpan IdleRefreshInterval { get; set; } = TimeSpan.FromSeconds(20);
+
+    private async Task ActivateCoreAsync()
+    {
+        var changed = _loadedVersion != Session.DataVersion;
+        if (_loaded && !changed && (!ReloadOnActivate || DateTime.UtcNow - _loadedAt < IdleRefreshInterval)) return;
+        if (_loaded && changed && HasPendingInput && !ReloadOnActivate) return;
         _loaded = true;
-        await LoadAsync();
+        _loadedVersion = Session.DataVersion;
+        _loadedAt = DateTime.UtcNow;
+        await LoadCoalescedAsync();
+        _loadedVersion = Session.DataVersion;
     }
 
     public abstract Task LoadAsync();
@@ -99,9 +142,16 @@ public abstract class ModuleViewModel : ViewModelBase
         get => _selectedTab;
         set
         {
-            if (SetProperty(ref _selectedTab, value) && value is SectionViewModel s)
+            if (!SetProperty(ref _selectedTab, value)) return;
+            if (value is SectionViewModel s)
             {
                 LastActivation = s.ActivateAsync();
+                Background(LastActivation);
+            }
+            else if (value is HomeSectionViewModel && Dashboard is { } d)
+            {
+                // العودة للرئيسية بعد أي عملية تحدّث مؤشرات اللوحة ورسومها
+                LastActivation = d.RefreshIfChangedAsync();
                 Background(LastActivation);
             }
         }
@@ -111,6 +161,15 @@ public abstract class ModuleViewModel : ViewModelBase
     {
         Tabs.Add(section);
         return section;
+    }
+
+    /// <summary>يعيد تفعيل التبويب الظاهر (يُحدَّث فقط إن تغيّرت البيانات منذ آخر تحميل).</summary>
+    public void Reactivate()
+    {
+        if (SelectedTab is SectionViewModel s) LastActivation = s.ActivateAsync();
+        else if (Dashboard is { } d) LastActivation = d.RefreshIfChangedAsync();
+        else return;
+        Background(LastActivation);
     }
 
     /// <summary>لوحة القسم (مؤشرات ورسوم النشاط اليومي) أعلى "الرئيسية".</summary>

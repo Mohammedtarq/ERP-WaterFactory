@@ -77,6 +77,8 @@ public class PurchaseOrderRow
 
 public class PurchaseOrdersSectionViewModel : SectionViewModel
 {
+    protected override bool HasPendingInput => IsComposing;
+
     private bool _isComposing;
     private Supplier? _supplier;
     private Data.ProjectDb.Entities.Warehouse? _warehouse;
@@ -140,8 +142,10 @@ public class PurchaseOrdersSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        if (SuppliersLookup.Count == 0)
+        // القوائم تُحدَّث (مورد أو صنف جديد يظهر) ما لم يكن أمر قيد الإدخال
+        if (SuppliersLookup.Count == 0 || !IsComposing)
         {
+            SuppliersLookup.Clear(); Warehouses.Clear(); ItemsLookup.Clear();
             foreach (var x in await db.Suppliers.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync()) SuppliersLookup.Add(x);
             foreach (var x in await db.Warehouses.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync()) Warehouses.Add(x);
             foreach (var x in await db.Items.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.ItemName).ToListAsync()) ItemsLookup.Add(x);

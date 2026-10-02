@@ -338,7 +338,8 @@ public class ScreenFlowTests
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var wh = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
-        var adj = wh.Section<StockAdjustmentSectionViewModel>();
+        Assert.DoesNotContain(wh.Tabs, t => t is StockAdjustmentSectionViewModel);    // مخفية من الوحدة مؤقتًا
+        var adj = wh.LegacyAdjustment;
         await Open(wh, adj);
 
         adj.Item = adj.ItemsLookup.Single(i => i.Id == _f.WaterItemId);

@@ -43,6 +43,9 @@ public class PermissionRow : ObservableObject
 
 public class RolesPermissionsSectionViewModel : SectionViewModel
 {
+    /// <summary>مصفوفة الصلاحيات تُحرَّر مباشرة: لا تُستبدل تحت المستخدم قبل الحفظ.</summary>
+    protected override bool HasPendingInput => true;
+
     public static readonly IReadOnlyList<(string code, string name)> Modules = new[]
     {
         (ModuleCode.Dashboard, "لوحة المعلومات"), (ModuleCode.Warehouse, "المخازن"), (ModuleCode.Sales, "المبيعات"),

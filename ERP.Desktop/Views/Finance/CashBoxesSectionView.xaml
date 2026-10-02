@@ -54,12 +54,56 @@
                                        Foreground="{StaticResource SuccessBrush}"/>
                             <TextBlock Text="{Binding OwnerUsername, StringFormat='صاحبه: {0}'}" Style="{StaticResource Muted}" FontSize="11"
                                        Visibility="{Binding OwnerUsername, Converter={StaticResource NullToCollapsed}}"/>
+                            <DockPanel Margin="0,6,0,0">
+                                <Button DockPanel.Dock="Left" Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0"
+                                        Command="{Binding DataContext.ToggleActiveCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                        Visibility="{Binding DataContext.IsAdmin, ElementName=Root, Converter={StaticResource BoolToVisibility}}">
+                                    <TextBlock>
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="إيقاف"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="False"><Setter Property="Text" Value="تفعيل"/></DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Button>
+                                <Border CornerRadius="4" Padding="6,1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#ECFDF5"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="False"><Setter Property="Background" Value="#F1F5F9"/></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock FontSize="11">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="مفعّل"/>
+                                                <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                        <Setter Property="Text" Value="غير مفعّل"/>
+                                                        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Border>
+                            </DockPanel>
                         </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
             <TextBlock DockPanel.Dock="Top" Text="{Binding NoBoxText}" Style="{StaticResource Muted}" Margin="0,0,0,10"
                        Visibility="{Binding HasBoxes, Converter={StaticResource InverseBoolToVisibility}}"/>
+            <Border DockPanel.Dock="Top" Background="#FFFBEB" CornerRadius="6" Padding="10,6" Margin="0,0,0,10"
+                    Visibility="{Binding InactiveNotice, Converter={StaticResource NullToCollapsed}}">
+                <TextBlock Text="{Binding InactiveNotice}" TextWrapping="Wrap" Foreground="{StaticResource WarningBrush}"/>
+            </Border>
 
             <!-- ================= الكشف ================= -->
             <Border Style="{StaticResource Card}">
@@ -157,7 +201,7 @@
                 </Border>
 
                 <!-- حركة جديدة -->
-                <Border Style="{StaticResource Card}" Margin="0,0,0,12" Visibility="{Binding HasBoxes, Converter={StaticResource BoolToVisibility}}">
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12" Visibility="{Binding SelectedIsActive, Converter={StaticResource BoolToVisibility}}">
                     <StackPanel>
                         <TextBlock Text="حركة جديدة" Style="{StaticResource SectionTitle}"/>
                         <TextBlock Text="العملية" Style="{StaticResource FieldLabel}" Margin="0"/>
@@ -199,6 +243,8 @@
                             <TextBlock Text="المستخدم صاحب الصندوق" Style="{StaticResource FieldLabel}"/>
                             <ComboBox ItemsSource="{Binding Users}" SelectedItem="{Binding NewBoxOwner}" DisplayMemberPath="Username"/>
                         </StackPanel>
+                        <CheckBox Content="مفعّل الآن (يستقبل مبيعات صاحبه النقدية؛ وإلا تذهب للصندوق الرئيسي)" IsChecked="{Binding NewBoxActive}"
+                                  Visibility="{Binding NewBoxIsUser, Converter={StaticResource BoolToVisibility}}"/>
                         <CheckBox Content="الصندوق الافتراضي (يستقبل المبيعات النقدية لمن لا صندوق له)" IsChecked="{Binding NewBoxDefault}"/>
                         <Button Style="{StaticResource PrimaryButton}" Command="{Binding CreateBoxCommand}" Content="إنشاء الصندوق" Margin="0,12,0,0" HorizontalAlignment="Left"/>
                     </StackPanel>

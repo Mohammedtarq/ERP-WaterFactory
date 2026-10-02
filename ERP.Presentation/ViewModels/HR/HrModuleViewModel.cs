@@ -72,6 +72,9 @@ public class AttendanceRow : ObservableObject
 
 public class AttendanceSectionViewModel : SectionViewModel
 {
+    /// <summary>جدول حضور اليوم يُحرَّر مباشرة: يُحدَّث عند تغيير التاريخ أو الحفظ فقط، حتى لا تضيع أوقات مكتوبة.</summary>
+    protected override bool HasPendingInput => true;
+
     private DateTime _date = DateTime.Today;
 
     public AttendanceSectionViewModel(AppSession s, IDialogService d)

@@ -102,6 +102,9 @@ public class BatchOption
 
 public class SalesInvoiceSectionViewModel : SectionViewModel
 {
+    /// <summary>فاتورة قيد الإدخال (سطور أو مسودة مفتوحة): لا تُعاد تعبئة القوائم تحتها.</summary>
+    protected override bool HasPendingInput => Lines.Count > 0 || InvoiceId is not null || Customer is not null;
+
     private int? _invoiceId;
     private string _invoiceNumber = "فاتورة جديدة";
     private bool _isReadOnly;

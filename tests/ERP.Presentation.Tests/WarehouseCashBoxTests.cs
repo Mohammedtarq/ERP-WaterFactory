@@ -203,6 +203,7 @@ public class WarehouseCashBoxTests
         boxes.NewBoxName = "صندوق سارة";
         boxes.NewBoxType = boxes.BoxTypeOptions.Single(t => t.Value == CashBoxType.User);
         boxes.NewBoxOwner = boxes.Users.Single(u => u.Username == AppFixture.ClerkUser);
+        boxes.NewBoxActive = true;                                         // التفعيل اختياري عند الإنشاء
         await boxes.CreateBoxCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.Equal("صندوق سارة", boxes.SelectedBox!.Name);
@@ -307,6 +308,137 @@ public class WarehouseCashBoxTests
         // كشف الصندوق قابل للطباعة
         boxes.PrintStatementCommand.Execute(null);
         Assert.Equal("كشف صندوق — الصندوق الرئيسي", dialogs.Reports.Last().Title);
+        Assert.Empty(_f.Unhandled);
+    }
+
+    private async Task<string> PostCashInvoiceAsync(MainShellViewModel shell, RecordingDialogs dialogs)
+    {
+        var sales = shell.Open<SalesModuleViewModel>(ModuleCode.Sales);
+        var inv = sales.Invoice;
+        await Open(sales, inv);
+        inv.Customer = inv.Customers.Single(c => c.Id == _f.DirectId);
+        inv.Warehouse = inv.Warehouses.Single(w => w.Id == _f.MainWarehouseId);
+        inv.LineItem = inv.ItemsLookup.Single(i => i.Id == _f.WaterItemId);
+        await inv.IdleAsync();
+        inv.LineQuantity = 1;
+        await inv.AddLineCommand.ExecuteAsync();
+        await inv.IdleAsync();
+        inv.PaymentMethod = inv.PaymentOptions.Single(o => o.Value == InvoicePaymentMethod.Cash);
+        await inv.PostCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        return inv.LastPosted!.InvoiceNumber;
+    }
+
+    /// <summary>
+    /// تفعيل صندوق المستخدم اختياري: صندوق غير مفعّل ← المبيعات النقدية تذهب للصندوق الرئيسي بلا أي رسالة؛
+    /// بعد التفعيل ← تذهب لصندوقه. والصندوق الافتراضي لا يُوقف.
+    /// </summary>
+    [Fact]
+    public async Task Inactive_user_box_sends_cash_sales_to_the_main_box_silently()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var fin = shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);
+        var boxes = fin.Boxes;
+        await Open(fin, boxes);
+
+        boxes.NewBoxName = "صندوق المدير";
+        boxes.NewBoxType = boxes.BoxTypeOptions.Single(t => t.Value == CashBoxType.User);
+        boxes.NewBoxOwner = boxes.Users.Single(u => u.Username == AppFixture.AdminUser);
+        Assert.False(boxes.NewBoxActive);                                  // غير مفعّل افتراضيًا
+        await boxes.CreateBoxCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        var mine = boxes.Boxes.Single(b => b.Name == "صندوق المدير");
+        Assert.False(mine.IsActive);
+        Assert.Contains("غير مفعّل", boxes.InactiveNotice);
+        Assert.False(boxes.SelectedIsActive);                              // لا حركات يدوية على صندوق موقوف
+
+        // غير مفعّل: الفاتورة النقدية تُرحَّل بلا أي رسالة وتدخل الرئيسي
+        var first = await PostCashInvoiceAsync(shell, dialogs);
+        await using (var db = _f.NewDb())
+        {
+            var tx = await db.CashBoxTransactions.Include(t => t.CashBox).SingleAsync(t => t.ReferenceTable == "SalesInvoices" &&
+                         t.ReferenceId == db.SalesInvoices.Where(i => i.InvoiceNumber == first).Select(i => i.Id).First());
+            Assert.Equal("الصندوق الرئيسي", tx.CashBox.Name);
+        }
+
+        // تفعيل ← الفاتورة التالية تدخل صندوقه
+        shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);
+        await boxes.RefreshCommand.ExecuteAsync();
+        await boxes.ToggleActiveCommand.ExecuteAsync(boxes.Boxes.Single(b => b.Name == "صندوق المدير"));
+        Assert.Empty(dialogs.Errors);
+        Assert.True(boxes.Boxes.Single(b => b.Name == "صندوق المدير").IsActive);
+        var second = await PostCashInvoiceAsync(shell, dialogs);
+        shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);           // العودة للوحدة تحدّث الصندوق تلقائيًا (بيانات تغيّرت)
+        fin.Reactivate();                                                  // تفعيل مزدوج متزامن: تحميل واحد، بلا صفوف مكررة
+        await fin.LastActivation;
+        Assert.Equal(boxes.Boxes.Count, boxes.Boxes.Select(b => b.Id).Distinct().Count());
+        boxes.SelectedBox = boxes.Boxes.Single(b => b.Name == "صندوق المدير");
+        await boxes.IdleAsync();
+        Assert.Contains(boxes.Rows, r => r.Reference == second && r.TypeLabel == "مبيعات نقدية");
+
+        // إيقافه مجددًا يعيد التوجيه للرئيسي؛ والافتراضي لا يُوقف
+        await boxes.ToggleActiveCommand.ExecuteAsync(boxes.Boxes.Single(b => b.Name == "صندوق المدير"));
+        await boxes.ToggleActiveCommand.ExecuteAsync(boxes.Boxes.Single(b => b.Name == "الصندوق الرئيسي"));
+        Assert.Contains(dialogs.Errors, e => e.Contains("الافتراضي") && e.Contains("لا يُوقف"));
+        dialogs.Errors.Clear();
+        var third = await PostCashInvoiceAsync(shell, dialogs);
+        await using (var db = _f.NewDb())
+        {
+            var id = await db.SalesInvoices.Where(i => i.InvoiceNumber == third).Select(i => i.Id).FirstAsync();
+            Assert.Equal("الصندوق الرئيسي", await db.CashBoxTransactions.Where(t => t.ReferenceTable == "SalesInvoices" && t.ReferenceId == id)
+                                                                         .Select(t => t.CashBox.Name).SingleAsync());
+        }
+        Assert.Empty(_f.Unhandled);
+    }
+
+    /// <summary>بعد أي حفظ في شاشة، الشاشات الأخرى تُحدَّث تلقائيًا عند فتحها — ولا تُعيد الاستعلام إن لم يتغير شيء.</summary>
+    [Fact]
+    public async Task Screens_refresh_automatically_after_a_save_elsewhere()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var sales = shell.Open<SalesModuleViewModel>(ModuleCode.Sales);
+        var customers = sales.Section<CustomersSectionViewModel>();
+        var inv = sales.Invoice;
+        await Open(sales, inv);
+        var before = inv.Customers.Count;
+
+        // عميل جديد من تبويب العملاء يظهر في الفاتورة بمجرد فتحها (بلا زر تحديث)
+        await Open(sales, customers);
+        await customers.NewCommand.ExecuteAsync();
+        customers.Editor!.Name = "عميل جديد للتحديث التلقائي";
+        await customers.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        await Open(sales, inv);
+        Assert.Equal(before + 1, inv.Customers.Count);
+        Assert.Contains(inv.Customers, c => c.Name == "عميل جديد للتحديث التلقائي");
+
+        // فاتورة قيد الإدخال لا تُعاد تعبئة قوائمها تحتها
+        inv.Customer = inv.Customers.First(c => c.Name == "عميل جديد للتحديث التلقائي");
+        var sameList = inv.Customers.ToList();
+        await Open(sales, customers);
+        await customers.NewCommand.ExecuteAsync();
+        customers.Editor!.Name = "عميل ثانٍ";
+        await customers.SaveCommand.ExecuteAsync();
+        await Open(sales, inv);
+        Assert.Equal(sameList, inv.Customers.ToList());
+        Assert.Equal("عميل جديد للتحديث التلقائي", inv.Customer!.Name);
+        inv.ResetForm();
+
+        // لوحة الوحدة تُحدَّث عند العودة للرئيسية بعد عملية
+        var dash = sales.Dashboard!;
+        await dash.IdleAsync();
+        var invoicesToday = dash.Tiles.Single(t => t.Title == "مبيعات اليوم").Hint;
+        await PostCashInvoiceAsync(shell, dialogs);
+        sales.SelectedTab = sales.Home;
+        await sales.LastActivation;
+        Assert.NotEqual(invoicesToday, dash.Tiles.Single(t => t.Title == "مبيعات اليوم").Hint);
+
+        // بلا تغيير: الفتح لا يعيد التحميل
+        var version = shell.Session.DataVersion;
+        sales.SelectedTab = sales.Home;
+        sales.SelectedTab = inv;
+        await sales.LastActivation;
+        Assert.Equal(version, shell.Session.DataVersion);
         Assert.Empty(_f.Unhandled);
     }
 }

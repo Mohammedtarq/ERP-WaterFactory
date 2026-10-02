@@ -34,8 +34,23 @@ public class ModuleDashboardViewModel : SessionViewModel
     public static IReadOnlyList<DateTime> Days(int count = 14) =>
         Enumerable.Range(0, count).Select(i => DateTime.Today.AddDays(i - count + 1)).ToList();
 
-    public async Task LoadAsync()
+    private long _loadedVersion = -1;
+
+    /// <summary>عند العودة للرئيسية: تُحدَّث اللوحة فقط إن حُفظت عمليات منذ آخر تحميل.</summary>
+    public Task RefreshIfChangedAsync() => _loadedVersion == Session.DataVersion ? Task.CompletedTask : LoadAsync();
+
+    private Task? _loading;
+
+    /// <summary>طلبات تحديث متزامنة تشترك في تحميل واحد.</summary>
+    public Task LoadAsync()
     {
+        if (_loading is { IsCompleted: false }) return _loading;
+        return _loading = LoadCoreAsync();
+    }
+
+    private async Task LoadCoreAsync()
+    {
+        _loadedVersion = Session.DataVersion;
         IsBusy = true;
         try
         {

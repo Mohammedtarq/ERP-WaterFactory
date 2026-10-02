@@ -222,7 +222,8 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        if (_allItems.Count == 0)
+        // صنف جديد يظهر عند فتح التبويب، ما لم يكن مستند قيد الإدخال
+        if (_allItems.Count == 0 || (Lines.Count == 0 && LineItem is null))
         {
             _allItems = await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync();
             FillItems();

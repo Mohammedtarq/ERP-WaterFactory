@@ -29,8 +29,21 @@ public class DashboardViewModel : SessionViewModel
     public ObservableCollection<SalesInvoiceListRow> RecentInvoices { get; } = new();
     public AsyncRelayCommand RefreshCommand { get; }
 
-    public async Task LoadAsync()
+    private long _loadedVersion = -1;
+
+    public Task RefreshIfChangedAsync() => _loadedVersion == Session.DataVersion ? Task.CompletedTask : LoadAsync();
+
+    private Task? _loading;
+
+    public Task LoadAsync()
     {
+        if (_loading is { IsCompleted: false }) return _loading;
+        return _loading = LoadCoreAsync();
+    }
+
+    private async Task LoadCoreAsync()
+    {
+        _loadedVersion = Session.DataVersion;
         IsBusy = true;
         try
         {

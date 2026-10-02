@@ -95,6 +95,12 @@ public class MainShellViewModel : ViewModelBase
             value.IsSelected = true;
             if (!_modules.TryGetValue(value.ModuleCode, out var module))
                 _modules[value.ModuleCode] = module = value.Factory();
+            else
+            {
+                // العودة لوحدة مفتوحة سابقًا: التبويب الظاهر يُحدَّث إن حُفظت عمليات في شاشات أخرى
+                if (module is ModuleViewModel m) m.Reactivate();
+                else if (module is DashboardViewModel dash) Background(dash.RefreshIfChangedAsync());
+            }
             CurrentModule = module;
         }
     }

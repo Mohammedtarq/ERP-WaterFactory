@@ -11,6 +11,12 @@ namespace ERP.Presentation.ViewModels.Warehouse;
 
 public class WarehouseModuleViewModel : ModuleViewModel
 {
+    /// <summary>إظهار شاشة التسوية القديمة في الوحدة (true يعيدها كما كانت).</summary>
+    public static bool ShowLegacyAdjustment { get; set; } = false;
+
+    /// <summary>الشاشة القديمة ما زالت تعمل (للاختبارات ولإعادة إظهارها)، لكنها خارج التبويبات.</summary>
+    public StockAdjustmentSectionViewModel LegacyAdjustment { get; }
+
     private readonly AppSession _session;
     private readonly IDialogService _dialogs;
 
@@ -25,7 +31,9 @@ public class WarehouseModuleViewModel : ModuleViewModel
         Add(new PackagingSectionViewModel(s, d));
         Add(new LocationsSectionViewModel(s, d));
         Add(new CurrentStockSectionViewModel(s, d));
-        Add(new StockAdjustmentSectionViewModel(s, d));
+        // شاشة "تسوية المخزون" القديمة مخفية مؤقتًا (حلّت محلها واجهات المخازن). لا تُحذف قبل التأكد من الشاشات الجديدة.
+        LegacyAdjustment = new StockAdjustmentSectionViewModel(s, d);
+        if (ShowLegacyAdjustment) Add(LegacyAdjustment);
         Add(new ManufacturingRequirementSectionViewModel(s, d));
         Add(new BomSectionViewModel(s, d));
         Add(new StockAlertsSectionViewModel(s, d));

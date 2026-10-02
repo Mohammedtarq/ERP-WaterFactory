@@ -35,6 +35,7 @@ public class CashBoxesSectionViewModel : SectionViewModel
     private Option<CashBoxType> _newBoxType;
     private User? _newBoxOwner;
     private bool _newBoxDefault;
+    private bool _newBoxActive;
 
     public CashBoxesSectionViewModel(AppSession s, IDialogService d, string moduleCode = ModuleCode.Finance, string title = "الصناديق")
         : base(s, d, moduleCode, title, Icons.Currency, "#0EA5E9",
@@ -57,6 +58,7 @@ public class CashBoxesSectionViewModel : SectionViewModel
         PrintStatementCommand = new RelayCommand(() => { if (SelectedBox is null) Dialogs.Error("اختر الصندوق"); else Dialogs.ShowReport(BuildStatementReport()); });
         LoadStatementCommand = new AsyncRelayCommand(LoadStatementAsync);
         CreateBoxCommand = new AsyncRelayCommand(CreateBoxAsync);
+        ToggleActiveCommand = new AsyncRelayCommand(p => p is CashBoxRow b ? ToggleActiveAsync(b) : Task.CompletedTask);
     }
 
     protected override bool ReloadOnActivate => true;
@@ -69,7 +71,7 @@ public class CashBoxesSectionViewModel : SectionViewModel
     public bool IsAdmin { get => _isAdmin; private set => SetProperty(ref _isAdmin, value); }
     public bool HasBoxes => Boxes.Count > 0;
     public string NoBoxText => IsAdmin ? "لا توجد صناديق بعد — أنشئ صندوقًا من اللوحة الجانبية"
-                                       : "لا يوجد صندوق باسمك. يطلبه المدير من المالية ← الصناديق (صندوق مستخدم).";
+                                       : "لا يوجد صندوق مفعّل باسمك — مبيعاتك النقدية تذهب للصندوق الرئيسي. يفعّله المدير من المالية ← الصناديق.";
 
     public CashBoxRow? SelectedBox
     {
@@ -78,6 +80,8 @@ public class CashBoxesSectionViewModel : SectionViewModel
         {
             if (!SetProperty(ref _selectedBox, value)) return;
             Editing = null;
+            OnPropertyChanged(nameof(SelectedIsActive));
+            OnPropertyChanged(nameof(InactiveNotice));
             RefreshTargets();
             Background(LoadStatementAsync());
         }
@@ -139,6 +143,14 @@ public class CashBoxesSectionViewModel : SectionViewModel
     public RelayCommand PrintStatementCommand { get; }
     public AsyncRelayCommand LoadStatementCommand { get; }
     public AsyncRelayCommand CreateBoxCommand { get; }
+    public AsyncRelayCommand ToggleActiveCommand { get; }
+
+    /// <summary>صندوق المستخدم يُنشأ غير مفعّل افتراضيًا؛ يفعّله الأدمن متى شاء (الرئيسي دائمًا مفعّل).</summary>
+    public bool NewBoxActive { get => _newBoxActive; set => SetProperty(ref _newBoxActive, value); }
+    public bool SelectedIsActive => SelectedBox?.IsActive == true;
+    public string InactiveNotice => SelectedBox is { IsActive: false }
+        ? "هذا الصندوق غير مفعّل: مبيعات صاحبه ومقبوضاته النقدية تذهب للصندوق الرئيسي. فعّله من زر التفعيل."
+        : "";
 
     /// <summary>آخر حركة سُجّلت من الشاشة (للاختبارات).</summary>
     public CashBoxTransaction? LastTransaction { get; private set; }
@@ -161,6 +173,8 @@ public class CashBoxesSectionViewModel : SectionViewModel
 
         _selectedBox = Boxes.FirstOrDefault(b => b.Id == selectedId) ?? Boxes.FirstOrDefault();
         OnPropertyChanged(nameof(SelectedBox));
+        OnPropertyChanged(nameof(SelectedIsActive));
+        OnPropertyChanged(nameof(InactiveNotice));
         RefreshTargets();
         await LoadStatementAsync();
     }
@@ -197,6 +211,8 @@ public class CashBoxesSectionViewModel : SectionViewModel
         foreach (var b in boxes) Boxes.Add(b);
         _selectedBox = Boxes.FirstOrDefault(b => b.Id == id) ?? Boxes.FirstOrDefault();
         OnPropertyChanged(nameof(SelectedBox));
+        OnPropertyChanged(nameof(SelectedIsActive));
+        OnPropertyChanged(nameof(InactiveNotice));
         OnPropertyChanged(nameof(HasBoxes));
         await LoadStatementAsync();
     }
@@ -283,7 +299,8 @@ public class CashBoxesSectionViewModel : SectionViewModel
     {
         var box = new CashBox
         {
-            Name = NewBoxName, BoxType = NewBoxType.Value, OwnerUserId = NewBoxIsUser ? NewBoxOwner?.Id : null, IsDefault = NewBoxDefault
+            Name = NewBoxName, BoxType = NewBoxType.Value, OwnerUserId = NewBoxIsUser ? NewBoxOwner?.Id : null, IsDefault = NewBoxDefault,
+            IsActive = !NewBoxIsUser || NewBoxActive
         };
         await using var db = Session.NewDb();
         var r = await new CashBoxService(db).SaveBoxAsync(box, Session.UserId);
@@ -292,6 +309,22 @@ public class CashBoxesSectionViewModel : SectionViewModel
         NewBoxName = "";
         NewBoxOwner = null;
         NewBoxDefault = false;
+        NewBoxActive = false;
+        await LoadAsync();
+        SelectedBox = Boxes.FirstOrDefault(b => b.Id == box.Id);
+    }
+
+    private async Task ToggleActiveAsync(CashBoxRow box)
+    {
+        var activate = !box.IsActive;
+        var msg = activate
+            ? $"تفعيل \"{box.Name}\"؟ ستدخله مبيعات صاحبه ومقبوضاته النقدية من الآن."
+            : $"إيقاف \"{box.Name}\"؟ ستذهب مبيعات صاحبه ومقبوضاته النقدية للصندوق الرئيسي. الرصيد الحالي ({box.Balance:N0} د.ع) يبقى للعرض ويمكن مناقلته بعد إعادة التفعيل.";
+        if (!Dialogs.Confirm(msg)) return;
+        await using var db = Session.NewDb();
+        var r = await new CashBoxService(db).SetActiveAsync(box.Id, activate, Session.UserId);
+        if (!r.Success) { Dialogs.Error(r.ErrorMessage!); return; }
+        StatusMessage = activate ? $"تم تفعيل \"{box.Name}\"" : $"تم إيقاف \"{box.Name}\"";
         await LoadAsync();
         SelectedBox = Boxes.FirstOrDefault(b => b.Id == box.Id);
     }

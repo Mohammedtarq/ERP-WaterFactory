@@ -99,6 +99,8 @@ public class JournalLineRow
 
 public class JournalEntriesSectionViewModel : SectionViewModel
 {
+    protected override bool HasPendingInput => IsComposing;
+
     private JournalEntryRow? _selectedEntry;
     private bool _isComposing;
     private DateTime _entryDate = DateTime.Today;
@@ -228,6 +230,8 @@ public record PartyOption(int? Id, string Name);
 
 public class VouchersSectionViewModel : SectionViewModel
 {
+    protected override bool HasPendingInput => Amount != 0;
+
     private Option<VoucherType> _voucherType;
     private Option<VoucherPartyType> _partyType;
     private PartyOption? _party;

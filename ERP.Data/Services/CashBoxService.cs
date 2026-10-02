@@ -66,6 +66,7 @@ public class CashBoxService
     public async Task<List<CashBoxRow>> GetBoxesAsync(int userId, bool includeInactive = false)
     {
         var admin = await IsAdminAsync(userId);
+        includeInactive |= admin;   // الأدمن يرى الصناديق غير المفعّلة أيضًا ليعيد تفعيلها
         var boxes = await _db.CashBoxes.AsNoTracking()
             .Where(b => (includeInactive || b.IsActive) && (admin || b.OwnerUserId == userId))
             .Select(b => new { b.Id, b.Name, b.BoxType, Owner = b.OwnerUser != null ? b.OwnerUser.Username : null, b.IsDefault, b.IsActive })
@@ -106,7 +107,8 @@ public class CashBoxService
         if (!await IsAdminAsync(userId)) return FinanceOperationResult.Fail("إنشاء الصناديق وتعديلها للأدمن فقط");
         if (string.IsNullOrWhiteSpace(box.Name)) return FinanceOperationResult.Fail("اكتب اسم الصندوق");
         if (box.BoxType == CashBoxType.User && box.OwnerUserId is null) return FinanceOperationResult.Fail("اختر المستخدم صاحب الصندوق");
-        if (box.BoxType == CashBoxType.Main) box.OwnerUserId = null;
+        if (box.BoxType == CashBoxType.Main) { box.OwnerUserId = null; box.IsActive = true; }
+        if (box.IsDefault) box.IsActive = true;
         if (await _db.CashBoxes.AnyAsync(b => b.Name == box.Name.Trim() && b.Id != box.Id)) return FinanceOperationResult.Fail("يوجد صندوق بنفس الاسم");
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -117,6 +119,22 @@ public class CashBoxService
         else _db.CashBoxes.Update(box);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>
+    /// تفعيل/إيقاف صندوق (أدمن فقط). صندوق المستخدم غير المفعّل لا يستقبل شيئًا: مبيعاته ومقبوضاته النقدية
+    /// تذهب للصندوق الافتراضي (الرئيسي) تلقائيًا بلا أي رسالة، ورصيده وكشفه يبقيان للعرض.
+    /// </summary>
+    public async Task<FinanceOperationResult> SetActiveAsync(int boxId, bool active, int userId)
+    {
+        if (!await IsAdminAsync(userId)) return FinanceOperationResult.Fail("تفعيل الصناديق وإيقافها للأدمن فقط");
+        var box = await _db.CashBoxes.FindAsync(boxId);
+        if (box is null) return FinanceOperationResult.Fail("الصندوق غير موجود");
+        if (!active && box.IsDefault)
+            return FinanceOperationResult.Fail("الصندوق الافتراضي يستقبل المبيعات النقدية ولا يُوقف — اجعل صندوقًا آخر افتراضيًا أولًا");
+        box.IsActive = active;
+        await _db.SaveChangesAsync();
         return FinanceOperationResult.Ok();
     }
 

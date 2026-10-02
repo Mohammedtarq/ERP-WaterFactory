@@ -54,6 +54,7 @@ public abstract class CrudSectionViewModel<T> : SectionViewModel where T : class
     }
 
     public bool IsEditing => Editor is not null;
+    protected override bool HasPendingInput => IsEditing;
     public string EditorTitle => Editor is null ? "" : GetId(Editor) == 0 ? $"إضافة — {Title}" : $"تعديل — {Title}";
 
     public AsyncRelayCommand NewCommand { get; }

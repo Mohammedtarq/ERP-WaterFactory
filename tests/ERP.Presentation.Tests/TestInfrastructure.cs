@@ -73,6 +73,8 @@ public class AppFixture
     {
         // أي خطأ غير متوقع في الخلفية يُفشل الاختبار بدل أن يضيع
         AsyncRelayCommand.UnhandledErrorHandler = ex => Unhandled.Add(ex);
+        // الاختبارات تكتب أحيانًا مباشرة في القاعدة (خارج الجلسة): شاشات الأرصدة تُحدَّث عند كل فتح بلا مهلة
+        SectionViewModel.IdleRefreshInterval = TimeSpan.Zero;
 
         using var db = NewDb();
         var admin = new Role { Name = "مدير عام" };
