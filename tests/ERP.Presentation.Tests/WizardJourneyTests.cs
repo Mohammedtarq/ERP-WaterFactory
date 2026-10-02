@@ -41,6 +41,22 @@ public class WizardJourneyTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// سجل المعالج يُملأ عبر Progress&lt;T&gt; (على خيط الواجهة في البرنامج، وبشكل غير متزامن في الاختبار)،
+    /// فيُقرأ بنسخة ثابتة مع انتظار قصير بدل التعداد أثناء الإضافة.
+    /// </summary>
+    private static async Task LogContains(SetupViewModel setup, string text)
+    {
+        for (var i = 0; i < 50; i++)
+        {
+            string[] snapshot;
+            try { snapshot = setup.Log.ToArray(); } catch (Exception e) when (e is ArgumentException or InvalidOperationException) { snapshot = Array.Empty<string>(); }
+            if (snapshot.Any(l => l is not null && l.Contains(text))) return;
+            await Task.Delay(20);
+        }
+        Assert.Fail($"السجل لا يحتوي \"{text}\"");
+    }
+
     private static async Task Open(ModuleViewModel module, SectionViewModel section)
     {
         module.SelectedTab = section;
@@ -87,7 +103,7 @@ public class WizardJourneyTests : IAsyncLifetime
         setup.AdminPasswordConfirm = "Owner@2026";
         await setup.FinishCommand.ExecuteAsync();
         Assert.True(setup.ErrorMessage is null, setup.ErrorMessage);
-        Assert.Contains(setup.Log, l => l.Contains("اكتمل الإعداد"));
+        await LogContains(setup, "اكتمل الإعداد");
         Assert.NotNull(config.Value);                                 // الإعداد حُفظ
         Assert.Equal(config.Value, nav.UsedControlConnection);        // وانتقل للدخول عليه
         var controlCs = config.Value!;
@@ -244,7 +260,7 @@ public class WizardJourneyTests : IAsyncLifetime
         setup.ResetExistingAdminPassword = true;
         await setup.FinishCommand.ExecuteAsync();
         Assert.True(setup.ErrorMessage is null, setup.ErrorMessage);
-        Assert.Contains(setup.Log, l => l.Contains("تحقق الدخول"));
+        await LogContains(setup, "تحقق الدخول");
         Assert.NotNull(nav.UsedControlConnection);
 
         var loginNav = new RecordingNavigator();

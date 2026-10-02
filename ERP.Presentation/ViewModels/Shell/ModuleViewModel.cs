@@ -102,6 +102,15 @@ public abstract class ModuleViewModel : ViewModelBase
         return section;
     }
 
+    /// <summary>أقسام تُبنى من البيانات (مثل تبويب لكل مخزن) تُدرج بعد "الرئيسية" مباشرة.</summary>
+    protected void InsertSection(int index, SectionViewModel section) => Tabs.Insert(Math.Min(index, Tabs.Count), section);
+
+    protected void RemoveSection(SectionViewModel section)
+    {
+        if (ReferenceEquals(SelectedTab, section)) SelectedTab = Home;
+        Tabs.Remove(section);
+    }
+
     public T Section<T>() where T : SectionViewModel => Tabs.OfType<T>().Single();
 }
 

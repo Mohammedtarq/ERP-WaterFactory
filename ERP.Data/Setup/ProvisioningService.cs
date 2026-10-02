@@ -184,6 +184,7 @@ public static class DefaultConfiguration
         ("2102", "ضريبة مبيعات مستحقة", AccountType.Liability),
         ("2103", "رواتب مستحقة الدفع", AccountType.Liability),
         ("3101", "رأس المال", AccountType.Equity),
+        ("3102", "جاري المالك (إيداعات وسحوبات الصندوق)", AccountType.Equity),
         ("4101", "إيرادات المبيعات", AccountType.Revenue),
         ("4102", "إيراد مستلزمات التحميل", AccountType.Revenue),
         ("5101", "مصروفات عمومية", AccountType.Expense),
@@ -210,6 +211,8 @@ public static class DefaultConfiguration
         (RepsService.FieldExpenseRule, "5103", "1103"),
         (RepsService.CashHandoverRule, "1101", "1103"),
         (RepsService.DebtCollectionRule, "1103", "1201"),
+        (CashBoxService.DepositRule, "1101", "3102"),
+        (CashBoxService.WithdrawalRule, "5101", "1101"),
     };
 
     private static readonly string[] AllModules =
@@ -299,6 +302,10 @@ public static class DefaultConfiguration
         }
 
         // ---- الموارد البشرية ----
+        // الصندوق الرئيسي الافتراضي (يستقبل المبيعات النقدية إن لم يكن للمستخدم صندوق خاص)
+        if (!await db.CashBoxes.AnyAsync())
+            db.CashBoxes.Add(new CashBox { Name = "الصندوق الرئيسي", BoxType = CashBoxType.Main, IsDefault = true });
+
         if (!await db.Shifts.AnyAsync())
             db.Shifts.Add(new Shift { Name = "الشفت الصباحي", CheckInTime = new TimeSpan(8, 0, 0), CheckInGraceMinutes = 10,
                                       CheckOutTime = new TimeSpan(16, 0, 0), CheckOutGraceMinutes = 10 });

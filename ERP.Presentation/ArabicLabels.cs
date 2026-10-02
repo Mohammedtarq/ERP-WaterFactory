@@ -58,6 +58,15 @@ public static class ArabicLabels
         [QCLineResult.Pass] = "ناجح", [QCLineResult.Fail] = "راسب",
         [SyncConflictStatus.Pending] = "بانتظار التسوية", [SyncConflictStatus.Resolved] = "مسوّى",
         [StockAdjustmentKind.Damaged] = "تالف", [StockAdjustmentKind.Disposal] = "إتلاف", [StockAdjustmentKind.Return] = "إرجاع للمخزن",
+        [StockTransactionType.Issue] = "إخراج مخزني",
+        [StockDocumentType.Receipt] = "إدخال مخزني", [StockDocumentType.Issue] = "إخراج مخزني",
+        [StockDocumentType.Transfer] = "مناقلة إلى مخزن آخر", [StockDocumentType.Damaged] = "تالف",
+        [StockDocumentType.FreeIssue] = "مسحوب مجاني",
+        [CashBoxType.Main] = "صندوق رئيسي", [CashBoxType.User] = "صندوق مستخدم",
+        [CashBoxTxType.Opening] = "رصيد افتتاحي", [CashBoxTxType.Deposit] = "إيداع", [CashBoxTxType.Withdrawal] = "سحب",
+        [CashBoxTxType.TransferIn] = "مناقلة واردة", [CashBoxTxType.TransferOut] = "مناقلة صادرة",
+        [CashBoxTxType.SalesReceipt] = "مبيعات نقدية", [CashBoxTxType.VoucherReceipt] = "سند قبض",
+        [CashBoxTxType.VoucherPayment] = "سند صرف", [CashBoxTxType.RepHandover] = "تسليم نقد مندوب",
     };
 
     /// <summary>القيم النصية كما تخرج من Views قاعدة البيانات (Status/CustomerType/PaymentMethod/TxType).</summary>

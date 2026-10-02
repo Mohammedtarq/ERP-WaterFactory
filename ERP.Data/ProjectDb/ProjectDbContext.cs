@@ -84,6 +84,10 @@ public class ProjectDbContext : DbContext
     public DbSet<QCBatchResult> QCBatchResults => Set<QCBatchResult>();
     public DbSet<QCTestResultLine> QCTestResultLines => Set<QCTestResultLine>();
     public DbSet<PackingOrder> PackingOrders => Set<PackingOrder>();
+    public DbSet<StockDocument> StockDocuments => Set<StockDocument>();
+    public DbSet<StockDocumentLine> StockDocumentLines => Set<StockDocumentLine>();
+    public DbSet<CashBox> CashBoxes => Set<CashBox>();
+    public DbSet<CashBoxTransaction> CashBoxTransactions => Set<CashBoxTransaction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -200,6 +204,34 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<Voucher>()
             .HasIndex(v => v.VoucherNumber)
             .IsUnique();
+        // ---- مستندات المخزن والصناديق (12_warehouse_docs_cashboxes.sql) ----
+        modelBuilder.Entity<StockDocument>(e =>
+        {
+            e.Property(d => d.DocumentType).HasConversion<string>();
+            e.Property(d => d.DamageReason).HasConversion<string>();
+            e.HasOne(d => d.Warehouse).WithMany().HasForeignKey(d => d.WarehouseId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(d => d.CounterWarehouse).WithMany().HasForeignKey(d => d.CounterWarehouseId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(d => d.CreatedByUser).WithMany().HasForeignKey(d => d.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
+            e.HasMany(d => d.Lines).WithOne(l => l.StockDocument).HasForeignKey(l => l.StockDocumentId);
+        });
+        modelBuilder.Entity<StockDocumentLine>().Property(l => l.QuantityInLevel).HasPrecision(18, 3);
+        modelBuilder.Entity<StockDocumentLine>().Property(l => l.QuantityBaseUnits).HasPrecision(18, 3);
+        modelBuilder.Entity<CashBox>(e =>
+        {
+            e.Property(b => b.BoxType).HasConversion<string>();
+            e.HasOne(b => b.OwnerUser).WithMany().HasForeignKey(b => b.OwnerUserId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<CashBoxTransaction>(e =>
+        {
+            e.Property(t => t.TxType).HasConversion<string>();
+            e.Property(t => t.Amount).HasPrecision(18, 2);
+            e.Property(t => t.OriginalAmount).HasPrecision(18, 2);
+            e.HasOne(t => t.CashBox).WithMany().HasForeignKey(t => t.CashBoxId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(t => t.CounterCashBox).WithMany().HasForeignKey(t => t.CounterCashBoxId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(t => t.CreatedByUser).WithMany().HasForeignKey(t => t.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(t => t.ModifiedByUser).WithMany().HasForeignKey(t => t.ModifiedByUserId).OnDelete(DeleteBehavior.NoAction);
+        });
+
         modelBuilder.Entity<Voucher>().Property(v => v.VoucherType).HasConversion<string>();
         modelBuilder.Entity<Voucher>().Property(v => v.PartyType).HasConversion<string>();
         modelBuilder.Entity<Voucher>().Property(v => v.PaymentMethod).HasConversion<string>();

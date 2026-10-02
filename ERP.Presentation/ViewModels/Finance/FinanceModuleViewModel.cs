@@ -14,12 +14,15 @@ public class FinanceModuleViewModel : ModuleViewModel
     public FinanceModuleViewModel(AppSession s, IDialogService d)
         : base("المالية", Icons.Finance, ModuleColors.Finance)
     {
+        Boxes = Add(new CashBoxesSectionViewModel(s, d));
         Add(new ChartOfAccountsSectionViewModel(s, d));
         Add(new JournalEntriesSectionViewModel(s, d));
         Add(new VouchersSectionViewModel(s, d));
         Add(new MappingRulesSectionViewModel(s, d));
         Add(new ExchangeRatesSectionViewModel(s, d));
     }
+
+    public CashBoxesSectionViewModel Boxes { get; }
 }
 
 // ============================ دليل الحسابات ============================

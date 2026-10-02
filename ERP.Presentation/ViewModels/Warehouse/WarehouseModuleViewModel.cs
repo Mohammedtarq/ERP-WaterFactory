@@ -11,11 +11,16 @@ namespace ERP.Presentation.ViewModels.Warehouse;
 
 public class WarehouseModuleViewModel : ModuleViewModel
 {
+    private readonly AppSession _session;
+    private readonly IDialogService _dialogs;
+
     public WarehouseModuleViewModel(AppSession s, IDialogService d)
         : base("المخازن", Icons.Warehouse, ModuleColors.Warehouse)
     {
+        _session = s;
+        _dialogs = d;
         Add(new ItemsSectionViewModel(s, d));
-        Add(new WarehousesSectionViewModel(s, d));
+        Add(new WarehousesSectionViewModel(s, d, RefreshWorkspacesAsync));
         Add(new PackagingSectionViewModel(s, d));
         Add(new LocationsSectionViewModel(s, d));
         Add(new CurrentStockSectionViewModel(s, d));
@@ -23,6 +28,36 @@ public class WarehouseModuleViewModel : ModuleViewModel
         Add(new ManufacturingRequirementSectionViewModel(s, d));
         Add(new BomSectionViewModel(s, d));
         Add(new StockAlertsSectionViewModel(s, d));
+        Background(RefreshWorkspacesAsync());
+    }
+
+    /// <summary>واجهة مستقلة لكل مخزن فعّال (مواد أولية، منتج تام، كاش فان، تالف، وأي مخزن جديد).</summary>
+    public IReadOnlyList<WarehouseWorkspaceSectionViewModel> Workspaces => Tabs.OfType<WarehouseWorkspaceSectionViewModel>().ToList();
+
+    public WarehouseWorkspaceSectionViewModel Workspace(int warehouseId) => Workspaces.Single(w => w.WarehouseId == warehouseId);
+
+    /// <summary>يضيف تبويبًا لكل مخزن جديد ويزيل تبويب المخزن الموقوف أو المحذوف (وتغيير الاسم/النوع يعيد بناء تبويبه).</summary>
+    public async Task RefreshWorkspacesAsync()
+    {
+        await using var db = _session.NewDb();
+        var warehouses = (await db.Warehouses.AsNoTracking().Where(w => w.IsActive).OrderBy(w => w.Name).ToListAsync())
+            // ترتيب ثابت: المنتج التام، المواد الأولية، ثم بقية المخازن، والكاش فان أخيرًا
+            .OrderBy(w => w.WarehouseType switch { WarehouseType.FinishedGoods => 0, WarehouseType.RawMaterial => 1, WarehouseType.RepVan => 3, _ => 2 })
+            .ThenBy(w => w.Name).ToList();
+
+        foreach (var ws in Workspaces)
+        {
+            var w = warehouses.FirstOrDefault(x => x.Id == ws.WarehouseId);
+            if (w is null || w.Name != ws.Title || w.WarehouseType != ws.WarehouseType) RemoveSection(ws);
+        }
+        var index = 1;
+        foreach (var w in warehouses)
+        {
+            var existing = Workspaces.FirstOrDefault(x => x.WarehouseId == w.Id);
+            if (existing is null) InsertSection(index, new WarehouseWorkspaceSectionViewModel(_session, _dialogs, w));
+            else if (Tabs.IndexOf(existing) != index) { Tabs.Remove(existing); InsertSection(index, existing); }
+            index++;
+        }
     }
 }
 
@@ -65,8 +100,20 @@ public class ItemsSectionViewModel : CrudSectionViewModel<Item>
 // ============================ المخازن ============================
 public class WarehousesSectionViewModel : CrudSectionViewModel<Data.ProjectDb.Entities.Warehouse>
 {
-    public WarehousesSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.Warehouse, "المخازن", Icons.Store, "#6366F1", "المخازن الرئيسية والفرعية والكاش فان") { }
+    private readonly Func<Task>? _changed;
+
+    public WarehousesSectionViewModel(AppSession s, IDialogService d, Func<Task>? changed = null)
+        : base(s, d, ModuleCode.Warehouse, "تعريف المخازن", Icons.Store, "#6366F1", "إضافة المخازن الرئيسية والفرعية والكاش فان — لكل مخزن واجهة خاصة")
+    {
+        _changed = changed;
+    }
+
+    /// <summary>كل مخزن جديد يظهر فورًا كتبويب مستقل في وحدة المخازن.</summary>
+    protected override async Task<string?> AfterSaveAsync(Data.ProjectDb.Entities.Warehouse entity, bool isNew)
+    {
+        if (_changed is not null) await _changed();
+        return null;
+    }
 
     public IReadOnlyList<Option<WarehouseType>> TypeOptions { get; } = ArabicLabels.OptionsOf<WarehouseType>();
     public ObservableCollection<Branch> Branches { get; } = new();

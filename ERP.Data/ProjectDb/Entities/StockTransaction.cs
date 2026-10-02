@@ -5,7 +5,9 @@ public enum StockTransactionType
     Receipt, SalesIssue, ProductionConsume, ProductionOutput, Packing, Transfer,
     Damaged, FreeIssue, ReturnToWarehouse,
     RepLoad, RepSale, RepFreeSale, RepDamaged, RepReturn,
-    SyncConflictAdjustment
+    SyncConflictAdjustment,
+    /// <summary>إخراج مخزني: صرف لجهة أو غرض من واجهة المخزن (12_warehouse_docs_cashboxes.sql)</summary>
+    Issue
 }
 
 public enum DamageReason { Transit, Warehouse, Production }

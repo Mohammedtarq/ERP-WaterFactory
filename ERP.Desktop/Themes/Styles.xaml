@@ -71,10 +71,85 @@
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="MinHeight" Value="34"/>
     </Style>
+    <!--
+        كل قائمة منسدلة في النظام: مربع بحث أعلى القائمة (اكتب للتصفية، Enter للاختيار، Esc للإغلاق).
+        المنطق في Mvvm/ComboSearch.cs — النتائج قائمة مستقلة، فلا يتغير الاختيار أثناء الكتابة.
+    -->
     <Style TargetType="ComboBox">
-        <Setter Property="Padding" Value="6,5"/>
+        <Setter Property="Padding" Value="8,4,26,4"/>
         <Setter Property="MinHeight" Value="32"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="MaxDropDownHeight" Value="380"/>
+        <Setter Property="m:ComboSearch.IsEnabled" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid SnapsToDevicePixels="True">
+                        <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bd" CornerRadius="4" BorderThickness="1"
+                                            Background="{Binding Background, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                            BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource AncestorType=ComboBox}}">
+                                        <TextBlock Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="10"
+                                                   HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,9,0"
+                                                   Foreground="{StaticResource MutedTextBrush}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter IsHitTestVisible="False" Margin="{TemplateBinding Padding}"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                          ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                        <Popup x:Name="PART_Popup" AllowsTransparency="True" Placement="Bottom" Focusable="False"
+                               IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}" PopupAnimation="Fade">
+                            <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                    Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1" CornerRadius="6" Margin="0,2,8,10">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="12" ShadowDepth="2" Opacity="0.18"/>
+                                </Border.Effect>
+                                <DockPanel MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <Grid DockPanel.Dock="Top" Margin="6">
+                                        <TextBox x:Name="PART_Search" Padding="28,4,6,4" MinHeight="30"/>
+                                        <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12" IsHitTestVisible="False"
+                                                   HorizontalAlignment="Left" VerticalAlignment="Center" Margin="9,0,0,0"
+                                                   Foreground="{StaticResource MutedTextBrush}"/>
+                                    </Grid>
+                                    <ListBox x:Name="PART_Results" BorderThickness="0" Margin="2,0,2,4"
+                                             ItemTemplate="{TemplateBinding ItemTemplate}"
+                                             DisplayMemberPath="{TemplateBinding DisplayMemberPath}"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"/>
+                                </DockPanel>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.6"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     <Style TargetType="DatePicker">
         <Setter Property="MinHeight" Value="32"/>

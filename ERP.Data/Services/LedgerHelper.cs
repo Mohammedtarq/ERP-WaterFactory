@@ -18,14 +18,15 @@ internal static class LedgerHelper
     {
         if (quantity <= 0) return (new(), "الكمية يجب أن تكون أكبر من صفر");
 
-        var balances = await db.StockTransactions
+        var all = await db.StockTransactions
             .Where(t => t.ItemId == itemId && t.WarehouseId == warehouseId && (batchId == null || t.BatchId == batchId))
             .GroupBy(t => new { t.BatchId, Expiry = t.Batch != null ? t.Batch.ExpiryDate : null })
             .Select(g => new { g.Key.BatchId, g.Key.Expiry, Qty = g.Sum(t => t.QuantityBaseUnits) })
-            .Where(x => x.Qty > 0)
             .ToListAsync();
+        var balances = all.Where(x => x.Qty > 0).ToList();
 
-        var available = balances.Sum(b => b.Qty);
+        // المتاح الفعلي = صافي الرصيد (يشمل أي رصيد سالب بلا تشغيلة من تسويات قديمة)، ولا يتجاوز مجموع التشغيلات الموجبة
+        var available = Math.Min(balances.Sum(b => b.Qty), all.Sum(b => b.Qty));
         if (available < quantity)
         {
             var name = await db.Items.Where(i => i.Id == itemId).Select(i => i.ItemName).FirstAsync();

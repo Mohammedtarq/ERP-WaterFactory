@@ -138,9 +138,17 @@ public class RepsService
         var (entry, jeError) = await LedgerHelper.PostJournalAsync(_db, rule, amount, date, JournalEntryType.AutoVoucher, description, userId,
                                                                    "RepWalletTransactions", null, "RW");
         if (jeError is not null) return FinanceOperationResult.Fail(jeError);
-        _db.RepWalletTransactions.Add(new RepWalletTransaction { EmployeeId = repId, TransactionDate = date, Description = description,
-                                                                 AmountOut = amount, JournalEntry = entry, ReferenceTable = "Wallet" });
+        var walletTx = new RepWalletTransaction { EmployeeId = repId, TransactionDate = date, Description = description,
+                                                  AmountOut = amount, JournalEntry = entry, ReferenceTable = "Wallet" };
+        _db.RepWalletTransactions.Add(walletTx);
         await _db.SaveChangesAsync();
+        // النقد المسلَّم يدخل صندوق المستخدم المستلم (أو الافتراضي)
+        if (rule == CashHandoverRule)
+        {
+            var repName = await _db.Employees.Where(e => e.Id == repId).Select(e => e.FullName).FirstAsync();
+            await new CashBoxService(_db).RecordAutoAsync(userId, CashBoxTxType.RepHandover, amount, date, "RepWalletTransactions", walletTx.Id,
+                                                          repName, $"تسليم نقد من المندوب {repName}", entry!.Id);
+        }
         await tx.CommitAsync();
         return FinanceOperationResult.Ok();
     }

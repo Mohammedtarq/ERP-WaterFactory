@@ -113,6 +113,14 @@ public class FinanceService
         _db.Vouchers.Add(voucher);
         await _db.SaveChangesAsync();
 
+        // السند النقدي يدخل/يخرج من صندوق المستخدم (أو الافتراضي)
+        if (paymentMethod == PaymentMethod.Cash)
+            await new CashBoxService(_db).RecordAutoAsync(createdByUserId,
+                voucherType == VoucherType.Receipt ? CashBoxTxType.VoucherReceipt : CashBoxTxType.VoucherPayment,
+                voucherType == VoucherType.Receipt ? amount : -amount, voucherDate, "Vouchers", voucher.Id,
+                null, $"{(voucherType == VoucherType.Receipt ? "سند قبض" : "سند صرف")} {voucher.VoucherNumber}" + (string.IsNullOrWhiteSpace(notes) ? "" : $" — {notes}"),
+                entry.Id);
+
         return FinanceOperationResult.Ok();
     }
 

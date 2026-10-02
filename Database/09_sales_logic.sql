@@ -577,6 +577,18 @@ BEGIN
                                            ReferenceTable, ReferenceId, JournalEntryId)
         VALUES (@repId, N'مبيعات نقدية — فاتورة ' + @num, @paid, 0, N'SalesInvoices', @InvoiceId, @jeId);
 
+    -- ---------- 4ب) الصندوق: النقد المقبوض في المصنع (لا مندوب، ولا دفع إلكتروني) ----------
+    -- يدخل صندوق المستخدم (أو الافتراضي) — sp_CashBox_RecordAuto في 12_warehouse_docs_cashboxes.sql
+    IF @repId IS NULL AND @paid > 0 AND @pay <> N'Electronic' AND @whType <> N'RepVan'
+       AND OBJECT_ID('dbo.sp_CashBox_RecordAuto', 'P') IS NOT NULL
+    BEGIN
+        DECLARE @cbDesc NVARCHAR(400) = N'مبيعات نقدية — فاتورة ' + @num,
+                @cbParty NVARCHAR(200) = (SELECT Name FROM Customers WHERE Id = @custId);
+        EXEC dbo.sp_CashBox_RecordAuto @UserId = @UserId, @TxType = N'SalesReceipt', @Amount = @paid, @TxDate = @date,
+             @ReferenceTable = N'SalesInvoices', @ReferenceId = @InvoiceId, @PartyName = @cbParty,
+             @Description = @cbDesc, @JournalEntryId = @jeId;
+    END;
+
     -- ---------- 5) إغلاق الفاتورة ----------
     UPDATE SalesInvoices
     SET SubTotal = @sub, TaxAmount = @tax, LoadingSuppliesAmount = @load, TotalAmount = @total,
