@@ -23,6 +23,12 @@
                             <TextBlock Text="اعتماد الرواتب"/>
                         </StackPanel>
                     </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE749;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="طباعة كشف الرواتب"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="الشهر:" VerticalAlignment="Center" Margin="0,0,6,0"/>

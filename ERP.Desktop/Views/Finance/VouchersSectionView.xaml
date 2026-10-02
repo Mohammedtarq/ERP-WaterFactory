@@ -60,6 +60,14 @@
                         <DataGridTextColumn Header="الطريقة" Binding="{Binding MethodLabel}" Width="90"/>
                         <DataGridTextColumn Header="القيد" Binding="{Binding EntryNumber}" Width="100"/>
                         <DataGridTextColumn Header="ملاحظات" Binding="{Binding Notes}" Width="150"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE749;" ToolTip="طباعة السند" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>

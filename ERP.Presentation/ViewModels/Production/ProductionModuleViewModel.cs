@@ -53,6 +53,8 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         StartCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? StartAsync(r) : Task.CompletedTask);
         CompleteCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? CompleteAsync(r) : Task.CompletedTask);
         CancelOrderCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? CancelAsync(r) : Task.CompletedTask);
+        PrintCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? PrintAsync(db => DocumentReports.ProductionOrderAsync(Session, db, r.Id)) : Task.CompletedTask);
+        PrintPackingCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? PrintAsync(db => DocumentReports.PackingAsync(Session, db, r.Id)) : Task.CompletedTask);
     }
 
     protected override bool ReloadOnActivate => true;
@@ -77,6 +79,8 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public AsyncRelayCommand StartCommand { get; }
     public AsyncRelayCommand CompleteCommand { get; }
     public AsyncRelayCommand CancelOrderCommand { get; }
+    public AsyncRelayCommand PrintCommand { get; }
+    public AsyncRelayCommand PrintPackingCommand { get; }
 
     public override async Task LoadAsync()
     {
@@ -185,6 +189,7 @@ public class QcLine : ObservableObject
 
 public class QcHistoryRow
 {
+    public int Id { get; init; }
     public DateTime TestDate { get; init; }
     public string MONumber { get; init; } = "";
     public string BatchNumber { get; init; } = "";
@@ -202,6 +207,7 @@ public class QcSectionViewModel : SectionViewModel
         : base(s, d, ModuleCode.Production, "فحص المختبر", Icons.Star, "#8B5CF6", "نتائج اختبارات الدفعة — فشل اختبار واحد يرفضها")
     {
         SaveCommand = new AsyncRelayCommand(SaveAsync);
+        PrintCommand = new AsyncRelayCommand(p => p is QcHistoryRow r ? PrintAsync(db => DocumentReports.QcResultAsync(Session, db, r.Id)) : Task.CompletedTask);
     }
 
     protected override bool ReloadOnActivate => true;
@@ -217,6 +223,7 @@ public class QcSectionViewModel : SectionViewModel
     public ProductionOrderRow? Order { get => _order; set { if (SetProperty(ref _order, value)) Background(LoadTestsAsync()); } }
     public string? LastResult { get => _lastResult; private set => SetProperty(ref _lastResult, value); }
     public AsyncRelayCommand SaveCommand { get; }
+    public AsyncRelayCommand PrintCommand { get; }
 
     public override async Task LoadAsync()
     {
@@ -231,14 +238,14 @@ public class QcSectionViewModel : SectionViewModel
         var results = await db.QCBatchResults.AsNoTracking().OrderByDescending(q => q.Id).Take(100)
             .Select(q => new
             {
-                q.TestDate, q.ProductionOrder.MONumber, q.Batch.BatchNumber, q.OverallResult, q.TestedByUser.Username,
+                q.Id, q.TestDate, q.ProductionOrder.MONumber, q.Batch.BatchNumber, q.OverallResult, q.TestedByUser.Username,
                 Lines = q.ResultLines.Select(l => l.QualityTest.TestName + ": " + l.MeasuredValue + (l.Result == QCLineResult.Pass ? " ✓" : " ✗"))
             }).ToListAsync();
         History.Clear();
         foreach (var r in results)
             History.Add(new QcHistoryRow
             {
-                TestDate = r.TestDate.ToLocalTime(), MONumber = r.MONumber, BatchNumber = r.BatchNumber, TestedBy = r.Username,
+                Id = r.Id, TestDate = r.TestDate.ToLocalTime(), MONumber = r.MONumber, BatchNumber = r.BatchNumber, TestedBy = r.Username,
                 ResultLabel = r.OverallResult == QCOverallResult.Passed ? "ناجحة" : "مرفوضة", Details = string.Join(" · ", r.Lines)
             });
     }
@@ -284,6 +291,7 @@ public class QcSectionViewModel : SectionViewModel
 // ============================ التعبئة ============================
 public class PackingRow
 {
+    public int OrderId { get; init; }
     public DateTime PackingDate { get; init; }
     public string MONumber { get; init; } = "";
     public string LevelName { get; init; } = "";
@@ -303,6 +311,7 @@ public class PackingSectionViewModel : SectionViewModel
         : base(s, d, ModuleCode.Production, "أوامر التعبئة", Icons.Layers, "#0EA5E9", "تحويل الناتج المعتمد إلى كراتين/شرنك في مخزن المنتج التام")
     {
         PackCommand = new AsyncRelayCommand(PackAsync);
+        PrintCommand = new AsyncRelayCommand(p => p is PackingRow r ? PrintAsync(db => DocumentReports.PackingAsync(Session, db, r.OrderId)) : Task.CompletedTask);
     }
 
     protected override bool ReloadOnActivate => true;
@@ -318,6 +327,7 @@ public class PackingSectionViewModel : SectionViewModel
     public string RemainingText => Order is null ? "" : $"المطلوب {Order.QuantityToProduce:N0} — المعبّأ {Order.PackedQuantity:N0} — المتبقي {Order.QuantityToProduce - Order.PackedQuantity:N0} قطعة";
     public string PiecesText => Level is null ? "" : $"= {Units * Level.EquivalentBaseUnits:N0} قطعة";
     public AsyncRelayCommand PackCommand { get; }
+    public AsyncRelayCommand PrintCommand { get; }
 
     public override async Task LoadAsync()
     {
@@ -341,7 +351,7 @@ public class PackingSectionViewModel : SectionViewModel
         var rows = await db.PackingOrders.AsNoTracking().OrderByDescending(p => p.Id).Take(100)
             .Select(p => new PackingRow
             {
-                PackingDate = p.PackingDate, MONumber = p.ProductionOrder.MONumber, LevelName = p.PackagingLevel.LevelName, Units = p.UnitsPackaged,
+                OrderId = p.ProductionOrderId, PackingDate = p.PackingDate, MONumber = p.ProductionOrder.MONumber, LevelName = p.PackagingLevel.LevelName, Units = p.UnitsPackaged,
                 Pieces = p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits, WarehouseName = p.ResultingFinishedGoodsWarehouse.Name
             }).ToListAsync();
         History.Clear();

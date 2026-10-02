@@ -57,6 +57,14 @@
                         <DataGridTextColumn Header="العدد" Binding="{Binding Units, StringFormat=N0}" Width="80"/>
                         <DataGridTextColumn Header="بالقطعة" Binding="{Binding Pieces, StringFormat=N0}" Width="90"/>
                         <DataGridTextColumn Header="المخزن" Binding="{Binding WarehouseName}" Width="*"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE749;" ToolTip="طباعة محضر التعبئة" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>

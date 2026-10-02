@@ -147,6 +147,10 @@ public class ScreenFlowTests
         // وتظهر في قائمة الفواتير كمرحّلة
         await Open(sales, sales.InvoiceList);
         Assert.Contains(sales.InvoiceList.Rows, r => r.InvoiceNumber == number && r.Status == "Posted");
+        // إعادة طباعة الفاتورة المرحّلة من القائمة (من قاعدة البيانات)
+        await sales.InvoiceList.PrintCommand.ExecuteAsync(sales.InvoiceList.Rows.Single(r => r.InvoiceNumber == number));
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الإجمالي" && t.Value == "14,280 د.ع");
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الإجمالي كتابةً" && t.Value.Contains("أربعة عشر ألف ومئتان وثمانون"));
         Assert.Empty(_f.Unhandled);
     }
 
@@ -394,6 +398,16 @@ public class ScreenFlowTests
         await sales.Statement.IdleAsync();
         Assert.Contains(sales.Statement.Rows, r => r.TxType == "سند قبض" && r.Credit == 750);
 
+        // طباعة السند (بالمبلغ كتابةً) والقيد
+        await v.PrintCommand.ExecuteAsync(v.Vouchers.First(x => x.Amount == 750));
+        var vr = dialogs.Reports.Last();
+        Assert.Equal("سند قبض", vr.Title);
+        Assert.Contains(vr.HeaderFields, f => f.Label == "استلمنا من" && f.Value == "زبون مباشر");
+        Assert.Contains(vr.Totals, t => t.Value == "فقط سبعمئة وخمسون دينار عراقي لا غير");
+        await je.PrintCommand.ExecuteAsync(je.Entries.First(e => e.Total == 500));
+        Assert.Equal("قيد يومية", dialogs.Reports.Last().Title);
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Value == "متوازن ✓");
+
         var rules = fin.Section<MappingRulesSectionViewModel>();
         await Open(fin, rules);
         // القواعد الناقصة (مثل الدفع الإلكتروني) تُضاف تلقائيًا عند فتح المشروع
@@ -430,6 +444,12 @@ public class ScreenFlowTests
         Assert.Empty(dialogs.Errors);
         Assert.Contains(gr.Receipts, r => r.PONumber == order.PONumber && r.Total == 21600m);
         Assert.DoesNotContain(gr.OpenOrders, o => o.Id == order.Id);   // اكتمل الاستلام
+        await gr.PrintCommand.ExecuteAsync(gr.Receipts.First(r => r.PONumber == order.PONumber));
+        Assert.Equal("محضر استلام بضاعة", dialogs.Reports.Last().Title);
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Value == "21,600 د.ع");
+        await po.PrintCommand.ExecuteAsync(order);
+        Assert.Equal("أمر شراء", dialogs.Reports.Last().Title);
+        Assert.Contains(dialogs.Reports.Last().Rows, r => r[2] == "240" && r[5] == "240");
 
         var st = sup.Section<SupplierStatementSectionViewModel>();
         await Open(sup, st);

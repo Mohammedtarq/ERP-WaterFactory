@@ -666,6 +666,7 @@ public class SalesInvoiceListSectionViewModel : SectionViewModel
         _open = open;
         OpenCommand = new AsyncRelayCommand(p => p is SalesInvoiceListRow r ? _open(r.Id) : Task.CompletedTask);
         DeleteCommand = new AsyncRelayCommand(p => p is SalesInvoiceListRow r ? DeleteAsync(r) : Task.CompletedTask);
+        PrintCommand = new AsyncRelayCommand(p => p is SalesInvoiceListRow r ? PrintAsync(db => DocumentReports.SalesInvoiceAsync(Session, db, r.Id)) : Task.CompletedTask);
         ClearFiltersCommand = new AsyncRelayCommand(async () => { _fromDate = null; _toDate = null; _customerFilter = null; RaiseFilters(); await LoadAsync(); });
     }
 
@@ -683,6 +684,7 @@ public class SalesInvoiceListSectionViewModel : SectionViewModel
     public AsyncRelayCommand OpenCommand { get; }
     public AsyncRelayCommand DeleteCommand { get; }
     public AsyncRelayCommand ClearFiltersCommand { get; }
+    public AsyncRelayCommand PrintCommand { get; }
 
     private void RaiseFilters()
     {

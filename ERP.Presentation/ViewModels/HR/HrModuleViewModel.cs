@@ -249,6 +249,7 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
     {
         GenerateCommand = new AsyncRelayCommand(GenerateAsync);
         ApproveCommand = new AsyncRelayCommand(ApproveAsync);
+        PrintCommand = new AsyncRelayCommand(() => RunId is int id ? PrintAsync(db => DocumentReports.PayrollAsync(Session, db, id)) : Error("ولّد رواتب الشهر أولًا"));
     }
 
     protected override bool ReloadOnActivate => true;
@@ -260,6 +261,8 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
 
     public AsyncRelayCommand GenerateCommand { get; }
     public AsyncRelayCommand ApproveCommand { get; }
+    public AsyncRelayCommand PrintCommand { get; }
+    private Task Error(string message) { Dialogs.Error(message); return Task.CompletedTask; }
 
     public override async Task LoadAsync()
     {

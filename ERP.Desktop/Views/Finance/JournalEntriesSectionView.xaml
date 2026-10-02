@@ -41,6 +41,14 @@
                         <DataGridTextColumn Header="البيان" Binding="{Binding Description}" Width="*"/>
                         <DataGridTextColumn Header="المبلغ" Binding="{Binding Total, StringFormat=N0}" Width="110"/>
                         <DataGridCheckBoxColumn Header="مرحّل" Binding="{Binding IsPosted, Mode=OneWay}" Width="60"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE749;" ToolTip="طباعة القيد" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock Grid.Row="2" Text="سطور القيد المحدد" Style="{StaticResource SectionTitle}" Margin="0,12,0,6"/>

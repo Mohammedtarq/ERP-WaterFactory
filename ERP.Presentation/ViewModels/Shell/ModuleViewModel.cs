@@ -39,6 +39,15 @@ public abstract class SectionViewModel : SessionViewModel
     }
 
     public abstract Task LoadAsync();
+
+    /// <summary>طباعة مستند محفوظ: يُبنى من قاعدة البيانات ثم يُعرض للمعاينة والطباعة.</summary>
+    protected async Task PrintAsync(Func<Data.ProjectDb.ProjectDbContext, Task<ReportDocument?>> build)
+    {
+        await using var db = Session.NewDb();
+        var report = await build(db);
+        if (report is null) { Dialogs.Error("المستند غير موجود"); return; }
+        Dialogs.ShowReport(report);
+    }
 }
 
 /// <summary>تبويب "الرئيسية" داخل كل وحدة: بطاقات ملوّنة تفتح الأقسام الفرعية.</summary>

@@ -19,7 +19,10 @@
                     <TextBlock Text="{Binding RepName}" VerticalAlignment="Center" Style="{StaticResource Muted}" Margin="0,0,12,0"/>
                     <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                 </WrapPanel>
-                <TextBlock DockPanel.Dock="Top" Text="{Binding VanTotalPieces, StringFormat='المخزون الحالي في السيارة: {0:N0} قطعة'}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Left" Content="&#xE749;" ToolTip="طباعة جرد السيارة" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding PrintStockCommand}"/>
+                    <TextBlock Text="{Binding VanTotalPieces, StringFormat='المخزون الحالي في السيارة: {0:N0} قطعة'}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </DockPanel>
                 <DataGrid ItemsSource="{Binding VanStock}">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>

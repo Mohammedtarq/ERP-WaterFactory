@@ -223,6 +223,24 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Empty(dialogs.Errors);
         await Open(prod, orders);
         Assert.Equal("مكتمل", orders.Orders.Single(o => o.Id == order.Id).StageText);
+
+        // ---------------- 6) الطباعة: أمر الإنتاج، شهادة المختبر، محضر التعبئة، المحفظة، جرد السيارة ----------------
+        await orders.PrintCommand.ExecuteAsync(orders.Orders.Single(o => o.Id == order.Id));
+        var mo = dialogs.Reports.Last();
+        Assert.Equal("أمر إنتاج", mo.Title);
+        Assert.Equal(3, mo.Rows.Count);
+        Assert.Contains(mo.HeaderFields, f => f.Label == "نتيجة المختبر" && f.Value == "ناجحة");
+        await Open(prod, qc);
+        await qc.PrintCommand.ExecuteAsync(qc.History.First());
+        Assert.Equal("شهادة فحص مختبري", dialogs.Reports.Last().Title);
+        Assert.Equal(3, dialogs.Reports.Last().Rows.Count);
+        await Open(prod, packing);
+        await packing.PrintCommand.ExecuteAsync(packing.History.First());
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "إجمالي المعبّأ" && t.Value == "240 قطعة");
+        wallet.PrintStatementCommand.Execute(null);
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "رصيد المحفظة" && t.Value == "5,000 د.ع");
+        van.PrintStockCommand.Execute(null);
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Value == "120");
     }
 
     private SetupViewModel Wizard(RecordingNavigator nav, MemoryConfigStore config, string projectDb, string password)

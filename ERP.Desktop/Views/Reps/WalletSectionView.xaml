@@ -19,6 +19,7 @@
                     <StackPanel>
                         <TextBlock Text="رصيد المحفظة (العهدة)" Style="{StaticResource Muted}"/>
                         <TextBlock Text="{Binding Balance, StringFormat='{}{0:N0} د.ع'}" FontSize="24" FontWeight="Bold" Foreground="{StaticResource SuccessBrush}"/>
+                        <Button Style="{StaticResource SecondaryButton}" Command="{Binding PrintStatementCommand}" Content="طباعة كشف المحفظة" HorizontalAlignment="Left" Margin="0,8,0,0"/>
                     </StackPanel>
                 </Border>
                 <TextBlock Text="الحركة" Style="{StaticResource FieldLabel}"/>

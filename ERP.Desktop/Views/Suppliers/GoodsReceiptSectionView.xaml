@@ -73,6 +73,14 @@
                         <DataGridTextColumn Header="فاتورة المورد" Binding="{Binding SupplierInvoiceNumber}" Width="120"/>
                         <DataGridTextColumn Header="القيمة" Binding="{Binding Total, StringFormat=N0}" Width="110"/>
                         <DataGridTextColumn Header="القيد" Binding="{Binding EntryNumber}" Width="100"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE749;" ToolTip="طباعة محضر الاستلام" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>

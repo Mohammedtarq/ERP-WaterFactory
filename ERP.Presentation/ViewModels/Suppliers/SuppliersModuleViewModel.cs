@@ -94,6 +94,7 @@ public class PurchaseOrdersSectionViewModel : SectionViewModel
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         CancelCommand = new RelayCommand(() => IsComposing = false);
         CancelOrderCommand = new AsyncRelayCommand(p => p is PurchaseOrderRow r ? CancelOrderAsync(r) : Task.CompletedTask);
+        PrintCommand = new AsyncRelayCommand(p => p is PurchaseOrderRow r ? PrintAsync(db => DocumentReports.PurchaseOrderAsync(Session, db, r.Id)) : Task.CompletedTask);
     }
 
     public IReadOnlyList<Option<SupplierPaymentTerms>> TermsOptions { get; } = ArabicLabels.OptionsOf<SupplierPaymentTerms>();
@@ -131,6 +132,7 @@ public class PurchaseOrdersSectionViewModel : SectionViewModel
     public AsyncRelayCommand SaveCommand { get; }
     public RelayCommand CancelCommand { get; }
     public AsyncRelayCommand CancelOrderCommand { get; }
+    public AsyncRelayCommand PrintCommand { get; }
 
     private void RaiseTotal() => OnPropertyChanged(nameof(Total));
 
@@ -225,6 +227,7 @@ public class ReceiptLineInput : ObservableObject
 
 public class GoodsReceiptRow
 {
+    public int Id { get; init; }
     public string ReceiptNumber { get; init; } = "";
     public DateTime ReceiptDate { get; init; }
     public string SupplierName { get; init; } = "";
@@ -245,6 +248,7 @@ public class GoodsReceiptSectionViewModel : SectionViewModel
     {
         ReceiveCommand = new AsyncRelayCommand(ReceiveAsync);
         FillRemainingCommand = new RelayCommand(() => { foreach (var l in Lines) l.QuantityNow = l.Remaining; });
+        PrintCommand = new AsyncRelayCommand(p => p is GoodsReceiptRow r ? PrintAsync(db => DocumentReports.GoodsReceiptAsync(Session, db, r.Id)) : Task.CompletedTask);
     }
 
     public ObservableCollection<PurchaseOrderRow> OpenOrders { get; } = new();
@@ -257,6 +261,7 @@ public class GoodsReceiptSectionViewModel : SectionViewModel
 
     public AsyncRelayCommand ReceiveCommand { get; }
     public RelayCommand FillRemainingCommand { get; }
+    public AsyncRelayCommand PrintCommand { get; }
     protected override bool ReloadOnActivate => true;
 
     public override async Task LoadAsync()
@@ -273,7 +278,7 @@ public class GoodsReceiptSectionViewModel : SectionViewModel
         var receipts = await db.GoodsReceipts.AsNoTracking().OrderByDescending(g => g.ReceiptDate).ThenByDescending(g => g.Id).Take(200)
             .Select(g => new GoodsReceiptRow
             {
-                ReceiptNumber = g.ReceiptNumber, ReceiptDate = g.ReceiptDate, SupplierName = g.Supplier.Name,
+                Id = g.Id, ReceiptNumber = g.ReceiptNumber, ReceiptDate = g.ReceiptDate, SupplierName = g.Supplier.Name,
                 PONumber = g.PurchaseOrder != null ? g.PurchaseOrder.PONumber : null, SupplierInvoiceNumber = g.SupplierInvoiceNumber,
                 Total = g.Lines.Sum(l => l.QuantityReceived * l.UnitCost), EntryNumber = g.JournalEntry != null ? g.JournalEntry.EntryNumber : null
             }).ToListAsync();

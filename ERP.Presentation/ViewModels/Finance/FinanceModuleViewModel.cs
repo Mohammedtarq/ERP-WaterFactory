@@ -111,8 +111,10 @@ public class JournalEntriesSectionViewModel : SectionViewModel
         RemoveLineCommand = new RelayCommand(p => { if (p is JournalLineInput l) { NewLines.Remove(l); RaiseTotals(); } });
         PostCommand = new AsyncRelayCommand(PostAsync);
         CancelCommand = new RelayCommand(() => IsComposing = false);
+        PrintCommand = new AsyncRelayCommand(p => p is JournalEntryRow r ? PrintAsync(db => DocumentReports.JournalEntryAsync(Session, db, r.Id)) : Task.CompletedTask);
     }
 
+    public AsyncRelayCommand PrintCommand { get; }
     public ObservableCollection<JournalEntryRow> Entries { get; } = new();
     public ObservableCollection<JournalLineRow> SelectedLines { get; } = new();
     public ObservableCollection<ChartOfAccount> Accounts { get; } = new();
@@ -210,6 +212,7 @@ public class JournalEntriesSectionViewModel : SectionViewModel
 // ============================ السندات ============================
 public class VoucherRow
 {
+    public int Id { get; init; }
     public string VoucherNumber { get; init; } = "";
     public DateTime VoucherDate { get; init; }
     public string TypeLabel { get; init; } = "";
@@ -240,7 +243,10 @@ public class VouchersSectionViewModel : SectionViewModel
         _partyType = PartyTypes[0];
         _paymentMethod = PaymentMethods[0];
         SaveCommand = new AsyncRelayCommand(SaveAsync);
+        PrintCommand = new AsyncRelayCommand(p => p is VoucherRow r ? PrintAsync(db => DocumentReports.VoucherAsync(Session, db, r.Id)) : Task.CompletedTask);
     }
+
+    public AsyncRelayCommand PrintCommand { get; }
 
     public IReadOnlyList<Option<VoucherType>> VoucherTypes { get; } = ArabicLabels.OptionsOf<VoucherType>();
     public IReadOnlyList<Option<VoucherPartyType>> PartyTypes { get; } = ArabicLabels.OptionsOf<VoucherPartyType>();
@@ -291,7 +297,7 @@ public class VouchersSectionViewModel : SectionViewModel
             } : "";
             Vouchers.Add(new VoucherRow
             {
-                VoucherNumber = v.VoucherNumber, VoucherDate = v.VoucherDate, TypeLabel = ArabicLabels.Of(v.VoucherType),
+                Id = v.Id, VoucherNumber = v.VoucherNumber, VoucherDate = v.VoucherDate, TypeLabel = ArabicLabels.Of(v.VoucherType),
                 PartyLabel = $"{ArabicLabels.Of(v.PartyType)}{(name.Length > 0 ? ": " + name : "")}", Amount = v.Amount,
                 MethodLabel = ArabicLabels.Of(v.PaymentMethod), Notes = v.Notes, EntryNumber = v.JournalEntry?.EntryNumber
             });

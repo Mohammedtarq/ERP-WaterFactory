@@ -55,6 +55,18 @@ public class VanOperationsSectionViewModel : SectionViewModel
         AddLineCommand = new AsyncRelayCommand(AddLineAsync);
         RemoveLineCommand = new RelayCommand(p => { if (p is VanLineDraft l) Lines.Remove(l); });
         ExecuteCommand = new AsyncRelayCommand(ExecuteAsync);
+        PrintStockCommand = new RelayCommand(() =>
+        {
+            if (Van is null) { Dialogs.Error("اختر السيارة"); return; }
+            var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"جرد سيارة — {Van.Name}", PrintedBy = Session.FullName };
+            r.Field("السيارة", Van.Name).Field("المندوب", Van.OwnerEmployee?.FullName).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
+            r.Columns.AddRange(new[] { "الكود", "الصنف", "التشغيلة", "الصلاحية", "الكمية (قطعة)" });
+            foreach (var x in VanStock)
+                r.Rows.Add(new[] { x.ItemCode, x.ItemName, x.BatchNumber ?? "", x.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", $"{x.QuantityBaseUnits:N0}" });
+            r.Total("إجمالي القطع", $"{VanTotalPieces:N0}", true);
+            r.Signatures.AddRange(new[] { "المندوب", "أمين المخزن" });
+            Dialogs.ShowReport(r);
+        });
     }
 
     protected override bool ReloadOnActivate => true;
@@ -91,6 +103,7 @@ public class VanOperationsSectionViewModel : SectionViewModel
     public AsyncRelayCommand AddLineCommand { get; }
     public RelayCommand RemoveLineCommand { get; }
     public AsyncRelayCommand ExecuteCommand { get; }
+    public RelayCommand PrintStockCommand { get; }
 
     public override async Task LoadAsync()
     {
@@ -189,6 +202,20 @@ public class WalletSectionViewModel : SectionViewModel
     {
         _action = Actions[0];
         SubmitCommand = new AsyncRelayCommand(SubmitAsync);
+        PrintStatementCommand = new RelayCommand(() =>
+        {
+            if (Rep is null) { Dialogs.Error("اختر المندوب"); return; }
+            var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"كشف محفظة المندوب — {Rep.FullName}", PrintedBy = Session.FullName };
+            r.Field("المندوب", Rep.FullName).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
+            r.Columns.AddRange(new[] { "التاريخ", "البيان", "داخل", "خارج", "الرصيد", "القيد" });
+            foreach (var x in Rows)
+                r.Rows.Add(new[] { x.TransactionDate.ToString("yyyy/MM/dd"), x.Description, x.AmountIn == 0 ? "" : $"{x.AmountIn:N0}",
+                                   x.AmountOut == 0 ? "" : $"{x.AmountOut:N0}", $"{x.RunningBalance:N0}", x.EntryNumber ?? "" });
+            r.Total("مجموع الداخل", $"{Rows.Sum(x => x.AmountIn):N0} د.ع").Total("مجموع الخارج", $"{Rows.Sum(x => x.AmountOut):N0} د.ع")
+             .Total("رصيد المحفظة", $"{Balance:N0} د.ع", true);
+            r.Signatures.AddRange(new[] { "المندوب", "أمين الصندوق", "المحاسب" });
+            Dialogs.ShowReport(r);
+        });
     }
 
     protected override bool ReloadOnActivate => true;
@@ -217,6 +244,7 @@ public class WalletSectionViewModel : SectionViewModel
     public Customer? Customer { get => _customer; set => SetProperty(ref _customer, value); }
     public DateTime Date { get => _date; set => SetProperty(ref _date, value); }
     public AsyncRelayCommand SubmitCommand { get; }
+    public RelayCommand PrintStatementCommand { get; }
 
     public override async Task LoadAsync()
     {

@@ -116,6 +116,9 @@ public class HrScreenTests
         Assert.True(pay.IsApproved);
         Assert.Contains(dialogs.Infos, i => i.Contains("تم اعتماد رواتب"));
         Assert.Equal(pay.Summary!.TotalNetIqd, pay.Summary.TotalInIqd);
+        await pay.PrintCommand.ExecuteAsync();
+        Assert.StartsWith("كشف رواتب", dialogs.Reports.Last().Title);
+        Assert.Contains(dialogs.Reports.Last().Rows, r => r[1] == "موظف الإنتاج" && r[7] == "625,000");
 
         await using var db = _f.NewDb();
         var je = await db.JournalEntries.Include(j => j.Lines).SingleAsync(j => j.EntryType == JournalEntryType.AutoPayroll);
