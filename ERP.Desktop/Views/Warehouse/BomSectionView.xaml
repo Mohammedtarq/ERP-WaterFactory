@@ -13,6 +13,26 @@
                 <ComboBox ItemsSource="{Binding AllItems}" SelectedItem="{Binding FinishedItem}" DisplayMemberPath="ItemName" Width="260"/>
             </StackPanel>
             <TextBlock DockPanel.Dock="Top" Text="{Binding BomStatus}" Style="{StaticResource Muted}" Margin="0,0,0,12"/>
+            <Border DockPanel.Dock="Top" Background="#F0F9FF" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                <StackPanel>
+                    <WrapPanel>
+                        <TextBlock Text="تعبئة من قالب:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                        <ComboBox ItemsSource="{Binding Templates}" SelectedItem="{Binding Template}" DisplayMemberPath="Name" Width="220" Margin="0,0,12,0"/>
+                        <Button Content="تطبيق القالب على الصنف" Style="{StaticResource PrimaryButton}" Command="{Binding ApplyTemplateCommand}"/>
+                    </WrapPanel>
+                    <ItemsControl ItemsSource="{Binding RoleChoices}" Margin="0,8,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="0,2">
+                                    <TextBlock Text="{Binding Role}" Width="110" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding RatioText}" Width="90" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                    <ComboBox ItemsSource="{Binding DataContext.AllItems, ElementName=Root}" SelectedItem="{Binding Item}" DisplayMemberPath="ItemName" Width="240"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
             <Border DockPanel.Dock="Top" Background="#F8FAFC" CornerRadius="8" Padding="12" Margin="0,0,0,12">
                 <WrapPanel>
                     <TextBlock Text="المادة الأولية:" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -30,8 +50,9 @@
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
             <DataGrid ItemsSource="{Binding Lines}">
                 <DataGrid.Columns>
+                    <DataGridTextColumn Header="الدور" Binding="{Binding ComponentRole}" Width="110"/>
                     <DataGridTextColumn Header="المادة الأولية" Binding="{Binding RawMaterialName}" Width="*"/>
-                    <DataGridTextColumn Header="الكمية لكل وحدة" Binding="{Binding QuantityPerUnit, StringFormat=N4}" Width="160"/>
+                    <DataGridTextColumn Header="الكمية لكل وحدة" Binding="{Binding QuantityPerUnit, StringFormat=0.######}" Width="160"/>
                     <DataGridTemplateColumn Header="" Width="46">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>

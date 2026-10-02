@@ -400,5 +400,18 @@ public static class DemoData
         var machines = new MachineService(db);
         await machines.SaveAsync(null, "نافخة 1", "نفخ", "الخط الأول", null, true);
         await machines.SaveAsync(null, "تعبئة 1", "تعبئة", "الخط الأول", null, true);
+
+        // قوالب التعبئة (الكارتون/الشرنك بلا مادة افتراضية: تُختار عند التطبيق)
+        var templates = new PackagingTemplateService(db);
+        await templates.SaveTemplateAsync(null, "330×40 كارتون", "كارتون يحوي 40 قنينة", new[]
+        {
+            new TemplateLineInput("كارتون", null, 1, 40), new TemplateLineInput("امبولة", preform.Id, 1, 1),
+            new TemplateLineInput("غطاء", cap.Id, 1, 1), new TemplateLineInput("لاصق", label.Id, 2, 1)
+        });
+        await templates.SaveTemplateAsync(null, "330×20 شرنك", "شرنك نايلون يحوي 20 قنينة", new[]
+        {
+            new TemplateLineInput("شرنك", null, 1, 20), new TemplateLineInput("امبولة", preform.Id, 1, 1),
+            new TemplateLineInput("غطاء", cap.Id, 1, 1), new TemplateLineInput("لاصق", label.Id, 1, 1)
+        });
     }
 }

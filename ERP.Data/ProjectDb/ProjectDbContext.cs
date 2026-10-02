@@ -76,6 +76,9 @@ public class ProjectDbContext : DbContext
     // ---- الإنتاج والمختبر ----
     public DbSet<BillOfMaterials> BillOfMaterials => Set<BillOfMaterials>();
     public DbSet<BOMLine> BOMLines => Set<BOMLine>();
+    public DbSet<PackagingTemplate> PackagingTemplates => Set<PackagingTemplate>();
+    public DbSet<PackagingTemplateLine> PackagingTemplateLines => Set<PackagingTemplateLine>();
+    public DbSet<ProductionOrderComponentOverride> ProductionOrderComponentOverrides => Set<ProductionOrderComponentOverride>();
     public DbSet<CustomRecipe> CustomRecipes => Set<CustomRecipe>();
     public DbSet<CustomRecipeLine> CustomRecipeLines => Set<CustomRecipeLine>();
     public DbSet<ProductionOrder> ProductionOrders => Set<ProductionOrder>();
@@ -359,6 +362,20 @@ public class ProjectDbContext : DbContext
         // ================= الإنتاج والمختبر =================
         modelBuilder.Entity<BillOfMaterials>().HasOne(b => b.FinishedItem).WithMany().HasForeignKey(b => b.FinishedItemId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<BOMLine>().HasOne(l => l.BOM).WithMany(b => b.Lines).HasForeignKey(l => l.BOMId);
+        modelBuilder.Entity<BOMLine>().Property(l => l.QuantityPerUnit).HasPrecision(18, 6);
+        modelBuilder.Entity<BillOfMaterials>().HasOne(b => b.PackagingTemplate).WithMany().HasForeignKey(b => b.PackagingTemplateId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PackagingTemplate>().HasIndex(t => t.Name).IsUnique();
+        modelBuilder.Entity<PackagingTemplateLine>().HasOne(l => l.Template).WithMany(t => t.Lines).HasForeignKey(l => l.TemplateId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<PackagingTemplateLine>().HasOne(l => l.DefaultItem).WithMany().HasForeignKey(l => l.DefaultItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PackagingTemplateLine>().Property(l => l.ComponentQuantity).HasPrecision(18, 4);
+        modelBuilder.Entity<PackagingTemplateLine>().Property(l => l.PerUnits).HasPrecision(18, 4);
+        modelBuilder.Entity<PackagingTemplateLine>().Ignore(l => l.QuantityPerUnit);
+        modelBuilder.Entity<PackagingTemplateLine>().Ignore(l => l.RatioText);
+        modelBuilder.Entity<ProductionOrderComponentOverride>().HasOne(o => o.Line).WithMany().HasForeignKey(o => o.ProductionOrderLineId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrderComponentOverride>().HasOne(o => o.OriginalItem).WithMany().HasForeignKey(o => o.OriginalItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrderComponentOverride>().HasOne(o => o.ReplacementItem).WithMany().HasForeignKey(o => o.ReplacementItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrderComponentOverride>().HasOne(o => o.ChangedByUser).WithMany().HasForeignKey(o => o.ChangedByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrderComponentOverride>().Property(o => o.Quantity).HasPrecision(18, 4);
         modelBuilder.Entity<BOMLine>().HasOne(l => l.RawMaterialItem).WithMany().HasForeignKey(l => l.RawMaterialItemId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<CustomRecipe>().HasOne(c => c.FinishedItem).WithMany().HasForeignKey(c => c.FinishedItemId).OnDelete(DeleteBehavior.Restrict);

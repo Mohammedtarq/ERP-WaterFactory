@@ -36,6 +36,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
         if (ShowLegacyAdjustment) Add(LegacyAdjustment);
         Add(new ManufacturingRequirementSectionViewModel(s, d));
         Add(new BomSectionViewModel(s, d));
+        Add(new PackagingTemplatesSectionViewModel(s, d));
         Add(new StockAlertsSectionViewModel(s, d));
         Background(RefreshWorkspacesAsync());
     }
@@ -464,6 +465,7 @@ public class BomLineRow
     public int RawMaterialItemId { get; init; }
     public string RawMaterialName { get; init; } = "";
     public decimal QuantityPerUnit { get; init; }
+    public string? ComponentRole { get; init; }
 }
 
 public class BomSectionViewModel : SectionViewModel
@@ -478,6 +480,37 @@ public class BomSectionViewModel : SectionViewModel
     {
         AddLineCommand = new AsyncRelayCommand(AddLineAsync);
         DeleteLineCommand = new AsyncRelayCommand(p => p is BomLineRow r ? DeleteLineAsync(r) : Task.CompletedTask);
+        ApplyTemplateCommand = new AsyncRelayCommand(ApplyTemplateAsync);
+    }
+
+    // ---------------- تطبيق قالب تعبئة ----------------
+    private PackagingTemplate? _template;
+    public ObservableCollection<PackagingTemplate> Templates { get; } = new();
+    public ObservableCollection<TemplateRoleChoice> RoleChoices { get; } = new();
+    public PackagingTemplate? Template
+    {
+        get => _template;
+        set
+        {
+            if (!SetProperty(ref _template, value)) return;
+            RoleChoices.Clear();
+            foreach (var l in value?.Lines.OrderBy(l => l.Id) ?? Enumerable.Empty<PackagingTemplateLine>())
+                RoleChoices.Add(new TemplateRoleChoice { Role = l.ComponentRole, RatioText = l.RatioText, Item = AllItems.FirstOrDefault(i => i.Id == l.DefaultItemId) });
+        }
+    }
+    public AsyncRelayCommand ApplyTemplateCommand { get; }
+
+    /// <summary>يملأ قائمة مواد الصنف من القالب (تُستبدل القائمة الحالية) — الصنف يبقى بوصفة ثابتة واحدة.</summary>
+    private async Task ApplyTemplateAsync()
+    {
+        if (!Require(CanEdit || CanAdd, "تعديل قوائم المواد")) return;
+        if (FinishedItem is null || Template is null) { Dialogs.Error("اختر المنتج النهائي والقالب"); return; }
+        if (Lines.Count > 0 && !Dialogs.Confirm($"استبدال قائمة مواد {FinishedItem.ItemName} الحالية بمكونات القالب {Template.Name}؟")) return;
+        await using var db = Session.NewDb();
+        var choices = RoleChoices.Where(c => c.Item is not null).ToDictionary(c => c.Role, c => c.Item!.Id);
+        if (await RunOperationAsync(() => new PackagingTemplateService(db).ApplyToItemAsync(FinishedItem.Id, Template.Id, choices),
+                                    $"طُبّق القالب {Template.Name} على {FinishedItem.ItemName}"))
+            await LoadBomAsync();
     }
 
     public ObservableCollection<Item> AllItems { get; } = new();
@@ -497,6 +530,11 @@ public class BomSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         AllItems.Clear();
         foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync()) AllItems.Add(i);
+        var templateId = Template?.Id;
+        Templates.Clear();
+        foreach (var t in await new PackagingTemplateService(db).GetAllAsync(activeOnly: true)) Templates.Add(t);
+        _template = null;
+        Template = Templates.FirstOrDefault(t => t.Id == templateId);
         await LoadBomAsync();
     }
 
@@ -510,7 +548,8 @@ public class BomSectionViewModel : SectionViewModel
             _bom = await db.BillOfMaterials.AsNoTracking().Include(b => b.Lines).ThenInclude(l => l.RawMaterialItem)
                 .FirstOrDefaultAsync(b => b.FinishedItemId == FinishedItem.Id && b.IsActive);
             foreach (var l in _bom?.Lines ?? Enumerable.Empty<BOMLine>())
-                Lines.Add(new BomLineRow { Id = l.Id, RawMaterialItemId = l.RawMaterialItemId, RawMaterialName = l.RawMaterialItem.ItemName, QuantityPerUnit = l.QuantityPerUnit });
+                Lines.Add(new BomLineRow { Id = l.Id, RawMaterialItemId = l.RawMaterialItemId, RawMaterialName = l.RawMaterialItem.ItemName,
+                                           QuantityPerUnit = l.QuantityPerUnit, ComponentRole = l.ComponentRole });
         }
         OnPropertyChanged(nameof(BomStatus));
     }

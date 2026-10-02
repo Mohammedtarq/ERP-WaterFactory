@@ -5,6 +5,7 @@ using ERP.Presentation.ViewModels.Production;
 using ERP.Presentation.ViewModels.Reps;
 using ERP.Presentation.ViewModels.Settings;
 using ERP.Presentation.ViewModels.Shell;
+using ERP.Presentation.ViewModels.Warehouse;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
@@ -54,7 +55,8 @@ public class WizardJourneyTests : IAsyncLifetime
     /// </summary>
     private static async Task LogContains(SetupViewModel setup, string text)
     {
-        for (var i = 0; i < 50; i++)
+        // Progress<T> يكتب السجل لاحقًا على مجمع الخيوط — مهلة 10 ثوانٍ تكفي حتى مع تحميل الاختبارات المتوازية
+        for (var i = 0; i < 500; i++)
         {
             string[] snapshot;
             try { snapshot = setup.Log.ToArray(); } catch (Exception e) when (e is ArgumentException or InvalidOperationException) { snapshot = Array.Empty<string>(); }
@@ -268,6 +270,70 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Empty(dialogs.Errors);
         await Open(prod, orders);
         Assert.Contains(orders.Machines, m => m.Name == "تغليف 1");
+
+        // ---------------- قوالب التعبئة ← قائمة المواد ← بديل العميل ← استبدال لأمر واحد ----------------
+        var wh = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
+        var templatesTab = wh.Section<PackagingTemplatesSectionViewModel>();
+        await Open(wh, templatesTab);
+        Assert.Contains(templatesTab.Templates, t => t.Name == "330×40 كارتون");
+        Assert.Contains(templatesTab.Templates, t => t.Name == "330×20 شرنك");
+        templatesTab.NewCommand.Execute(null);
+        templatesTab.Name = "عبوة 1.5 لتر";
+        templatesTab.SetLine(0, "امبولة", templatesTab.RawItems.Single(i => i.ItemCode == "RM-PRE"), 1, 1);
+        templatesTab.SetLine(1, "غطاء", templatesTab.RawItems.Single(i => i.ItemCode == "RM-CAP"), 1, 1);
+        await templatesTab.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.False(templatesTab.IsEditing);
+
+        var bomTab = wh.Section<BomSectionViewModel>();
+        await Open(wh, bomTab);
+        bomTab.FinishedItem = bomTab.AllItems.Single(i => i.ItemCode == "W-1500");
+        await bomTab.IdleAsync();
+        bomTab.Template = bomTab.Templates.Single(t => t.Name == "عبوة 1.5 لتر");
+        Assert.Equal(2, bomTab.RoleChoices.Count);
+        await bomTab.ApplyTemplateCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(new[] { "امبولة", "غطاء" }, bomTab.Lines.Select(l => l.ComponentRole).OrderBy(r => r).ToArray());
+
+        var recipesTab = prod.Section<CustomRecipesSectionViewModel>();
+        await Open(prod, recipesTab);
+        await recipesTab.NewCommand.ExecuteAsync();
+        recipesTab.Editor!.Name = "1.5 لتر — مطعم";
+        recipesTab.Editor.FinishedItemId = recipesTab.FinishedItems.Single(i => i.ItemCode == "W-1500").Id;
+        recipesTab.Editor.CustomerId = recipesTab.Customers.First().Id;
+        await recipesTab.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        recipesTab.SelectedRecipe = recipesTab.Items.Single(r => r.Name == "1.5 لتر — مطعم");
+        await recipesTab.IdleAsync();
+        recipesTab.SelectedRole = recipesTab.RoleOptions.Single(r => r.ComponentRole == "غطاء");
+        recipesTab.VariantItem = recipesTab.RawItems.Single(i => i.ItemCode == "RM-LBL");
+        await recipesTab.SetVariantCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Contains(recipesTab.Lines, l => l.ComponentLabel == "غطاء" && l.ReplacesName == "غطاء قنينة");
+
+        await Open(prod, orders);
+        await orders.NewOrderCommand.ExecuteAsync();
+        orders.FinishedItem = orders.FinishedItems.Single(i => i.ItemCode == "W-1500");
+        await orders.IdleAsync();
+        orders.Recipe = orders.Recipes.Single(r => r.Name == "1.5 لتر — مطعم");
+        orders.Quantity = 12;
+        await orders.CreateCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        var draft = orders.Orders.First();
+        await orders.OverrideCommand.ExecuteAsync(draft);
+        Assert.True(orders.IsOverriding);
+        orders.OverrideOriginal = orders.OverrideComponents.Single(c => c.Name.Contains("بريفورم"));
+        orders.OverrideReplacement = orders.ReplacementItems.Single(i => i.ItemCode == "RM-CAP");
+        await orders.SaveOverrideCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("إلزامي"));
+        dialogs.Errors.Clear();
+        orders.OverrideReason = "تجربة الاستبدال";
+        await orders.SaveOverrideCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.False(orders.IsOverriding);
+        await orders.PrintCommand.ExecuteAsync(orders.Orders.Single(o => o.Id == draft.Id));
+        Assert.Contains(dialogs.Reports.Last().HeaderFields, f => f.Label == "استبدال مكوّن" && f.Value.Contains("تجربة الاستبدال"));
+        await orders.CancelOrderCommand.ExecuteAsync(orders.Orders.Single(o => o.Id == draft.Id));
 
         // ---------------- 6) الطباعة: أمر الإنتاج، شهادة المختبر، محضر التعبئة، المحفظة، جرد السيارة ----------------
         await orders.PrintCommand.ExecuteAsync(orders.Orders.Single(o => o.Id == order.Id));

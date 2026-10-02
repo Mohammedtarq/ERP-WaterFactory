@@ -55,6 +55,8 @@ public static class DocumentReports
                                               + $" — المختبر: {QcText(l.LastQc)} — المعبّأ {Q(l.PackedQuantity)}");
             r.Field("إجمالي الكمية", $"{Q(o.QuantityToProduce)} قطعة");
         }
+        foreach (var ov in await new PackagingTemplateService(db).GetOrderOverridesAsync(orderId))
+            r.Field("استبدال مكوّن", $"{ov.Line.FinishedItem.ItemName}: {ov.OriginalItem.ItemName} ← {ov.ReplacementItem.ItemName} ({Q(ov.Quantity)}) — {ov.Reason} — {ov.ChangedByUser.Username}");
         r.Field("الحالة", ArabicLabels.Of(o.Status))
          .Field("مخزن المواد", o.RawMaterialsWarehouse.Name)
          .Field("الماكينة", o.Machine?.Name)

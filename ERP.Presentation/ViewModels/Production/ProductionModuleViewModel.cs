@@ -43,6 +43,12 @@ public class RequirementPreview
     public bool IsSufficient => Available >= Required;
 }
 
+/// <summary>مكوّن في سطر أمر (للاستبدال): المادة وكميتها المطلوبة.</summary>
+public record ComponentOption(int ItemId, string Name, decimal Quantity)
+{
+    public string Display => $"{Name} — {Quantity:N0}";
+}
+
 /// <summary>صنف مضاف لأمر إنتاج قيد الإنشاء.</summary>
 public class OrderLineDraft
 {
@@ -79,6 +85,9 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         EditBatchCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenBatchAsync(r) : Task.CompletedTask);
         SaveBatchCommand = new AsyncRelayCommand(SaveBatchAsync);
         CloseBatchCommand = new RelayCommand(() => BatchOrder = null);
+        OverrideCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenOverrideAsync(r) : Task.CompletedTask);
+        SaveOverrideCommand = new AsyncRelayCommand(SaveOverrideAsync);
+        CloseOverrideCommand = new RelayCommand(() => OverrideOrder = null);
         CancelComposeCommand = new RelayCommand(() => IsComposing = false);
         AddLineCommand = new AsyncRelayCommand(AddLineAsync);
         RemoveLineCommand = new AsyncRelayCommand(async p => { if (p is OrderLineDraft l) { ComposeLines.Remove(l); await PreviewAsync(); } });
@@ -135,13 +144,96 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public ProductionOrderRow? BatchOrder
     {
         get => _batchOrder;
-        private set { if (SetProperty(ref _batchOrder, value)) { OnPropertyChanged(nameof(IsEditingBatch)); if (value is not null) IsComposing = false; } }
+        private set { if (SetProperty(ref _batchOrder, value)) { OnPropertyChanged(nameof(IsEditingBatch)); if (value is not null) { IsComposing = false; OverrideOrder = null; } } }
     }
     public bool IsEditingBatch => BatchOrder is not null;
     public string NewBatchNumber { get => _newBatchNumber; set => SetProperty(ref _newBatchNumber, value); }
     public string BatchReason { get => _batchReason; set => SetProperty(ref _batchReason, value); }
     public ObservableCollection<string> BatchHistory { get; } = new();
-    protected override bool HasPendingInput => IsComposing || IsEditingBatch;
+    protected override bool HasPendingInput => IsComposing || IsEditingBatch || IsOverriding;
+
+    // ---------------- استبدال مكوّن في أمر واحد ----------------
+    private ProductionOrderRow? _overrideOrder;
+    private ProductionLineRow? _overrideLine;
+    private ComponentOption? _overrideOriginal;
+    private Item? _overrideReplacement;
+    private string _overrideReason = "";
+    public AsyncRelayCommand OverrideCommand { get; }
+    public AsyncRelayCommand SaveOverrideCommand { get; }
+    public RelayCommand CloseOverrideCommand { get; }
+    public ProductionOrderRow? OverrideOrder
+    {
+        get => _overrideOrder;
+        private set
+        {
+            if (!SetProperty(ref _overrideOrder, value)) return;
+            OnPropertyChanged(nameof(IsOverriding));
+            if (value is not null) { IsComposing = false; BatchOrder = null; }
+        }
+    }
+    public bool IsOverriding => OverrideOrder is not null;
+    public ObservableCollection<ProductionLineRow> OverrideLines { get; } = new();
+    public ObservableCollection<ComponentOption> OverrideComponents { get; } = new();
+    public ObservableCollection<Item> ReplacementItems { get; } = new();
+    public ObservableCollection<string> OverrideHistory { get; } = new();
+    public ProductionLineRow? OverrideLine { get => _overrideLine; set { if (SetProperty(ref _overrideLine, value)) Background(LoadOverrideComponentsAsync()); } }
+    public ComponentOption? OverrideOriginal { get => _overrideOriginal; set => SetProperty(ref _overrideOriginal, value); }
+    public Item? OverrideReplacement { get => _overrideReplacement; set => SetProperty(ref _overrideReplacement, value); }
+    public string OverrideReason { get => _overrideReason; set => SetProperty(ref _overrideReason, value); }
+
+    private async Task OpenOverrideAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanEdit, "استبدال مكوّن في أمر الإنتاج")) return;
+        if (row.Status != ProductionOrderStatus.Draft) { Dialogs.Error("الاستبدال يكون قبل بدء التشغيل (الأمر مسودة)"); return; }
+        OverrideOrder = row;
+        OverrideReason = "";
+        OverrideReplacement = null;
+        await using var db = Session.NewDb();
+        if (ReplacementItems.Count == 0)
+            foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Manufactured).OrderBy(i => i.ItemName).ToListAsync())
+                ReplacementItems.Add(i);
+        OverrideLines.Clear();
+        foreach (var l in row.Lines) OverrideLines.Add(l);
+        // تعيين الحقل مباشرة ثم تحميل واحد (الضبط عبر الخاصية يحمّل في الخلفية أيضًا فيتكرر)
+        _overrideLine = OverrideLines.FirstOrDefault();
+        OnPropertyChanged(nameof(OverrideLine));
+        await LoadOverrideComponentsAsync();
+        await LoadOverrideHistoryAsync(db, row.Id);
+    }
+
+    private async Task LoadOverrideComponentsAsync()
+    {
+        OverrideComponents.Clear();
+        if (OverrideLine is null) return;
+        await using var db = Session.NewDb();
+        var lineId = OverrideLine.LineId;
+        foreach (var c in await db.ProductionOrderConsumptions.AsNoTracking().Where(c => c.ProductionOrderLineId == lineId)
+                     .OrderBy(c => c.RawMaterialItem.ItemName)
+                     .Select(c => new ComponentOption(c.RawMaterialItemId, c.RawMaterialItem.ItemName, c.QuantityRequired)).ToListAsync())
+            OverrideComponents.Add(c);
+        OverrideOriginal = OverrideComponents.FirstOrDefault();
+    }
+
+    private async Task LoadOverrideHistoryAsync(Data.ProjectDb.ProjectDbContext db, int orderId)
+    {
+        OverrideHistory.Clear();
+        foreach (var o in await new PackagingTemplateService(db).GetOrderOverridesAsync(orderId))
+            OverrideHistory.Add($"{o.ChangedAt.ToLocalTime():yyyy/MM/dd HH:mm} — {o.ChangedByUser.Username}: {o.Line.FinishedItem.ItemName}: {o.OriginalItem.ItemName} ← {o.ReplacementItem.ItemName} ({o.Quantity:N0}) — {o.Reason}");
+    }
+
+    private async Task SaveOverrideAsync()
+    {
+        if (OverrideOrder is null || !Require(CanEdit, "استبدال مكوّن في أمر الإنتاج")) return;
+        if (OverrideLine is null || OverrideOriginal is null || OverrideReplacement is null) { Dialogs.Error("اختر الصنف والمكوّن الأصلي والبديل"); return; }
+        await using var db = Session.NewDb();
+        var (lineId, original, replacement) = (OverrideLine.LineId, OverrideOriginal.ItemId, OverrideReplacement.Id);
+        if (await RunOperationAsync(() => new PackagingTemplateService(db).OverrideOrderComponentAsync(lineId, original, replacement, OverrideReason, Session.UserId),
+                                    $"استُبدل {OverrideOriginal.Name} بـ {OverrideReplacement.ItemName} في {OverrideOrder.MONumber} فقط"))
+        {
+            OverrideOrder = null;
+            await LoadAsync();
+        }
+    }
     public RelayCommand CancelComposeCommand { get; }
     public AsyncRelayCommand PreviewCommand { get; }
     public AsyncRelayCommand CreateCommand { get; }
@@ -154,10 +246,19 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        if (FinishedItems.Count == 0)
+        // المنتجات ذات قائمة المواد تُحدَّث في كل تحميل (قد تُنشأ قائمة مواد جديدة من المخازن أو بقالب تعبئة)
+        var withBom = db.BillOfMaterials.Where(b => b.IsActive).Select(b => b.FinishedItemId);
+        var finished = await db.Items.AsNoTracking().Where(i => withBom.Contains(i.Id)).OrderBy(i => i.ItemName).ToListAsync();
+        if (!finished.Select(i => i.Id).SequenceEqual(FinishedItems.Select(i => i.Id)))
         {
-            var withBom = db.BillOfMaterials.Where(b => b.IsActive).Select(b => b.FinishedItemId);
-            foreach (var i in await db.Items.AsNoTracking().Where(i => withBom.Contains(i.Id)).OrderBy(i => i.ItemName).ToListAsync()) FinishedItems.Add(i);
+            var selectedId = FinishedItem?.Id;
+            FinishedItems.Clear();
+            foreach (var i in finished) FinishedItems.Add(i);
+            _finishedItem = FinishedItems.FirstOrDefault(i => i.Id == selectedId);
+            OnPropertyChanged(nameof(FinishedItem));
+        }
+        if (RawWarehouses.Count == 0)
+        {
             // الترتيب في الذاكرة: نوع المخزن مخزّن نصًا، ومقارنته داخل ORDER BY لا تُترجم لـ SQL
             var candidates = await db.Warehouses.AsNoTracking()
                 .Where(w => w.IsActive && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.Damaged
@@ -591,6 +692,30 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
     {
         AddLineCommand = new AsyncRelayCommand(AddLineAsync);
         DeleteLineCommand = new AsyncRelayCommand(p => p is RecipeLineRow r ? DeleteLineAsync(r) : Task.CompletedTask);
+        SetVariantCommand = new AsyncRelayCommand(SetVariantAsync);
+    }
+
+    // ---------------- بديل العميل حسب الدور (من قالب التعبئة) ----------------
+    private BOMLine? _selectedRole;
+    private Item? _variantItem;
+    public ObservableCollection<BOMLine> RoleOptions { get; } = new();
+    public BOMLine? SelectedRole { get => _selectedRole; set => SetProperty(ref _selectedRole, value); }
+    public Item? VariantItem { get => _variantItem; set => SetProperty(ref _variantItem, value); }
+    public AsyncRelayCommand SetVariantCommand { get; }
+
+    /// <summary>بديل العميل: يستبدل مكوّن الدور المختار بصنف مخزني خاص بالعميل (بنفس النسبة) في هذه الوصفة فقط.</summary>
+    private async Task SetVariantAsync()
+    {
+        if (!Require(CanEdit, "تعديل الوصفات")) return;
+        if (SelectedRecipe is null || SelectedRole?.ComponentRole is null || VariantItem is null)
+        { Dialogs.Error("اختر الوصفة من الجدول، ثم الدور، ثم الصنف البديل"); return; }
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new PackagingTemplateService(db).SetCustomerVariantAsync(SelectedRecipe.Id, SelectedRole.ComponentRole, VariantItem.Id),
+                                    $"بديل {SelectedRole.ComponentRole} في {SelectedRecipe.Name}: {VariantItem.ItemName}"))
+        {
+            VariantItem = null;
+            await LoadLinesAsync();
+        }
     }
 
     public ObservableCollection<Item> FinishedItems { get; } = new();
@@ -635,8 +760,11 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
     private async Task LoadLinesAsync()
     {
         Lines.Clear();
+        RoleOptions.Clear();
         if (SelectedRecipe is null) return;
         await using var db = Session.NewDb();
+        foreach (var r in await new PackagingTemplateService(db).GetRolesAsync(SelectedRecipe.FinishedItemId)) RoleOptions.Add(r);
+        SelectedRole = RoleOptions.FirstOrDefault();
         foreach (var l in await db.CustomRecipeLines.AsNoTracking().Where(l => l.CustomRecipeId == SelectedRecipe.Id)
                      .Select(l => new RecipeLineRow
                      {

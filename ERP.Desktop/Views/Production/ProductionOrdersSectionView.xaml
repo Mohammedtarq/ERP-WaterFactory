@@ -36,10 +36,12 @@
                         <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="80"/>
                         <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="120"/>
                         <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="200"/>
-                        <DataGridTemplateColumn Header="" Width="146">
+                        <DataGridTemplateColumn Header="" Width="180">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Content="&#xE8AB;" ToolTip="استبدال مكوّن لهذا الأمر فقط (قبل التشغيل)" Style="{StaticResource RowIconButton}" Tag="#F59E0B"
+                                                Command="{Binding DataContext.OverrideCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE70F;" ToolTip="تعديل رقم الدفعة" Style="{StaticResource RowIconButton}" Tag="#8B5CF6"
                                                 Command="{Binding DataContext.EditBatchCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE768;" ToolTip="بدء التشغيل (صرف المواد)" Style="{StaticResource RowIconButton}" Tag="#10B981"
@@ -154,6 +156,31 @@
                     <TextBlock Text="سجل التعديلات (الرقم الأصلي محفوظ دائمًا)" Style="{StaticResource FieldLabel}" Margin="0,14,0,4"/>
                 </StackPanel>
                 <ListBox ItemsSource="{Binding BatchHistory}"/>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="400" Margin="12,0,0,0"
+                Visibility="{Binding IsOverriding, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}">
+                    <Run Text="استبدال مكوّن — "/><Run Text="{Binding OverrideOrder.MONumber, Mode=OneWay}"/>
+                </TextBlock>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="يُطبَّق على هذا الأمر فقط ويُسجَّل بسببه — تعريف الصنف ووصفته لا يتغيران." Style="{StaticResource Muted}" TextWrapping="Wrap"/>
+                    <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding OverrideLines}" SelectedItem="{Binding OverrideLine}" DisplayMemberPath="FinishedItemName"/>
+                    <TextBlock Text="المكوّن الأصلي" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding OverrideComponents}" SelectedItem="{Binding OverrideOriginal}" DisplayMemberPath="Display"/>
+                    <TextBlock Text="البديل (مثل غطاء بلون آخر)" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding ReplacementItems}" SelectedItem="{Binding OverrideReplacement}" DisplayMemberPath="ItemName"/>
+                    <TextBlock Text="السبب (إلزامي)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding OverrideReason}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="تنفيذ الاستبدال" Style="{StaticResource SuccessButton}" Command="{Binding SaveOverrideCommand}"/>
+                        <Button Content="إغلاق" Style="{StaticResource SecondaryButton}" Command="{Binding CloseOverrideCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="الاستبدالات المسجلة على الأمر" Style="{StaticResource FieldLabel}" Margin="0,14,0,4"/>
+                </StackPanel>
+                <ListBox ItemsSource="{Binding OverrideHistory}"/>
             </DockPanel>
         </Border>
     </Grid>

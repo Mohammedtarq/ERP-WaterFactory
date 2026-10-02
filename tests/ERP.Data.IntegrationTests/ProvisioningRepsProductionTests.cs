@@ -634,6 +634,88 @@ public class ProductionServiceTests
         Assert.Equal(50m, await Balance(after, shared.Id, raw.Id));
     }
 
+    /// <summary>
+    /// قوالب التعبئة: القالب يملأ قائمة مواد الصنف بنسبه (كارتون 1 لكل 40، امبولة 1:1، غطاء 1:1، لاصق 2:1)؛
+    /// بديل العميل لدور يُستخدم عبر الوصفة المخصصة؛ والاستبدال لأمر واحد يُسجَّل دون تغيير تعريف الصنف.
+    /// </summary>
+    [Fact]
+    public async Task Packaging_template_fills_bom_customer_variant_and_per_order_override_is_recorded()
+    {
+        await using var db = _f.NewDb();
+        var user = _f.AdminLocalId;
+        var templates = new PackagingTemplateService(db);
+        var raw = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial && w.Name == "مخزن المواد الأولية");
+        var machineId = (int?)(await db.Machines.FirstAsync(m => m.Name == "نافخة 1")).Id;
+
+        // القالبان التجريبيان موجودان بنسبهما
+        var seeded = await templates.GetAllAsync();
+        var t40 = seeded.Single(t => t.Name == "330×40 كارتون");
+        Assert.Equal(0.025m, t40.Lines.Single(l => l.ComponentRole == "كارتون").QuantityPerUnit);
+        Assert.Equal(2m, t40.Lines.Single(l => l.ComponentRole == "لاصق").QuantityPerUnit);
+        Assert.Contains(seeded, t => t.Name == "330×20 شرنك" && t.Lines.Single(l => l.ComponentRole == "شرنك").QuantityPerUnit == 0.05m);
+
+        Item New(string code, string name, SourcingMethod m) => new() { ItemCode = code, ItemName = name, SourcingMethod = m };
+        var carton = New("TP-CTN40", "كارتون 40", SourcingMethod.Purchased);
+        var capBlue = New("TP-CAP-B", "غطاء أزرق", SourcingMethod.Purchased);
+        var capRed = New("TP-CAP-R", "غطاء أحمر", SourcingMethod.Purchased);
+        var labelHs = New("TP-LBL-HS", "لاصق مطعم الحسون", SourcingMethod.Purchased);
+        var w330 = New("TP-W330", "ماء 330 مل", SourcingMethod.Manufactured);
+        db.Items.AddRange(carton, capBlue, capRed, labelHs, w330);
+        await db.SaveChangesAsync();
+        db.StockTransactions.AddRange(new[] { carton, capBlue, capRed, labelHs }.Select(i => new StockTransaction
+            { ItemId = i.Id, WarehouseId = raw.Id, QuantityBaseUnits = 10_000, TransactionType = StockTransactionType.Receipt, CreatedByUserId = user }));
+        await db.SaveChangesAsync();
+
+        // دور بلا مادة يُرفض، ثم التطبيق مع اختيار الكارتون والغطاء الأزرق
+        Assert.Contains("كارتون", (await templates.ApplyToItemAsync(w330.Id, t40.Id)).ErrorMessage);
+        Assert.True((await templates.ApplyToItemAsync(w330.Id, t40.Id, new Dictionary<string, int> { ["كارتون"] = carton.Id, ["غطاء"] = capBlue.Id })).Success);
+        var bom = await db.BillOfMaterials.AsNoTracking().Include(b => b.Lines).SingleAsync(b => b.FinishedItemId == w330.Id && b.IsActive);
+        Assert.Equal(t40.Id, bom.PackagingTemplateId);
+        Assert.Equal(4, bom.Lines.Count);
+        Assert.Equal((carton.Id, 0.025m), bom.Lines.Where(l => l.ComponentRole == "كارتون").Select(l => (l.RawMaterialItemId, l.QuantityPerUnit)).Single());
+        Assert.Equal((capBlue.Id, 1m), bom.Lines.Where(l => l.ComponentRole == "غطاء").Select(l => (l.RawMaterialItemId, l.QuantityPerUnit)).Single());
+        Assert.Equal(2m, bom.Lines.Single(l => l.ComponentRole == "لاصق").QuantityPerUnit);
+
+        // بديل العميل: لاصق الحسون بدل اللاصق الأساسي (بنفس النسبة 2:1) — في الوصفة المخصصة فقط
+        var customer = await db.Customers.FirstAsync();
+        var recipe = new CustomRecipe { FinishedItemId = w330.Id, CustomerId = customer.Id, Name = "330 مطعم الحسون" };
+        db.CustomRecipes.Add(recipe);
+        await db.SaveChangesAsync();
+        Assert.Contains("لا يوجد دور", (await templates.SetCustomerVariantAsync(recipe.Id, "غير موجود", labelHs.Id)).ErrorMessage);
+        Assert.True((await templates.SetCustomerVariantAsync(recipe.Id, "لاصق", labelHs.Id)).Success);
+        var prod = new ProductionService(db);
+        var (merged, _) = await prod.MergeRecipeAsync(w330.Id, recipe.Id);
+        var baseLabel = bom.Lines.Single(l => l.ComponentRole == "لاصق").RawMaterialItemId;
+        Assert.DoesNotContain(merged, m => m.rawItemId == baseLabel);
+        Assert.Contains(merged, m => m.rawItemId == labelHs.Id && m.perUnit == 2m);
+
+        // أمر 400 قطعة بوصفة العميل: كارتون 10، لاصق الحسون 800
+        var (cr, orderId) = await prod.CreateOrderAsync(w330.Id, 400, recipe.Id, raw.Id, machineId, user);
+        Assert.True(cr.Success, cr.ErrorMessage);
+        var lineId = await db.ProductionOrderLines.Where(l => l.ProductionOrderId == orderId).Select(l => l.Id).SingleAsync();
+        var cons = await db.ProductionOrderConsumptions.AsNoTracking().Where(c => c.ProductionOrderId == orderId).ToListAsync();
+        Assert.Equal(10m, cons.Single(c => c.RawMaterialItemId == carton.Id).QuantityRequired);
+        Assert.Equal(800m, cons.Single(c => c.RawMaterialItemId == labelHs.Id).QuantityRequired);
+
+        // استبدال الغطاء الأزرق بالأحمر لهذا الأمر فقط: السبب إلزامي، ويُسجَّل، وتعريف الصنف لا يتغير
+        Assert.Contains("إلزامي", (await templates.OverrideOrderComponentAsync(lineId, capBlue.Id, capRed.Id, " ", user)).ErrorMessage);
+        Assert.True((await templates.OverrideOrderComponentAsync(lineId, capBlue.Id, capRed.Id, "نفاد الغطاء الأزرق", user)).Success);
+        await using var check = _f.NewDb();
+        var after = await check.ProductionOrderConsumptions.AsNoTracking().Where(c => c.ProductionOrderId == orderId).ToListAsync();
+        Assert.DoesNotContain(after, c => c.RawMaterialItemId == capBlue.Id);
+        Assert.Equal(400m, after.Single(c => c.RawMaterialItemId == capRed.Id).QuantityRequired);
+        Assert.Contains(await check.BOMLines.AsNoTracking().Where(l => l.BOMId == bom.Id).ToListAsync(), l => l.RawMaterialItemId == capBlue.Id);
+        var overrides = await new PackagingTemplateService(check).GetOrderOverridesAsync(orderId!.Value);
+        var ov = Assert.Single(overrides);
+        Assert.Equal((capBlue.Id, capRed.Id, 400m, "نفاد الغطاء الأزرق", user), (ov.OriginalItemId, ov.ReplacementItemId, ov.Quantity, ov.Reason, ov.ChangedByUserId));
+
+        // التشغيل يصرف الغطاء الأحمر؛ والاستبدال بعد التشغيل مرفوض
+        Assert.True((await prod.StartAsync(orderId.Value, user)).Success);
+        Assert.Equal(9_600m, await Balance(check, capRed.Id, raw.Id));
+        Assert.Equal(10_000m, await Balance(check, capBlue.Id, raw.Id));
+        Assert.Contains("قبل بدء التشغيل", (await templates.OverrideOrderComponentAsync(lineId, capRed.Id, capBlue.Id, "رجوع", user)).ErrorMessage);
+    }
+
     [Fact]
     public async Task Custom_recipe_replaces_the_named_component()
     {

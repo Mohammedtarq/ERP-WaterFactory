@@ -36,6 +36,12 @@
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="{Binding SelectedRecipe.Name, StringFormat='مكوّنات الوصفة المختارة: {0}', TargetNullValue='اختر وصفة من الجدول لعرض مكوّناتها'}" FontWeight="SemiBold" Margin="0,0,0,8"/>
                         <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <TextBlock Text="بديل العميل لدور:" VerticalAlignment="Center" Margin="0,0,6,0" FontWeight="SemiBold"/>
+                            <ComboBox ItemsSource="{Binding RoleOptions}" SelectedItem="{Binding SelectedRole}" DisplayMemberPath="ComponentRole" Width="120" Margin="0,0,8,0" ToolTip="أدوار قائمة مواد الصنف (من قالب التعبئة)"/>
+                            <ComboBox ItemsSource="{Binding RawItems}" SelectedItem="{Binding VariantItem}" DisplayMemberPath="ItemName" Width="200" Margin="0,0,8,0" ToolTip="الصنف المخزني الخاص بالعميل"/>
+                            <Button Content="تعيين البديل" Style="{StaticResource PrimaryButton}" Command="{Binding SetVariantCommand}"/>
+                        </WrapPanel>
+                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                             <ComboBox ItemsSource="{Binding RawItems}" SelectedItem="{Binding NewComponent}" DisplayMemberPath="ItemName" Width="200" Margin="0,0,8,0" ToolTip="المكوّن الخاص"/>
                             <TextBox Text="{Binding NewLabel, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="0,0,8,0" ToolTip="وصف المكوّن: غطاء / لاصق أمامي / لاصق خلفي"/>
                             <TextBox Text="{Binding NewQuantity}" Width="60" Margin="0,0,8,0" ToolTip="الكمية لكل وحدة" FlowDirection="LeftToRight"/>
