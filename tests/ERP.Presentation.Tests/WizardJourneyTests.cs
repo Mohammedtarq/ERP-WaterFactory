@@ -59,7 +59,7 @@ public class WizardJourneyTests : IAsyncLifetime
         for (var i = 0; i < 500; i++)
         {
             string[] snapshot;
-            try { snapshot = setup.Log.ToArray(); } catch (Exception e) when (e is ArgumentException or InvalidOperationException) { snapshot = Array.Empty<string>(); }
+            lock (setup.Log) snapshot = setup.Log.ToArray();   // نفس قفل الكتابة في SetupViewModel
             if (snapshot.Any(l => l is not null && l.Contains(text))) return;
             await Task.Delay(20);
         }

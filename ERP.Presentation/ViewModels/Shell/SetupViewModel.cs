@@ -128,13 +128,14 @@ public class SetupViewModel : ViewModelBase
 
         var controlCs = BuildControlConnectionString();
         IsBusy = true;
-        Log.Clear();
+        lock (Log) Log.Clear();
         try
         {
             if (IsNewInstall)
             {
                 if (AdminPassword != AdminPasswordConfirm) { ErrorMessage = "كلمتا مرور المدير غير متطابقتين"; return; }
-                var progress = new Progress<string>(m => Log.Add(m));
+                // Progress<T> بلا سياق واجهة (اختبارات/خدمة) يستدعي من خيوط متعددة متزامنة: الإضافة تحت قفل حتى لا يضيع سطر
+                var progress = new Progress<string>(m => { lock (Log) Log.Add(m); });
                 var result = await new ProvisioningService().InstallAsync(new InstallRequest(
                     controlCs, ProjectName, ProjectDatabase.Trim(), AdminFullName, AdminUsername, AdminPassword, DemoData,
                     ResetExistingAdminPassword ? ExistingAdminPolicy.ResetPassword : ExistingAdminPolicy.RequireSamePassword), progress);
