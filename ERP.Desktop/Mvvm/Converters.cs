@@ -88,3 +88,11 @@ public class RatioStarConverter : IValueConverter
     }
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
 }
+
+/// <summary>صورة من بايتات (الشعار)؛ لا صورة = null بلا خطأ ربط.</summary>
+public class BytesToImageConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        ERP.Desktop.Printing.ReportRenderer.LoadLogo(value as byte[]);
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
+}

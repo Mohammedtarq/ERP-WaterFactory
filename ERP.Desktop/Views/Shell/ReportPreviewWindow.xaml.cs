@@ -25,7 +25,6 @@ public partial class ReportPreviewWindow : Window
 {
     private readonly ReportDocument _report;
     private readonly ObservableCollection<ColumnOption> _columns;
-    private XpsOutput? _xps;
     private bool _ready;
 
     public ReportPreviewWindow(ReportDocument report)
@@ -48,7 +47,6 @@ public partial class ReportPreviewWindow : Window
         (pref.Printer == PrinterKind.Receipt80 && report.ReceiptCapable ? ReceiptRadio : A4Radio).IsChecked = true;
         _ready = true;
         Render();
-        Closed += (_, _) => _xps?.Dispose();
     }
 
     public PrinterKind Printer => ReceiptRadio.IsChecked == true ? PrinterKind.Receipt80 : PrinterKind.A4;
@@ -67,12 +65,11 @@ public partial class ReportPreviewWindow : Window
         var doc = Visible;
         if (Printer == PrinterKind.A4)
         {
-            _xps?.Dispose();
-            _xps = new XpsOutput(ReportRenderer.A4(doc));
-            Viewer.Document = _xps.Document;
+            var paginator = ReportRenderer.A4(doc);
+            Viewer.Document = paginator.ToFixedDocument();
             Viewer.Visibility = Visibility.Visible;
             ReceiptHost.Visibility = Visibility.Collapsed;
-            PagesText.Text = $"عدد الصفحات: {_xps.PageCount} (A4)";
+            PagesText.Text = $"عدد الصفحات: {paginator.PageCount} (A4)";
         }
         else
         {

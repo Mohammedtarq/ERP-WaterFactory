@@ -90,7 +90,7 @@
                         <TextBlock Text="الشعار" Style="{StaticResource SectionTitle}"/>
                         <Border Height="120" Background="#F8FAFC" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8">
                             <Grid>
-                                <Image Source="{Binding Logo}" Stretch="Uniform" Margin="10"/>
+                                <Image Source="{Binding Logo, Converter={StaticResource BytesToImage}}" Stretch="Uniform" Margin="10"/>
                                 <TextBlock Text="لا يوجد شعار" Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Visibility="{Binding HasLogo, Converter={StaticResource InverseBoolToVisibility}}"/>
                             </Grid>

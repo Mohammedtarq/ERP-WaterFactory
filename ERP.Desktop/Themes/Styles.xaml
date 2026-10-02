@@ -17,6 +17,7 @@
     <m:InverseBoolConverter x:Key="InverseBool"/>
     <m:SignBrushConverter x:Key="SignBrush"/>
     <m:RatioStarConverter x:Key="RatioStar"/>
+    <m:BytesToImageConverter x:Key="BytesToImage"/>
     <m:RatioStarConverter x:Key="RatioStarRest" Invert="True"/>
 
     <!-- ================= النصوص ================= -->

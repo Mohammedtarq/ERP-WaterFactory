@@ -428,8 +428,12 @@ public sealed class BrandedPaginator : DocumentPaginator
         _inner.ComputePageCount();
     }
 
+    private readonly Dictionary<int, DocumentPage> _pages = new();
+
+    /// <summary>الصفحة نفسها لكل طلب (مقسّم المستند يعيد نفس المرئيات، ولا يجوز إضافتها لأبوين).</summary>
     public override DocumentPage GetPage(int pageNumber)
     {
+        if (_pages.TryGetValue(pageNumber, out var cached)) return cached;
         var page = _inner.GetPage(pageNumber);
         var root = new ContainerVisual();
         root.Children.Add(new DrawingVisual());   // خلفية بيضاء
@@ -441,8 +445,27 @@ public sealed class BrandedPaginator : DocumentPaginator
         body.Children.Add(page.Visual);
         root.Children.Add(body);
         root.Children.Add(Place(_footer(pageNumber + 1, PageCount), _margin.Left, _pageSize.Height - _margin.Bottom - _footerHeight));
-        return new DocumentPage(root, _pageSize, new Rect(_pageSize),
+        return _pages[pageNumber] = new DocumentPage(root, _pageSize, new Rect(_pageSize),
             new Rect(_margin.Left, _margin.Top, _pageSize.Width - _margin.Left - _margin.Right, _pageSize.Height - _margin.Top - _margin.Bottom));
+    }
+
+    /// <summary>
+    /// معاينة متجهية من صفحات الطباعة نفسها (لا تحويل لصور ولا إعادة قراءة XPS): ما يُعرض هو ما يُرسل للطابعة.
+    /// </summary>
+    public FixedDocument ToFixedDocument()
+    {
+        var doc = new FixedDocument();
+        doc.DocumentPaginator.PageSize = _pageSize;
+        for (var i = 0; i < PageCount; i++)
+        {
+            var page = GetPage(i);
+            var fixedPage = new FixedPage { Width = _pageSize.Width, Height = _pageSize.Height, Background = Brushes.White };
+            fixedPage.Children.Add(new PageVisualHost(page.Visual, _pageSize));
+            var content = new PageContent();
+            ((System.Windows.Markup.IAddChild)content).AddChild(fixedPage);
+            doc.Pages.Add(content);
+        }
+        return doc;
     }
 
     private static ContainerVisual Place(Visual v, double x, double y)
@@ -456,4 +479,19 @@ public sealed class BrandedPaginator : DocumentPaginator
     public override int PageCount => _inner.PageCount;
     public override Size PageSize { get => _pageSize; set => _pageSize = value; }
     public override IDocumentPaginatorSource? Source => null;
+}
+
+/// <summary>يستضيف مرئية صفحة جاهزة داخل صفحة ثابتة (للمعاينة).</summary>
+public sealed class PageVisualHost : FrameworkElement
+{
+    private readonly Visual _visual;
+    public PageVisualHost(Visual visual, Size size)
+    {
+        _visual = visual;
+        Width = size.Width;
+        Height = size.Height;
+        AddVisualChild(visual);
+    }
+    protected override int VisualChildrenCount => 1;
+    protected override Visual GetVisualChild(int index) => _visual;
 }

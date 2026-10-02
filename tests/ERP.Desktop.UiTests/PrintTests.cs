@@ -146,8 +146,9 @@ public class PrintTests
                 Assert.Contains(Find<Image>(page.Visual), img => img.Source is not null);                    // الشعار
                 SavePage(page.Visual, page.Size, Path.Combine(PrintDir, $"A4_stock_report_page{i + 1}.png"));
             }
-            using var xps = new XpsOutput(ReportRenderer.A4(report));
-            Assert.Equal(pages, xps.PageCount);
+            // ملف XPS المكتوب يُقرأ من القرص بنفس عدد الصفحات (كما يقرؤه طابور الطباعة)
+            Assert.Equal(pages, XpsOutput.CountPages(Path.Combine(PrintDir, "A4_stock_report.xps")));
+            Assert.Equal(pages, ReportRenderer.A4(report).ToFixedDocument().Pages.Count);
             _out.WriteLine($"A4: {pages} صفحات");
         });
     }
