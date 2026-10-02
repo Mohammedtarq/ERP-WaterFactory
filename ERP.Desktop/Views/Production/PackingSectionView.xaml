@@ -22,6 +22,8 @@
                                 <Run Text="{Binding MONumber, Mode=OneWay}"/>
                                 <Run Text=" — "/>
                                 <Run Text="{Binding FinishedItemName, Mode=OneWay}"/>
+                                <Run Text=" — دفعة "/>
+                                <Run Text="{Binding OutputBatch, Mode=OneWay}"/>
                             </TextBlock>
                         </DataTemplate>
                     </ComboBox.ItemTemplate>

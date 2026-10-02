@@ -215,7 +215,7 @@ public class WizardJourneyTests : IAsyncLifetime
 
         var qc = prod.Qc;
         await Open(prod, qc);
-        Assert.Equal(order.Id, qc.Order!.Id);
+        Assert.Equal(order.Id, qc.Order!.OrderId);
         Assert.Equal(3, qc.Lines.Count);
         qc.Lines.Single(l => l.TestName.StartsWith("درجة")).Measured = "7.4";
         qc.Lines.Single(l => l.TestName.StartsWith("الأملاح")).Measured = "140";
@@ -226,7 +226,7 @@ public class WizardJourneyTests : IAsyncLifetime
 
         var packing = prod.Packing;
         await Open(prod, packing);
-        Assert.Equal(order.Id, packing.Order!.Id);
+        Assert.Equal(order.Id, packing.Order!.OrderId);
         packing.Level = packing.Levels.Single(l => l.LevelName == "كارتون");
         packing.Units = 20;
         await packing.PackCommand.ExecuteAsync();

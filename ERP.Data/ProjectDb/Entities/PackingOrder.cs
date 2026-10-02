@@ -7,6 +7,9 @@ public class PackingOrder
     public int ProductionOrderId { get; set; }
     public ProductionOrder ProductionOrder { get; set; } = null!;
 
+    public int? ProductionOrderLineId { get; set; }
+    public ProductionOrderLine? Line { get; set; }
+
     public int PackagingLevelId { get; set; }
     public ItemPackagingLevel PackagingLevel { get; set; } = null!;
 

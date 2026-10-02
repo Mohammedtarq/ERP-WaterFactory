@@ -38,7 +38,21 @@ public class RequirementPreview
     public decimal Required { get; init; }
     public decimal Available { get; init; }
     public string WhereText { get; init; } = "";
+    public string UsedBy { get; init; } = "";
+    public bool IsShared { get; init; }
     public bool IsSufficient => Available >= Required;
+}
+
+/// <summary>صنف مضاف لأمر إنتاج قيد الإنشاء.</summary>
+public class OrderLineDraft
+{
+    public int FinishedItemId { get; init; }
+    public string ItemName { get; init; } = "";
+    public int? RecipeId { get; init; }
+    public string? RecipeName { get; init; }
+    public decimal Quantity { get; init; }
+    public string BatchNumber { get; init; } = "";
+    public ProductionLineInput ToInput() => new(FinishedItemId, Quantity, RecipeId, BatchNumber);
 }
 
 public class ProductionOrdersSectionViewModel : SectionViewModel
@@ -57,6 +71,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         {
             if (!Require(CanAdd, "إنشاء أوامر الإنتاج")) return;
             BatchOrder = null;
+            ComposeLines.Clear();
             await using var db = Session.NewDb();
             BatchNumber = await new ProductionService(db).NextBatchNumberAsync();
             IsComposing = true;
@@ -65,6 +80,8 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         SaveBatchCommand = new AsyncRelayCommand(SaveBatchAsync);
         CloseBatchCommand = new RelayCommand(() => BatchOrder = null);
         CancelComposeCommand = new RelayCommand(() => IsComposing = false);
+        AddLineCommand = new AsyncRelayCommand(AddLineAsync);
+        RemoveLineCommand = new AsyncRelayCommand(async p => { if (p is OrderLineDraft l) { ComposeLines.Remove(l); await PreviewAsync(); } });
         PreviewCommand = new AsyncRelayCommand(PreviewAsync);
         CreateCommand = new AsyncRelayCommand(CreateAsync);
         StartCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? StartAsync(r) : Task.CompletedTask);
@@ -93,6 +110,17 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
 
     public AsyncRelayCommand NewOrderCommand { get; }
     public AsyncRelayCommand EditBatchCommand { get; }
+    public AsyncRelayCommand AddLineCommand { get; }
+    public AsyncRelayCommand RemoveLineCommand { get; }
+    /// <summary>أصناف الأمر المضافة (أمر متعدد الأصناف). الصنف المختار حاليًا يُضاف تلقائيًا عند الإنشاء.</summary>
+    public ObservableCollection<OrderLineDraft> ComposeLines { get; } = new();
+    public ObservableCollection<ProductionLineRow> BatchLines { get; } = new();
+    private ProductionLineRow? _batchLine;
+    public ProductionLineRow? BatchLine
+    {
+        get => _batchLine;
+        set { if (SetProperty(ref _batchLine, value)) NewBatchNumber = value?.OutputBatch ?? ""; }
+    }
     public AsyncRelayCommand SaveBatchCommand { get; }
     public RelayCommand CloseBatchCommand { get; }
 
@@ -161,30 +189,70 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         await PreviewAsync();
     }
 
-    /// <summary>معاينة المواد المطلوبة مقابل المتاح في مخزن المواد قبل إنشاء الأمر.</summary>
+    /// <summary>أصناف الأمر: المضافة + الصنف المختار حاليًا (إن وُجد).</summary>
+    private List<ProductionLineInput> CollectLines()
+    {
+        var lines = ComposeLines.Select(l => l.ToInput()).ToList();
+        if (FinishedItem is not null && Quantity > 0 && lines.All(l => l.FinishedItemId != FinishedItem.Id))
+            lines.Add(new ProductionLineInput(FinishedItem.Id, Quantity, Recipe?.Id, BatchNumber));
+        return lines;
+    }
+
+    /// <summary>يثبّت الصنف المختار كسطر في الأمر ويجهّز إدخال صنف آخر برقم الدفعة التالي.</summary>
+    private async Task AddLineAsync()
+    {
+        if (FinishedItem is null || Quantity <= 0) { Dialogs.Error("اختر المنتج وأدخل كمية أكبر من صفر"); return; }
+        if (ComposeLines.Any(l => l.FinishedItemId == FinishedItem.Id)) { Dialogs.Error("الصنف مضاف للأمر مسبقًا"); return; }
+        if (!string.IsNullOrWhiteSpace(BatchNumber) && ComposeLines.Any(l => l.BatchNumber == BatchNumber.Trim()))
+        { Dialogs.Error("رقم الدفعة مستخدم لصنف آخر في الأمر"); return; }
+        ComposeLines.Add(new OrderLineDraft
+        {
+            FinishedItemId = FinishedItem.Id, ItemName = FinishedItem.ItemName, RecipeId = Recipe?.Id, RecipeName = Recipe?.Name,
+            Quantity = Quantity, BatchNumber = BatchNumber.Trim()
+        });
+        BatchNumber = NextSuggested(BatchNumber);
+        FinishedItem = null;
+        await PreviewAsync();
+    }
+
+    /// <summary>B261002-004 ← B261002-005 (أو فارغ = تلقائي إن لم يكن بنمط التسلسل).</summary>
+    public static string NextSuggested(string current)
+    {
+        var dash = current.LastIndexOf('-');
+        if (dash < 0 || !int.TryParse(current[(dash + 1)..], out var n)) return "";
+        return $"{current[..(dash + 1)]}{(n + 1).ToString(new string('0', current.Length - dash - 1))}";
+    }
+
+    /// <summary>معاينة المواد المطلوبة لكل أصناف الأمر (المشتركة مجمَّعة) مقابل المتاح قبل إنشاء الأمر.</summary>
     private async Task PreviewAsync()
     {
         Preview.Clear();
-        if (FinishedItem is null || RawWarehouse is null || Quantity <= 0) { OnPropertyChanged(nameof(AllSufficient)); return; }
+        var lines = CollectLines();
+        if (lines.Count == 0 || RawWarehouse is null) { OnPropertyChanged(nameof(AllSufficient)); return; }
         await using var db = Session.NewDb();
-        var service = new ManufacturingRequirementService(db);
-        var (_, error) = await new ProductionService(db).MergeRecipeAsync(FinishedItem.Id, Recipe?.Id);
-        if (error is not null) { StatusMessage = error; OnPropertyChanged(nameof(AllSufficient)); return; }
+        if (FinishedItem is not null)
+        {
+            var (_, error) = await new ProductionService(db).MergeRecipeAsync(FinishedItem.Id, Recipe?.Id);
+            if (error is not null) { StatusMessage = error; OnPropertyChanged(nameof(AllSufficient)); return; }
+        }
         // نفس محرك التوفر المستخدم في "احتياجات التصنيع" وفي بدء التشغيل
-        foreach (var r in await service.CalculateAsync(FinishedItem.Id, Quantity, Recipe?.Id, RawWarehouse.Id))
-            Preview.Add(new RequirementPreview { RawMaterialName = r.RawMaterialName, Required = r.QuantityRequired, Available = r.QuantityAvailable, WhereText = r.WhereText });
+        foreach (var r in await new ManufacturingRequirementService(db).CalculateForLinesAsync(lines, RawWarehouse.Id))
+            Preview.Add(new RequirementPreview { RawMaterialName = r.RawMaterialName, Required = r.QuantityRequired, Available = r.QuantityAvailable,
+                                                 WhereText = r.WhereText, UsedBy = r.UsedBy, IsShared = r.IsShared });
         OnPropertyChanged(nameof(AllSufficient));
     }
 
     private async Task CreateAsync()
     {
-        if (FinishedItem is null || RawWarehouse is null) { Dialogs.Error("اختر المنتج ومخزن المواد الأولية"); return; }
+        var lines = CollectLines();
+        if (lines.Count == 0 || RawWarehouse is null) { Dialogs.Error("اختر المنتج ومخزن المواد الأولية"); return; }
         if (Machine is null) { Dialogs.Error("اختر الماكينة (أضفها من تبويب الماكينات إن لم توجد)"); return; }
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(async () => (await new ProductionService(db).CreateOrderAsync(FinishedItem.Id, Quantity, Recipe?.Id, RawWarehouse.Id, Machine.Id, Session.UserId, BatchNumber)).result,
-                                    "تم إنشاء أمر الإنتاج — ابدأ تشغيله من الجدول"))
+        if (await RunOperationAsync(async () => (await new ProductionService(db).CreateOrderAsync(lines, RawWarehouse.Id, Machine.Id, Session.UserId)).result,
+                                    lines.Count > 1 ? $"تم إنشاء أمر إنتاج بـ {lines.Count} أصناف — ابدأ تشغيله من الجدول" : "تم إنشاء أمر الإنتاج — ابدأ تشغيله من الجدول"))
         {
             IsComposing = false;
+            ComposeLines.Clear();
             await LoadAsync();
         }
     }
@@ -193,7 +261,10 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     {
         if (!Require(CanEdit, "تعديل رقم الدفعة")) return;
         BatchOrder = row;
-        NewBatchNumber = row.OutputBatch ?? "";
+        BatchLines.Clear();
+        foreach (var l in row.Lines) BatchLines.Add(l);
+        BatchLine = BatchLines.FirstOrDefault();
+        NewBatchNumber = BatchLine?.OutputBatch ?? "";
         BatchReason = "";
         await LoadBatchHistoryAsync();
     }
@@ -212,8 +283,9 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     {
         if (BatchOrder is null || !Require(CanEdit, "تعديل رقم الدفعة")) return;
         await using var db = Session.NewDb();
-        var id = BatchOrder.Id;
-        if (await RunOperationAsync(() => new ProductionService(db).ChangeBatchNumberAsync(id, NewBatchNumber, BatchReason, Session.UserId),
+        if (BatchLine is null) { Dialogs.Error("اختر الصنف"); return; }
+        var lineId = BatchLine.LineId;
+        if (await RunOperationAsync(() => new ProductionService(db).ChangeLineBatchNumberAsync(lineId, NewBatchNumber, BatchReason, Session.UserId),
                                     $"تم تعديل رقم الدفعة إلى {NewBatchNumber.Trim()}"))
         {
             BatchOrder = null;
@@ -279,7 +351,7 @@ public class QcHistoryRow
 
 public class QcSectionViewModel : SectionViewModel
 {
-    private ProductionOrderRow? _order;
+    private ProductionLineRow? _order;
     private string? _lastResult;
 
     public QcSectionViewModel(AppSession s, IDialogService d)
@@ -295,11 +367,11 @@ public class QcSectionViewModel : SectionViewModel
     {
         new Option<bool?>(null, "تلقائي من المعيار"), new Option<bool?>(true, "ناجح (قرار الفاحص)"), new Option<bool?>(false, "راسب (قرار الفاحص)")
     };
-    public ObservableCollection<ProductionOrderRow> InProgressOrders { get; } = new();
+    public ObservableCollection<ProductionLineRow> InProgressOrders { get; } = new();
     public ObservableCollection<QcLine> Lines { get; } = new();
     public ObservableCollection<QcHistoryRow> History { get; } = new();
 
-    public ProductionOrderRow? Order { get => _order; set { if (SetProperty(ref _order, value)) Background(LoadTestsAsync()); } }
+    public ProductionLineRow? Order { get => _order; set { if (SetProperty(ref _order, value)) Background(LoadTestsAsync()); } }
     public string? LastResult { get => _lastResult; private set => SetProperty(ref _lastResult, value); }
     public AsyncRelayCommand SaveCommand { get; }
     public AsyncRelayCommand PrintCommand { get; }
@@ -307,10 +379,12 @@ public class QcSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        var orderId = Order?.Id;
+        var lineId = Order?.LineId;
         InProgressOrders.Clear();
-        foreach (var o in (await new ProductionService(db).GetOrdersAsync()).Where(o => o.Status == ProductionOrderStatus.InProgress)) InProgressOrders.Add(o);
-        _order = InProgressOrders.FirstOrDefault(o => o.Id == orderId) ?? InProgressOrders.FirstOrDefault();
+        // كل دفعة (صنف) في أمر قيد التشغيل لم تُعبّأ بالكامل بعد
+        foreach (var o in (await new ProductionService(db).GetLinesAsync()).Where(o => o.Status == ProductionOrderStatus.InProgress && o.PackedQuantity < o.QuantityToProduce))
+            InProgressOrders.Add(o);
+        _order = InProgressOrders.FirstOrDefault(o => o.LineId == lineId) ?? InProgressOrders.FirstOrDefault();
         OnPropertyChanged(nameof(Order));
         await LoadTestsAsync();
 
@@ -334,8 +408,7 @@ public class QcSectionViewModel : SectionViewModel
         Lines.Clear();
         if (Order is null) return;
         await using var db = Session.NewDb();
-        var itemId = await db.ProductionOrders.Where(o => o.Id == Order.Id).Select(o => o.FinishedItemId).FirstAsync();
-        foreach (var t in await new ProductionService(db).GetApplicableTestsAsync(itemId))
+        foreach (var t in await new ProductionService(db).GetApplicableTestsAsync(Order.FinishedItemId))
             Lines.Add(new QcLine(ManualOptions[0])
             {
                 TestId = t.Id, TestName = t.TestName,
@@ -382,7 +455,7 @@ public class PackingRow
 
 public class PackingSectionViewModel : SectionViewModel
 {
-    private ProductionOrderRow? _order;
+    private ProductionLineRow? _order;
     private ItemPackagingLevel? _level;
     private decimal _units;
     private Data.ProjectDb.Entities.Warehouse? _warehouse;
@@ -395,12 +468,12 @@ public class PackingSectionViewModel : SectionViewModel
     }
 
     protected override bool ReloadOnActivate => true;
-    public ObservableCollection<ProductionOrderRow> ReadyOrders { get; } = new();
+    public ObservableCollection<ProductionLineRow> ReadyOrders { get; } = new();
     public ObservableCollection<ItemPackagingLevel> Levels { get; } = new();
     public ObservableCollection<Data.ProjectDb.Entities.Warehouse> Warehouses { get; } = new();
     public ObservableCollection<PackingRow> History { get; } = new();
 
-    public ProductionOrderRow? Order { get => _order; set { if (SetProperty(ref _order, value)) { OnPropertyChanged(nameof(RemainingText)); Background(LoadLevelsAsync()); } } }
+    public ProductionLineRow? Order { get => _order; set { if (SetProperty(ref _order, value)) { OnPropertyChanged(nameof(RemainingText)); Background(LoadLevelsAsync()); } } }
     public ItemPackagingLevel? Level { get => _level; set { if (SetProperty(ref _level, value)) OnPropertyChanged(nameof(PiecesText)); } }
     public decimal Units { get => _units; set { if (SetProperty(ref _units, value)) OnPropertyChanged(nameof(PiecesText)); } }
     public Data.ProjectDb.Entities.Warehouse? Warehouse { get => _warehouse; set => SetProperty(ref _warehouse, value); }
@@ -412,10 +485,11 @@ public class PackingSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        var orderId = Order?.Id;
+        var lineId = Order?.LineId;
         ReadyOrders.Clear();
-        foreach (var o in (await new ProductionService(db).GetOrdersAsync())
-                     .Where(o => o.Status == ProductionOrderStatus.InProgress && o.LastQc == QCOverallResult.Passed)) ReadyOrders.Add(o);
+        // كل دفعة (صنف) ناجحة بالمختبر ولم تُعبّأ كاملة
+        foreach (var o in (await new ProductionService(db).GetLinesAsync())
+                     .Where(o => o.Status == ProductionOrderStatus.InProgress && o.LastQc == QCOverallResult.Passed && o.PackedQuantity < o.QuantityToProduce)) ReadyOrders.Add(o);
         if (Warehouses.Count == 0)
         {
             var candidates = await db.Warehouses.AsNoTracking()
@@ -423,7 +497,7 @@ public class PackingSectionViewModel : SectionViewModel
             foreach (var w in candidates.OrderBy(w => w.WarehouseType != WarehouseType.FinishedGoods).ThenBy(w => w.Name)) Warehouses.Add(w);
             Warehouse = Warehouses.FirstOrDefault();
         }
-        _order = ReadyOrders.FirstOrDefault(o => o.Id == orderId) ?? ReadyOrders.FirstOrDefault();
+        _order = ReadyOrders.FirstOrDefault(o => o.LineId == lineId) ?? ReadyOrders.FirstOrDefault();
         OnPropertyChanged(nameof(Order));
         OnPropertyChanged(nameof(RemainingText));
         await LoadLevelsAsync();
@@ -443,7 +517,7 @@ public class PackingSectionViewModel : SectionViewModel
         Levels.Clear();
         if (Order is null) return;
         await using var db = Session.NewDb();
-        var itemId = await db.ProductionOrders.Where(o => o.Id == Order.Id).Select(o => o.FinishedItemId).FirstAsync();
+        var itemId = Order.FinishedItemId;
         foreach (var l in await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == itemId).OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync())
             Levels.Add(l);
         Level = Levels.FirstOrDefault();
@@ -454,7 +528,7 @@ public class PackingSectionViewModel : SectionViewModel
         if (!Require(CanAdd || CanEdit, "التعبئة")) return;
         if (Order is null || Level is null || Warehouse is null) { Dialogs.Error("اختر الأمر ووحدة التعبئة والمخزن"); return; }
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(() => new ProductionService(db).PackAsync(Order.Id, Level.Id, Units, Warehouse.Id, Session.UserId),
+        if (await RunOperationAsync(() => new ProductionService(db).PackAsync(Order.OrderId, Level.Id, Units, Warehouse.Id, Session.UserId),
                                     $"تمت تعبئة {Units:N0} {Level.LevelName} ودخولها {Warehouse.Name}"))
         {
             Units = 0;

@@ -80,6 +80,7 @@ public class ProjectDbContext : DbContext
     public DbSet<CustomRecipeLine> CustomRecipeLines => Set<CustomRecipeLine>();
     public DbSet<ProductionOrder> ProductionOrders => Set<ProductionOrder>();
     public DbSet<ProductionOrderConsumption> ProductionOrderConsumptions => Set<ProductionOrderConsumption>();
+    public DbSet<ProductionOrderLine> ProductionOrderLines => Set<ProductionOrderLine>();
     public DbSet<Machine> Machines => Set<Machine>();
     public DbSet<BatchNumberChange> BatchNumberChanges => Set<BatchNumberChange>();
     public DbSet<QualityTest> QualityTests => Set<QualityTest>();
@@ -383,6 +384,13 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.OutputBatch).WithMany().HasForeignKey(p => p.OutputBatchId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrder>().HasOne(p => p.CreatedByUser).WithMany().HasForeignKey(p => p.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrderConsumption>().HasOne(c => c.ProductionOrder).WithMany(p => p.Consumptions).HasForeignKey(c => c.ProductionOrderId);
+        modelBuilder.Entity<ProductionOrderLine>().HasOne(l => l.ProductionOrder).WithMany(o => o.Lines).HasForeignKey(l => l.ProductionOrderId);
+        modelBuilder.Entity<ProductionOrderLine>().HasOne(l => l.FinishedItem).WithMany().HasForeignKey(l => l.FinishedItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrderLine>().HasOne(l => l.BOM).WithMany().HasForeignKey(l => l.BOMId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrderLine>().HasOne(l => l.CustomRecipe).WithMany().HasForeignKey(l => l.CustomRecipeId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrderLine>().HasOne(l => l.OutputBatch).WithMany().HasForeignKey(l => l.OutputBatchId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrderLine>().HasIndex(l => new { l.ProductionOrderId, l.FinishedItemId }).IsUnique();
+        modelBuilder.Entity<ProductionOrderConsumption>().HasOne(c => c.Line).WithMany().HasForeignKey(c => c.ProductionOrderLineId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrderConsumption>().HasOne(c => c.RawMaterialItem).WithMany().HasForeignKey(c => c.RawMaterialItemId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<QualityTest>().HasOne(q => q.ApplicableItem).WithMany().HasForeignKey(q => q.ApplicableItemId).OnDelete(DeleteBehavior.Restrict);
@@ -399,5 +407,6 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<PackingOrder>().HasOne(p => p.PackagingLevel).WithMany().HasForeignKey(p => p.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PackingOrder>().HasOne(p => p.ResultingFinishedGoodsWarehouse).WithMany().HasForeignKey(p => p.ResultingFinishedGoodsWarehouseId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PackingOrder>().HasOne(p => p.CreatedByUser).WithMany().HasForeignKey(p => p.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PackingOrder>().HasOne(p => p.Line).WithMany().HasForeignKey(p => p.ProductionOrderLineId).OnDelete(DeleteBehavior.Restrict);
     }
 }

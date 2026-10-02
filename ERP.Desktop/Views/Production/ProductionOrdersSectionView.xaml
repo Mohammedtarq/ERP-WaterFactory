@@ -89,6 +89,23 @@
                     <ComboBox ItemsSource="{Binding RawWarehouses}" SelectedItem="{Binding RawWarehouse}" DisplayMemberPath="Name"/>
                     <TextBlock Text="الماكينة (تُصرف المواد إلى رصيدها تحت التصنيع)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
                     <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding Machine}" DisplayMemberPath="Name"/>
+                    <Button Content="إضافة الصنف للأمر (أمر متعدد الأصناف)" Style="{StaticResource SecondaryButton}" Command="{Binding AddLineCommand}" Margin="0,10,0,0" HorizontalAlignment="Left"/>
+                    <ItemsControl ItemsSource="{Binding ComposeLines}" Margin="0,6,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel Margin="0,2">
+                                    <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="حذف الصنف من الأمر" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
+                                        <Run Text="{Binding ItemName, Mode=OneWay}" FontWeight="SemiBold"/>
+                                        <Run Text=" — "/><Run Text="{Binding Quantity, Mode=OneWay, StringFormat=N0}"/><Run Text=" قطعة — دفعة "/>
+                                        <Run Text="{Binding BatchNumber, Mode=OneWay}"/>
+                                        <Run Text="{Binding RecipeName, Mode=OneWay}" Foreground="{StaticResource MutedTextBrush}"/>
+                                    </TextBlock>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <Button Content="معاينة المواد المطلوبة" Style="{StaticResource SecondaryButton}" Command="{Binding PreviewCommand}" Margin="0,10,0,6" HorizontalAlignment="Left"/>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
@@ -109,6 +126,7 @@
                         <DataGridTextColumn Header="المادة" Binding="{Binding RawMaterialName}" Width="*"/>
                         <DataGridTextColumn Header="المطلوب" Binding="{Binding Required, StringFormat=N0}" Width="80"/>
                         <DataGridTextColumn Header="المتاح" Binding="{Binding Available, StringFormat=N0}" Width="80"/>
+                        <DataGridTextColumn Header="للأصناف" Binding="{Binding UsedBy}" Width="110"/>
                         <DataGridTextColumn Header="الموقع" Binding="{Binding WhereText}" Width="120"/>
                     </DataGrid.Columns>
                 </DataGrid>
@@ -121,8 +139,10 @@
                     <Run Text="تعديل رقم الدفعة — "/><Run Text="{Binding BatchOrder.MONumber, Mode=OneWay}"/>
                 </TextBlock>
                 <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding BatchLines}" SelectedItem="{Binding BatchLine}" DisplayMemberPath="FinishedItemName"/>
                     <TextBlock Text="الرقم الحالي" Style="{StaticResource FieldLabel}"/>
-                    <TextBlock Text="{Binding BatchOrder.OutputBatch}" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding BatchLine.OutputBatch}" FontWeight="SemiBold"/>
                     <TextBlock Text="الرقم الجديد (فريد على مستوى النظام)" Style="{StaticResource FieldLabel}"/>
                     <TextBox Text="{Binding NewBatchNumber, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
                     <TextBlock Text="سبب التعديل (اختياري)" Style="{StaticResource FieldLabel}"/>

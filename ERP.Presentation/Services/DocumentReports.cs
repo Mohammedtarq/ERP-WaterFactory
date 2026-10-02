@@ -27,31 +27,54 @@ public static class DocumentReports
             .Include(x => x.Consumptions).ThenInclude(c => c.RawMaterialItem)
             .FirstOrDefaultAsync(x => x.Id == orderId);
         if (o is null) return null;
-        var qc = await db.QCBatchResults.AsNoTracking().Where(q => q.ProductionOrderId == orderId).OrderByDescending(q => q.Id).FirstOrDefaultAsync();
-        var packed = await db.PackingOrders.AsNoTracking().Where(p => p.ProductionOrderId == orderId)
-            .Select(p => p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits).ToListAsync();
+        var lines = (await new ProductionService(db).GetLinesAsync(orderId)).OrderBy(l => l.LineNo).ToList();
+        var originals = await db.ProductionOrderLines.AsNoTracking().Where(l => l.ProductionOrderId == orderId && l.OutputBatch != null && l.OutputBatch.OriginalBatchNumber != null)
+            .Select(l => new { l.LineNo, l.OutputBatch!.OriginalBatchNumber }).ToDictionaryAsync(x => x.LineNo, x => x.OriginalBatchNumber);
+        string QcText(QCOverallResult? q) => q is null ? "لم يُفحص بعد" : ArabicLabels.Of(q.Value);
 
         var r = New(s, "أمر إنتاج", o.Status == ProductionOrderStatus.Cancelled ? "ملغى" : null);
-        r.Field("رقم الأمر", o.MONumber)
-         .Field("المنتج", $"{o.FinishedItem.ItemName} ({o.FinishedItem.ItemCode})")
-         .Field("الكمية المطلوبة", $"{Q(o.QuantityToProduce)} قطعة")
-         .Field("الحالة", ArabicLabels.Of(o.Status))
-         .Field("الوصفة", o.CustomRecipe?.Name ?? "الوصفة الأساسية")
+        r.Field("رقم الأمر", o.MONumber);
+        if (lines.Count <= 1)
+        {
+            var l = lines.FirstOrDefault();
+            r.Field("المنتج", $"{o.FinishedItem.ItemName} ({o.FinishedItem.ItemCode})")
+             .Field("الكمية المطلوبة", $"{Q(o.QuantityToProduce)} قطعة")
+             .Field("الوصفة", o.CustomRecipe?.Name ?? "الوصفة الأساسية")
+             .Field("رقم الدفعة", l?.OutputBatch)
+             .Field("الرقم الأصلي للدفعة", originals.GetValueOrDefault(1))
+             .Field("نتيجة المختبر", QcText(l?.LastQc))
+             .Field("المعبّأ", l is null || l.PackedQuantity == 0 ? null : $"{Q(l.PackedQuantity)} قطعة");
+        }
+        else
+        {
+            // أمر متعدد الأصناف: سطر لكل صنف بكميته ودفعته ونتيجة مختبره وما عُبّئ منه
+            foreach (var l in lines)
+                r.Field($"الصنف {l.LineNo}", $"{l.FinishedItemName} — {Q(l.QuantityToProduce)} قطعة — دفعة {l.OutputBatch}"
+                                              + (originals.TryGetValue(l.LineNo, out var orig) ? $" (الأصلي {orig})" : "")
+                                              + (l.RecipeName is null ? "" : $" — {l.RecipeName}")
+                                              + $" — المختبر: {QcText(l.LastQc)} — المعبّأ {Q(l.PackedQuantity)}");
+            r.Field("إجمالي الكمية", $"{Q(o.QuantityToProduce)} قطعة");
+        }
+        r.Field("الحالة", ArabicLabels.Of(o.Status))
          .Field("مخزن المواد", o.RawMaterialsWarehouse.Name)
          .Field("الماكينة", o.Machine?.Name)
-         .Field("رقم الدفعة", o.OutputBatch?.BatchNumber)
-         .Field("الرقم الأصلي للدفعة", o.OutputBatch?.OriginalBatchNumber)
-         .Field("نتيجة المختبر", qc is null ? "لم يُفحص بعد" : ArabicLabels.Of(qc.OverallResult))
-         .Field("المعبّأ", packed.Count == 0 ? null : $"{Q(packed.Sum())} قطعة")
          .Field("أنشأه", o.CreatedByUser.Username);
         // مطابقة المواد: المصروف لتحت تصنيع الماكينة = المستهلك فعليًا + التالف + المُرجَع + المتبقي على الماكينة
-        r.Columns.AddRange(new[] { "#", "المادة الأولية", "الكود", "المطلوب", "المصروف", "المستهلك فعليًا", "التالف", "المتبقي على الماكينة" });
-        var codes = o.Consumptions.ToDictionary(c => c.RawMaterialItemId, c => c.RawMaterialItem.ItemCode);
+        var materials = await new MachineService(db).GetOrderMaterialsAsync(orderId);
+        var multi = lines.Count > 1;
+        r.Columns.AddRange(multi
+            ? new[] { "#", "المادة الأولية", "الكود", "للأصناف", "المطلوب", "المصروف", "المستهلك فعليًا", "التالف", "المتبقي على الماكينة" }
+            : new[] { "#", "المادة الأولية", "الكود", "المطلوب", "المصروف", "المستهلك فعليًا", "التالف", "المتبقي على الماكينة" });
+        var codes = o.Consumptions.GroupBy(c => c.RawMaterialItemId).ToDictionary(g => g.Key, g => g.First().RawMaterialItem.ItemCode);
         var i = 0;
-        foreach (var m in await new MachineService(db).GetOrderMaterialsAsync(orderId))
-            r.Rows.Add(new[] { (++i).ToString(), m.RawItemName, codes.GetValueOrDefault(m.RawItemId, ""), Q(m.Required), Q(m.Issued),
-                               Q(m.Consumed), Q(m.Damaged), Q(m.Remaining) });
-        r.Total("عدد المواد", o.Consumptions.Count.ToString()).Total("الكمية المطلوبة", $"{Q(o.QuantityToProduce)} قطعة", true);
+        foreach (var m in materials)
+        {
+            var cells = new List<string> { (++i).ToString(), m.RawItemName, codes.GetValueOrDefault(m.RawItemId, "") };
+            if (multi) cells.Add(m.IsShared ? $"مشتركة: {m.UsedBy}" : m.UsedBy);
+            cells.AddRange(new[] { Q(m.Required), Q(m.Issued), Q(m.Consumed), Q(m.Damaged), Q(m.Remaining) });
+            r.Rows.Add(cells.ToArray());
+        }
+        r.Total("عدد المواد", materials.Count.ToString()).Total("الكمية المطلوبة", $"{Q(o.QuantityToProduce)} قطعة", true);
         r.Signatures.AddRange(new[] { "مسؤول الإنتاج", "أمين مخزن المواد", "مراقب الجودة" });
         return r;
     }
@@ -97,15 +120,18 @@ public static class DocumentReports
         var o = await db.ProductionOrders.AsNoTracking().Include(x => x.FinishedItem).Include(x => x.OutputBatch).FirstOrDefaultAsync(x => x.Id == orderId);
         if (o is null) return null;
         var rows = await db.PackingOrders.AsNoTracking().Where(p => p.ProductionOrderId == orderId).OrderBy(p => p.Id)
-            .Select(p => new { p.PackingDate, Level = p.PackagingLevel.LevelName, p.UnitsPackaged, Pieces = p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits,
+            .Select(p => new { p.PackingDate, Item = p.PackagingLevel.Item.ItemName, Batch = p.Line != null && p.Line.OutputBatch != null ? p.Line.OutputBatch.BatchNumber : null,
+                               Level = p.PackagingLevel.LevelName, p.UnitsPackaged, Pieces = p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits,
                                Warehouse = p.ResultingFinishedGoodsWarehouse.Name, User = p.CreatedByUser.Username })
             .ToListAsync();
         var r = New(s, "محضر تعبئة");
-        r.Field("أمر الإنتاج", o.MONumber).Field("المنتج", o.FinishedItem.ItemName).Field("التشغيلة", o.OutputBatch?.BatchNumber)
+        var lines = await new ProductionService(db).GetLinesAsync(orderId);
+        r.Field("أمر الإنتاج", o.MONumber).Field("المنتج", string.Join(" + ", lines.OrderBy(l => l.LineNo).Select(l => l.FinishedItemName)))
+         .Field("رقم الدفعة", string.Join("، ", lines.OrderBy(l => l.LineNo).Select(l => l.OutputBatch)))
          .Field("المطلوب إنتاجه", $"{Q(o.QuantityToProduce)} قطعة");
-        r.Columns.AddRange(new[] { "التاريخ", "الوحدة", "العدد", "بالقطعة", "إلى مخزن", "المستخدم" });
+        r.Columns.AddRange(new[] { "التاريخ", "الصنف", "الدفعة", "الوحدة", "العدد", "بالقطعة", "إلى مخزن", "المستخدم" });
         foreach (var p in rows)
-            r.Rows.Add(new[] { p.PackingDate.ToLocalTime().ToString("yyyy/MM/dd HH:mm"), p.Level, Q(p.UnitsPackaged), Q(p.Pieces), p.Warehouse, p.User });
+            r.Rows.Add(new[] { p.PackingDate.ToLocalTime().ToString("yyyy/MM/dd HH:mm"), p.Item, p.Batch ?? "", p.Level, Q(p.UnitsPackaged), Q(p.Pieces), p.Warehouse, p.User });
         var total = rows.Sum(p => p.Pieces);
         r.Total("إجمالي المعبّأ", $"{Q(total)} قطعة", true).Total("المتبقي", $"{Q(Math.Max(0, o.QuantityToProduce - total))} قطعة");
         r.Signatures.AddRange(new[] { "مسؤول التعبئة", "أمين مخزن المنتج التام" });

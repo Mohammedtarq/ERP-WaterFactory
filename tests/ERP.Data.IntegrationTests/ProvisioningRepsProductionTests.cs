@@ -517,6 +517,123 @@ public class ProductionServiceTests
         Assert.Equal((a.Value, renamed.Id), (qc.ProductionOrderId, qc.BatchId));
     }
 
+    /// <summary>
+    /// أمر إنتاج متعدد الأصناف: المواد المشتركة تُجمَّع وتُفحص على المجموع، والمكونات الخاصة بكل صنف منفصلة،
+    /// والصرف بترتيب الصلاحية لكل صنف دون استخدام نفس الكمية مرتين؛ لكل صنف دفعته وفحصه وتعبئته.
+    /// </summary>
+    [Fact]
+    public async Task Multi_item_order_aggregates_shared_materials_and_allocates_fefo_per_item_without_double_use()
+    {
+        await using var db = _f.NewDb();
+        var user = _f.AdminLocalId;
+        var prod = new ProductionService(db);
+        var raw = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial && w.Name == "مخزن المواد الأولية");
+        var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var (_, machineId) = await new MachineService(db).SaveAsync(null, "خط متعدد", "تعبئة", null, null, true);
+        var machine = await db.Machines.AsNoTracking().SingleAsync(m => m.Id == machineId);
+
+        Item NewItem(string code, string name, SourcingMethod m) => new() { ItemCode = code, ItemName = name, SourcingMethod = m };
+        var shared = NewItem("MX-PRE", "امبولة مشتركة", SourcingMethod.Purchased);
+        var labelA = NewItem("MX-LBL-A", "لاصق صنف أ", SourcingMethod.Purchased);
+        var labelB = NewItem("MX-LBL-B", "لاصق صنف ب", SourcingMethod.Purchased);
+        var itemA = NewItem("MX-A", "ماء صنف أ", SourcingMethod.Manufactured);
+        var itemB = NewItem("MX-B", "ماء صنف ب", SourcingMethod.Manufactured);
+        db.Items.AddRange(shared, labelA, labelB, itemA, itemB);
+        await db.SaveChangesAsync();
+        var pieceA = new ItemPackagingLevel { ItemId = itemA.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 };
+        var pieceB = new ItemPackagingLevel { ItemId = itemB.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 };
+        db.ItemPackagingLevels.AddRange(pieceA, pieceB);
+        foreach (var (finished, label) in new[] { (itemA, labelA), (itemB, labelB) })
+        {
+            var bom = new BillOfMaterials { FinishedItemId = finished.Id };
+            bom.Lines.Add(new BOMLine { RawMaterialItemId = shared.Id, QuantityPerUnit = 1 });
+            bom.Lines.Add(new BOMLine { RawMaterialItemId = label.Id, QuantityPerUnit = 1 });
+            db.BillOfMaterials.Add(bom);
+        }
+        var soon = new ItemBatch { ItemId = shared.Id, BatchNumber = "MX-SOON", ExpiryDate = DateTime.Today.AddMonths(2) };
+        var late = new ItemBatch { ItemId = shared.Id, BatchNumber = "MX-LATE", ExpiryDate = DateTime.Today.AddYears(1) };
+        db.ItemBatches.AddRange(soon, late);
+        await db.SaveChangesAsync();
+        StockTransaction In(int item, int? batch, decimal q) => new() { ItemId = item, WarehouseId = raw.Id, BatchId = batch, QuantityBaseUnits = q,
+                                                                       TransactionType = StockTransactionType.Receipt, CreatedByUserId = user };
+        db.StockTransactions.AddRange(In(shared.Id, soon.Id, 150), In(shared.Id, late.Id, 100), In(labelA.Id, null, 500), In(labelB.Id, null, 500));
+        await db.SaveChangesAsync();
+
+        // المعاينة: الامبولة مشتركة (المجموع 200)، واللاصقان منفصلان
+        var lines = new[] { new ProductionLineInput(itemA.Id, 100), new ProductionLineInput(itemB.Id, 100) };
+        var req = await new ManufacturingRequirementService(db).CalculateForLinesAsync(lines, raw.Id);
+        Assert.Equal(3, req.Count);
+        var sharedReq = req.Single(r => r.RawMaterialItemId == shared.Id);
+        Assert.True(sharedReq.IsShared);
+        Assert.Equal((200m, 250m), (sharedReq.QuantityRequired, sharedReq.QuantityAvailable));
+        Assert.Contains("ماء صنف أ", sharedReq.UsedBy);
+        Assert.Contains("ماء صنف ب", sharedReq.UsedBy);
+        Assert.False(req.Single(r => r.RawMaterialItemId == labelA.Id).IsShared);
+
+        // صنف مكرر يُرفض
+        Assert.Contains("مكرر", (await prod.CreateOrderAsync(new[] { lines[0], lines[0] }, raw.Id, machineId, user)).result.ErrorMessage);
+
+        // الإنشاء: سطر ودفعة لكل صنف، ومكونات كل صنف مرتبطة بسطره
+        var (cr, orderId) = await prod.CreateOrderAsync(lines, raw.Id, machineId, user);
+        Assert.True(cr.Success, cr.ErrorMessage);
+        var orderLines = await db.ProductionOrderLines.AsNoTracking().Include(l => l.OutputBatch).Where(l => l.ProductionOrderId == orderId).OrderBy(l => l.LineNo).ToListAsync();
+        Assert.Equal(2, orderLines.Count);
+        Assert.NotEqual(orderLines[0].OutputBatch!.BatchNumber, orderLines[1].OutputBatch!.BatchNumber);
+        var consumptions = await db.ProductionOrderConsumptions.AsNoTracking().Where(c => c.ProductionOrderId == orderId).ToListAsync();
+        Assert.Equal(4, consumptions.Count);
+        Assert.Equal(2, consumptions.Count(c => c.RawMaterialItemId == shared.Id));
+        Assert.Equal(orderLines[0].Id, consumptions.Single(c => c.RawMaterialItemId == labelA.Id).ProductionOrderLineId);
+        Assert.Equal(orderLines[1].Id, consumptions.Single(c => c.RawMaterialItemId == labelB.Id).ProductionOrderLineId);
+
+        // الصرف: الأقرب انتهاءً أولًا لكل صنف دون تكرار — أ يأخذ 100 من SOON، ب يأخذ 50 الباقية من SOON ثم 50 من LATE
+        Assert.True((await prod.StartAsync(orderId!.Value, user)).Success);
+        await using var check = _f.NewDb();
+        var issued = await check.StockTransactions.AsNoTracking()
+            .Where(t => t.ReferenceTable == "ProductionOrders" && t.ReferenceId == orderId && t.ItemId == shared.Id && t.WarehouseId == raw.Id).ToListAsync();
+        Assert.Equal(-150m, issued.Where(t => t.BatchId == soon.Id).Sum(t => t.QuantityBaseUnits));
+        Assert.Equal(-50m, issued.Where(t => t.BatchId == late.Id).Sum(t => t.QuantityBaseUnits));
+        Assert.Equal(new[] { -100m, -50m, -50m }, issued.OrderBy(t => t.Id).Select(t => t.QuantityBaseUnits).ToArray());
+        Assert.Equal(50m, await Balance(check, shared.Id, raw.Id));
+        Assert.Equal(200m, await Balance(check, shared.Id, machine.WipWarehouseId));
+
+        // الفحص والتعبئة لكل صنف عبر دفعته: تعبئة أ تستهلك مكونات أ فقط
+        var tests = await prod.GetApplicableTestsAsync(itemA.Id);
+        QcInput For(string name, string value) => new(tests.Single(t => t.TestName.StartsWith(name)).Id, value);
+        var ok = new[] { For("درجة", "7.2"), For("الأملاح", "120"), For("إحكام", "سليم") };
+        Assert.True((await prod.RecordQcByBatchAsync(orderLines[0].OutputBatch!.BatchNumber, ok, user)).result.Success);
+        Assert.Contains("قبل فحص المختبر", (await prod.PackAsync(orderId.Value, pieceB.Id, 10, fg.Id, user)).ErrorMessage);
+        Assert.True((await prod.PackAsync(orderId.Value, pieceA.Id, 100, fg.Id, user)).Success);
+        Assert.Equal(400m, await Balance(check, labelA.Id, raw.Id));
+        Assert.Equal(0m, await Balance(check, labelA.Id, machine.WipWarehouseId));
+        Assert.Equal(100m, await Balance(check, labelB.Id, machine.WipWarehouseId));
+        Assert.Equal(100m, await Balance(check, shared.Id, machine.WipWarehouseId));
+        Assert.Contains("المتبقي 0", (await prod.PackAsync(orderId.Value, pieceA.Id, 1, fg.Id, user)).ErrorMessage);
+        var rows = await prod.GetLinesAsync(orderId);
+        Assert.Equal("عُبّئ بالكامل", rows.Single(r => r.FinishedItemId == itemA.Id).StageText);
+        Assert.Equal(ProductionOrderStatus.InProgress, (await check.ProductionOrders.AsNoTracking().SingleAsync(o => o.Id == orderId)).Status);
+
+        Assert.True((await prod.RecordQcByBatchAsync(orderLines[1].OutputBatch!.BatchNumber, ok, user)).result.Success);
+        Assert.True((await prod.PackAsync(orderId.Value, pieceB.Id, 100, fg.Id, user)).Success);
+        await using var final = _f.NewDb();
+        Assert.Equal(ProductionOrderStatus.Completed, (await final.ProductionOrders.AsNoTracking().SingleAsync(o => o.Id == orderId)).Status);
+        Assert.Equal((100m, 100m), (await Balance(final, itemA.Id, fg.Id), await Balance(final, itemB.Id, fg.Id)));
+        var materials = await new MachineService(final).GetOrderMaterialsAsync(orderId.Value);
+        var sharedRow = materials.Single(m => m.RawItemId == shared.Id);
+        Assert.True(sharedRow.IsShared);
+        Assert.Equal((200m, 200m, 200m, 0m), (sharedRow.Required, sharedRow.Issued, sharedRow.Consumed, sharedRow.Remaining));
+        var order = (await new ProductionService(final).GetOrdersAsync()).Single(o => o.Id == orderId);
+        Assert.Equal("ماء صنف أ + ماء صنف ب", order.FinishedItemName);
+        Assert.Equal(2, order.LinesCount);
+
+        // المجموع غير كافٍ رغم كفاية كل صنف وحده (50 متبقية، كل صنف يحتاج 40) ← رفض برسالة "مشترك بين" ودون صرف
+        var (_, short1) = await prod.CreateOrderAsync(new[] { new ProductionLineInput(itemA.Id, 40), new ProductionLineInput(itemB.Id, 40) }, raw.Id, machineId, user);
+        var error = (await prod.StartAsync(short1!.Value, user)).ErrorMessage;
+        Assert.Contains("مشترك بين", error);
+        Assert.Contains("المطلوب 80", error);
+        await using var after = _f.NewDb();
+        Assert.Equal(50m, await Balance(after, shared.Id, raw.Id));
+    }
+
     [Fact]
     public async Task Custom_recipe_replaces_the_named_component()
     {

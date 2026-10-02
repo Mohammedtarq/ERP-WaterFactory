@@ -42,6 +42,9 @@ public class OrderMaterialRow
     public decimal Consumed { get; init; }
     public decimal Damaged { get; init; }
     public decimal Remaining => Issued - Returned - Consumed - Damaged;
+    /// <summary>الأصناف التي تستخدم المادة في الأمر؛ أكثر من صنف = مادة مشتركة مجمَّعة.</summary>
+    public string UsedBy { get; init; } = "";
+    public bool IsShared { get; init; }
 }
 
 /// <summary>
@@ -177,23 +180,28 @@ public class MachineService
     public async Task<List<OrderMaterialRow>> GetOrderMaterialsAsync(int orderId)
     {
         var order = await _db.ProductionOrders.AsNoTracking().Include(o => o.Consumptions).ThenInclude(c => c.RawMaterialItem)
-            .Include(o => o.Machine).FirstAsync(o => o.Id == orderId);
+            .Include(o => o.Lines).ThenInclude(l => l.FinishedItem).Include(o => o.Machine).FirstAsync(o => o.Id == orderId);
         var wip = order.Machine?.WipWarehouseId;
         var moves = await _db.StockTransactions.AsNoTracking()
             .Where(t => t.ReferenceTable == "ProductionOrders" && t.ReferenceId == orderId && (wip == null || t.WarehouseId == wip))
             .Select(t => new { t.ItemId, t.QuantityBaseUnits, t.TransactionType }).ToListAsync();
-        return order.Consumptions.OrderBy(c => c.RawMaterialItem.ItemName).Select(c =>
+        var itemOf = order.Lines.ToDictionary(l => l.Id, l => l.FinishedItem.ItemName);
+        // المواد المشتركة بين الأصناف تُجمَّع في سطر واحد، مع بيان الأصناف المستخدمة لها
+        return order.Consumptions.GroupBy(c => c.RawMaterialItemId).OrderBy(g => g.First().RawMaterialItem.ItemName).Select(g =>
         {
-            var mine = moves.Where(x => x.ItemId == c.RawMaterialItemId).ToList();
+            var mine = moves.Where(x => x.ItemId == g.Key).ToList();
             decimal Of(StockTransactionType t) => Math.Abs(mine.Where(x => x.TransactionType == t).Sum(x => x.QuantityBaseUnits));
+            var users = g.Where(c => c.ProductionOrderLineId is int id && itemOf.ContainsKey(id)).Select(c => itemOf[c.ProductionOrderLineId!.Value]).Distinct().ToList();
+            var consumed = g.Sum(c => c.QuantityConsumed);
             return new OrderMaterialRow
             {
-                RawItemId = c.RawMaterialItemId, RawItemName = c.RawMaterialItem.ItemName, Required = c.QuantityRequired,
+                RawItemId = g.Key, RawItemName = g.First().RawMaterialItem.ItemName, Required = g.Sum(c => c.QuantityRequired),
                 // الأوامر القديمة (بلا ماكينة) صُرفت واستُهلكت دفعة واحدة عند البدء
-                Issued = wip is null ? c.QuantityConsumed : Of(StockTransactionType.WipIssue),
+                Issued = wip is null ? consumed : Of(StockTransactionType.WipIssue),
                 Returned = wip is null ? 0 : Of(StockTransactionType.WipReturn),
-                Consumed = wip is null ? c.QuantityConsumed : Of(StockTransactionType.ProductionConsume),
-                Damaged = wip is null ? 0 : Of(StockTransactionType.Damaged)
+                Consumed = wip is null ? consumed : Of(StockTransactionType.ProductionConsume),
+                Damaged = wip is null ? 0 : Of(StockTransactionType.Damaged),
+                UsedBy = string.Join("، ", users), IsShared = users.Count > 1
             };
         }).ToList();
     }
