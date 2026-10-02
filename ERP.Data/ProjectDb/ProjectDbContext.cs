@@ -226,6 +226,7 @@ public class ProjectDbContext : DbContext
             e.Property(d => d.DamageReason).HasConversion<string>();
             e.HasOne(d => d.Warehouse).WithMany().HasForeignKey(d => d.WarehouseId).OnDelete(DeleteBehavior.NoAction);
             e.HasOne(d => d.CounterWarehouse).WithMany().HasForeignKey(d => d.CounterWarehouseId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(d => d.RepEmployee).WithMany().HasForeignKey(d => d.RepEmployeeId).OnDelete(DeleteBehavior.NoAction);
             e.HasOne(d => d.CreatedByUser).WithMany().HasForeignKey(d => d.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
             e.HasMany(d => d.Lines).WithOne(l => l.StockDocument).HasForeignKey(l => l.StockDocumentId);
         });

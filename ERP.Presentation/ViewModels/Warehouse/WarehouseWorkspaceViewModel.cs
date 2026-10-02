@@ -67,7 +67,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         OperationOptions = OperationsFor(warehouse.WarehouseType);
         _operation = OperationOptions[0];
         _damageReason = ReasonOptions[1];
-        DocumentFilters = new[] { new Option<StockDocumentType>(default, "كل الأنواع") }.Concat(OperationOptions).ToList();
+        DocumentFilters = new[] { new Option<StockDocumentType>(default, "كل الأنواع") }.Concat(ArabicLabels.OptionsOf<StockDocumentType>().Where(o => OperationOptions.Any(x => x.Value == o.Value) || WarehouseTypeShowsRepDocs(warehouse.WarehouseType) && o.Value is StockDocumentType.RepLoad or StockDocumentType.RepReturn)).ToList();
         _documentFilter = DocumentFilters[0];
 
         AddLineCommand = new AsyncRelayCommand(AddLineAsync);
@@ -121,11 +121,18 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public IReadOnlyList<Option<StockDocumentType>> OperationOptions { get; }
 
     /// <summary>مخزن المواد الأولية بلا إخراج حر ولا مسحوب مجاني: المواد تُصرف فقط لأمر إنتاج.</summary>
+    /// <summary>مخازن المنتج والسيارات تعرض مستندات المندوبين في سجل مستنداتها (للتصفية فقط).</summary>
+    private static bool WarehouseTypeShowsRepDocs(WarehouseType type) => type is not (WarehouseType.RawMaterial or WarehouseType.Damaged or WarehouseType.WorkInProcess);
+
+    /// <remarks>إسناد الحمولة والإرجاع من المندوب يُنفَّذان من وحدة المندوبين ← مستندات المندوبين.</remarks>
     public static IReadOnlyList<Option<StockDocumentType>> OperationsFor(WarehouseType type) =>
         ArabicLabels.OptionsOf<StockDocumentType>()
+            .Where(o => o.Value is not (StockDocumentType.RepLoad or StockDocumentType.RepReturn))
             .Where(o => type != WarehouseType.RawMaterial || o.Value is not (StockDocumentType.Issue or StockDocumentType.FreeIssue))
             .ToList();
-    public IReadOnlyList<Option<DamageReason>> ReasonOptions { get; } = ArabicLabels.OptionsOf<DamageReason>();
+    /// <summary>التلف الميداني خاص بالإرجاع من المندوب.</summary>
+    public IReadOnlyList<Option<DamageReason>> ReasonOptions { get; } =
+        ArabicLabels.OptionsOf<DamageReason>().Where(o => o.Value != Data.ProjectDb.Entities.DamageReason.Field).ToList();
     public ObservableCollection<WarehouseEntity> OtherWarehouses { get; } = new();
     public ObservableCollection<Item> ItemsLookup { get; } = new();
     public ObservableCollection<ItemPackagingLevel> LevelOptions { get; } = new();
@@ -441,31 +448,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         Dialogs.ShowReport(BuildDocumentReport(d));
     }
 
-    public ReportDocument BuildDocumentReport(StockDocument d)
-    {
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"مستند {ArabicLabels.Of(d.DocumentType)}", PrintedBy = Session.FullName, Notes = d.Notes };
-        r.Field("رقم المستند", d.DocumentNumber)
-         .Field("التاريخ", d.DocumentDate.ToString("yyyy/MM/dd"))
-         .Field(d.DocumentType == StockDocumentType.Transfer ? "من مخزن" : "المخزن", d.Warehouse.Name)
-         .Field("إلى مخزن", d.CounterWarehouse?.Name)
-         .Field(d.DocumentType switch { StockDocumentType.Receipt => "المصدر", StockDocumentType.Issue => "الجهة المستلمة", _ => "الجهة المستفيدة" }, d.PartyName)
-         .Field("سبب التلف", d.DamageReason is null ? null : ArabicLabels.Of(d.DamageReason))
-         .Field("المستخدم", d.CreatedByUser.Username);
-        r.Columns.AddRange(new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع", "التشغيلة", "الصلاحية" });
-        var i = 0;
-        foreach (var l in d.Lines.OrderBy(l => l.Id))
-            r.Rows.Add(new[] { (++i).ToString(), $"{l.Item.ItemName} ({l.Item.ItemCode})", l.PackagingLevel.LevelName, $"{l.QuantityInLevel:N0}",
-                               $"{l.QuantityBaseUnits:N0}", l.Batch?.BatchNumber ?? (d.DocumentType == StockDocumentType.Receipt ? "—" : "تلقائي"),
-                               l.Batch?.ExpiryDate?.ToString("yyyy/MM/dd") ?? "" });
-        r.Total("عدد السطور", d.Lines.Count.ToString()).Total("إجمالي القطع", $"{d.Lines.Sum(l => l.QuantityBaseUnits):N0}", true);
-        r.Signatures.AddRange(d.DocumentType switch
-        {
-            StockDocumentType.Receipt => new[] { "المسلِّم", "أمين المخزن", "المدير" },
-            StockDocumentType.Transfer => new[] { "أمين المخزن المرسِل", "الناقل", "أمين المخزن المستلم" },
-            _ => new[] { "المستلم", "أمين المخزن", "المدير" }
-        });
-        return r;
-    }
+    public ReportDocument BuildDocumentReport(StockDocument d) => DocumentReports.StockDocumentReport(Session, d);
 
     public ReportDocument BuildBalancesReport()
     {

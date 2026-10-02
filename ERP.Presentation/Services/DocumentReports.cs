@@ -140,6 +140,53 @@ public static class DocumentReports
         return r;
     }
 
+    // ============================ المخازن والمندوبين ============================
+
+    /// <summary>مستند مخزني مطبوع (من واجهة المخزن أو من شاشة مستندات المندوبين).</summary>
+    public static ReportDocument StockDocumentReport(AppSession s, StockDocument d)
+    {
+        var r = new ReportDocument { Key = $"stock-doc-{d.DocumentType}", CompanyName = s.ProjectName, Title = $"مستند {ArabicLabels.Of(d.DocumentType)}", PrintedBy = s.FullName, Notes = d.Notes };
+        r.Field("رقم المستند", d.DocumentNumber)
+         .Field("التاريخ", d.DocumentDate.ToString("yyyy/MM/dd"))
+         .Field(d.DocumentType is StockDocumentType.Transfer or StockDocumentType.RepLoad or StockDocumentType.RepReturn ? "من مخزن" : "المخزن", d.Warehouse.Name)
+         .Field("إلى مخزن", d.CounterWarehouse?.Name)
+         .Field(d.DocumentType switch
+         {
+             StockDocumentType.Receipt => "المصدر", StockDocumentType.Issue => "الجهة المستلمة",
+             StockDocumentType.RepLoad or StockDocumentType.RepReturn => "المندوب", _ => "الجهة المستفيدة"
+         }, d.RepEmployee?.FullName ?? d.PartyName)
+         .Field("سبب التلف", d.DamageReason is null ? null : ArabicLabels.Of(d.DamageReason))
+         .Field("المستخدم", d.CreatedByUser.Username);
+        var isReturn = d.DocumentType == StockDocumentType.RepReturn;
+        r.Columns.AddRange(isReturn
+            ? new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع", "الحالة", "التشغيلة" }
+            : new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع", "التشغيلة", "الصلاحية" });
+        var i = 0;
+        foreach (var l in d.Lines.OrderBy(l => l.Id))
+        {
+            var batch = l.Batch?.BatchNumber ?? (d.DocumentType == StockDocumentType.Receipt ? "—" : "تلقائي");
+            r.Rows.Add(isReturn
+                ? new[] { (++i).ToString(), $"{l.Item.ItemName} ({l.Item.ItemCode})", l.PackagingLevel.LevelName, $"{l.QuantityInLevel:N0}",
+                          $"{l.QuantityBaseUnits:N0}", l.IsDamaged ? "تلف ميداني" : "سليم", batch }
+                : new[] { (++i).ToString(), $"{l.Item.ItemName} ({l.Item.ItemCode})", l.PackagingLevel.LevelName, $"{l.QuantityInLevel:N0}",
+                          $"{l.QuantityBaseUnits:N0}", batch, l.Batch?.ExpiryDate?.ToString("yyyy/MM/dd") ?? "" });
+        }
+        r.Total("عدد السطور", d.Lines.Count.ToString());
+        if (isReturn)
+            r.Total("سليم يعود للمخزن", $"{d.Lines.Where(l => !l.IsDamaged).Sum(l => l.QuantityBaseUnits):N0}")
+             .Total("تلف ميداني", $"{d.Lines.Where(l => l.IsDamaged).Sum(l => l.QuantityBaseUnits):N0}");
+        r.Total("إجمالي القطع", $"{d.Lines.Sum(l => l.QuantityBaseUnits):N0}", true);
+        r.Signatures.AddRange(d.DocumentType switch
+        {
+            StockDocumentType.Receipt => new[] { "المسلِّم", "أمين المخزن", "المدير" },
+            StockDocumentType.Transfer => new[] { "أمين المخزن المرسِل", "الناقل", "أمين المخزن المستلم" },
+            StockDocumentType.RepLoad => new[] { "أمين المخزن", "المندوب المستلم", "المدير" },
+            StockDocumentType.RepReturn => new[] { "المندوب المسلِّم", "أمين المخزن", "المدير" },
+            _ => new[] { "المستلم", "أمين المخزن", "المدير" }
+        });
+        return r;
+    }
+
     // ============================ المالية ============================
 
     public static async Task<ReportDocument?> VoucherAsync(AppSession s, ProjectDbContext db, int voucherId)

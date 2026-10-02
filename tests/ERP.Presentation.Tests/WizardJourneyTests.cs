@@ -159,18 +159,23 @@ public class WizardJourneyTests : IAsyncLifetime
 
         // ---------------- 4) المندوبون: تحميل السيارة ثم تسليم نقد ----------------
         var reps = shell.Open<RepsModuleViewModel>(ModuleCode.Reps);
-        var van = reps.Van;
+        Assert.DoesNotContain(reps.Tabs, t => t is VanOperationsSectionViewModel);   // الشاشة القديمة مخفية
+        var van = reps.Documents;
         await Open(reps, van);
         Assert.NotNull(van.Van);
-        van.OtherWarehouse = van.StoreWarehouses.Single(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        Assert.Equal(StockDocumentType.RepLoad, van.DocumentType.Value);
+        van.Store = van.Stores.Single(w => w.WarehouseType == WarehouseType.FinishedGoods);
         van.LineItem = van.ItemsLookup.Single(i => i.ItemCode == "W-500");
         await van.IdleAsync();
         Assert.Equal("كارتون", van.LineLevel!.LevelName);
         van.LineQuantity = 10;
-        await van.AddLineCommand.ExecuteAsync();
-        await van.ExecuteCommand.ExecuteAsync();
+        van.AddLineCommand.Execute(null);
+        await van.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.Equal(120m, van.VanTotalPieces);
+        var loadDoc = Assert.Single(van.Documents);
+        Assert.StartsWith("RL-", loadDoc.DocumentNumber);
+        Assert.Equal("علي المندوب", loadDoc.PartyName);
 
         var wallet = reps.Wallet;
         await Open(reps, wallet);
@@ -373,6 +378,33 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "رصيد المحفظة" && t.Value == "5,000 د.ع");
         van.PrintStockCommand.Execute(null);
         Assert.Contains(dialogs.Reports.Last().Totals, t => t.Value == "120");
+
+        // ---------------- 7) إرجاع من المندوب: كارتون سليم يعود للمخزن، و6 قطع تلف ميداني لا تعود رصيدًا سليمًا ----------------
+        await Open(reps, van);
+        van.DocumentType = van.DocumentTypes.Single(t => t.Value == StockDocumentType.RepReturn);
+        van.LineItem = van.ItemsLookup.Single(i => i.ItemCode == "W-500");
+        await van.IdleAsync();
+        van.LineLevel = van.LevelOptions.Single(l => l.LevelName == "كارتون");
+        van.LineQuantity = 1;
+        van.AddLineCommand.Execute(null);
+        van.LineLevel = van.LevelOptions.Single(l => l.EquivalentBaseUnits == 1);
+        van.LineQuantity = 6;
+        van.LineDamaged = true;
+        van.AddLineCommand.Execute(null);
+        Assert.Contains("تلف ميداني 6", van.LinesTotalText);
+        await van.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(102m, van.VanTotalPieces);
+        var returnDoc = van.Documents.First();
+        Assert.StartsWith("RR-", returnDoc.DocumentNumber);
+        Assert.Equal((18m, 6m), (returnDoc.TotalPieces, returnDoc.DamagedPieces));
+        await van.PrintCommand.ExecuteAsync(returnDoc);
+        var rr = dialogs.Reports.Last();
+        Assert.Equal("مستند إرجاع من مندوب", rr.Title);
+        Assert.Contains(rr.HeaderFields, f => f.Label == "المندوب" && f.Value == "علي المندوب");
+        Assert.Contains(rr.Rows, r => r.Contains("تلف ميداني"));
+        Assert.Contains(rr.Totals, t => t.Label == "سليم يعود للمخزن" && t.Value == "12");
+        Assert.Contains(rr.Totals, t => t.Label == "تلف ميداني" && t.Value == "6");
     }
 
     private SetupViewModel Wizard(RecordingNavigator nav, MemoryConfigStore config, string projectDb, string password)

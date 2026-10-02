@@ -65,6 +65,8 @@ public static class ArabicLabels
         [StockDocumentType.Receipt] = "إدخال مخزني", [StockDocumentType.Issue] = "إخراج مخزني",
         [StockDocumentType.Transfer] = "مناقلة إلى مخزن آخر", [StockDocumentType.Damaged] = "تالف",
         [StockDocumentType.FreeIssue] = "مسحوب مجاني",
+        [StockDocumentType.RepLoad] = "إسناد حمولة لمندوب", [StockDocumentType.RepReturn] = "إرجاع من مندوب",
+        [DamageReason.Field] = "تلف ميداني",
         [CashBoxType.Main] = "صندوق رئيسي", [CashBoxType.User] = "صندوق مستخدم",
         [CashBoxTxType.Opening] = "رصيد افتتاحي", [CashBoxTxType.Deposit] = "إيداع", [CashBoxTxType.Withdrawal] = "سحب",
         [CashBoxTxType.TransferIn] = "مناقلة واردة", [CashBoxTxType.TransferOut] = "مناقلة صادرة",

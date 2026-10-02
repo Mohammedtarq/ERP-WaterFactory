@@ -225,6 +225,7 @@
 
     <!-- Reps -->
     <DataTemplate DataType="{x:Type vmReps:VanOperationsSectionViewModel}"><vReps:VanOperationsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:RepDocumentsSectionViewModel}"><vReps:RepDocumentsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:WalletSectionViewModel}"><vReps:WalletSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:TerritoriesSectionViewModel}"><vReps:TerritoriesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:CustomerAssignmentsSectionViewModel}"><vReps:CustomerAssignmentsSectionView/></DataTemplate>

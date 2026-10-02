@@ -7,7 +7,7 @@ namespace ERP.Data.Services;
 /// <summary>سطر مستند كما يُدخل في واجهة المخزن (بوحدة التعبئة).</summary>
 public record StockDocumentLineInput(int ItemId, int PackagingLevelId, decimal QuantityInLevel,
                                      int? BatchId = null, string? NewBatchNumber = null, DateTime? NewBatchExpiry = null,
-                                     string? Notes = null);
+                                     string? Notes = null, bool IsDamaged = false);
 
 public record StockDocumentRequest(
     StockDocumentType Type, int WarehouseId, DateTime Date, IReadOnlyList<StockDocumentLineInput> Lines, int UserId,
@@ -65,6 +65,8 @@ public class StockDocumentRow
     public string? PartyName { get; init; }
     public int LinesCount { get; init; }
     public decimal TotalPieces { get; init; }
+    /// <summary>القطع التالفة ميدانيًا (في مستند الإرجاع من المندوب).</summary>
+    public decimal DamagedPieces { get; init; }
     public string CreatedBy { get; init; } = "";
 }
 
@@ -83,6 +85,8 @@ public class WarehouseDocumentService
         StockDocumentType.Issue => "SI",
         StockDocumentType.Transfer => "ST",
         StockDocumentType.Damaged => "SD",
+        StockDocumentType.RepLoad => "RL",
+        StockDocumentType.RepReturn => "RR",
         _ => "SF"
     };
 
@@ -99,6 +103,22 @@ public class WarehouseDocumentService
             return (FinanceOperationResult.Fail("لا يُسمح بالصرف الحر من مخزن المواد الأولية — المواد تُصرف فقط لأمر إنتاج (بدء التشغيل)"), null);
 
         Warehouse? counter = null;
+        Employee? rep = null;
+        if (r.Type is StockDocumentType.RepLoad or StockDocumentType.RepReturn)
+        {
+            // إسناد حمولة: من مخزن المنتج التام إلى الكاش فان. إرجاع من مندوب: من الكاش فان إلى المخزن.
+            if (r.CounterWarehouseId is null) return (FinanceOperationResult.Fail(r.Type == StockDocumentType.RepLoad ? "اختر سيارة المندوب" : "اختر المخزن المستلم"), null);
+            counter = await _db.Warehouses.FindAsync(r.CounterWarehouseId);
+            if (counter is null || !counter.IsActive) return (FinanceOperationResult.Fail("المخزن الآخر غير موجود أو موقوف"), null);
+            var (van, store) = r.Type == StockDocumentType.RepLoad ? (counter, warehouse) : (warehouse, counter);
+            if (van.WarehouseType != WarehouseType.RepVan || van.OwnerEmployeeId is null)
+                return (FinanceOperationResult.Fail("المستند يخص كاش فان مندوب (حدّد صاحب السيارة من تعريف المخازن)"), null);
+            if (store.WarehouseType is WarehouseType.RepVan or WarehouseType.WorkInProcess or WarehouseType.Damaged or WarehouseType.RawMaterial || !store.IsSellableStock)
+                return (FinanceOperationResult.Fail("المخزن يجب أن يكون مخزن منتج تام قابل للبيع"), null);
+            if (r.Type == StockDocumentType.RepLoad && r.Lines.Any(l => l.IsDamaged))
+                return (FinanceOperationResult.Fail("التالف يُسجَّل في مستند الإرجاع من المندوب"), null);
+            rep = await _db.Employees.FindAsync(van.OwnerEmployeeId);
+        }
         if (r.Type == StockDocumentType.Transfer)
         {
             if (r.CounterWarehouseId is null) return (FinanceOperationResult.Fail("اختر المخزن المستلم"), null);
@@ -123,7 +143,8 @@ public class WarehouseDocumentService
 
         // مخزن التالف يستقبل الكميات التالفة (إن وُجد ولم يكن المصدر نفسه)
         Warehouse? damagedStore = null;
-        if (r.Type == StockDocumentType.Damaged && r.MoveDamagedToDamagedWarehouse && warehouse.WarehouseType != WarehouseType.Damaged)
+        if ((r.Type == StockDocumentType.Damaged && r.MoveDamagedToDamagedWarehouse && warehouse.WarehouseType != WarehouseType.Damaged)
+            || (r.Type == StockDocumentType.RepReturn && r.Lines.Any(l => l.IsDamaged)))
             damagedStore = await _db.Warehouses.Where(w => w.IsActive && w.WarehouseType == WarehouseType.Damaged).OrderBy(w => w.Id).FirstOrDefaultAsync();
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -132,7 +153,9 @@ public class WarehouseDocumentService
         {
             DocumentNumber = $"{Prefix(r.Type)}-{r.Date.Year}-{seq[0]:D6}",
             DocumentType = r.Type, WarehouseId = r.WarehouseId, CounterWarehouseId = counter?.Id,
-            DocumentDate = r.Date.Date, PartyName = Clean(r.PartyName), DamageReason = r.Type == StockDocumentType.Damaged ? r.DamageReason : null,
+            DocumentDate = r.Date.Date, PartyName = rep?.FullName ?? Clean(r.PartyName), RepEmployeeId = rep?.Id,
+            DamageReason = r.Type == StockDocumentType.Damaged ? r.DamageReason
+                         : r.Type == StockDocumentType.RepReturn && r.Lines.Any(l => l.IsDamaged) ? ProjectDb.Entities.DamageReason.Field : null,
             Notes = Clean(r.Notes), CreatedByUserId = r.UserId
         };
         _db.StockDocuments.Add(doc);
@@ -179,6 +202,19 @@ public class WarehouseDocumentService
                         case StockDocumentType.FreeIssue:
                             Add(l.ItemId, r.WarehouseId, b, -qty, StockTransactionType.FreeIssue);
                             break;
+                        case StockDocumentType.RepLoad:
+                            Add(l.ItemId, r.WarehouseId, b, -qty, StockTransactionType.RepLoad);
+                            Add(l.ItemId, counter!.Id, b, qty, StockTransactionType.RepLoad);
+                            break;
+                        case StockDocumentType.RepReturn when l.IsDamaged:
+                            // تلف ميداني: يُخصم من السيارة ولا يعود رصيدًا سليمًا (ينتقل لمخزن التالف إن وُجد)
+                            Add(l.ItemId, r.WarehouseId, b, -qty, StockTransactionType.RepDamaged, ProjectDb.Entities.DamageReason.Field);
+                            if (damagedStore is not null) Add(l.ItemId, damagedStore.Id, b, qty, StockTransactionType.Damaged, ProjectDb.Entities.DamageReason.Field);
+                            break;
+                        case StockDocumentType.RepReturn:
+                            Add(l.ItemId, r.WarehouseId, b, -qty, StockTransactionType.RepReturn);
+                            Add(l.ItemId, counter!.Id, b, qty, StockTransactionType.RepReturn);
+                            break;
                         default:
                             Add(l.ItemId, r.WarehouseId, b, -qty, StockTransactionType.Issue);
                             break;
@@ -188,7 +224,7 @@ public class WarehouseDocumentService
             doc.Lines.Add(new StockDocumentLine
             {
                 ItemId = l.ItemId, PackagingLevelId = l.PackagingLevelId, QuantityInLevel = l.QuantityInLevel,
-                QuantityBaseUnits = pieces, BatchId = batchId, Notes = Clean(l.Notes)
+                QuantityBaseUnits = pieces, BatchId = batchId, Notes = Clean(l.Notes), IsDamaged = l.IsDamaged
             });
             await _db.SaveChangesAsync();
         }
@@ -327,6 +363,26 @@ public class WarehouseDocumentService
         return string.Join(" + ", parts);
     }
 
+    /// <summary>مستندات المندوبين (إسناد حمولة وإرجاع) لكل السيارات أو لمندوب واحد.</summary>
+    public async Task<List<StockDocumentRow>> GetRepDocumentsAsync(DateTime from, DateTime to, int? repEmployeeId = null)
+    {
+        var rows = await _db.StockDocuments.AsNoTracking()
+            .Where(d => d.RepEmployeeId != null && (repEmployeeId == null || d.RepEmployeeId == repEmployeeId)
+                        && d.DocumentDate >= from.Date && d.DocumentDate <= to.Date)
+            .OrderByDescending(d => d.Id)
+            .Select(d => new
+            {
+                d.Id, d.DocumentNumber, d.DocumentType, d.DocumentDate, Counter = d.CounterWarehouse != null ? d.CounterWarehouse.Name : null,
+                d.PartyName, Lines = d.Lines.Count, Pieces = d.Lines.Sum(l => (decimal?)l.QuantityBaseUnits) ?? 0,
+                Damaged = d.Lines.Where(l => l.IsDamaged).Sum(l => (decimal?)l.QuantityBaseUnits) ?? 0, User = d.CreatedByUser.Username
+            }).ToListAsync();
+        return rows.Select(d => new StockDocumentRow
+        {
+            Id = d.Id, DocumentNumber = d.DocumentNumber, DocumentType = d.DocumentType, DocumentDate = d.DocumentDate,
+            CounterWarehouse = d.Counter, PartyName = d.PartyName, LinesCount = d.Lines, TotalPieces = d.Pieces, DamagedPieces = d.Damaged, CreatedBy = d.User
+        }).ToList();
+    }
+
     public async Task<List<StockDocumentRow>> GetDocumentsAsync(int warehouseId, DateTime from, DateTime to, StockDocumentType? type = null)
     {
         var rows = await _db.StockDocuments.AsNoTracking()
@@ -347,7 +403,7 @@ public class WarehouseDocumentService
 
     public Task<StockDocument?> GetDocumentAsync(int id) =>
         _db.StockDocuments.AsNoTracking()
-            .Include(d => d.Warehouse).Include(d => d.CounterWarehouse).Include(d => d.CreatedByUser)
+            .Include(d => d.Warehouse).Include(d => d.CounterWarehouse).Include(d => d.CreatedByUser).Include(d => d.RepEmployee)
             .Include(d => d.Lines).ThenInclude(l => l.Item)
             .Include(d => d.Lines).ThenInclude(l => l.PackagingLevel)
             .Include(d => d.Lines).ThenInclude(l => l.Batch)
@@ -401,6 +457,7 @@ public class WarehouseDocumentService
     {
         ProjectDb.Entities.DamageReason.Transit => "نقل",
         ProjectDb.Entities.DamageReason.Warehouse => "مخزن",
+        ProjectDb.Entities.DamageReason.Field => "ميداني",
         _ => "إنتاج"
     };
 }

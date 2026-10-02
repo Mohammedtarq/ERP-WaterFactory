@@ -14,7 +14,8 @@ public enum StockTransactionType
     WipAdjust
 }
 
-public enum DamageReason { Transit, Warehouse, Production }
+/// <summary>Field = تلف ميداني (عند المندوب) — 21_rep_documents.sql</summary>
+public enum DamageReason { Transit, Warehouse, Production, Field }
 
 /// <summary>
 /// سجل حركة واحد. الرصيد الحالي لأي صنف/مخزن/تشغيلة = مجموع QuantityBaseUnits

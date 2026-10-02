@@ -15,7 +15,10 @@ public class RepsModuleViewModel : ModuleViewModel
         : base("المندوبون", Icons.Reps, ModuleColors.Reps)
     {
         UseDashboard(s, d, ModuleCode.Reps, ModuleDashboardViewModel.Reps);
-        Van = Add(new VanOperationsSectionViewModel(s, d));
+        Documents = Add(new RepDocumentsSectionViewModel(s, d));
+        // شاشة "عمليات الكاش فان" القديمة مخفية (حلّت محلها مستندات المندوبين المرقمة) — لا تُحذف
+        Van = new VanOperationsSectionViewModel(s, d);
+        if (ShowLegacyVanOperations) Add(Van);
         Wallet = Add(new WalletSectionViewModel(s, d));
         Add(new TerritoriesSectionViewModel(s, d));
         Add(new CustomerAssignmentsSectionViewModel(s, d));
@@ -23,6 +26,11 @@ public class RepsModuleViewModel : ModuleViewModel
         Add(new FleetSectionViewModel(s, d));
     }
 
+    /// <summary>إظهار شاشة عمليات الكاش فان القديمة (true يعيدها كما كانت).</summary>
+    public static bool ShowLegacyVanOperations { get; set; } = false;
+
+    public RepDocumentsSectionViewModel Documents { get; }
+    /// <summary>الشاشة القديمة ما زالت تعمل، لكنها خارج التبويبات.</summary>
     public VanOperationsSectionViewModel Van { get; }
     public WalletSectionViewModel Wallet { get; }
 }

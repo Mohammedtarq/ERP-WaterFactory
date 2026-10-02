@@ -222,6 +222,84 @@ public class RepsServiceTests
 }
 
 [Collection("provisioned")]
+public class RepDocumentTests
+{
+    private readonly ProvisionedFixture _f;
+    public RepDocumentTests(ProvisionedFixture f) => _f = f;
+
+    private static async Task<decimal> Balance(ProjectDbContext db, int itemId, int whId) =>
+        await db.StockTransactions.Where(t => t.ItemId == itemId && t.WarehouseId == whId).SumAsync(t => (decimal?)t.QuantityBaseUnits) ?? 0;
+
+    /// <summary>
+    /// إسناد حمولة: من المنتج التام إلى سيارة المندوب بمستند مرقم (RL). إرجاع من مندوب (RR): السليم يعود للمخزن،
+    /// والتالف يُسجَّل بسبب "تلف ميداني" ويذهب لمخزن التالف ولا يعود رصيدًا سليمًا.
+    /// </summary>
+    [Fact]
+    public async Task Rep_load_and_return_documents_with_field_damage()
+    {
+        await using var db = _f.NewDb();
+        var user = _f.AdminLocalId;
+        var docs = new WarehouseDocumentService(db);
+        var item = await db.Items.FirstAsync(i => i.ItemCode == "W-500");
+        var piece = await db.ItemPackagingLevels.FirstAsync(l => l.ItemId == item.Id && l.EquivalentBaseUnits == 1);
+        var carton = await db.ItemPackagingLevels.FirstAsync(l => l.ItemId == item.Id && l.LevelName == "كارتون");
+        var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var damagedStore = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.Damaged);
+        var rep = new Employee { FullName = "مندوب المستندات", IsSalesRep = true };
+        db.Employees.Add(rep);
+        await db.SaveChangesAsync();
+        var van = new Warehouse { BranchId = fg.BranchId, Name = "كاش فان المستندات", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id, IsSellableStock = true };
+        db.Warehouses.Add(van);
+        await db.SaveChangesAsync();
+        var fgBefore = await Balance(db, item.Id, fg.Id);
+        var damagedBefore = await Balance(db, item.Id, damagedStore.Id);
+
+        // التحقق: الإسناد لسيارة فقط، ولا تالف في الإسناد
+        Assert.Contains("كاش فان", (await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.RepLoad, fg.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(item.Id, carton.Id, 1) }, user, CounterWarehouseId: damagedStore.Id))).result.ErrorMessage);
+        Assert.Contains("الإرجاع", (await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.RepLoad, fg.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(item.Id, carton.Id, 1, IsDamaged: true) }, user, CounterWarehouseId: van.Id))).result.ErrorMessage);
+
+        // إسناد 5 كراتين (60 قطعة) بسطرين
+        var (lr, load) = await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.RepLoad, fg.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(item.Id, carton.Id, 4), new StockDocumentLineInput(item.Id, carton.Id, 1) }, user, CounterWarehouseId: van.Id));
+        Assert.True(lr.Success, lr.ErrorMessage);
+        Assert.StartsWith("RL-", load!.DocumentNumber);
+        Assert.Equal((rep.Id, "مندوب المستندات"), (load.RepEmployeeId, load.PartyName));
+        Assert.Equal(60m, await Balance(db, item.Id, van.Id));
+        Assert.Equal(fgBefore - 60, await Balance(db, item.Id, fg.Id));
+        Assert.All(await db.StockTransactions.Where(t => t.ReferenceTable == "StockDocuments" && t.ReferenceId == load.Id).ToListAsync(),
+                   t => Assert.Equal(StockTransactionType.RepLoad, t.TransactionType));
+
+        // إرجاع: 2 كرتون سليم + 5 قطع تالفة ميدانيًا
+        var (rr, ret) = await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.RepReturn, van.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(item.Id, carton.Id, 2), new StockDocumentLineInput(item.Id, piece.Id, 5, IsDamaged: true) }, user, CounterWarehouseId: fg.Id));
+        Assert.True(rr.Success, rr.ErrorMessage);
+        Assert.StartsWith("RR-", ret!.DocumentNumber);
+        Assert.Equal(DamageReason.Field, ret.DamageReason);
+        Assert.Equal(60m - 24 - 5, await Balance(db, item.Id, van.Id));
+        Assert.Equal(fgBefore - 60 + 24, await Balance(db, item.Id, fg.Id));     // التالف لا يعود للمنتج التام
+        Assert.Equal(damagedBefore + 5, await Balance(db, item.Id, damagedStore.Id));
+        var fieldDamage = await db.StockTransactions.Where(t => t.ReferenceTable == "StockDocuments" && t.ReferenceId == ret.Id && t.WarehouseId == van.Id && t.TransactionType == StockTransactionType.RepDamaged).ToListAsync();
+        Assert.Equal(-5m, fieldDamage.Sum(t => t.QuantityBaseUnits));
+        Assert.All(fieldDamage, t => Assert.Equal(DamageReason.Field, t.DamageReason));
+
+        // إرجاع يفوق رصيد السيارة يُرفض بلا أثر
+        Assert.Contains("غير كافٍ", (await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.RepReturn, van.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(item.Id, carton.Id, 50) }, user, CounterWarehouseId: fg.Id))).result.ErrorMessage);
+        Assert.Equal(31m, await Balance(db, item.Id, van.Id));
+
+        // سجل مستندات المندوب
+        var list = await docs.GetRepDocumentsAsync(DateTime.Today, DateTime.Today, rep.Id);
+        Assert.Equal(2, list.Count);
+        Assert.Equal((29m, 5m), list.Where(d => d.DocumentType == StockDocumentType.RepReturn).Select(d => (d.TotalPieces, d.DamagedPieces)).Single());
+        var full = await docs.GetDocumentAsync(ret.Id);
+        Assert.Equal("مندوب المستندات", full!.RepEmployee!.FullName);
+        Assert.Single(full.Lines, l => l.IsDamaged);
+    }
+}
+
+[Collection("provisioned")]
 public class ProductionServiceTests
 {
     private readonly ProvisionedFixture _f;
