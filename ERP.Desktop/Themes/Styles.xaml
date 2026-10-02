@@ -16,6 +16,8 @@
     <m:NullToVisibilityConverter x:Key="NullToVisible" Invert="True"/>
     <m:InverseBoolConverter x:Key="InverseBool"/>
     <m:SignBrushConverter x:Key="SignBrush"/>
+    <m:RatioStarConverter x:Key="RatioStar"/>
+    <m:RatioStarConverter x:Key="RatioStarRest" Invert="True"/>
 
     <!-- ================= النصوص ================= -->
     <Style x:Key="PageTitle" TargetType="TextBlock">

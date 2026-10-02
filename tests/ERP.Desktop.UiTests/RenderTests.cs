@@ -149,6 +149,55 @@ public class RenderTests
         lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
     }
 
+    /// <summary>البحث داخل القائمة المنسدلة: الكتابة تصفّي النتائج دون تغيير الاختيار، وEnter يعتمد أول نتيجة.</summary>
+    [Fact]
+    public async Task Dropdown_search_filters_and_commits_on_enter()
+    {
+        ClearCollected();
+        await UiThread.RunAsync(async () =>
+        {
+            var items = new System.Collections.ObjectModel.ObservableCollection<Option>
+            {
+                new("W-500", "ماء 500 مل"), new("W-1500", "ماء 1.5 لتر"), new("RM-CAP", "أغطية زرقاء"), new("RM-LBL", "ملصق أمامي"), new("RM-PRE", "بريفورم")
+            };
+            var combo = new ComboBox { ItemsSource = items, DisplayMemberPath = "Name", Width = 260 };
+            var other = new ListBox { ItemsSource = items };                    // نفس البيانات في عنصر آخر
+            var panel = new StackPanel { FlowDirection = FlowDirection.RightToLeft };
+            panel.Children.Add(combo);
+            panel.Children.Add(other);
+            var w = new Window { Content = panel, Width = 420, Height = 420, ShowActivated = true, Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual };
+            w.Show();
+            await UiThread.SettleAsync();
+            combo.SelectedItem = items[0];
+
+            combo.IsDropDownOpen = true;
+            await UiThread.SettleAsync();
+            var search = (TextBox)combo.Template.FindName("PART_Search", combo);
+            var results = (ListBox)combo.Template.FindName("PART_Results", combo);
+            Assert.Equal(5, results.Items.Count);
+
+            search.Text = "اغطيه";                                              // بدون همزة وبتاء مربوطة مختلفة
+            await UiThread.SettleAsync();
+            Assert.Equal("RM-CAP", Assert.Single(results.Items.Cast<Option>()).Code);
+            Assert.Same(items[0], combo.SelectedItem);                          // الاختيار لم يتغير أثناء الكتابة
+            Assert.Equal(5, other.Items.Count);                                 // ولا عنصر آخر تأثر بالتصفية
+            UiThread.Save(w, "00-empty/ComboSearch_filtered.png");
+
+            search.Text = "RM-";                                                // البحث بالكود أيضًا
+            await UiThread.SettleAsync();
+            Assert.Equal(3, results.Items.Count);
+            search.RaiseEvent(new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
+                PresentationSource.FromVisual(search)!, 0, System.Windows.Input.Key.Enter) { RoutedEvent = UIElement.PreviewKeyDownEvent });
+            await UiThread.SettleAsync();
+            Assert.False(combo.IsDropDownOpen);
+            Assert.Equal("RM-CAP", ((Option)combo.SelectedItem).Code);
+            w.Close();
+        });
+        lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
+    }
+
+    public record Option(string Code, string Name);
+
     /// <summary>
     /// الرحلة الكاملة على SQL Server حقيقي (LocalDB في CI): تثبيت ببيانات تجريبية ← دخول ←
     /// النافذة الرئيسية ← كل وحدة ← كل تبويب بعد تحميل بياناته، مع صورة لكل واحد.
@@ -202,6 +251,7 @@ public class RenderTests
                 await UiThread.SettleAsync();
                 var module = shell.CurrentModule;
                 if (module is DashboardViewModel dash) await dash.IdleAsync();
+                if (module is ModuleViewModel { Dashboard: { } md } mm) { await mm.IdleAsync(); await md.IdleAsync(); }
                 await UiThread.SettleAsync();
                 var folder = $"{n++:00}-{UiThread.SafeName(item.Title)}";
                 shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{folder}/00-الرئيسية.png"));

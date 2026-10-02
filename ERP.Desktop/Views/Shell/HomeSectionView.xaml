@@ -8,6 +8,7 @@
              x:Name="Root">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
+            <ContentControl Content="{Binding Dashboard}" Visibility="{Binding HasDashboard, Converter={StaticResource BoolToVisibility}}"/>
             <TextBlock Text="القوائم الفرعية" Style="{StaticResource SectionTitle}"/>
             <ItemsControl ItemsSource="{Binding Sections}">
                 <ItemsControl.ItemsPanel>

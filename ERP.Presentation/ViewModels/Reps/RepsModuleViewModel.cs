@@ -14,6 +14,7 @@ public class RepsModuleViewModel : ModuleViewModel
     public RepsModuleViewModel(AppSession s, IDialogService d)
         : base("المندوبون", Icons.Reps, ModuleColors.Reps)
     {
+        UseDashboard(s, d, ModuleCode.Reps, ModuleDashboardViewModel.Reps);
         Van = Add(new VanOperationsSectionViewModel(s, d));
         Wallet = Add(new WalletSectionViewModel(s, d));
         Add(new TerritoriesSectionViewModel(s, d));

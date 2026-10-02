@@ -28,6 +28,144 @@
     <DataTemplate DataType="{x:Type vmShell:ModuleViewModel}"><vShell:ModuleView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmShell:HomeSectionViewModel}"><vShell:HomeSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmShell:DashboardViewModel}"><vShell:DashboardView/></DataTemplate>
+    <!-- ================= لوحات الأقسام ورسومها ================= -->
+    <!-- رسم أعمدة يومي: محور زمني من اليسار لليمين، خط أساس واحد، أعمدة رفيعة بحافة علوية مستديرة،
+         ملصقات انتقائية (آخر يوم والأعلى) والتفاصيل في تلميح يغطي عمود اليوم كاملًا -->
+    <DataTemplate DataType="{x:Type vmShell:ColumnChart}">
+        <Border Style="{StaticResource Card}" Margin="0,0,12,12" Padding="16,12">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding Legend}" VerticalAlignment="Center"
+                                  Visibility="{Binding HasLegend, Converter={StaticResource BoolToVisibility}}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="12,0,0,0">
+                                    <Border Width="10" Height="10" CornerRadius="2" Background="{Binding Color, Converter={StaticResource HexBrush}}" Margin="0,0,5,0"/>
+                                    <TextBlock Text="{Binding Name}" FontSize="12" Foreground="{StaticResource MutedTextBrush}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14"/>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding Summary}" Style="{StaticResource Muted}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                <Grid FlowDirection="LeftToRight">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="16"/>
+                        <RowDefinition Height="150"/>
+                        <RowDefinition Height="18"/>
+                    </Grid.RowDefinitions>
+                    <!-- خط القيمة العليا (خافت) + خط الأساس -->
+                    <Border Grid.Row="1" VerticalAlignment="Top" BorderBrush="#EEF2F6" BorderThickness="0,1,0,0"/>
+                    <TextBlock Grid.Row="0" Text="{Binding MaxLabel}" FontSize="10" Foreground="{StaticResource MutedTextBrush}" HorizontalAlignment="Left"/>
+                    <Border Grid.Row="1" VerticalAlignment="Bottom" BorderBrush="#CBD5E1" BorderThickness="0,1,0,0"/>
+                    <TextBlock Grid.Row="1" Text="لا توجد حركة خلال هذه الفترة" Style="{StaticResource Muted}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}"/>
+                    <ItemsControl Grid.Row="0" Grid.RowSpan="3" ItemsSource="{Binding Categories}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Rows="1"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Background="Transparent" ToolTip="{Binding Tooltip}" ToolTipService.InitialShowDelay="100">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="16"/>
+                                        <RowDefinition Height="150"/>
+                                        <RowDefinition Height="18"/>
+                                    </Grid.RowDefinitions>
+                                    <!-- الملصق فوق رأس العمود مباشرة (يُرسم لآخر يوم وللأعلى فقط) -->
+                                    <StackPanel Grid.Row="0" Grid.RowSpan="2" VerticalAlignment="Bottom" HorizontalAlignment="Center">
+                                        <TextBlock Text="{Binding ValueLabel}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,2"
+                                                   Foreground="{StaticResource TextBrush}" Visibility="{Binding ValueLabel, Converter={StaticResource NullToCollapsed}}"/>
+                                        <ItemsControl ItemsSource="{Binding Bars}" HorizontalAlignment="Center">
+                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" VerticalAlignment="Bottom"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Height="{Binding Height}" Width="{Binding Width}"
+                                                            Margin="1,0" CornerRadius="4,4,0,0" VerticalAlignment="Bottom"
+                                                            Background="{Binding Color, Converter={StaticResource HexBrush}}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                    <TextBlock Grid.Row="2" Text="{Binding Label}" FontSize="10" Foreground="{StaticResource MutedTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Bottom"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
+            </DockPanel>
+        </Border>
+    </DataTemplate>
+
+    <!-- رسم ترتيب أفقي: لون واحد، القيمة عند طرف الشريط -->
+    <DataTemplate DataType="{x:Type vmShell:RankChart}">
+        <Border Style="{StaticResource Card}" Margin="0,0,0,12" Padding="16,12">
+            <StackPanel>
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,10"/>
+                <TextBlock Text="{Binding EmptyText}" Style="{StaticResource Muted}" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}"/>
+                <ItemsControl ItemsSource="{Binding Bars}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,7" Background="Transparent" ToolTip="{Binding ValueText}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="130"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Label}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <Grid Grid.Column="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding Ratio, Converter={StaticResource RatioStar}}"/>
+                                        <ColumnDefinition Width="{Binding Ratio, Converter={StaticResource RatioStarRest}}"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Height="14" CornerRadius="0,4,4,0" Background="{Binding Color, Converter={StaticResource HexBrush}}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding ValueText}" FontSize="11" Foreground="{StaticResource MutedTextBrush}" Margin="6,0,0,0"
+                                               VerticalAlignment="Center" TextWrapping="NoWrap"/>
+                                </Grid>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vmShell:ModuleDashboardViewModel}">
+        <StackPanel Margin="0,0,0,8">
+            <DockPanel Margin="0,0,0,10">
+                <Button DockPanel.Dock="Left" Content="&#xE72C;" ToolTip="تحديث اللوحة" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                <TextBlock Text="لوحة القسم — نشاط اليوم وآخر 14 يومًا" Style="{StaticResource SectionTitle}" Margin="0"/>
+            </DockPanel>
+            <TextBlock Text="{Binding Error}" Foreground="{StaticResource DangerBrush}" Visibility="{Binding Error, Converter={StaticResource NullToCollapsed}}" Margin="0,0,0,8"/>
+            <ItemsControl ItemsSource="{Binding Tiles}" Margin="0,0,0,4">
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Rows="1"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource Card}" Margin="0,0,12,12" Padding="14,12">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Left" Width="40" Height="40" CornerRadius="10" Background="{Binding Color, Converter={StaticResource HexBrushSoft}}" Margin="0,0,10,0">
+                                    <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="18" Foreground="{Binding Color, Converter={StaticResource HexBrush}}"/>
+                                </Border>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Title}" Style="{StaticResource Muted}" FontSize="12"/>
+                                    <TextBlock Text="{Binding Value}" FontSize="18" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding Hint}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="3*"/>
+                    <ColumnDefinition Width="2*"/>
+                </Grid.ColumnDefinitions>
+                <ItemsControl ItemsSource="{Binding Columns}"/>
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding Ranks}" Margin="0,0,12,0"/>
+            </Grid>
+        </StackPanel>
+    </DataTemplate>
+
     <DataTemplate DataType="{x:Type vmShell:PlaceholderModuleViewModel}"><vShell:PlaceholderModuleView/></DataTemplate>
 
     <!-- Warehouse -->

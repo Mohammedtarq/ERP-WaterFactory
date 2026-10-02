@@ -76,3 +76,15 @@ public class SignBrushConverter : IValueConverter
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
 }
+
+/// <summary>نسبة (0..1) ← عرض عمود Grid نسبي؛ Invert يعطي الباقي (1 - النسبة) لرسم الأشرطة الأفقية.</summary>
+public class RatioStarConverter : IValueConverter
+{
+    public bool Invert { get; set; }
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var r = value is double d ? Math.Clamp(d, 0, 1) : 0;
+        return new GridLength(Invert ? 1 - r : r, GridUnitType.Star);
+    }
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
+}

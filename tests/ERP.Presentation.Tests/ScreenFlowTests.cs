@@ -512,6 +512,39 @@ public class ScreenFlowTests
             }
         }
         Assert.True(opened > 40, $"فُتح {opened} تبويب فقط");
+
+        // لوحة كل قسم: مؤشرات + رسم نشاط يومي لآخر 14 يومًا (عدا الإعدادات)
+        var dashboards = 0;
+        foreach (var nav in shell.NavItems)
+        {
+            if (shell.Open<object>(nav.ModuleCode) is not ModuleViewModel { Dashboard: { } dash } m) continue;
+            await m.IdleAsync();
+            await dash.IdleAsync();
+            Assert.True(dash.Error is null, $"{m.Title}: {dash.Error}");
+            Assert.NotEmpty(dash.Tiles);
+            var chart = Assert.Single(dash.Columns);
+            Assert.Equal(14, chart.Categories.Count);
+            Assert.Equal(DateTime.Today.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture), chart.Categories[^1].Label);
+            Assert.All(chart.Categories.SelectMany(c => c.Bars), b => Assert.InRange(b.Height, 0, 150));
+            Assert.True(m.Home.HasDashboard);
+            dashboards++;
+        }
+        Assert.Equal(7, dashboards);
+
+        // المبيعات المرحّلة اليوم تظهر في عمود اليوم وفي الترتيب
+        var salesDash = shell.Open<SalesModuleViewModel>(ModuleCode.Sales).Dashboard!;
+        await salesDash.RefreshCommand.ExecuteAsync();
+        var todayBar = salesDash.Columns[0].Categories[^1].Bars.Single();
+        await using var db = _f.NewDb();
+        var todaySales = await db.SalesInvoices.Where(i => i.Status == DocumentStatus.Posted && !i.IsFreeSale && i.InvoiceDate == DateTime.Today)
+                                               .SumAsync(i => (decimal?)i.TotalAmount) ?? 0;
+        Assert.Equal(todaySales, todayBar.Value);
+        if (todaySales > 0)
+        {
+            Assert.Equal(150d, salesDash.Columns[0].Categories.SelectMany(c => c.Bars).Max(b => b.Height));
+            Assert.NotNull(salesDash.Columns[0].Categories[^1].ValueLabel);              // ملصق آخر يوم
+            Assert.Contains(salesDash.Ranks[0].Bars, b => b.Label == "ماء 500 مل" && b.Ratio == 1);
+        }
         Assert.Empty(dialogs.Errors);
         Assert.Empty(_f.Unhandled);
     }

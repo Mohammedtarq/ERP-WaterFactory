@@ -64,6 +64,8 @@ public class HomeSectionViewModel : ObservableObject
     public string Glyph => Icons.Home;
     public string Color => Owner.Color;
     public IEnumerable<SectionViewModel> Sections => Owner.Tabs.OfType<SectionViewModel>();
+    public ModuleDashboardViewModel? Dashboard => Owner.Dashboard;
+    public bool HasDashboard => Owner.Dashboard is not null;
     public RelayCommand OpenSectionCommand { get; }
 }
 
@@ -109,6 +111,16 @@ public abstract class ModuleViewModel : ViewModelBase
     {
         Tabs.Add(section);
         return section;
+    }
+
+    /// <summary>لوحة القسم (مؤشرات ورسوم النشاط اليومي) أعلى "الرئيسية".</summary>
+    public ModuleDashboardViewModel? Dashboard { get; private set; }
+
+    protected void UseDashboard(AppSession session, IDialogService dialogs, string moduleCode,
+                                Func<Data.ProjectDb.ProjectDbContext, ModuleDashboardViewModel, Task> loader)
+    {
+        Dashboard = new ModuleDashboardViewModel(session, dialogs, moduleCode, loader);
+        Background(Dashboard.LoadAsync());
     }
 
     /// <summary>أقسام تُبنى من البيانات (مثل تبويب لكل مخزن) تُدرج بعد "الرئيسية" مباشرة.</summary>

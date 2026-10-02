@@ -14,6 +14,7 @@ public class ProductionModuleViewModel : ModuleViewModel
     public ProductionModuleViewModel(AppSession s, IDialogService d)
         : base("الإنتاج والمختبر", Icons.Production, ModuleColors.Production)
     {
+        UseDashboard(s, d, ModuleCode.Production, ModuleDashboardViewModel.Production);
         Orders = Add(new ProductionOrdersSectionViewModel(s, d));
         Qc = Add(new QcSectionViewModel(s, d));
         Packing = Add(new PackingSectionViewModel(s, d));

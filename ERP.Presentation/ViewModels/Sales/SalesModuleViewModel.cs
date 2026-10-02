@@ -14,6 +14,7 @@ public class SalesModuleViewModel : ModuleViewModel
     public SalesModuleViewModel(AppSession s, IDialogService d)
         : base("المبيعات", Icons.Sales, ModuleColors.Sales)
     {
+        UseDashboard(s, d, ModuleCode.Sales, ModuleDashboardViewModel.Sales);
         Invoice = Add(new SalesInvoiceSectionViewModel(s, d));
         InvoiceList = Add(new SalesInvoiceListSectionViewModel(s, d, OpenInvoiceAsync));
         Statement = Add(new CustomerStatementSectionViewModel(s, d));

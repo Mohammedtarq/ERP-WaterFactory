@@ -14,6 +14,7 @@ public class HrModuleViewModel : ModuleViewModel
     public HrModuleViewModel(AppSession s, IDialogService d)
         : base("الموارد البشرية", Icons.HR, ModuleColors.HR)
     {
+        UseDashboard(s, d, ModuleCode.HR, ModuleDashboardViewModel.Hr);
         Attendance = Add(new AttendanceSectionViewModel(s, d));
         Incentives = Add(new MonthlyIncentiveSectionViewModel(s, d));
         Payroll = Add(new PayrollSectionViewModel(s, d));

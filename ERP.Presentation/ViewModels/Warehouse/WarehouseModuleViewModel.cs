@@ -17,6 +17,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
     public WarehouseModuleViewModel(AppSession s, IDialogService d)
         : base("المخازن", Icons.Warehouse, ModuleColors.Warehouse)
     {
+        UseDashboard(s, d, ModuleCode.Warehouse, ModuleDashboardViewModel.Warehouse);
         _session = s;
         _dialogs = d;
         Add(new ItemsSectionViewModel(s, d));

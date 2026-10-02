@@ -14,6 +14,7 @@ public class SuppliersModuleViewModel : ModuleViewModel
     public SuppliersModuleViewModel(AppSession s, IDialogService d)
         : base("الموردون والمشتريات", Icons.Suppliers, ModuleColors.Suppliers)
     {
+        UseDashboard(s, d, ModuleCode.Suppliers, ModuleDashboardViewModel.Suppliers);
         Add(new SuppliersSectionViewModel(s, d));
         Add(new PurchaseOrdersSectionViewModel(s, d));
         Add(new GoodsReceiptSectionViewModel(s, d));

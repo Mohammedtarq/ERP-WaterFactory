@@ -14,6 +14,7 @@ public class FinanceModuleViewModel : ModuleViewModel
     public FinanceModuleViewModel(AppSession s, IDialogService d)
         : base("المالية", Icons.Finance, ModuleColors.Finance)
     {
+        UseDashboard(s, d, ModuleCode.Finance, ModuleDashboardViewModel.Finance);
         Boxes = Add(new CashBoxesSectionViewModel(s, d));
         Add(new ChartOfAccountsSectionViewModel(s, d));
         Add(new JournalEntriesSectionViewModel(s, d));
