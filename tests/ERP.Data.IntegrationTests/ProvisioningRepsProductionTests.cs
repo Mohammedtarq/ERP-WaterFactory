@@ -270,7 +270,7 @@ public class ProductionServiceTests
         Assert.Equal(fgBefore + 1000, await Balance(db, w500.Id, fg.Id));
         var order = await db.ProductionOrders.AsNoTracking().Include(o => o.OutputBatch).SingleAsync(o => o.Id == orderId);
         Assert.Equal(ProductionOrderStatus.Completed, order.Status);
-        Assert.Equal(order.MONumber, order.OutputBatch!.BatchNumber);
+        Assert.StartsWith($"B{DateTime.Today:yyMMdd}-", order.OutputBatch!.BatchNumber);
         Assert.Equal(order.Id, order.OutputBatch.ProductionOrderId);
 
         // أمر ثانٍ: pH خارج الحدود ← الدفعة مرفوضة ← لا تعبئة ← الإلغاء مسموح
@@ -454,6 +454,67 @@ public class ProductionServiceTests
         var unexplained = (await machines.GetWipSummaryAsync(DateTime.Today, DateTime.Today, machineId)).Single(r => r.RawItemId == cap.Id);
         Assert.False(unexplained.IsReconciled);
         Assert.Equal(7m, unexplained.Difference);
+    }
+
+    /// <summary>
+    /// رقم الدفعة: يُولَّد تلقائيًا لكل أمر، قابل للتعديل (عند الإنشاء أو بعده) مع حفظ الأصلي وسجل من غيّره ومتى،
+    /// فريد على مستوى النظام، والمختبر يربط النتيجة بالأمر عبر رقم الدفعة فقط.
+    /// </summary>
+    [Fact]
+    public async Task Batch_number_is_generated_editable_audited_unique_and_links_lab_results()
+    {
+        await using var db = _f.NewDb();
+        var user = _f.AdminLocalId;
+        var prod = new ProductionService(db);
+        var w500 = await db.Items.FirstAsync(i => i.ItemCode == "W-500");
+        var raw = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial && w.Name == "مخزن المواد الأولية");
+        var machineId = (int?)(await db.Machines.FirstAsync(m => m.Name == "نافخة 1")).Id;
+        var prefix = $"B{DateTime.Today:yyMMdd}-";
+
+        // تلقائي ومتسلسل
+        var expected = await prod.NextBatchNumberAsync();
+        Assert.StartsWith(prefix, expected);
+        var (_, a) = await prod.CreateOrderAsync(w500.Id, 10, null, raw.Id, machineId, user);
+        var batchA = await db.ItemBatches.AsNoTracking().SingleAsync(b => b.ProductionOrderId == a);
+        Assert.Equal(expected, batchA.BatchNumber);
+        Assert.Null(batchA.OriginalBatchNumber);
+        var next = await prod.NextBatchNumberAsync();
+        Assert.Equal(int.Parse(expected[prefix.Length..]) + 1, int.Parse(next[prefix.Length..]));
+
+        // معدَّل عند الإنشاء ← يُحفظ المولَّد كأصلي ويُسجَّل التعديل
+        var (cr, b) = await prod.CreateOrderAsync(w500.Id, 10, null, raw.Id, machineId, user, " LOT-777 ");
+        Assert.True(cr.Success, cr.ErrorMessage);
+        var batchB = await db.ItemBatches.AsNoTracking().SingleAsync(x => x.ProductionOrderId == b);
+        Assert.Equal(("LOT-777", next), (batchB.BatchNumber, batchB.OriginalBatchNumber));
+
+        // التفرّد: لا رقم مكرر لا عند الإنشاء ولا عند التعديل
+        Assert.Contains("مستخدم لدفعة إنتاج أخرى", (await prod.CreateOrderAsync(w500.Id, 10, null, raw.Id, machineId, user, "LOT-777")).result.ErrorMessage);
+        Assert.Contains("مستخدم", (await prod.ChangeBatchNumberAsync(a!.Value, "LOT-777", null, user)).ErrorMessage);
+        Assert.False((await prod.ChangeBatchNumberAsync(a.Value, "  ", null, user)).Success);
+
+        // تعديل بعد الإنشاء ← الأصلي محفوظ، والسجل يحفظ القديم والجديد والمستخدم والوقت
+        Assert.True((await prod.StartAsync(a.Value, user)).Success);
+        Assert.True((await prod.ChangeBatchNumberAsync(a.Value, "LOT-900", "تصحيح ترقيم الخط", user)).Success);
+        Assert.True((await prod.ChangeBatchNumberAsync(a.Value, "LOT-901", null, user)).Success);
+        await using var check = _f.NewDb();
+        var renamed = await check.ItemBatches.AsNoTracking().SingleAsync(x => x.ProductionOrderId == a);
+        Assert.Equal(("LOT-901", expected), (renamed.BatchNumber, renamed.OriginalBatchNumber));
+        var history = await new ProductionService(check).GetBatchHistoryAsync(a.Value);
+        Assert.Equal(new[] { (expected, "LOT-900"), ("LOT-900", "LOT-901") }, history.Select(h => (h.OldNumber, h.NewNumber)).ToArray());
+        Assert.All(history, h => Assert.Equal(user, h.ChangedByUserId));
+        Assert.Equal("تصحيح ترقيم الخط", history[0].Reason);
+        Assert.True(history[0].ChangedAt > DateTime.UtcNow.AddMinutes(-5));
+
+        // المختبر عبر رقم الدفعة فقط: الرقم القديم لم يعد صالحًا، والجديد يربط النتيجة بالأمر
+        var tests = await prod.GetApplicableTestsAsync(w500.Id);
+        QcInput For(string name, string value) => new(tests.Single(t => t.TestName.StartsWith(name)).Id, value);
+        var inputs = new[] { For("درجة", "7.2"), For("الأملاح", "120"), For("إحكام", "سليم") };
+        Assert.Contains("لا توجد دفعة", (await prod.RecordQcByBatchAsync("LOT-900", inputs, user)).result.ErrorMessage);
+        var (qr, overall) = await prod.RecordQcByBatchAsync("LOT-901", inputs, user);
+        Assert.True(qr.Success, qr.ErrorMessage);
+        Assert.Equal(QCOverallResult.Passed, overall);
+        var qc = await check.QCBatchResults.AsNoTracking().OrderByDescending(q => q.Id).FirstAsync();
+        Assert.Equal((a.Value, renamed.Id), (qc.ProductionOrderId, qc.BatchId));
     }
 
     [Fact]

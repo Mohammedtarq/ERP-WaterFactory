@@ -53,7 +53,17 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public ProductionOrdersSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Production, "أوامر الإنتاج", Icons.Factory, "#14B8A6", "إنشاء الأمر من قائمة المواد، بدء التشغيل، والإغلاق")
     {
-        NewOrderCommand = new RelayCommand(() => { if (Require(CanAdd, "إنشاء أوامر الإنتاج")) IsComposing = true; });
+        NewOrderCommand = new AsyncRelayCommand(async () =>
+        {
+            if (!Require(CanAdd, "إنشاء أوامر الإنتاج")) return;
+            BatchOrder = null;
+            await using var db = Session.NewDb();
+            BatchNumber = await new ProductionService(db).NextBatchNumberAsync();
+            IsComposing = true;
+        });
+        EditBatchCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenBatchAsync(r) : Task.CompletedTask);
+        SaveBatchCommand = new AsyncRelayCommand(SaveBatchAsync);
+        CloseBatchCommand = new RelayCommand(() => BatchOrder = null);
         CancelComposeCommand = new RelayCommand(() => IsComposing = false);
         PreviewCommand = new AsyncRelayCommand(PreviewAsync);
         CreateCommand = new AsyncRelayCommand(CreateAsync);
@@ -81,7 +91,29 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public Data.ProjectDb.Entities.Warehouse? RawWarehouse { get => _rawWarehouse; set => SetProperty(ref _rawWarehouse, value); }
     public bool AllSufficient => Preview.Count > 0 && Preview.All(p => p.IsSufficient);
 
-    public RelayCommand NewOrderCommand { get; }
+    public AsyncRelayCommand NewOrderCommand { get; }
+    public AsyncRelayCommand EditBatchCommand { get; }
+    public AsyncRelayCommand SaveBatchCommand { get; }
+    public RelayCommand CloseBatchCommand { get; }
+
+    // ---------------- رقم الدفعة ----------------
+    private string _batchNumber = "";
+    private ProductionOrderRow? _batchOrder;
+    private string _newBatchNumber = "";
+    private string _batchReason = "";
+    /// <summary>رقم الدفعة للأمر الجديد: مولَّد تلقائيًا وقابل للتعديل قبل الإنشاء.</summary>
+    public string BatchNumber { get => _batchNumber; set => SetProperty(ref _batchNumber, value); }
+    /// <summary>الأمر المفتوح لتعديل رقم دفعته (لوحة جانبية).</summary>
+    public ProductionOrderRow? BatchOrder
+    {
+        get => _batchOrder;
+        private set { if (SetProperty(ref _batchOrder, value)) { OnPropertyChanged(nameof(IsEditingBatch)); if (value is not null) IsComposing = false; } }
+    }
+    public bool IsEditingBatch => BatchOrder is not null;
+    public string NewBatchNumber { get => _newBatchNumber; set => SetProperty(ref _newBatchNumber, value); }
+    public string BatchReason { get => _batchReason; set => SetProperty(ref _batchReason, value); }
+    public ObservableCollection<string> BatchHistory { get; } = new();
+    protected override bool HasPendingInput => IsComposing || IsEditingBatch;
     public RelayCommand CancelComposeCommand { get; }
     public AsyncRelayCommand PreviewCommand { get; }
     public AsyncRelayCommand CreateCommand { get; }
@@ -149,10 +181,42 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         if (FinishedItem is null || RawWarehouse is null) { Dialogs.Error("اختر المنتج ومخزن المواد الأولية"); return; }
         if (Machine is null) { Dialogs.Error("اختر الماكينة (أضفها من تبويب الماكينات إن لم توجد)"); return; }
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(async () => (await new ProductionService(db).CreateOrderAsync(FinishedItem.Id, Quantity, Recipe?.Id, RawWarehouse.Id, Machine.Id, Session.UserId)).result,
+        if (await RunOperationAsync(async () => (await new ProductionService(db).CreateOrderAsync(FinishedItem.Id, Quantity, Recipe?.Id, RawWarehouse.Id, Machine.Id, Session.UserId, BatchNumber)).result,
                                     "تم إنشاء أمر الإنتاج — ابدأ تشغيله من الجدول"))
         {
             IsComposing = false;
+            await LoadAsync();
+        }
+    }
+
+    private async Task OpenBatchAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanEdit, "تعديل رقم الدفعة")) return;
+        BatchOrder = row;
+        NewBatchNumber = row.OutputBatch ?? "";
+        BatchReason = "";
+        await LoadBatchHistoryAsync();
+    }
+
+    private async Task LoadBatchHistoryAsync()
+    {
+        BatchHistory.Clear();
+        if (BatchOrder is null) return;
+        await using var db = Session.NewDb();
+        foreach (var c in await new ProductionService(db).GetBatchHistoryAsync(BatchOrder.Id))
+            BatchHistory.Add($"{c.ChangedAt.ToLocalTime():yyyy/MM/dd HH:mm} — {c.ChangedByUser.Username}: {c.OldNumber} ← {c.NewNumber}"
+                             + (c.Reason is null ? "" : $" ({c.Reason})"));
+    }
+
+    private async Task SaveBatchAsync()
+    {
+        if (BatchOrder is null || !Require(CanEdit, "تعديل رقم الدفعة")) return;
+        await using var db = Session.NewDb();
+        var id = BatchOrder.Id;
+        if (await RunOperationAsync(() => new ProductionService(db).ChangeBatchNumberAsync(id, NewBatchNumber, BatchReason, Session.UserId),
+                                    $"تم تعديل رقم الدفعة إلى {NewBatchNumber.Trim()}"))
+        {
+            BatchOrder = null;
             await LoadAsync();
         }
     }
@@ -219,7 +283,7 @@ public class QcSectionViewModel : SectionViewModel
     private string? _lastResult;
 
     public QcSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.Production, "فحص المختبر", Icons.Star, "#8B5CF6", "نتائج اختبارات الدفعة — فشل اختبار واحد يرفضها")
+        : base(s, d, ModuleCode.Production, "فحص المختبر", Icons.Star, "#8B5CF6", "نتائج اختبارات الدفعة برقمها — فشل اختبار واحد يرفضها")
     {
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         PrintCommand = new AsyncRelayCommand(p => p is QcHistoryRow r ? PrintAsync(db => DocumentReports.QcResultAsync(Session, db, r.Id)) : Task.CompletedTask);
@@ -284,12 +348,13 @@ public class QcSectionViewModel : SectionViewModel
     private async Task SaveAsync()
     {
         if (!Require(CanAdd || CanEdit, "تسجيل نتائج المختبر")) return;
-        if (Order is null) { Dialogs.Error("لا يوجد أمر إنتاج قيد التشغيل"); return; }
+        if (Order is null) { Dialogs.Error("اختر رقم الدفعة المطلوب فحصها"); return; }
         await using var db = Session.NewDb();
         QCOverallResult? overall = null;
         if (await RunOperationAsync(async () =>
             {
-                var (r, o) = await new ProductionService(db).RecordQcAsync(Order.Id,
+                // الربط بأمر الإنتاج عبر رقم الدفعة فقط
+                var (r, o) = await new ProductionService(db).RecordQcByBatchAsync(Order.OutputBatch ?? "",
                     Lines.Select(l => new QcInput(l.TestId, l.Measured, l.Manual.Value)).ToList(), Session.UserId);
                 overall = o;
                 return r;

@@ -39,7 +39,8 @@ public static class DocumentReports
          .Field("الوصفة", o.CustomRecipe?.Name ?? "الوصفة الأساسية")
          .Field("مخزن المواد", o.RawMaterialsWarehouse.Name)
          .Field("الماكينة", o.Machine?.Name)
-         .Field("التشغيلة الناتجة", o.OutputBatch?.BatchNumber)
+         .Field("رقم الدفعة", o.OutputBatch?.BatchNumber)
+         .Field("الرقم الأصلي للدفعة", o.OutputBatch?.OriginalBatchNumber)
          .Field("نتيجة المختبر", qc is null ? "لم يُفحص بعد" : ArabicLabels.Of(qc.OverallResult))
          .Field("المعبّأ", packed.Count == 0 ? null : $"{Q(packed.Sum())} قطعة")
          .Field("أنشأه", o.CreatedByUser.Username);
@@ -66,7 +67,7 @@ public static class DocumentReports
         var r = New(s, "شهادة فحص مختبري", q.OverallResult == QCOverallResult.Rejected ? "مرفوضة" : null);
         r.Field("أمر الإنتاج", q.ProductionOrder.MONumber)
          .Field("المنتج", q.ProductionOrder.FinishedItem.ItemName)
-         .Field("التشغيلة", q.Batch.BatchNumber)
+         .Field("رقم الدفعة", q.Batch.BatchNumber)
          .Field("تاريخ الفحص", q.TestDate.ToLocalTime().ToString("yyyy/MM/dd HH:mm"))
          .Field("الفاحص", q.TestedByUser.Username)
          .Field("النتيجة النهائية", ArabicLabels.Of(q.OverallResult));

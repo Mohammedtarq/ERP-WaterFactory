@@ -14,12 +14,12 @@
         <Border Style="{StaticResource Card}">
             <DockPanel>
                 <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                    <TextBlock Text="أمر الإنتاج قيد التشغيل:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                    <ComboBox ItemsSource="{Binding InProgressOrders}" SelectedItem="{Binding Order}" Width="320">
+                    <TextBlock Text="رقم الدفعة:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding InProgressOrders}" SelectedItem="{Binding Order}" Width="320" TextSearch.TextPath="OutputBatch">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock>
-                                    <Run Text="{Binding MONumber, Mode=OneWay}"/>
+                                    <Run Text="{Binding OutputBatch, Mode=OneWay}" FontWeight="SemiBold"/>
                                     <Run Text=" — "/>
                                     <Run Text="{Binding FinishedItemName, Mode=OneWay}"/>
                                     <Run Text=" — "/>
@@ -61,8 +61,8 @@
                 <DataGrid ItemsSource="{Binding History}">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="التاريخ" Binding="{Binding TestDate, StringFormat='yyyy/MM/dd HH:mm'}" Width="130"/>
-                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="100"/>
-                        <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="100"/>
+                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding BatchNumber}" Width="120"/>
+                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="90"/>
                         <DataGridTextColumn Header="النتيجة" Binding="{Binding ResultLabel}" Width="80"/>
                         <DataGridTextColumn Header="الفاحص" Binding="{Binding TestedBy}" Width="100"/>
                         <DataGridTextColumn Header="التفاصيل" Binding="{Binding Details}" Width="*"/>

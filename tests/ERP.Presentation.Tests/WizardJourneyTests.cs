@@ -198,7 +198,8 @@ public class WizardJourneyTests : IAsyncLifetime
         var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
         var orders = prod.Orders;
         await Open(prod, orders);
-        orders.NewOrderCommand.Execute(null);
+        await orders.NewOrderCommand.ExecuteAsync();
+        Assert.StartsWith($"B{DateTime.Today:yyMMdd}-", orders.BatchNumber);
         orders.FinishedItem = orders.FinishedItems.Single(i => i.ItemCode == "W-500");
         orders.Quantity = 240;
         orders.Machine = orders.Machines.Single(m => m.Name == "نافخة 1");
@@ -233,6 +234,20 @@ public class WizardJourneyTests : IAsyncLifetime
         await Open(prod, orders);
         Assert.Equal("مكتمل", orders.Orders.Single(o => o.Id == order.Id).StageText);
         Assert.Equal("نافخة 1", orders.Orders.Single(o => o.Id == order.Id).MachineName);
+
+        // تعديل رقم الدفعة من الشاشة ← يظهر في السجل وفي شهادة المختبر المطبوعة
+        await orders.EditBatchCommand.ExecuteAsync(orders.Orders.Single(o => o.Id == order.Id));
+        Assert.True(orders.IsEditingBatch);
+        orders.NewBatchNumber = "L-2026-001";
+        orders.BatchReason = "ترقيم العميل";
+        await orders.SaveBatchCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.False(orders.IsEditingBatch);
+        Assert.Equal("L-2026-001", orders.Orders.Single(o => o.Id == order.Id).OutputBatch);
+        await orders.EditBatchCommand.ExecuteAsync(orders.Orders.Single(o => o.Id == order.Id));
+        Assert.Single(orders.BatchHistory);
+        Assert.Contains("ترقيم العميل", orders.BatchHistory[0]);
+        orders.CloseBatchCommand.Execute(null);
 
         // تحت التصنيع: صُرف 240 من كل مادة واستُهلك 240 (المُنتَج فعلًا) ← المتبقي صفر والمطابقة سليمة
         var wip = prod.Wip;

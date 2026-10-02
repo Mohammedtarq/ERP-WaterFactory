@@ -34,12 +34,14 @@
                         <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="100"/>
                         <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityToProduce, StringFormat=N0}" Width="80"/>
                         <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="80"/>
-                        <DataGridTextColumn Header="التشغيلة" Binding="{Binding OutputBatch}" Width="100"/>
+                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="120"/>
                         <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="200"/>
-                        <DataGridTemplateColumn Header="" Width="112">
+                        <DataGridTemplateColumn Header="" Width="146">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Content="&#xE70F;" ToolTip="تعديل رقم الدفعة" Style="{StaticResource RowIconButton}" Tag="#8B5CF6"
+                                                Command="{Binding DataContext.EditBatchCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE768;" ToolTip="بدء التشغيل (صرف المواد)" Style="{StaticResource RowIconButton}" Tag="#10B981"
                                                 Command="{Binding DataContext.StartCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE73E;" ToolTip="إغلاق بما عُبّئ" Style="{StaticResource RowIconButton}" Tag="#0EA5E9"
@@ -79,6 +81,8 @@
                     <ComboBox ItemsSource="{Binding FinishedItems}" SelectedItem="{Binding FinishedItem}" DisplayMemberPath="ItemName"/>
                     <TextBlock Text="وصفة مخصصة لعميل (اختياري)" Style="{StaticResource FieldLabel}"/>
                     <ComboBox ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name"/>
+                    <TextBlock Text="رقم الدفعة (مولَّد تلقائيًا ويمكن تعديله)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding BatchNumber, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
                     <TextBlock Text="الكمية المطلوب إنتاجها (قطعة)" Style="{StaticResource FieldLabel}"/>
                     <TextBox Text="{Binding Quantity}" FlowDirection="LeftToRight"/>
                     <TextBlock Text="مخزن المواد الأولية المفضّل (يُصرف من كل مخازن المواد الأولية بترتيب الصلاحية)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
@@ -108,6 +112,28 @@
                         <DataGridTextColumn Header="الموقع" Binding="{Binding WhereText}" Width="120"/>
                     </DataGrid.Columns>
                 </DataGrid>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="400" Margin="12,0,0,0"
+                Visibility="{Binding IsEditingBatch, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}">
+                    <Run Text="تعديل رقم الدفعة — "/><Run Text="{Binding BatchOrder.MONumber, Mode=OneWay}"/>
+                </TextBlock>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="الرقم الحالي" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Text="{Binding BatchOrder.OutputBatch}" FontWeight="SemiBold"/>
+                    <TextBlock Text="الرقم الجديد (فريد على مستوى النظام)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding NewBatchNumber, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                    <TextBlock Text="سبب التعديل (اختياري)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding BatchReason}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="حفظ الرقم" Style="{StaticResource SuccessButton}" Command="{Binding SaveBatchCommand}"/>
+                        <Button Content="إغلاق" Style="{StaticResource SecondaryButton}" Command="{Binding CloseBatchCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="سجل التعديلات (الرقم الأصلي محفوظ دائمًا)" Style="{StaticResource FieldLabel}" Margin="0,14,0,4"/>
+                </StackPanel>
+                <ListBox ItemsSource="{Binding BatchHistory}"/>
             </DockPanel>
         </Border>
     </Grid>

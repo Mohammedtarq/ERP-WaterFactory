@@ -64,7 +64,7 @@ public class ProductionService
     }
 
     public async Task<(FinanceOperationResult result, int? orderId)> CreateOrderAsync(
-        int finishedItemId, decimal quantity, int? customRecipeId, int rawWarehouseId, int? machineId, int userId)
+        int finishedItemId, decimal quantity, int? customRecipeId, int rawWarehouseId, int? machineId, int userId, string? batchNumber = null)
     {
         if (quantity <= 0) return (FinanceOperationResult.Fail("كمية الإنتاج يجب أن تكون أكبر من صفر"), null);
         var raw = await _db.Warehouses.FindAsync(rawWarehouseId);
@@ -76,6 +76,12 @@ public class ProductionService
         if (error is not null) return (FinanceOperationResult.Fail(error), null);
         var bomId = await _db.BillOfMaterials.Where(b => b.FinishedItemId == finishedItemId && b.IsActive).Select(b => b.Id).FirstAsync();
 
+        // رقم الدفعة: المولَّد تلقائيًا، أو ما عدّله المستخدم قبل الإنشاء (يُحفظ الأصلي ويُسجَّل التعديل)
+        var generated = await NextBatchNumberAsync();
+        var chosen = string.IsNullOrWhiteSpace(batchNumber) ? generated : batchNumber.Trim();
+        var batchError = await ValidateBatchNumberAsync(chosen, null);
+        if (batchError is not null) return (FinanceOperationResult.Fail(batchError), null);
+
         var order = new ProductionOrder
         {
             MONumber = $"MO-{await _db.ProductionOrders.CountAsync() + 1:D5}",
@@ -84,9 +90,85 @@ public class ProductionService
         };
         foreach (var (rawItemId, perUnit) in lines)
             order.Consumptions.Add(new ProductionOrderConsumption { RawMaterialItemId = rawItemId, QuantityRequired = Math.Round(perUnit * quantity, 4) });
+        await using var tx = await _db.Database.BeginTransactionAsync();
         _db.ProductionOrders.Add(order);
         await _db.SaveChangesAsync();
+
+        var batch = new ItemBatch
+        {
+            ItemId = finishedItemId, BatchNumber = chosen, ProductionOrderId = order.Id,
+            OriginalBatchNumber = chosen == generated ? null : generated
+        };
+        _db.ItemBatches.Add(batch);
+        await _db.SaveChangesAsync();
+        order.OutputBatchId = batch.Id;
+        if (chosen != generated)
+            _db.BatchNumberChanges.Add(new BatchNumberChange { BatchId = batch.Id, OldNumber = generated, NewNumber = chosen, Reason = "تعديل عند إنشاء الأمر", ChangedByUserId = userId });
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
         return (FinanceOperationResult.Ok(), order.Id);
+    }
+
+    /// <summary>الرقم التلقائي التالي لدفعة إنتاج: B + تاريخ اليوم + تسلسل يومي (مثال B261002-003).</summary>
+    public async Task<string> NextBatchNumberAsync()
+    {
+        var prefix = $"B{DateTime.Today:yyMMdd}-";
+        var used = await _db.ItemBatches.Where(b => b.ProductionOrderId != null && (b.BatchNumber.StartsWith(prefix) || (b.OriginalBatchNumber != null && b.OriginalBatchNumber.StartsWith(prefix))))
+                                        .Select(b => new { b.BatchNumber, b.OriginalBatchNumber }).ToListAsync();
+        var max = used.SelectMany(u => new[] { u.BatchNumber, u.OriginalBatchNumber })
+                      .Where(n => n != null && n.StartsWith(prefix))
+                      .Select(n => int.TryParse(n![prefix.Length..], out var x) ? x : 0)
+                      .DefaultIfEmpty(0).Max();
+        return $"{prefix}{max + 1:D3}";
+    }
+
+    private async Task<string?> ValidateBatchNumberAsync(string number, int? exceptBatchId)
+    {
+        if (string.IsNullOrWhiteSpace(number)) return "أدخل رقم الدفعة";
+        if (number.Length > 50) return "رقم الدفعة طويل جدًا (50 حرفًا كحد أقصى)";
+        var except = exceptBatchId ?? 0;
+        if (await _db.ItemBatches.AnyAsync(b => b.ProductionOrderId != null && b.BatchNumber == number && b.Id != except))
+            return $"رقم الدفعة \"{number}\" مستخدم لدفعة إنتاج أخرى — أرقام الدفعات يجب أن تكون فريدة";
+        return null;
+    }
+
+    /// <summary>
+    /// تعديل رقم دفعة أمر إنتاج: يُحفظ الرقم الأصلي (المولَّد) ويُسجَّل كل تعديل بمن غيّره ومتى.
+    /// الدفعة نفسها تُعاد تسميتها، فتبقى الحركات ونتائج المختبر والتعبئة مرتبطة بها.
+    /// </summary>
+    public async Task<FinanceOperationResult> ChangeBatchNumberAsync(int orderId, string newNumber, string? reason, int userId)
+    {
+        var order = await _db.ProductionOrders.Include(o => o.OutputBatch).FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order?.OutputBatch is null) return FinanceOperationResult.Fail("الأمر بلا دفعة");
+        if (order.Status == ProductionOrderStatus.Cancelled) return FinanceOperationResult.Fail("الأمر ملغى");
+        newNumber = (newNumber ?? "").Trim();
+        if (newNumber == order.OutputBatch.BatchNumber) return FinanceOperationResult.Fail("الرقم الجديد مطابق للحالي");
+        var error = await ValidateBatchNumberAsync(newNumber, order.OutputBatch.Id);
+        if (error is not null) return FinanceOperationResult.Fail(error);
+        _db.BatchNumberChanges.Add(new BatchNumberChange
+        {
+            BatchId = order.OutputBatch.Id, OldNumber = order.OutputBatch.BatchNumber, NewNumber = newNumber,
+            Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(), ChangedByUserId = userId
+        });
+        order.OutputBatch.OriginalBatchNumber ??= order.OutputBatch.BatchNumber;
+        order.OutputBatch.BatchNumber = newNumber;
+        await _db.SaveChangesAsync();
+        return FinanceOperationResult.Ok();
+    }
+
+    public Task<List<BatchNumberChange>> GetBatchHistoryAsync(int orderId) =>
+        _db.BatchNumberChanges.AsNoTracking().Include(c => c.ChangedByUser)
+           .Where(c => _db.ProductionOrders.Any(o => o.Id == orderId && o.OutputBatchId == c.BatchId))
+           .OrderBy(c => c.Id).ToListAsync();
+
+    /// <summary>المختبر يربط النتيجة بأمر الإنتاج عبر رقم الدفعة فقط.</summary>
+    public async Task<(FinanceOperationResult result, QCOverallResult? overall)> RecordQcByBatchAsync(string batchNumber, IReadOnlyCollection<QcInput> inputs, int userId)
+    {
+        batchNumber = (batchNumber ?? "").Trim();
+        var orderId = await _db.ItemBatches.Where(b => b.BatchNumber == batchNumber && b.ProductionOrderId != null)
+                                           .Select(b => b.ProductionOrderId).FirstOrDefaultAsync();
+        if (orderId is null) return (FinanceOperationResult.Fail($"لا توجد دفعة إنتاج بالرقم \"{batchNumber}\""), null);
+        return await RecordQcAsync(orderId.Value, inputs, userId);
     }
 
     /// <summary>
@@ -109,14 +191,17 @@ public class ProductionService
             if (error is not null) return FinanceOperationResult.Fail(error);
         }
 
-        var batch = new ItemBatch
+        // الدفعة أُنشئت مع الأمر برقمها؛ تاريخ التصنيع والصلاحية من يوم التشغيل
+        var batch = order.OutputBatchId is int bid ? await _db.ItemBatches.FindAsync(bid) : null;
+        if (batch is null)
         {
-            ItemId = order.FinishedItemId, BatchNumber = order.MONumber, ManufactureDate = DateTime.Today,
-            ExpiryDate = DateTime.Today.AddMonths(DefaultShelfLifeMonths), ProductionOrderId = order.Id
-        };
-        _db.ItemBatches.Add(batch);
-        await _db.SaveChangesAsync();
-        order.OutputBatchId = batch.Id;
+            batch = new ItemBatch { ItemId = order.FinishedItemId, BatchNumber = await NextBatchNumberAsync(), ProductionOrderId = order.Id };
+            _db.ItemBatches.Add(batch);
+            await _db.SaveChangesAsync();
+            order.OutputBatchId = batch.Id;
+        }
+        batch.ManufactureDate = DateTime.Today;
+        batch.ExpiryDate = DateTime.Today.AddMonths(DefaultShelfLifeMonths);
         order.Status = ProductionOrderStatus.InProgress;
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
