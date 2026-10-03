@@ -140,6 +140,9 @@ public class SupplierPurchasingService
             if (poLine is not null) poLine.QuantityReceived += l.QuantityReceived;
 
             totalAmount += l.QuantityReceived * l.UnitCost;
+
+            // سعر الكلفة = آخر سعر شراء (تقييم المخزون في المطابقة)
+            if (l.UnitCost > 0 && await _db.Items.FindAsync(l.ItemId) is { } item) item.CostPrice = l.UnitCost;
         }
 
         po.Status = po.Lines.All(x => x.QuantityReceived >= x.QuantityOrdered)

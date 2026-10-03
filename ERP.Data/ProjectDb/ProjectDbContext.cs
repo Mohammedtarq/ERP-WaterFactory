@@ -88,6 +88,10 @@ public class ProjectDbContext : DbContext
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
     public DbSet<CustomerDeposit> CustomerDeposits => Set<CustomerDeposit>();
     public DbSet<EmployeeDeduction> EmployeeDeductions => Set<EmployeeDeduction>();
+    public DbSet<Partner> Partners => Set<Partner>();
+    public DbSet<PartnerTransaction> PartnerTransactions => Set<PartnerTransaction>();
+    public DbSet<AssetReconciliation> AssetReconciliations => Set<AssetReconciliation>();
+    public DbSet<AssetReconciliationLine> AssetReconciliationLines => Set<AssetReconciliationLine>();
     public DbSet<EmployeeDeductionInstallment> EmployeeDeductionInstallments => Set<EmployeeDeductionInstallment>();
     public DbSet<WipAdjustment> WipAdjustments => Set<WipAdjustment>();
     public DbSet<BatchNumberChange> BatchNumberChanges => Set<BatchNumberChange>();
@@ -407,6 +411,42 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.Voucher).WithMany().HasForeignKey(a => a.VoucherId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.SalesInvoice).WithMany().HasForeignKey(a => a.SalesInvoiceId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.AllocatedByUser).WithMany().HasForeignKey(a => a.AllocatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Item>().Property(i => i.CostPrice).HasPrecision(18, 4);
+        modelBuilder.Entity<Partner>(e =>
+        {
+            e.Property(p => p.SharePercent).HasPrecision(7, 4);
+            e.HasIndex(p => p.Name).IsUnique();
+        });
+        modelBuilder.Entity<PartnerTransaction>(e =>
+        {
+            e.Property(t => t.Kind).HasConversion<string>();
+            e.Property(t => t.Amount).HasPrecision(18, 2);
+            e.Property(t => t.SharePercent).HasPrecision(7, 4);
+            e.HasOne(t => t.Partner).WithMany().HasForeignKey(t => t.PartnerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(t => t.Reconciliation).WithMany().HasForeignKey(t => t.ReconciliationId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(t => t.JournalEntry).WithMany().HasForeignKey(t => t.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(t => t.CreatedByUser).WithMany().HasForeignKey(t => t.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<AssetReconciliation>(e =>
+        {
+            e.Property(r => r.FinishedGoodsValuation).HasConversion<string>();
+            foreach (var p in new[] { nameof(AssetReconciliation.RawMaterialsValue), nameof(AssetReconciliation.WorkInProcessValue), nameof(AssetReconciliation.FinishedGoodsValue),
+                                      nameof(AssetReconciliation.CustomerDebts), nameof(AssetReconciliation.CashInBoxes), nameof(AssetReconciliation.CashWithReps),
+                                      nameof(AssetReconciliation.EmployeeAdvances), nameof(AssetReconciliation.SupplierAdvances), nameof(AssetReconciliation.SupplierDebts),
+                                      nameof(AssetReconciliation.CustomerDeposits), nameof(AssetReconciliation.NetAssets), nameof(AssetReconciliation.PreviousNetAssets),
+                                      nameof(AssetReconciliation.PartnerWithdrawalsSincePrevious), nameof(AssetReconciliation.OwnerDepositsSincePrevious), nameof(AssetReconciliation.Surplus) })
+                e.Property(p).HasPrecision(18, 2);
+            e.HasOne(r => r.PreviousReconciliation).WithMany().HasForeignKey(r => r.PreviousReconciliationId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.JournalEntry).WithMany().HasForeignKey(r => r.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.CreatedByUser).WithMany().HasForeignKey(r => r.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(r => r.Lines).WithOne(l => l.Reconciliation).HasForeignKey(l => l.ReconciliationId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<AssetReconciliationLine>(e =>
+        {
+            e.Property(l => l.Quantity).HasPrecision(18, 3);
+            e.Property(l => l.UnitValue).HasPrecision(18, 4);
+            e.Property(l => l.Value).HasPrecision(18, 2);
+        });
         modelBuilder.Entity<EmployeeDeduction>(e =>
         {
             e.Property(d => d.Kind).HasConversion<string>();

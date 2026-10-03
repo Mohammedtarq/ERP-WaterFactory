@@ -11,6 +11,8 @@ public class Item
     public string BaseUnitName { get; set; } = "قطعة";
     public SourcingMethod SourcingMethod { get; set; } = SourcingMethod.Manufactured;
     public decimal SalePrice { get; set; }
+    /// <summary>سعر الكلفة للوحدة الأساسية: يُحدَّث تلقائيًا من آخر استلام شراء، ويمكن تعديله يدويًا. للمنتج المصنَّع تُحسب الكلفة من وصفته.</summary>
+    public decimal? CostPrice { get; set; }
     /// <summary>حد التنبيه — عند وصول الرصيد لهذه الكمية أو أقل، يظهر تنبيه نقص مخزون.</summary>
     public decimal? MinStockAlertLevel { get; set; }
     public bool IsActive { get; set; } = true;

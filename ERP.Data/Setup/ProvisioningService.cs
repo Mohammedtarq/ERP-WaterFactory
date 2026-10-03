@@ -187,6 +187,8 @@ public static class DefaultConfiguration
         ("2104", "تأمينات العملاء (أمانات)", AccountType.Liability),
         ("3101", "رأس المال", AccountType.Equity),
         ("3102", "جاري المالك (إيداعات وسحوبات الصندوق)", AccountType.Equity),
+        ("3103", "جاري الشركاء (أرباح مستحقة)", AccountType.Equity),
+        ("3104", "أرباح المطابقة الموزعة", AccountType.Equity),
         ("4101", "إيرادات المبيعات", AccountType.Revenue),
         ("4102", "إيراد مستلزمات التحميل", AccountType.Revenue),
         ("5101", "مصروفات عمومية", AccountType.Expense),
@@ -220,6 +222,9 @@ public static class DefaultConfiguration
         (CustomerDepositService.OpeningRule, "3101", "2104"),
         (EmployeeDeductionService.PayoutRule, "1104", "1101"),
         (EmployeeDeductionService.OpeningRule, "1104", "3101"),
+        (ReconciliationService.ProfitShareRule, "3104", "3103"),
+        (ReconciliationService.WithdrawalRule, "3103", "1101"),
+        (ReconciliationService.OpeningRule, "3101", "3103"),
     };
 
     private static readonly string[] AllModules =

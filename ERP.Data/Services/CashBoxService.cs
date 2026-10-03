@@ -391,6 +391,7 @@ public class CashBoxService
         CashBoxTxType.CustomerDepositIn => "استلام تأمين عميل",
         CashBoxTxType.CustomerDepositOut => "إرجاع تأمين عميل",
         CashBoxTxType.EmployeeAdvance => "سلفة / مسحوب موظف",
+        CashBoxTxType.PartnerWithdrawal => "سحب أرباح شريك",
         _ => "تسليم نقد مندوب"
     };
 
