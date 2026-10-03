@@ -46,5 +46,5 @@ public class AppSession
 
     public ProjectDbContext NewDb() =>
         new(new DbContextOptionsBuilder<ProjectDbContext>().UseSqlServer(ConnectionString)
-                .AddInterceptors(_interceptor ??= new DataChangeInterceptor(this)).Options);
+                .AddInterceptors(_interceptor ??= new DataChangeInterceptor(this)).Options) { AuditUserId = UserId };
 }

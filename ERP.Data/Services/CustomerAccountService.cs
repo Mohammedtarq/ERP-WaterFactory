@@ -53,7 +53,7 @@ public class CustomerAccountService
         _db.SalesInvoices.Where(i => i.CustomerId == customerId && i.Status == DocumentStatus.Posted && !i.IsFreeSale);
 
     private IQueryable<Voucher> Receipts(int customerId) =>
-        _db.Vouchers.Where(v => v.PartyType == VoucherPartyType.Customer && v.PartyId == customerId && v.VoucherType == VoucherType.Receipt);
+        _db.Vouchers.Where(v => v.PartyType == VoucherPartyType.Customer && v.PartyId == customerId && v.VoucherType == VoucherType.Receipt && !v.IsVoided);
 
     /// <summary>
     /// يعيد حساب التوزيع التلقائي للعميل: تُحذف التوزيعات التلقائية وتبقى اليدوية، ثم يُوزَّع المتبقي من كل سند

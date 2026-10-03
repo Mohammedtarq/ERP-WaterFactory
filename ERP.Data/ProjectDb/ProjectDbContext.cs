@@ -12,7 +12,7 @@ namespace ERP.Data.ProjectDb;
 /// كل وحدة لاحقة (المخازن، المالية، المبيعات...) تُضاف كـ DbSet جديد هنا
 /// عند بناء تلك المرحلة، دون تعديل ما هو موجود.
 /// </summary>
-public class ProjectDbContext : DbContext
+public partial class ProjectDbContext : DbContext
 {
     public ProjectDbContext(DbContextOptions<ProjectDbContext> options) : base(options) { }
 
@@ -108,6 +108,10 @@ public class ProjectDbContext : DbContext
     public DbSet<CashBox> CashBoxes => Set<CashBox>();
     public DbSet<CashBoxTransaction> CashBoxTransactions => Set<CashBoxTransaction>();
     public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
+
+    // ---- الضوابط (27_controls.sql) ----
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<PeriodLock> PeriodLocks => Set<PeriodLock>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -533,5 +537,14 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<PackingOrder>().HasOne(p => p.ResultingFinishedGoodsWarehouse).WithMany().HasForeignKey(p => p.ResultingFinishedGoodsWarehouseId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PackingOrder>().HasOne(p => p.CreatedByUser).WithMany().HasForeignKey(p => p.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PackingOrder>().HasOne(p => p.Line).WithMany().HasForeignKey(p => p.ProductionOrderLineId).OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PeriodLock>(e =>
+        {
+            e.Property(p => p.LockedThrough).HasColumnType("date");
+            e.HasOne(p => p.User).WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        // جداول عليها مشغّلات قفل الفترة: EF لا يستخدم OUTPUT المباشر معها
+        foreach (var t in new[] { typeof(JournalEntry), typeof(SalesInvoice), typeof(Voucher), typeof(CashBoxTransaction), typeof(StockDocument), typeof(GoodsReceipt) })
+            modelBuilder.Entity(t).ToTable(tb => tb.HasTrigger("trg_" + tb.Name + "_PeriodLock"));
     }
 }

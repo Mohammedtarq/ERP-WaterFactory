@@ -68,15 +68,16 @@ public class CashBoxService
     {
         var admin = await IsAdminAsync(userId);
         includeInactive |= admin;   // الأدمن يرى الصناديق غير المفعّلة أيضًا ليعيد تفعيلها
+        var seeAll = admin || await SpecialPermission.HasAsync(_db, userId, SpecialPermission.AllCashBoxes);
         var boxes = await _db.CashBoxes.AsNoTracking()
-            .Where(b => (includeInactive || b.IsActive) && (admin || b.OwnerUserId == userId))
+            .Where(b => (includeInactive || b.IsActive) && (seeAll || b.OwnerUserId == userId))
             .Select(b => new { b.Id, b.Name, b.BoxType, Owner = b.OwnerUser != null ? b.OwnerUser.Username : null, b.IsDefault, b.IsActive })
             .ToListAsync();
         var ids = boxes.Select(b => b.Id).ToList();
         var balances = await _db.CashBoxTransactions.Where(t => ids.Contains(t.CashBoxId) && !t.IsVoided)
             .GroupBy(t => t.CashBoxId).Select(g => new { g.Key, Sum = g.Sum(t => t.Amount) }).ToDictionaryAsync(x => x.Key, x => x.Sum);
         // الترتيب في الذاكرة: مقارنة Enum مخزَّن كنص داخل ORDER BY لا تُترجم على SQL Server
-        return boxes.OrderBy(b => b.BoxType == CashBoxType.Main ? 0 : 1).ThenBy(b => b.Name).Select(b => new CashBoxRow
+        return boxes.OrderBy(b => b.BoxType switch { CashBoxType.Main => 0, CashBoxType.User => 1, _ => 2 }).ThenBy(b => b.Name).Select(b => new CashBoxRow
         {
             Id = b.Id, Name = b.Name, BoxType = b.BoxType, OwnerUsername = b.Owner, IsDefault = b.IsDefault, IsActive = b.IsActive,
             Balance = balances.GetValueOrDefault(b.Id)
@@ -152,6 +153,7 @@ public class CashBoxService
     {
         if (amount <= 0) return (FinanceOperationResult.Fail("المبلغ يجب أن يكون أكبر من صفر"), null);
         if (await CanOperateAsync(boxId, userId) is { } err) return (FinanceOperationResult.Fail(err), null);
+        if (await ApprovalLimits.CheckPaymentAsync(_db, userId, amount) is string limitError) return (FinanceOperationResult.Fail(limitError), null);
         var balance = await GetBalanceAsync(boxId);
         if (balance < amount) return (FinanceOperationResult.Fail($"رصيد الصندوق غير كافٍ: المتاح {balance:N0} د.ع"), null);
         return await ManualAsync(boxId, CashBoxTxType.Withdrawal, -amount, date, party, description, userId, WithdrawalRule);

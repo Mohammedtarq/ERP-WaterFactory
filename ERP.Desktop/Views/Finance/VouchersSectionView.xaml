@@ -50,6 +50,10 @@
                     <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                     <TextBlock Text="السندات المسجّلة" Style="{StaticResource SectionTitle}" Margin="0"/>
                 </DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock DockPanel.Dock="Right" Text="لإلغاء سند: اكتب السبب ثم اضغط ⊘ في سطره" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <TextBox Text="{Binding VoidReason, UpdateSourceTrigger=PropertyChanged}" ToolTip="سبب إلغاء السند"/>
+                </DockPanel>
                 <DataGrid ItemsSource="{Binding Vouchers}">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الرقم" Binding="{Binding VoucherNumber}" Width="100"/>
@@ -60,6 +64,15 @@
                         <DataGridTextColumn Header="الطريقة" Binding="{Binding MethodLabel}" Width="90"/>
                         <DataGridTextColumn Header="القيد" Binding="{Binding EntryNumber}" Width="100"/>
                         <DataGridTextColumn Header="ملاحظات" Binding="{Binding Notes}" Width="150"/>
+                        <DataGridTextColumn Header="الحالة" Binding="{Binding StatusLabel}" Width="120"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE711;" ToolTip="إلغاء السند (قيد عكسي)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.VoidCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTemplateColumn Header="" Width="40">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>

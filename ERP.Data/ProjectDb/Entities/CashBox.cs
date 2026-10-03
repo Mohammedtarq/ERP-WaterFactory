@@ -1,6 +1,6 @@
 namespace ERP.Data.ProjectDb.Entities;
 
-public enum CashBoxType { Main, User }
+public enum CashBoxType { Main, User, Bank }
 
 public enum CashBoxTxType
 {

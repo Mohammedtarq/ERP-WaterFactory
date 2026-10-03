@@ -16,8 +16,13 @@ public class FinanceModuleViewModel : ModuleViewModel
     {
         UseDashboard(s, d, ModuleCode.Finance, ModuleDashboardViewModel.Finance);
         Boxes = Add(new CashBoxesSectionViewModel(s, d));
-        Reconciliation = Add(new ReconciliationSectionViewModel(s, d));
-        Partners = Add(new PartnersSectionViewModel(s, d));
+        // المطابقة الحسابية وحصص الشركاء معلومات حساسة: تظهر فقط لمن يملك صلاحية "الحسابات الختامية"
+        if (s.Permissions.Has(SpecialPermission.FinalAccounts))
+        {
+            Reconciliation = Add(new ReconciliationSectionViewModel(s, d));
+            Partners = Add(new PartnersSectionViewModel(s, d));
+        }
+        PeriodLock = Add(new Controls.PeriodLockSectionViewModel(s, d));
         Add(new ChartOfAccountsSectionViewModel(s, d));
         Add(new JournalEntriesSectionViewModel(s, d));
         Add(new VouchersSectionViewModel(s, d));
@@ -26,8 +31,9 @@ public class FinanceModuleViewModel : ModuleViewModel
     }
 
     public CashBoxesSectionViewModel Boxes { get; }
-    public ReconciliationSectionViewModel Reconciliation { get; }
-    public PartnersSectionViewModel Partners { get; }
+    public ReconciliationSectionViewModel? Reconciliation { get; }
+    public PartnersSectionViewModel? Partners { get; }
+    public Controls.PeriodLockSectionViewModel PeriodLock { get; }
 }
 
 // ============================ دليل الحسابات ============================
@@ -228,6 +234,9 @@ public class VoucherRow
     public string MethodLabel { get; init; } = "";
     public string? Notes { get; init; }
     public string? EntryNumber { get; init; }
+    public bool IsVoided { get; init; }
+    public string? VoidReason { get; init; }
+    public string StatusLabel => IsVoided ? $"ملغى: {VoidReason}" : "مرحّل";
 }
 
 public record PartyOption(int? Id, string Name);
@@ -253,9 +262,30 @@ public class VouchersSectionViewModel : SectionViewModel
         _paymentMethod = PaymentMethods[0];
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         PrintCommand = new AsyncRelayCommand(p => p is VoucherRow r ? PrintAsync(db => DocumentReports.VoucherAsync(Session, db, r.Id)) : Task.CompletedTask);
+        VoidCommand = new AsyncRelayCommand(p => p is VoucherRow r ? VoidAsync(r) : Task.CompletedTask);
     }
 
     public AsyncRelayCommand PrintCommand { get; }
+    public AsyncRelayCommand VoidCommand { get; }
+
+    private string? _voidReason;
+    /// <summary>سبب إلغاء السند المختار (إلزامي): يُكتب قبل الضغط على زر الإلغاء في سطر السند.</summary>
+    public string? VoidReason { get => _voidReason; set => SetProperty(ref _voidReason, value); }
+    public bool CanVoid => CanDelete || Has(SpecialPermission.VoidPosted);
+
+    private async Task VoidAsync(VoucherRow row)
+    {
+        if (!Require(CanVoid, "إلغاء السندات")) return;
+        if (row.IsVoided) { Dialogs.Error("السند ملغى مسبقًا"); return; }
+        if (string.IsNullOrWhiteSpace(VoidReason)) { Dialogs.Error("اكتب سبب الإلغاء في الخانة أعلى القائمة أولًا"); return; }
+        if (!Dialogs.Confirm($"إلغاء السند {row.VoucherNumber} بمبلغ {row.Amount:N0}؟ يُنشأ قيد عكسي وتُلغى حركة الصندوق، ويبقى السند ظاهرًا بحالة ملغى.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new FinanceService(db).VoidVoucherAsync(row.Id, VoidReason!, Session.UserId), $"أُلغي السند {row.VoucherNumber}"))
+        {
+            VoidReason = null;
+            await LoadAsync();
+        }
+    }
 
     public IReadOnlyList<Option<VoucherType>> VoucherTypes { get; } = ArabicLabels.OptionsOf<VoucherType>();
     public IReadOnlyList<Option<VoucherPartyType>> PartyTypes { get; } = ArabicLabels.OptionsOf<VoucherPartyType>();
@@ -311,7 +341,8 @@ public class VouchersSectionViewModel : SectionViewModel
             {
                 Id = v.Id, VoucherNumber = v.VoucherNumber, VoucherDate = v.VoucherDate, TypeLabel = ArabicLabels.Of(v.VoucherType),
                 PartyLabel = $"{ArabicLabels.Of(v.PartyType)}{(name.Length > 0 ? ": " + name : "")}", Amount = v.Amount,
-                MethodLabel = ArabicLabels.Of(v.PaymentMethod), Notes = v.Notes, EntryNumber = v.JournalEntry?.EntryNumber
+                MethodLabel = ArabicLabels.Of(v.PaymentMethod), Notes = v.Notes, EntryNumber = v.JournalEntry?.EntryNumber,
+                IsVoided = v.IsVoided, VoidReason = v.VoidReason
             });
         }
     }

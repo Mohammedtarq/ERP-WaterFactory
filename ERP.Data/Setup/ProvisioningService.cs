@@ -267,6 +267,24 @@ public static class DefaultConfiguration
             (ModuleCode.Dashboard, true, false, false, false, false), (ModuleCode.Production, true, true, true, false, true),
             (ModuleCode.Warehouse, true, false, false, false, false),
         },
+        ["أمين صندوق"] = new[]
+        {
+            (ModuleCode.Dashboard, true, false, false, false, false), (ModuleCode.Finance, true, true, false, false, true),
+            (ModuleCode.Reps, true, true, false, false, true), (ModuleCode.Sales, true, false, false, false, false),
+        },
+        // قراءة فقط: الحسابات الختامية والمطابقة وحصته
+        ["شريك"] = new[]
+        {
+            (ModuleCode.Dashboard, true, false, false, false, false), (ModuleCode.Finance, true, false, false, false, false),
+            (SpecialPermission.FinalAccounts, true, false, false, false, false), (SpecialPermission.CostAndProfit, true, false, false, false, false),
+        },
+        // قراءة فقط لكل الوحدات والسجل، للتدقيق الدوري
+        ["مراجع"] = AllModules.Where(m => m != ModuleCode.SystemSettings).Select(m => (m, true, false, false, false, false))
+            .Concat(new[]
+            {
+                (SpecialPermission.AuditLog, true, false, false, false, false), (SpecialPermission.AllCashBoxes, true, false, false, false, false),
+                (SpecialPermission.FinalAccounts, true, false, false, false, false), (SpecialPermission.CostAndProfit, true, false, false, false, false),
+            }).ToArray(),
     };
 
     /// <summary>
@@ -280,6 +298,9 @@ public static class DefaultConfiguration
         if (admin is null) db.Roles.Add(admin = new Role { Name = "مدير عام" });
         foreach (var m in AllModules.Where(m => admin.Permissions.All(p => p.ModuleCode != m)))
             admin.Permissions.Add(new RolePermission { ModuleCode = m, CanView = true, CanAdd = true, CanEdit = true, CanDelete = true, CanPost = true });
+        // المدير يملك كل الصلاحيات الخاصة (الكلفة والأرباح، إغلاق الشهر، الإلغاء...)
+        foreach (var (code, _, _) in SpecialPermission.All.Where(sp => admin.Permissions.All(p => p.ModuleCode != sp.Code)))
+            admin.Permissions.Add(new RolePermission { ModuleCode = code, CanView = true });
         foreach (var (name, perms) in Roles)
         {
             if (await db.Roles.AnyAsync(r => r.Name == name)) continue;

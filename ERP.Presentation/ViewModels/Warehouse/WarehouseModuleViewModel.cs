@@ -81,6 +81,8 @@ public class ItemsSectionViewModel : CrudSectionViewModel<Item>
         : base(s, d, ModuleCode.Warehouse, "الأصناف", Icons.Item, "#0EA5E9", "الأصناف والباركود وسعر البيع وحد التنبيه") { }
 
     public IReadOnlyList<Option<SourcingMethod>> SourcingOptions { get; } = ArabicLabels.OptionsOf<SourcingMethod>();
+    /// <summary>سعر الكلفة معلومة حساسة: يظهر فقط لمن يملك صلاحية "رؤية الكلفة والأرباح".</summary>
+    public bool CanSeeCost => Has(SpecialPermission.CostAndProfit);
 
     protected override int GetId(Item e) => e.Id;
     protected override string Describe(Item e) => $"{e.ItemCode} — {e.ItemName}";

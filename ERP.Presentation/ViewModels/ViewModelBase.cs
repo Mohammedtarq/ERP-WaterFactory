@@ -79,11 +79,26 @@ public abstract class SessionViewModel : ViewModelBase
             StatusMessage = successMessage;
             return true;
         }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (BusinessDbError(ex) is string msg)
+        {
+            Dialogs.Error(msg);
+            return false;
+        }
         finally
         {
             IsBusy = false;
         }
     }
+
+    /// <summary>رسالة عمل مقصودة من قاعدة البيانات (قفل الفترة، رصيد غير كافٍ...) بدل رسالة الخطأ التقنية.</summary>
+    public static string? BusinessDbError(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException)
+            if (e is Microsoft.Data.SqlClient.SqlException sql && sql.Number is >= 51000 and <= 51199) return sql.Message;
+        return null;
+    }
+
+    public bool Has(string specialPermission) => Session.Permissions.Has(specialPermission);
 
     protected bool Require(bool allowed, string action)
     {

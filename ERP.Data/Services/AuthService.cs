@@ -30,6 +30,8 @@ public class UserPermissions
     public bool CanEdit(string module) => _byModule.TryGetValue(module, out var p) && p.CanEdit;
     public bool CanDelete(string module) => _byModule.TryGetValue(module, out var p) && p.CanDelete;
     public bool CanPost(string module) => _byModule.TryGetValue(module, out var p) && p.CanPost;
+    /// <summary>صلاحية خاصة (SpecialPermission) ممنوحة للدور.</summary>
+    public bool Has(string specialCode) => CanView(specialCode);
 }
 
 public record ProjectSessionInfo(string ConnectionString, int LocalUserId, string Username, string RoleName, UserPermissions Permissions);
@@ -52,18 +54,49 @@ public class AuthService
     private ControlDbContext NewControlDb() =>
         new(new DbContextOptionsBuilder<ControlDbContext>().UseSqlServer(_controlConnectionString).Options);
 
+    /// <summary>عدد المحاولات الخاطئة المتتالية قبل القفل المؤقت، ومدة القفل.</summary>
+    public const int MaxFailedLogins = 5;
+    public static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
+
     public async Task<LoginResult> LoginAsync(string username, string password)
     {
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
             return new(false, "أدخل اسم المستخدم وكلمة المرور", 0, "", Array.Empty<ProjectOption>());
 
+        await DatabaseInstaller.EnsureControlUpgradesAsync(_controlConnectionString);
         await using var db = NewControlDb();
-        var user = await db.GlobalUsers.AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Username == username.Trim());
+        var user = await db.GlobalUsers.FirstOrDefaultAsync(u => u.Username == username.Trim());
+
+        if (user?.LockedUntilUtc is DateTime until && until > DateTime.UtcNow)
+        {
+            var minutes = Math.Max(1, (int)Math.Ceiling((until - DateTime.UtcNow).TotalMinutes));
+            return new(false, $"الحساب مقفل مؤقتًا بعد {MaxFailedLogins} محاولات دخول خاطئة. حاول بعد {minutes} دقيقة، أو اطلب من المدير فتحه بتعيين كلمة مرور جديدة.",
+                       0, "", Array.Empty<ProjectOption>());
+        }
 
         // نفس الرسالة للحالتين حتى لا نكشف وجود اسم المستخدم
         if (user is null || !PasswordHasher.Verify(password, user.PasswordHash))
+        {
+            if (user is not null)
+            {
+                user.FailedLoginCount++;
+                if (user.FailedLoginCount >= MaxFailedLogins)
+                {
+                    user.LockedUntilUtc = DateTime.UtcNow.Add(LockoutDuration);
+                    user.FailedLoginCount = 0;
+                }
+                await db.SaveChangesAsync();
+                if (user.LockedUntilUtc > DateTime.UtcNow)
+                    return new(false, $"تكررت كلمة المرور الخاطئة {MaxFailedLogins} مرات، فقُفل الحساب {LockoutDuration.TotalMinutes:0} دقيقة.", 0, "", Array.Empty<ProjectOption>());
+            }
             return new(false, "اسم المستخدم أو كلمة المرور غير صحيحة", 0, "", Array.Empty<ProjectOption>());
+        }
+        if (user.FailedLoginCount != 0 || user.LockedUntilUtc is not null)
+        {
+            user.FailedLoginCount = 0;
+            user.LockedUntilUtc = null;
+            await db.SaveChangesAsync();
+        }
         if (!user.IsActive)
             return new(false, "هذا الحساب موقوف. راجع مدير النظام", 0, "", Array.Empty<ProjectOption>());
 

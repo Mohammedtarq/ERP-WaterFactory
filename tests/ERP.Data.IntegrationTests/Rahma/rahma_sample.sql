@@ -63,7 +63,7 @@ INSERT entajdetels (id, ENID, prodectid, entaj, free, spechalname, mutabaqientaj
  (4, 1, 2, 20, 0, N'', 0, N''),
  (5, 1, 1, 10, 0, N'بدون ليبل', 10, N'');
 INSERT Fwater VALUES (1, DATEADD(DAY, -1, CAST(GETDATE() AS DATE)), NULL, 7, NULL, 1, N'الانتاج التام'),
-                     (2, DATEADD(DAY, -1, CAST(GETDATE() AS DATE)), NULL, 7, NULL, 1, N'الانتاج التام'),
+                     (2, DATEADD(DAY, -1, CAST(GETDATE() AS DATE)), NULL, 11, NULL, 1, N'الانتاج التام'),
                      (3, DATEADD(DAY, -1, CAST(GETDATE() AS DATE)), NULL, NULL, N'بيع مباشر', 1, N'الانتاج التام');
 INSERT Fwaterdetel VALUES (1, 1, 1, 60, NULL, N'', 2250), (2, 2, 2, 20, NULL, N'', 4250), (3, 3, 2, 25, NULL, N'مطعم الحسون', 4600), (4, 1, 1, 25, NULL, N'رمضان كريم', 2400);
 INSERT entajselldetels VALUES (1, 1, 1, 60), (2, 4, 3, 25), (3, 2, 4, 20);

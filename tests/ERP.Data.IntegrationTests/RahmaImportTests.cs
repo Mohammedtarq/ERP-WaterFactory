@@ -139,6 +139,8 @@ public class RahmaImportTests
         var ahmed = plan.Employees.Single(e => e.LegacyId == 10);
         Assert.Equal((300_000m, 50_000m), (ahmed.LoanBalance, ahmed.LoanInstallment));   // آخر قسط استُقطع
         Assert.True(plan.Employees.Single(e => e.LegacyId == 11).IsUsd);
+        Assert.True(plan.Employees.Single(e => e.LegacyId == 11).IsSalesRep);   // ورد في فواتير تحميل السيارات
+        Assert.False(plan.Employees.Single(e => e.LegacyId == 10).IsSalesRep);
         Assert.Contains(plan.Warnings, w => w.Contains("غير فعّالين"));
         Assert.Equal(18_458_350, plan.CashTotal);
         Assert.True(plan.CashBoxes[0].MergeIntoDefault);
@@ -245,7 +247,10 @@ public class RahmaImportTests
         Assert.False(await db.CashBoxTransactions.AnyAsync(t => t.ReferenceTable == "EmployeeDeductions" && t.ReferenceId == loan.Id));
         var due = await new EmployeeDeductionService(db).PlanForPeriodAsync(DateTime.Today.Month, DateTime.Today.Year, null);
         Assert.Equal(75_000, due.Single(d => d.deduction.Id == loan.Id).amount);
-        Assert.Equal(SalaryCurrency.USD, (await db.Employees.SingleAsync(e => e.FullName == "سامي المندوب")).SalaryCurrency);
+        var rep = await db.Employees.SingleAsync(e => e.FullName == "سامي المندوب");
+        Assert.Equal(SalaryCurrency.USD, rep.SalaryCurrency);
+        Assert.True(rep.IsSalesRep);
+        Assert.True(await db.Warehouses.AnyAsync(w => w.WarehouseType == WarehouseType.RepVan && w.OwnerEmployeeId == rep.Id));
 
         // الصناديق: الأول يصبح الرئيسي، والبقية صناديق جديدة، والجرد رصيد افتتاحي قابل للتعديل
         var cash = new CashBoxService(db);

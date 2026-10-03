@@ -135,6 +135,23 @@ public class MainShellViewModel : ViewModelBase
         return (T)CurrentModule!;
     }
 
+    /// <summary>الخروج التلقائي بعد هذه المدة بلا أي نشاط (لوحة مفاتيح أو فأرة) — حماية الجهاز المتروك مفتوحًا.</summary>
+    public static TimeSpan IdleTimeout { get; set; } = TimeSpan.FromMinutes(30);
+    private DateTime _lastActivityUtc = DateTime.UtcNow;
+    private bool _loggedOut;
+
+    public void ReportActivity() => _lastActivityUtc = DateTime.UtcNow;
+
+    /// <summary>يُستدعى دوريًا من النافذة: يعيد true إن خرج المستخدم بسبب الخمول.</summary>
+    public bool CheckIdle(DateTime nowUtc)
+    {
+        if (_loggedOut || nowUtc - _lastActivityUtc < IdleTimeout) return false;
+        _loggedOut = true;
+        _navigator.ShowLogin();
+        _dialogs.Info($"خرجت تلقائيًا بعد {IdleTimeout.TotalMinutes:0} دقيقة بلا نشاط. سجّل الدخول للمتابعة.");
+        return true;
+    }
+
     private void Logout()
     {
         if (_dialogs.Confirm("هل تريد تسجيل الخروج؟"))

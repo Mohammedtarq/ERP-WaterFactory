@@ -164,6 +164,38 @@ public class ScreenFlowTests
     }
 
     [Fact]
+    public async Task Direct_sale_uses_finished_goods_with_stock_and_pack_filter_and_controls_screens_open()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var sales = shell.Open<SalesModuleViewModel>(ModuleCode.Sales);
+        var inv = sales.Invoice;
+        await Open(sales, inv);
+
+        Assert.Equal(SaleMode.Direct, inv.Mode);
+        Assert.NotEmpty(inv.Warehouses);
+        Assert.All(inv.Warehouses, w => Assert.Equal(WarehouseType.FinishedGoods, w.WarehouseType));
+        Assert.NotNull(inv.Warehouse);
+        Assert.Contains(inv.ItemsLookup, i => i.Id == _f.WaterItemId);
+        Assert.Contains("كارتون", inv.PackFilters);
+        inv.PackFilter = "كارتون";
+        Assert.Contains(inv.ItemsLookup, i => i.Id == _f.WaterItemId);
+        inv.LineItem = inv.ItemsLookup.Single(i => i.Id == _f.WaterItemId);
+        await inv.IdleAsync();
+        Assert.Contains("كارتون", inv.LineAvailableText);              // المتاح بالعبوات أيضًا
+        Assert.Contains(inv.SaleModes, m => m.Value == SaleMode.RawMaterials);   // المدير يملك صلاحية بيع المواد الأولية
+
+        // شاشات الضوابط: سجل الحركات وإغلاق الشهر تُفتح للمدير
+        var settings = shell.Open<SettingsModuleViewModel>(ModuleCode.SystemSettings);
+        var audit = settings.Section<ERP.Presentation.ViewModels.Controls.AuditLogSectionViewModel>();
+        await Open(settings, audit);
+        Assert.True(audit.Allowed);
+        var fin = shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);
+        await Open(fin, fin.PeriodLock);
+        Assert.Contains("لا توجد فترة مقفلة", fin.PeriodLock.LockText);
+        Assert.Empty(dialogs.Errors);
+    }
+
+    [Fact]
     public async Task Free_sale_requires_recipient_and_skips_journal()
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
@@ -735,7 +767,7 @@ public class ScreenFlowTests
         await fin.IdleAsync();
 
         // الشركاء: تُضاف يدويًا بنسب مختلفة، ومحمد المدير
-        var partners = fin.Partners;
+        var partners = fin.Partners!;
         await Open(fin, partners);
         Assert.Contains("لا يوجد شركاء", partners.PercentHint);
         async Task AddPartner(string name, decimal percent, bool manager)
@@ -759,7 +791,7 @@ public class ScreenFlowTests
         Assert.True(partners.Partners.Single(p => p.Name == "محمد").IsManager);
 
         // المطابقة: المنتج التام بسعر الكلفة أو بسعر البيع
-        var rec = fin.Reconciliation;
+        var rec = fin.Reconciliation!;
         await Open(fin, rec);
         await rec.ComputeCommand.ExecuteAsync();
         Assert.True(rec.HasSnapshot);

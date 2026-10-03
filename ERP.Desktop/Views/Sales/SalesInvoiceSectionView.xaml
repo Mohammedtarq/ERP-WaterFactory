@@ -76,8 +76,11 @@
                         <ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding Customer}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
+                        <TextBlock Text="نوع البيع" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding SaleModes}" SelectedItem="{Binding SaleModeOption}" DisplayMemberPath="Label" IsEnabled="{Binding IsEditable}"/>
                         <TextBlock Text="المخزن" Style="{StaticResource FieldLabel}"/>
-                        <ComboBox ItemsSource="{Binding Warehouses}" SelectedItem="{Binding Warehouse}" DisplayMemberPath="Name"/>
+                        <ComboBox ItemsSource="{Binding Warehouses}" SelectedItem="{Binding Warehouse}" DisplayMemberPath="Name"
+                                  IsEnabled="{Binding IsWarehouseSelectable}" ToolTip="{Binding WarehouseHint}"/>
                     </StackPanel>
                     <StackPanel Grid.Column="4">
                         <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
@@ -149,6 +152,12 @@
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
                             <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" DisplayMemberPath="ItemName" IsTextSearchEnabled="True"/>
+                            <ListBox ItemsSource="{Binding PackFilters}" SelectedItem="{Binding PackFilter}" BorderThickness="0" Margin="0,4,0,0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" ToolTip="تصفية الأصناف حسب صيغة التعبئة">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                            </ListBox>
                         </StackPanel>
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="وحدة البيع" Style="{StaticResource FieldLabel}"/>

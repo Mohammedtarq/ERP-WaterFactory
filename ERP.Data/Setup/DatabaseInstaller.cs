@@ -89,12 +89,35 @@ public static class DatabaseInstaller
         await EnsureDatabaseAsync(controlConnectionString, db);
         await using var conn = new SqlConnection(controlConnectionString);
         await conn.OpenAsync();
-        if (await ScalarAsync(conn, "SELECT OBJECT_ID('Projects', 'U')") is not DBNull and not null) return;
+        if (await ScalarAsync(conn, "SELECT OBJECT_ID('Projects', 'U')") is DBNull or null)
+        {
+            // السكربت الأصلي ينشئ القاعدة باسم ثابت؛ هنا القاعدة موجودة مسبقًا بالاسم المختار
+            var script = Regex.Replace(ReadScript(ControlScript), @"^\s*(CREATE DATABASE|USE)\s+ERP_ControlDB\s*;?\s*$", "",
+                                       RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            await ExecuteScriptAsync(conn, script);
+        }
+        await ExecuteScriptAsync(conn, ControlUpgrades);
+    }
 
-        // السكربت الأصلي ينشئ القاعدة باسم ثابت؛ هنا القاعدة موجودة مسبقًا بالاسم المختار
-        var script = Regex.Replace(ReadScript(ControlScript), @"^\s*(CREATE DATABASE|USE)\s+ERP_ControlDB\s*;?\s*$", "",
-                                   RegexOptions.Multiline | RegexOptions.IgnoreCase);
-        await ExecuteScriptAsync(conn, script);
+    /// <summary>ترقيات قاعدة التحكم (آمنة للتكرار): قفل الحساب بعد محاولات دخول خاطئة.</summary>
+    private const string ControlUpgrades = """
+        IF COL_LENGTH('GlobalUsers', 'FailedLoginCount') IS NULL
+            ALTER TABLE GlobalUsers ADD FailedLoginCount INT NOT NULL CONSTRAINT DF_GlobalUsers_FailedLoginCount DEFAULT 0;
+        IF COL_LENGTH('GlobalUsers', 'LockedUntilUtc') IS NULL
+            ALTER TABLE GlobalUsers ADD LockedUntilUtc DATETIME2 NULL;
+        """;
+
+    private static readonly HashSet<string> UpgradedControls = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>يرقّي قاعدة التحكم مرة واحدة لكل تشغيل (قبل أول دخول).</summary>
+    public static async Task EnsureControlUpgradesAsync(string controlConnectionString)
+    {
+        lock (UpgradedControls) if (UpgradedControls.Contains(controlConnectionString)) return;
+        await using var conn = new SqlConnection(controlConnectionString);
+        await conn.OpenAsync();
+        if (await ScalarAsync(conn, "SELECT OBJECT_ID('GlobalUsers', 'U')") is DBNull or null) return;
+        await ExecuteScriptAsync(conn, ControlUpgrades);
+        lock (UpgradedControls) UpgradedControls.Add(controlConnectionString);
     }
 
     /// <summary>

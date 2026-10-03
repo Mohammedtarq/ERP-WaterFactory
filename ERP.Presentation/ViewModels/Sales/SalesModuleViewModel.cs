@@ -102,6 +102,9 @@ public class BatchOption
     public override string ToString() => Label;
 }
 
+/// <summary>نوع البيع في رأس الفاتورة: يحدد المخزن ومصدر الأصناف.</summary>
+public enum SaleMode { Direct, Rep, RawMaterials }
+
 public class SalesInvoiceSectionViewModel : SectionViewModel
 {
     /// <summary>فاتورة قيد الإدخال (سطور أو مسودة مفتوحة): لا تُعاد تعبئة القوائم تحتها.</summary>
@@ -165,7 +168,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     public bool IsReadOnly
     {
         get => _isReadOnly;
-        private set { if (SetProperty(ref _isReadOnly, value)) OnPropertyChanged(nameof(IsEditable)); }
+        private set { if (SetProperty(ref _isReadOnly, value)) { OnPropertyChanged(nameof(IsEditable)); OnPropertyChanged(nameof(IsWarehouseSelectable)); } }
     }
     public bool IsEditable => !IsReadOnly;
 
@@ -185,7 +188,82 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     public Data.ProjectDb.Entities.Warehouse? Warehouse
     {
         get => _warehouse;
-        set { if (SetProperty(ref _warehouse, value)) { OnPropertyChanged(nameof(IsVanSale)); Background(RefreshLineStockAsync()); } }
+        set
+        {
+            if (!SetProperty(ref _warehouse, value)) return;
+            OnPropertyChanged(nameof(IsVanSale));
+            RebuildItems();
+            Background(RefreshLineStockAsync());
+        }
+    }
+
+    // ---------------- نوع البيع وتصفية الأصناف ----------------
+    private readonly List<Data.ProjectDb.Entities.Warehouse> _allWarehouses = new();
+    private readonly List<Item> _allItems = new();
+    private Dictionary<(int wh, int item), decimal> _stock = new();
+    private Dictionary<int, HashSet<string>> _itemLevels = new();
+    private Option<SaleMode>? _saleMode;
+    private string _packFilter = AllPacks;
+    private const string AllPacks = "الكل";
+
+    /// <summary>بيع مباشر (مخزن المنتج التام فقط)، أو من سيارة مندوب، أو مواد أولية (بصلاحية خاصة).</summary>
+    public ObservableCollection<Option<SaleMode>> SaleModes { get; } = new();
+    public Option<SaleMode>? SaleModeOption
+    {
+        get => _saleMode;
+        set
+        {
+            if (value is null || !SetProperty(ref _saleMode, value)) return;
+            OnPropertyChanged(nameof(IsWarehouseSelectable));
+            OnPropertyChanged(nameof(WarehouseHint));
+            ApplyModeWarehouses();
+        }
+    }
+    public SaleMode Mode => _saleMode?.Value ?? SaleMode.Direct;
+
+    /// <summary>البيع المباشر من مخزن المنتج التام دون اختيار؛ الاختيار للمندوب والمواد الأولية أو عند وجود أكثر من مخزن تام.</summary>
+    public bool IsWarehouseSelectable => IsEditable && (Mode != SaleMode.Direct || Warehouses.Count > 1);
+    public string WarehouseHint => Mode switch
+    {
+        SaleMode.Direct => "البيع المباشر من مخزن المنتج التام — تظهر الأصناف المتوفرة فقط",
+        SaleMode.Rep => "اختر سيارة المندوب — تظهر أصناف حمولتها فقط",
+        _ => "اختر مخزن المواد الأولية ثم المادة"
+    };
+
+    /// <summary>أزرار تصفية الأصناف حسب صيغة التعبئة (الكل، شرنك، كارتون...).</summary>
+    public ObservableCollection<string> PackFilters { get; } = new();
+    public string PackFilter { get => _packFilter; set { if (SetProperty(ref _packFilter, value ?? AllPacks)) RebuildItems(); } }
+
+    private void ApplyModeWarehouses()
+    {
+        var keep = Warehouse;
+        Warehouses.Clear();
+        var type = Mode switch { SaleMode.Rep => WarehouseType.RepVan, SaleMode.RawMaterials => WarehouseType.RawMaterial, _ => WarehouseType.FinishedGoods };
+        foreach (var w in _allWarehouses.Where(w => w.WarehouseType == type)) Warehouses.Add(w);
+        Warehouse = Warehouses.FirstOrDefault(w => w.Id == keep?.Id) ?? Warehouses.FirstOrDefault();
+        OnPropertyChanged(nameof(IsWarehouseSelectable));
+    }
+
+    /// <summary>
+    /// الأصناف المعروضة = ما رصيده أكبر من صفر في المخزن المختار، مع تصفية الصيغة.
+    /// من يملك صلاحية "البيع بانتظار الإنتاج" يرى كل المنتجات المصنّعة في البيع المباشر حتى بلا رصيد.
+    /// </summary>
+    private void RebuildItems()
+    {
+        var keep = LineItem;
+        ItemsLookup.Clear();
+        if (Warehouse is not null)
+        {
+            var pending = Mode == SaleMode.Direct && Has(SpecialPermission.SellPendingProduction);
+            foreach (var i in _allItems)
+            {
+                var inStock = _stock.GetValueOrDefault((Warehouse.Id, i.Id)) > 0;
+                if (!inStock && !(pending && i.SourcingMethod == SourcingMethod.Manufactured)) continue;
+                if (PackFilter != AllPacks && !(_itemLevels.TryGetValue(i.Id, out var lv) && lv.Contains(PackFilter))) continue;
+                ItemsLookup.Add(i);
+            }
+        }
+        if (keep is not null && !ItemsLookup.Any(i => i.Id == keep.Id)) LineItem = null;
     }
 
     public bool IsVanSale => Warehouse?.WarehouseType == WarehouseType.RepVan;
@@ -263,7 +341,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     public ItemPackagingLevel? LineLevel
     {
         get => _lineLevel;
-        set { if (SetProperty(ref _lineLevel, value)) { Background(RefreshLinePriceAsync()); OnPropertyChanged(nameof(LineBaseUnitsText)); } }
+        set { if (SetProperty(ref _lineLevel, value)) { Background(RefreshLinePriceAsync()); OnPropertyChanged(nameof(LineBaseUnitsText)); OnPropertyChanged(nameof(LineAvailableText)); } }
     }
     public BatchOption? LineBatch { get => _lineBatch; set { if (SetProperty(ref _lineBatch, value)) Background(RefreshLineStockAsync()); } }
     public decimal LineQuantity { get => _lineQuantity; set { if (SetProperty(ref _lineQuantity, value)) OnPropertyChanged(nameof(LineBaseUnitsText)); } }
@@ -271,7 +349,10 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     /// <summary>السعر المقترح من الخدمة (قابل للتعديل قبل الإضافة).</summary>
     public decimal LinePrice { get => _linePrice; set => SetProperty(ref _linePrice, value); }
     public decimal? LineAvailable { get => _lineAvailable; private set { if (SetProperty(ref _lineAvailable, value)) OnPropertyChanged(nameof(LineAvailableText)); } }
-    public string LineAvailableText => LineAvailable is null ? "" : $"المتاح في المخزن: {LineAvailable:N0} قطعة";
+    public string LineAvailableText => LineAvailable is null ? "" :
+        LineLevel is { EquivalentBaseUnits: > 1 } lv
+            ? $"المتاح للبيع: {LineAvailable:N0} قطعة = {Math.Floor(LineAvailable.Value / lv.EquivalentBaseUnits):N0} {lv.LevelName}"
+            : $"المتاح للبيع: {LineAvailable:N0} قطعة";
     public string LineBaseUnitsText => LineLevel is null ? "" : $"= {LineQuantity * LineLevel.EquivalentBaseUnits:N0} قطعة";
 
     // ---------------- المجاميع (نفس معادلات sp_Sales_PostInvoice) ----------------
@@ -315,19 +396,55 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         Customers.Clear();
         foreach (var c in await db.Customers.AsNoTracking().Include(c => c.ParentAgent).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync())
             Customers.Add(c);
-        Warehouses.Clear();
-        foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.IsSellableStock).OrderBy(w => w.Name).ToListAsync())
-            Warehouses.Add(w);
-        ItemsLookup.Clear();
-        foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync())
-            ItemsLookup.Add(i);
+
+        _allWarehouses.Clear();
+        _allWarehouses.AddRange(await db.Warehouses.AsNoTracking()
+            .Where(w => w.IsActive && (w.IsSellableStock || w.WarehouseType == WarehouseType.RepVan || w.WarehouseType == WarehouseType.RawMaterial))
+            .OrderBy(w => w.Name).ToListAsync());
+        _allItems.Clear();
+        _allItems.AddRange(await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync());
+        var whIds = _allWarehouses.Select(w => w.Id).ToList();
+        _stock = (await db.StockTransactions.Where(t => whIds.Contains(t.WarehouseId))
+                .GroupBy(t => new { t.WarehouseId, t.ItemId }).Select(g => new { g.Key.WarehouseId, g.Key.ItemId, Qty = g.Sum(t => t.QuantityBaseUnits) })
+                .ToListAsync())
+            .ToDictionary(x => (x.WarehouseId, x.ItemId), x => x.Qty);
+        _itemLevels = (await db.ItemPackagingLevels.AsNoTracking().Where(l => l.IsSellableUnit && l.EquivalentBaseUnits > 1)
+                .Select(l => new { l.ItemId, l.LevelName }).ToListAsync())
+            .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.Select(l => l.LevelName.Trim()).ToHashSet());
+
+        var keepFilter = PackFilter;
+        PackFilters.Clear();
+        PackFilters.Add(AllPacks);
+        foreach (var name in _itemLevels.Values.SelectMany(v => v).Distinct().OrderBy(n => n)) PackFilters.Add(name);
+        _packFilter = PackFilters.Contains(keepFilter) ? keepFilter : AllPacks;
+        OnPropertyChanged(nameof(PackFilter));
+
+        var keepMode = _saleMode?.Value ?? SaleMode.Direct;
+        SaleModes.Clear();
+        SaleModes.Add(new Option<SaleMode>(SaleMode.Direct, "بيع مباشر"));
+        if (_allWarehouses.Any(w => w.WarehouseType == WarehouseType.RepVan)) SaleModes.Add(new Option<SaleMode>(SaleMode.Rep, "بيع من سيارة مندوب"));
+        if (Has(SpecialPermission.SellRawMaterials)) SaleModes.Add(new Option<SaleMode>(SaleMode.RawMaterials, "بيع مواد أولية"));
+        var selectedWh = _allWarehouses.FirstOrDefault(w => w.Id == selectedWarehouseId);
+        var mode = selectedWh is null ? keepMode : ModeOf(selectedWh);
+        _saleMode = SaleModes.FirstOrDefault(m => m.Value == mode) ?? SaleModes[0];
+        OnPropertyChanged(nameof(SaleModeOption));
+        OnPropertyChanged(nameof(WarehouseHint));
 
         _suppressReprice = true;
         Customer = Customers.FirstOrDefault(c => c.Id == selectedCustomerId);
         _suppressReprice = false;
-        Warehouse = Warehouses.FirstOrDefault(w => w.Id == selectedWarehouseId) ?? Warehouses.FirstOrDefault();
+        ApplyModeWarehouses();
+        if (selectedWh is not null) Warehouse = Warehouses.FirstOrDefault(w => w.Id == selectedWh.Id) ?? Warehouse;
+        RebuildItems();
         await RefreshLoadingRateAsync();
     }
+
+    private static SaleMode ModeOf(Data.ProjectDb.Entities.Warehouse w) => w.WarehouseType switch
+    {
+        WarehouseType.RepVan => SaleMode.Rep,
+        WarehouseType.RawMaterial => SaleMode.RawMaterials,
+        _ => SaleMode.Direct
+    };
 
     private async Task RefreshLoadingRateAsync()
     {
@@ -554,8 +671,10 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         {
             InvoiceId = inv.Id;
             InvoiceNumber = inv.InvoiceNumber;
-            IsReadOnly = inv.Status == DocumentStatus.Posted;
+            IsReadOnly = inv.Status != DocumentStatus.Draft;
             Customer = Customers.FirstOrDefault(c => c.Id == inv.CustomerId) ?? inv.Customer;
+            var invWh = _allWarehouses.FirstOrDefault(w => w.Id == inv.WarehouseId) ?? inv.Warehouse;
+            if (SaleModes.FirstOrDefault(m => m.Value == ModeOf(invWh)) is { } invMode) SaleModeOption = invMode;
             Warehouse = Warehouses.FirstOrDefault(w => w.Id == inv.WarehouseId) ?? inv.Warehouse;
             InvoiceDate = inv.InvoiceDate;
             PaymentMethod = PaymentOptions.First(o => o.Value == inv.PaymentMethod);
@@ -681,6 +800,7 @@ public class SalesInvoiceListSectionViewModel : SectionViewModel
         OpenCommand = new AsyncRelayCommand(p => p is SalesInvoiceListRow r ? _open(r.Id) : Task.CompletedTask);
         DeleteCommand = new AsyncRelayCommand(p => p is SalesInvoiceListRow r ? DeleteAsync(r) : Task.CompletedTask);
         PrintCommand = new AsyncRelayCommand(p => p is SalesInvoiceListRow r ? PrintAsync(db => DocumentReports.SalesInvoiceAsync(Session, db, r.Id)) : Task.CompletedTask);
+        VoidCommand = new AsyncRelayCommand(p => p is SalesInvoiceListRow r ? VoidAsync(r) : Task.CompletedTask);
         ClearFiltersCommand = new AsyncRelayCommand(async () => { _fromDate = null; _toDate = null; _customerFilter = null; RaiseFilters(); await LoadAsync(); });
     }
 
@@ -697,7 +817,13 @@ public class SalesInvoiceListSectionViewModel : SectionViewModel
 
     public AsyncRelayCommand OpenCommand { get; }
     public AsyncRelayCommand DeleteCommand { get; }
+    public AsyncRelayCommand VoidCommand { get; }
     public AsyncRelayCommand ClearFiltersCommand { get; }
+
+    private string? _voidReason;
+    /// <summary>سبب إلغاء الفاتورة المرحّلة (إلزامي).</summary>
+    public string? VoidReason { get => _voidReason; set => SetProperty(ref _voidReason, value); }
+    public bool CanVoid => CanDelete || Has(SpecialPermission.VoidPosted);
     public AsyncRelayCommand PrintCommand { get; }
 
     private void RaiseFilters()
@@ -729,12 +855,27 @@ public class SalesInvoiceListSectionViewModel : SectionViewModel
 
     private async Task DeleteAsync(SalesInvoiceListRow row)
     {
-        if (row.Status != "Draft") { Dialogs.Error("الفاتورة المرحّلة لا تُحذف — تُعالج بمرتجع أو سند"); return; }
+        if (row.Status != "Draft") { Dialogs.Error("الفاتورة المرحّلة لا تُحذف — تُلغى بزر الإلغاء (قيد عكسي) مع كتابة السبب"); return; }
         if (!Require(CanDelete, "الحذف")) return;
         if (!Dialogs.Confirm($"حذف المسودة {row.InvoiceNumber}؟")) return;
         await using var db = Session.NewDb();
         if (await RunOperationAsync(() => new SalesService(db).DeleteDraftInvoiceAsync(row.Id, Session.UserId), $"تم حذف {row.InvoiceNumber}"))
             await LoadAsync();
+    }
+
+    private async Task VoidAsync(SalesInvoiceListRow row)
+    {
+        if (row.Status == "Draft") { Dialogs.Error("المسودة تُحذف ولا تُلغى"); return; }
+        if (row.Status == "Voided") { Dialogs.Error("الفاتورة ملغاة مسبقًا"); return; }
+        if (!Require(CanVoid, "إلغاء الفواتير المرحّلة")) return;
+        if (string.IsNullOrWhiteSpace(VoidReason)) { Dialogs.Error("اكتب سبب الإلغاء في الخانة أعلى القائمة أولًا"); return; }
+        if (!Dialogs.Confirm($"إلغاء الفاتورة {row.InvoiceNumber} ({row.TotalAmount:N0} د.ع)؟ تعود البضاعة للمخزن، ويُنشأ قيد عكسي، وتُلغى حركة الصندوق، وتبقى الفاتورة ظاهرة بحالة ملغاة.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new SalesService(db).VoidInvoiceAsync(row.Id, VoidReason!, Session.UserId), $"أُلغيت الفاتورة {row.InvoiceNumber}"))
+        {
+            VoidReason = null;
+            await LoadAsync();
+        }
     }
 }
 

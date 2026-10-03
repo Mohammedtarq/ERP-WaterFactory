@@ -99,6 +99,8 @@ public class RahmaEmployeePlan
     public DateTime? HireDate { get; init; }
     public decimal LoanBalance { get; set; }                 // رصيد السلفة غير المسدد
     public decimal LoanInstallment { get; set; }             // القسط الشهري في النظام الجديد
+    /// <summary>ورد اسمه في فواتير تحميل السيارات (Fwater.EID): يُعلَّم مندوبًا وتُنشأ له سيارة (كاش فان).</summary>
+    public bool IsSalesRep { get; set; }
 }
 
 public class RahmaCashBoxPlan

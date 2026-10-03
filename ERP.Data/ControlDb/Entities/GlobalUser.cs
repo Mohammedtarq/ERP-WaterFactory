@@ -12,5 +12,9 @@ public class GlobalUser
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>محاولات دخول خاطئة متتالية؛ عند بلوغ الحد يُقفل الحساب مؤقتًا حتى LockedUntilUtc.</summary>
+    public int FailedLoginCount { get; set; }
+    public DateTime? LockedUntilUtc { get; set; }
+
     public ICollection<UserProjectAccess> ProjectAccesses { get; set; } = new List<UserProjectAccess>();
 }

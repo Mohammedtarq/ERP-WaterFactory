@@ -25,6 +25,11 @@
                 <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource SuccessBrush}"/>
             </StackPanel>
 
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <TextBlock DockPanel.Dock="Right" Text="لإلغاء فاتورة مرحّلة: اكتب السبب ثم اضغط ⊘ في سطرها" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                <TextBox Text="{Binding VoidReason, UpdateSourceTrigger=PropertyChanged}" ToolTip="سبب إلغاء الفاتورة"/>
+            </DockPanel>
+
             <DataGrid ItemsSource="{Binding Rows}">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="الرقم" Binding="{Binding InvoiceNumber}" Width="130"/>
@@ -38,7 +43,7 @@
                     <DataGridTextColumn Header="الإجمالي" Binding="{Binding TotalAmount, StringFormat=N0}" Width="100"/>
                     <DataGridTextColumn Header="المقبوض" Binding="{Binding AmountPaidNow, StringFormat=N0}" Width="90"/>
                     <DataGridTextColumn Header="المتبقي" Binding="{Binding AmountDue, StringFormat=N0}" Width="90"/>
-                    <DataGridTemplateColumn Header="" Width="84">
+                    <DataGridTemplateColumn Header="" Width="120">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -46,6 +51,8 @@
                                             Command="{Binding DataContext.OpenCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                     <Button Content="&#xE74D;" ToolTip="حذف المسودة" Style="{StaticResource RowIconButton}" Tag="#DC2626"
                                             Command="{Binding DataContext.DeleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    <Button Content="&#xE711;" ToolTip="إلغاء الفاتورة المرحّلة (قيد عكسي)" Style="{StaticResource RowIconButton}" Tag="#B45309"
+                                            Command="{Binding DataContext.VoidCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                 </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>

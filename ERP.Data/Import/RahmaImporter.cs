@@ -269,10 +269,20 @@ public class RahmaImporter
                     FullName = Trim(e.Name, 150)!, Phone = Trim(e.Phone, 30), JobTitle = Trim(e.JobTitle, 100),
                     DepartmentId = e.Department is not null && depts.TryGetValue(e.Department, out var d) ? d : null,
                     ShiftId = e.ShiftLegacyId is int sid && shifts.TryGetValue(sid, out var sh) ? sh : null,
-                    SalaryCurrency = e.IsUsd ? SalaryCurrency.USD : SalaryCurrency.IQD, BaseSalary = e.Salary, HireDate = e.HireDate?.Date
+                    SalaryCurrency = e.IsUsd ? SalaryCurrency.USD : SalaryCurrency.IQD, BaseSalary = e.Salary, HireDate = e.HireDate?.Date,
+                    IsSalesRep = e.IsSalesRep
                 };
                 _db.Employees.Add(emp);
                 await _db.SaveChangesAsync();
+                // المندوب يحتاج سيارته (كاش فان) حتى تُسند إليها الحمولة من مخزن المنتج التام
+                if (e.IsSalesRep && !await _db.Warehouses.AnyAsync(w => w.WarehouseType == WarehouseType.RepVan && w.OwnerEmployeeId == emp.Id))
+                {
+                    var branchId = await _db.Warehouses.Where(w => w.WarehouseType == WarehouseType.FinishedGoods).Select(w => (int?)w.BranchId).FirstOrDefaultAsync()
+                                   ?? await _db.Branches.Select(b => b.Id).FirstAsync();
+                    _db.Warehouses.Add(new Warehouse { BranchId = branchId, Name = Trim($"سيارة {emp.FullName}", 150)!, WarehouseType = WarehouseType.RepVan,
+                                                       OwnerEmployeeId = emp.Id, IsSellableStock = true });
+                    await _db.SaveChangesAsync();
+                }
                 _employees[e.LegacyId] = emp;
                 Map("Employee", e.LegacyId, emp.Id);
                 if (e.LoanBalance > 0)
@@ -370,6 +380,9 @@ public class RahmaImporter
 
             var employeeIds = _employees.Values.Select(e => e.Id).ToList();
             rows.Add(new("الموظفون", "الموظفون الفعّالون", _plan.Employees.Count, employeeIds.Count));
+            var repEmployeeIds = _employees.Values.Where(x => x.IsSalesRep).Select(x => x.Id).ToList();
+            rows.Add(new("الموظفون", "المندوبون وسياراتهم", _plan.Employees.Count(x => x.IsSalesRep),
+                         await _db.Warehouses.CountAsync(w => w.WarehouseType == WarehouseType.RepVan && w.OwnerEmployeeId != null && repEmployeeIds.Contains(w.OwnerEmployeeId.Value))));
             rows.Add(new("الموظفون", "أرصدة السلف", _plan.LoansTotal,
                 await _db.EmployeeDeductions.Where(d => employeeIds.Contains(d.EmployeeId) && d.IsOpening && !d.IsVoided).SumAsync(d => (decimal?)d.Amount) ?? 0));
 

@@ -203,8 +203,8 @@ public static class DocumentReports
         var receipt = v.VoucherType == VoucherType.Receipt;
         var r = new ReportDocument
         {
-            CompanyName = s.ProjectName, Title = receipt ? "سند قبض" : "سند صرف", Notes = v.Notes, PrintedBy = s.FullName,
-            Key = "Voucher", ReceiptCapable = true
+            CompanyName = s.ProjectName, Title = receipt ? "سند قبض" : "سند صرف", Notes = v.IsVoided ? $"ملغى — {v.VoidReason}" : v.Notes, PrintedBy = s.FullName,
+            Key = "Voucher", ReceiptCapable = true, Stamp = v.IsVoided ? "ملغى" : null
         };
         r.Field("رقم السند", v.VoucherNumber)
          .Field("التاريخ", v.VoucherDate.ToString("yyyy/MM/dd"))
@@ -486,7 +486,7 @@ public static class DocumentReports
         var posted = inv.Status == DocumentStatus.Posted;
         var r = new ReportDocument
         {
-            CompanyName = s.ProjectName, Title = inv.IsFreeSale ? "إذن صرف — بيع مجاني" : "فاتورة مبيعات", Stamp = posted ? null : "مسودة — غير مرحّلة",
+            CompanyName = s.ProjectName, Title = inv.IsFreeSale ? "إذن صرف — بيع مجاني" : "فاتورة مبيعات", Stamp = inv.Status == DocumentStatus.Voided ? $"ملغاة — {inv.VoidReason}" : posted ? null : "مسودة — غير مرحّلة",
             Notes = inv.Notes, PrintedBy = s.FullName, Key = "SalesInvoice", ReceiptCapable = true,
             ReceiptColumns = inv.IsFreeSale ? new[] { 1, 2, 3 } : new[] { 1, 3, 5, 6 }
         };

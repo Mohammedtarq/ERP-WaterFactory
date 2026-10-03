@@ -254,6 +254,7 @@ public static class RahmaLegacyReader
         var lastInstallments = (await Rows(@"SELECT EID, isteqtaslfa FROM (
                 SELECT EID, isteqtaslfa, ROW_NUMBER() OVER (PARTITION BY EID ORDER BY [date] DESC, SID DESC) rn FROM Rwateb WHERE isteqtaslfa > 0) x WHERE rn = 1", "Rwateb"))
             .ToDictionary(r => Int(r[0]), r => Dec(r[1]));
+        var repIds = (await Rows("SELECT DISTINCT EID FROM Fwater WHERE EID IS NOT NULL", "Fwater")).Select(r => Int(r[0])).ToHashSet();
         foreach (var r in await Rows(@"SELECT EmployeeID, EmployeeName, PhoneNumber, SalaryCurrency, NominalSalary, ShiftID, JobTitleID, DepartmentID, DateStartWork
                                        FROM Employees WHERE isWorke = 1 ORDER BY EmployeeID", "Employees"))
         {
@@ -265,7 +266,8 @@ public static class RahmaLegacyReader
                 LegacyId = id, Name = Clean(Str(r[1])), Phone = NullIfEmpty(Str(r[2])), IsUsd = Clean(Str(r[3])).Contains("دولار") || Clean(Str(r[3])).Equals("USD", StringComparison.OrdinalIgnoreCase),
                 Salary = Math.Round(Dec(r[4]), 2), ShiftLegacyId = r[5] is null ? null : Int(r[5]),
                 JobTitle = r[6] is null ? null : jobs.GetValueOrDefault(Int(r[6])), Department = r[7] is null ? null : departments.GetValueOrDefault(Int(r[7])),
-                HireDate = r[8] as DateTime?, LoanBalance = loan, LoanInstallment = loan <= 0 ? 0 : Math.Min(loan, inst > 0 ? Math.Round(inst, 2) : loan)
+                HireDate = r[8] as DateTime?, LoanBalance = loan, LoanInstallment = loan <= 0 ? 0 : Math.Min(loan, inst > 0 ? Math.Round(inst, 2) : loan),
+                IsSalesRep = repIds.Contains(id)
             });
         }
         foreach (var d in plan.Employees.Select(e => e.Department).Where(d => !string.IsNullOrEmpty(d)).Distinct()) plan.Departments.Add(d!);

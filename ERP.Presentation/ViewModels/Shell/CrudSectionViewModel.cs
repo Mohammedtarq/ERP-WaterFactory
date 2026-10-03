@@ -193,6 +193,7 @@ public abstract class CrudSectionViewModel<T> : SectionViewModel where T : class
     {
         // استثناء بلا سبب داخلي = رسالة عربية مقصودة من BeforeSaveAsync
         if (ex.InnerException is null) return ex.Message;
+        if (SessionViewModel.BusinessDbError(ex) is string business) return business;
         var msg = ex.InnerException.Message;
         if (msg.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) || msg.Contains("duplicate key", StringComparison.OrdinalIgnoreCase))
             return "القيمة المُدخلة مكررة (رمز أو اسم مستخدم موجود مسبقًا).";

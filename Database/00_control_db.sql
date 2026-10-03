@@ -29,7 +29,9 @@ CREATE TABLE GlobalUsers (
     Username        NVARCHAR(100)   NOT NULL UNIQUE,
     PasswordHash    NVARCHAR(256)   NOT NULL,
     IsActive        BIT             NOT NULL DEFAULT 1,
-    CreatedAt       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+    CreatedAt       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+    FailedLoginCount INT            NOT NULL CONSTRAINT DF_GlobalUsers_FailedLoginCount DEFAULT 0,   -- محاولات دخول خاطئة متتالية
+    LockedUntilUtc  DATETIME2       NULL                                                             -- قفل مؤقت بعد تكرار الخطأ
 );
 GO
 

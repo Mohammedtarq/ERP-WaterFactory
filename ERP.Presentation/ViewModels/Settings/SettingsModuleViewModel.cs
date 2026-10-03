@@ -26,6 +26,7 @@ public class SettingsModuleViewModel : ModuleViewModel
         Add(new BackupSectionViewModel(s, d));
         Add(new BrandingSectionViewModel(s, d));
         Add(new RahmaImportSectionViewModel(s, d));
+        if (s.Permissions.Has(SpecialPermission.AuditLog)) Add(new Controls.AuditLogSectionViewModel(s, d));
     }
 }
 
@@ -41,6 +42,16 @@ public class PermissionRow : ObservableObject
     public bool CanEdit { get => _canEdit; set => SetProperty(ref _canEdit, value); }
     public bool CanDelete { get => _canDelete; set => SetProperty(ref _canDelete, value); }
     public bool CanPost { get => _canPost; set => SetProperty(ref _canPost, value); }
+}
+
+/// <summary>صلاحية خاصة على معلومة أو إجراء (الكلفة والأرباح، إغلاق الشهر، الإلغاء...).</summary>
+public class SpecialPermissionRow : ObservableObject
+{
+    private bool _granted;
+    public string Code { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string Hint { get; init; } = "";
+    public bool Granted { get => _granted; set => SetProperty(ref _granted, value); }
 }
 
 public class RolesPermissionsSectionViewModel : SectionViewModel
@@ -66,10 +77,17 @@ public class RolesPermissionsSectionViewModel : SectionViewModel
         DeleteRoleCommand = new AsyncRelayCommand(p => p is Role r ? DeleteRoleAsync(r) : Task.CompletedTask);
         GrantAllCommand = new RelayCommand(() => SetAll(true));
         RevokeAllCommand = new RelayCommand(() => SetAll(false));
+        PrintWhoHasWhatCommand = new AsyncRelayCommand(PrintWhoHasWhatAsync);
     }
 
     public ObservableCollection<Role> Roles { get; } = new();
     public ObservableCollection<PermissionRow> Matrix { get; } = new();
+    public ObservableCollection<SpecialPermissionRow> Specials { get; } = new();
+
+    private string _maxPaymentText = "";
+    /// <summary>سقف الصرف للعملية الواحدة؛ فارغ = بلا سقف.</summary>
+    public string MaxPaymentText { get => _maxPaymentText; set => SetProperty(ref _maxPaymentText, value); }
+    public AsyncRelayCommand PrintWhoHasWhatCommand { get; }
 
     public Role? SelectedRole { get => _selectedRole; set { if (SetProperty(ref _selectedRole, value)) LoadMatrix(); } }
     public string NewRoleName { get => _newRoleName; set => SetProperty(ref _newRoleName, value); }
@@ -93,7 +111,16 @@ public class RolesPermissionsSectionViewModel : SectionViewModel
     private void LoadMatrix()
     {
         Matrix.Clear();
+        Specials.Clear();
+        MaxPaymentText = "";
         if (SelectedRole is null) return;
+        MaxPaymentText = SelectedRole.MaxPaymentAmount is decimal max ? max.ToString("0.##") : "";
+        foreach (var (code, name, hint) in SpecialPermission.All)
+            Specials.Add(new SpecialPermissionRow
+            {
+                Code = code, Name = name, Hint = hint,
+                Granted = SelectedRole.Permissions.Any(x => x.ModuleCode == code && x.CanView)
+            });
         foreach (var (code, name) in Modules)
         {
             var p = SelectedRole.Permissions.FirstOrDefault(x => x.ModuleCode == code);
@@ -109,6 +136,7 @@ public class RolesPermissionsSectionViewModel : SectionViewModel
     private void SetAll(bool value)
     {
         foreach (var r in Matrix) r.CanView = r.CanAdd = r.CanEdit = r.CanDelete = r.CanPost = value;
+        foreach (var r in Specials) r.Granted = value;
     }
 
     private async Task AddRoleAsync()
@@ -131,6 +159,13 @@ public class RolesPermissionsSectionViewModel : SectionViewModel
     {
         if (!Require(CanEdit, "تعديل الصلاحيات")) return;
         if (SelectedRole is null) return;
+        decimal? max = null;
+        if (!string.IsNullOrWhiteSpace(MaxPaymentText))
+        {
+            if (!decimal.TryParse(MaxPaymentText.Replace(",", ""), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var m) || m <= 0)
+            { Dialogs.Error("سقف الصرف رقم أكبر من صفر، أو اتركه فارغًا لدور بلا سقف"); return; }
+            max = m;
+        }
         // أي صلاحية فعلية تستلزم صلاحية العرض، وإلا لن تظهر الوحدة أصلًا
         foreach (var r in Matrix.Where(r => r.CanAdd || r.CanEdit || r.CanDelete || r.CanPost)) r.CanView = true;
 
@@ -142,9 +177,37 @@ public class RolesPermissionsSectionViewModel : SectionViewModel
             if (p is null) db.RolePermissions.Add(p = new RolePermission { RoleId = SelectedRole.Id, ModuleCode = row.ModuleCode });
             (p.CanView, p.CanAdd, p.CanEdit, p.CanDelete, p.CanPost) = (row.CanView, row.CanAdd, row.CanEdit, row.CanDelete, row.CanPost);
         }
+        foreach (var row in Specials)
+        {
+            var p = existing.FirstOrDefault(x => x.ModuleCode == row.Code);
+            if (p is null) { if (!row.Granted) continue; db.RolePermissions.Add(p = new RolePermission { RoleId = SelectedRole.Id, ModuleCode = row.Code }); }
+            p.CanView = row.Granted;
+        }
+        var role = await db.Roles.FirstAsync(r => r.Id == SelectedRole.Id);
+        role.MaxPaymentAmount = max;
         await db.SaveChangesAsync();
         StatusMessage = $"تم حفظ صلاحيات \"{SelectedRole.Name}\" — تسري عند الدخول التالي للمستخدمين";
         await LoadAsync();
+    }
+
+    /// <summary>تقرير مطبوع: كل مستخدم، دوره، والوحدات والصلاحيات الخاصة الممنوحة له.</summary>
+    private async Task PrintWhoHasWhatAsync()
+    {
+        await using var db = Session.NewDb();
+        var users = await db.Users.AsNoTracking().Include(u => u.Role).ThenInclude(r => r.Permissions).OrderBy(u => u.Username).ToListAsync();
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "تقرير الصلاحيات — من يملك ماذا", PrintedBy = Session.FullName };
+        r.Columns.AddRange(new[] { "المستخدم", "الحالة", "الدور", "الوحدات (ع/إ/ت/ح/ر)", "صلاحيات خاصة", "سقف الصرف" });
+        string Flags(RolePermission p) => (p.CanView ? "ع" : "") + (p.CanAdd ? "إ" : "") + (p.CanEdit ? "ت" : "") + (p.CanDelete ? "ح" : "") + (p.CanPost ? "ر" : "");
+        foreach (var u in users)
+        {
+            var modules = Modules.Select(m => (m.name, p: u.Role.Permissions.FirstOrDefault(p => p.ModuleCode == m.code)))
+                                 .Where(x => x.p is { CanView: true }).Select(x => $"{x.name} ({Flags(x.p!)})");
+            var specials = SpecialPermission.All.Where(sp => u.Role.Permissions.Any(p => p.ModuleCode == sp.Code && p.CanView)).Select(sp => sp.Name);
+            r.Rows.Add(new[] { u.Username, u.IsActive ? "فعّال" : "موقوف", u.Role.Name, string.Join("، ", modules), string.Join("، ", specials),
+                               u.Role.MaxPaymentAmount is decimal m ? $"{m:N0}" : "بلا سقف" });
+        }
+        r.Total("عدد المستخدمين", users.Count.ToString());
+        Dialogs.ShowReport(r);
     }
 
     private async Task DeleteRoleAsync(Role role)
@@ -230,6 +293,8 @@ public class UsersSectionViewModel : CrudSectionViewModel<User>
         else if (NewPassword.Length > 0)
         {
             global.PasswordHash = PasswordHasher.Hash(NewPassword);   // تغيير كلمة المرور يسري على الدخول
+            global.FailedLoginCount = 0;                              // ويفتح الحساب إن كان مقفلًا بعد محاولات خاطئة
+            global.LockedUntilUtc = null;
         }
 
         var access = await cdb.UserProjectAccesses.FirstOrDefaultAsync(a => a.GlobalUserId == global.Id && a.ProjectId == Session.ProjectId);

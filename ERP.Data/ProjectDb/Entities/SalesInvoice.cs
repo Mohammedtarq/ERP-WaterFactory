@@ -45,6 +45,11 @@ public class SalesInvoice
     /// <summary>رصيد افتتاحي منقول من نظام سابق: بلا سطور، يدخل كشف العميل وتوزيع الدفعات، ويُستبعد من إحصاءات المبيعات.</summary>
     public bool IsOpeningBalance { get; set; }
 
+    /// <summary>إلغاء الفاتورة المرحّلة بدل حذفها (sp_Sales_VoidInvoice).</summary>
+    public string? VoidReason { get; set; }
+    public int? VoidedByUserId { get; set; }
+    public DateTime? VoidedAt { get; set; }
+
     public int? PostedByUserId { get; set; }
     public User? PostedByUser { get; set; }
     public DateTime? PostedAt { get; set; }

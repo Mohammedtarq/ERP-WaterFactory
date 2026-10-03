@@ -11,7 +11,9 @@ public enum StockTransactionType
     /// <summary>صرف مواد لأمر إنتاج إلى تحت تصنيع الماكينة، وإرجاع المتبقي منه (15_machines_wip.sql)</summary>
     WipIssue, WipReturn,
     /// <summary>تعديل مشرف لرصيد تحت التصنيع بعد الجرد (19_wip_adjustments.sql)</summary>
-    WipAdjust
+    WipAdjust,
+    /// <summary>عكس حركة فاتورة مبيعات ملغاة، وفرق الجرد الفعلي (27_controls.sql)</summary>
+    SalesVoid, StocktakeVariance
 }
 
 /// <summary>Field = تلف ميداني (عند المندوب) — 21_rep_documents.sql</summary>

@@ -36,6 +36,7 @@
             <DockPanel>
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Content="تقرير من يملك ماذا" Style="{StaticResource SecondaryButton}" Command="{Binding PrintWhoHasWhatCommand}"/>
                         <Button Content="منح الكل" Style="{StaticResource SecondaryButton}" Command="{Binding GrantAllCommand}"/>
                         <Button Content="سحب الكل" Style="{StaticResource SecondaryButton}" Command="{Binding RevokeAllCommand}"/>
                         <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
@@ -48,6 +49,30 @@
                     <TextBlock Text="{Binding SelectedRole.Name, StringFormat='صلاحيات: {0}'}" Style="{StaticResource SectionTitle}" Margin="0"/>
                 </DockPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <Grid DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="240"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="صلاحيات خاصة على المعلومة والإجراء" Style="{StaticResource FieldLabel}" FontWeight="SemiBold"/>
+                        <ItemsControl ItemsSource="{Binding Specials}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Content="{Binding Name}" IsChecked="{Binding Granted}" ToolTip="{Binding Hint}" Margin="0,3"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                        <TextBlock Text="سقف الصرف للعملية الواحدة (د.ع)" Style="{StaticResource FieldLabel}" FontWeight="SemiBold"/>
+                        <TextBox Text="{Binding MaxPaymentText, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <TextBlock Text="فارغ = بلا سقف. ما فوق السقف من سندات الصرف والسحب من الصناديق يحتاج صلاحية «الصرف فوق سقف الدور»." Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Grid>
                 <DataGrid ItemsSource="{Binding Matrix}" IsReadOnly="False">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الوحدة" Binding="{Binding ModuleName}" Width="*" IsReadOnly="True"/>

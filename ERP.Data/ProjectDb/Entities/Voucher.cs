@@ -23,6 +23,12 @@ public class Voucher
     public int CreatedByUserId { get; set; }
     public User CreatedByUser { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>السند المرحّل لا يُحذف: يُلغى بقيد عكسي ويبقى ظاهرًا (09_sales_logic.sql).</summary>
+    public bool IsVoided { get; set; }
+    public string? VoidReason { get; set; }
+    public int? VoidedByUserId { get; set; }
+    public DateTime? VoidedAt { get; set; }
 }
 
 /// <summary>

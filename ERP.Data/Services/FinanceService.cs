@@ -73,6 +73,10 @@ public class FinanceService
         decimal amount, PaymentMethod paymentMethod, DateTime voucherDate,
         string mappingTransactionType, int createdByUserId, string? notes = null)
     {
+        if (amount <= 0) return FinanceOperationResult.Fail("المبلغ يجب أن يكون أكبر من صفر");
+        if (voucherType == VoucherType.Payment && await ApprovalLimits.CheckPaymentAsync(_db, createdByUserId, amount) is string limitError)
+            return FinanceOperationResult.Fail(limitError);
+
         var mapping = await _db.AccountMappingRules
             .FirstOrDefaultAsync(r => r.TransactionType == mappingTransactionType);
 
@@ -83,6 +87,39 @@ public class FinanceService
                 "أضفها من شاشة إعدادات العقل المالي أولًا، ثم أعد المحاولة.");
         }
 
+        // القيد والسند وحركة الصندوق معًا أو لا شيء (مثلًا: تاريخ داخل شهر مقفل يرفضه القفل بعد إنشاء القيد)
+        var ownTx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        try
+        {
+            var result = await CreateVoucherCoreAsync(voucherType, partyType, partyId, amount, paymentMethod, voucherDate, mapping, createdByUserId, notes);
+            if (ownTx is not null) await ownTx.CommitAsync();
+            return result;
+        }
+        catch (DbUpdateException ex) when (BusinessError(ex) is string msg)
+        {
+            if (ownTx is not null) await ownTx.RollbackAsync();
+            _db.ChangeTracker.Clear();
+            return FinanceOperationResult.Fail(msg);
+        }
+        finally
+        {
+            if (ownTx is not null) await ownTx.DisposeAsync();
+        }
+    }
+
+    /// <summary>رسالة عمل مقصودة من قاعدة البيانات (قفل الفترة...) داخل استثناء الحفظ.</summary>
+    internal static string? BusinessError(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException)
+            if (e is Microsoft.Data.SqlClient.SqlException sql && sql.Number is >= 51000 and <= 51199) return sql.Message;
+        return null;
+    }
+
+    private async Task<FinanceOperationResult> CreateVoucherCoreAsync(
+        VoucherType voucherType, VoucherPartyType partyType, int? partyId,
+        decimal amount, PaymentMethod paymentMethod, DateTime voucherDate,
+        AccountMappingRule mapping, int createdByUserId, string? notes)
+    {
         var entry = new JournalEntry
         {
             EntryNumber = await GenerateNextNumberAsync("JV"),
@@ -126,6 +163,75 @@ public class FinanceService
             await new CustomerAccountService(_db).SyncAsync(customerId);
 
         return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>
+    /// إلغاء سند مرحّل بدل حذفه: قيد عكسي بنفس تاريخ السند، وإلغاء حركة الصندوق المرتبطة، وإعادة توزيع دفعات العميل.
+    /// السند يبقى ظاهرًا بحالة "ملغى" مع السبب.
+    /// </summary>
+    public async Task<FinanceOperationResult> VoidVoucherAsync(int voucherId, string reason, int userId)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب الإلغاء");
+        var canVoid = await SpecialPermission.HasAsync(_db, userId, SpecialPermission.VoidPosted) ||
+                      await _db.Users.AnyAsync(u => u.Id == userId && u.Role.Permissions.Any(p => p.ModuleCode == ModuleCode.Finance && p.CanDelete));
+        if (!canVoid) return FinanceOperationResult.Fail("لا تملك صلاحية إلغاء السندات");
+
+        var v = await _db.Vouchers.FirstOrDefaultAsync(x => x.Id == voucherId);
+        if (v is null) return FinanceOperationResult.Fail("السند غير موجود");
+        if (v.IsVoided) return FinanceOperationResult.Fail("السند ملغى مسبقًا");
+
+        var ownTx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        try
+        {
+            if (v.JournalEntryId is int jeId)
+            {
+                var lines = await _db.JournalEntryLines.AsNoTracking().Where(l => l.JournalEntryId == jeId).ToListAsync();
+                var rev = new JournalEntry
+                {
+                    EntryNumber = await GenerateNextNumberAsync("JV"),
+                    EntryDate = v.VoucherDate,
+                    EntryType = JournalEntryType.AutoVoucher,
+                    Description = $"إلغاء السند {v.VoucherNumber} — {reason.Trim()}",
+                    CreatedByUserId = userId,
+                    IsPosted = true,
+                    SourceTable = "Vouchers",
+                    SourceId = v.Id
+                };
+                foreach (var l in lines)
+                    rev.Lines.Add(new JournalEntryLine { AccountId = l.AccountId, Debit = l.Credit, Credit = l.Debit, Description = "عكس: " + l.Description });
+                _db.JournalEntries.Add(rev);
+            }
+            var cash = await _db.CashBoxTransactions.Where(t => t.ReferenceTable == "Vouchers" && t.ReferenceId == v.Id && !t.IsVoided).ToListAsync();
+            foreach (var t in cash)
+            {
+                t.IsVoided = true;
+                t.VoidReason = "إلغاء السند: " + reason.Trim();
+                t.ModifiedByUserId = userId;
+                t.ModifiedAt = DateTime.UtcNow;
+            }
+            v.IsVoided = true;
+            v.VoidReason = reason.Trim();
+            v.VoidedByUserId = userId;
+            v.VoidedAt = DateTime.UtcNow;
+            if (v.PartyType == VoucherPartyType.Customer)
+                await _db.PaymentAllocations.Where(a => a.VoucherId == v.Id).ExecuteDeleteAsync();
+            await _db.SaveChangesAsync();
+
+            if (v.PartyType == VoucherPartyType.Customer && v.PartyId is int customerId)
+                await new CustomerAccountService(_db).SyncAsync(customerId);
+            if (ownTx is not null) await ownTx.CommitAsync();
+            return FinanceOperationResult.Ok();
+        }
+        catch (DbUpdateException ex) when (BusinessError(ex) is string msg)
+        {
+            if (ownTx is not null) await ownTx.RollbackAsync();
+            _db.ChangeTracker.Clear();
+            return FinanceOperationResult.Fail(msg);
+        }
+        finally
+        {
+            if (ownTx is not null) await ownTx.DisposeAsync();
+        }
     }
 
     /// <summary>

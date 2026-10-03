@@ -1,6 +1,6 @@
 namespace ERP.Data.ProjectDb.Entities;
 
-public enum DocumentStatus { Draft, Posted }
+public enum DocumentStatus { Draft, Posted, Voided }
 
 public class GoodsReceipt
 {

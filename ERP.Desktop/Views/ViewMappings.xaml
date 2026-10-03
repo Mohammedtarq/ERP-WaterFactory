@@ -17,7 +17,9 @@
                     xmlns:vmReps="clr-namespace:ERP.Presentation.ViewModels.Reps;assembly=ERP.Presentation"
                     xmlns:vReps="clr-namespace:ERP.Desktop.Views.Reps"
                     xmlns:vmProduction="clr-namespace:ERP.Presentation.ViewModels.Production;assembly=ERP.Presentation"
-                    xmlns:vProduction="clr-namespace:ERP.Desktop.Views.Production">
+                    xmlns:vProduction="clr-namespace:ERP.Desktop.Views.Production"
+                    xmlns:vmControls="clr-namespace:ERP.Presentation.ViewModels.Controls;assembly=ERP.Presentation"
+                    xmlns:vControls="clr-namespace:ERP.Desktop.Views.Controls">
 
     <!--
         ربط كل ViewModel بشاشته: أي ContentControl أو تبويب يعرض ViewModel يجد شاشته هنا
@@ -213,6 +215,8 @@
     <DataTemplate DataType="{x:Type vmSettings:BackupSectionViewModel}"><vSettings:BackupSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:RahmaImportSectionViewModel}"><vSettings:RahmaImportSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:BrandingSectionViewModel}"><vSettings:BrandingSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmControls:AuditLogSectionViewModel}"><vControls:AuditLogSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmControls:PeriodLockSectionViewModel}"><vControls:PeriodLockSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:WarehouseWorkspaceSectionViewModel}"><vWarehouse:WarehouseWorkspaceSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:CashBoxesSectionViewModel}"><vFinance:CashBoxesSectionView/></DataTemplate>
 

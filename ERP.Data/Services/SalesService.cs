@@ -88,7 +88,7 @@ public class CustomerStatementRow
 public class SalesService
 {
     // أرقام الأخطاء التي يرفعها 09_sales_logic.sql (رسائلها عربية أصلًا)
-    private const int BusinessErrorMin = 51000, BusinessErrorMax = 51099;
+    private const int BusinessErrorMin = 51000, BusinessErrorMax = 51199;
 
     private readonly ProjectDbContext _db;
 
@@ -199,6 +199,8 @@ public class SalesService
         // فاتورة آجلة/جزئية جديدة ← تأخذ نصيبها من أي رصيد دائن للعميل (الأقدم أولًا)
         if (result.Success)
         {
+            if (summary is not null)
+                await new AuditService(_db).LogAsync(userId, "Post", "SalesInvoices", invoiceId, $"{summary.InvoiceNumber} — {summary.TotalAmount:N0}");
             var customerId = await _db.SalesInvoices.Where(i => i.Id == invoiceId).Select(i => i.CustomerId).FirstAsync();
             await new CustomerAccountService(_db).SyncAsync(customerId);
 
@@ -215,6 +217,22 @@ public class SalesService
             }
         }
         return (result, summary);
+    }
+
+    /// <summary>
+    /// إلغاء فاتورة مرحّلة بدل حذفها: المخزون يعود، وقيد عكسي، وحركة الصندوق تُلغى، ويُعاد توزيع دفعات العميل.
+    /// الفاتورة تبقى في القائمة بحالة "ملغاة" مع السبب.
+    /// </summary>
+    public async Task<FinanceOperationResult> VoidInvoiceAsync(int invoiceId, string reason, int userId)
+    {
+        var result = await ExecAsync("sp_Sales_VoidInvoice", P("@InvoiceId", invoiceId), P("@Reason", reason?.Trim()), P("@UserId", userId));
+        if (!result.Success) return result;
+        var inv = await _db.SalesInvoices.AsNoTracking().Where(i => i.Id == invoiceId)
+            .Select(i => new { i.CustomerId, i.InvoiceNumber, i.TotalAmount }).FirstAsync();
+        await new CustomerAccountService(_db).SyncAsync(inv.CustomerId);
+        await new AuditService(_db).LogAsync(userId, "Void", "SalesInvoices", invoiceId,
+            $"{inv.InvoiceNumber} — {inv.TotalAmount:N0} — السبب: {reason?.Trim()}");
+        return result;
     }
 
     public Task<SalesInvoice?> GetInvoiceAsync(int invoiceId)

@@ -380,7 +380,7 @@ public class SupplierStatementSectionViewModel : SectionViewModel
                                                 Description = g.SupplierInvoiceNumber != null ? "فاتورة المورد " + g.SupplierInvoiceNumber : "استلام",
                                                 Credit = g.Lines.Sum(l => l.QuantityReceived * l.UnitCost) })
                 .ToListAsync();
-            var vouchers = await db.Vouchers.AsNoTracking().Where(v => v.PartyType == VoucherPartyType.Supplier && v.PartyId == Supplier.Id)
+            var vouchers = await db.Vouchers.AsNoTracking().Where(v => v.PartyType == VoucherPartyType.Supplier && v.PartyId == Supplier.Id && !v.IsVoided)
                 .Select(v => new { v.VoucherDate, v.VoucherType, v.VoucherNumber, v.Notes, v.Amount }).ToListAsync();
 
             var all = receipts.Concat(vouchers.Select(v => new StatementRow

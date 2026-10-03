@@ -36,6 +36,26 @@ IF COL_LENGTH('SalesInvoices', 'IsOpeningBalance') IS NULL
     ALTER TABLE SalesInvoices ADD IsOpeningBalance BIT NOT NULL CONSTRAINT DF_SalesInvoices_IsOpeningBalance DEFAULT 0;
 GO
 
+-- إلغاء المستند المرحّل بدل حذفه: الفاتورة تُلغى بحركات عكسية وتبقى ظاهرة بحالة "ملغاة"
+IF COL_LENGTH('SalesInvoices', 'VoidReason') IS NULL
+    ALTER TABLE SalesInvoices ADD VoidReason NVARCHAR(300) NULL,
+                                  VoidedByUserId INT NULL CONSTRAINT FK_SalesInvoices_VoidedBy FOREIGN KEY REFERENCES Users(Id),
+                                  VoidedAt DATETIME2 NULL;
+IF COL_LENGTH('Vouchers', 'IsVoided') IS NULL
+    ALTER TABLE Vouchers ADD IsVoided BIT NOT NULL CONSTRAINT DF_Vouchers_IsVoided DEFAULT 0,
+                             VoidReason NVARCHAR(300) NULL,
+                             VoidedByUserId INT NULL CONSTRAINT FK_Vouchers_VoidedBy FOREIGN KEY REFERENCES Users(Id),
+                             VoidedAt DATETIME2 NULL;
+GO
+
+DECLARE @oldStatusCk sysname = (SELECT TOP 1 name FROM sys.check_constraints
+                                WHERE parent_object_id = OBJECT_ID('SalesInvoices')
+                                  AND definition LIKE N'%Draft%' AND definition NOT LIKE N'%Voided%');
+IF @oldStatusCk IS NOT NULL EXEC (N'ALTER TABLE SalesInvoices DROP CONSTRAINT [' + @oldStatusCk + N']');
+IF OBJECT_ID('CK_SalesInvoices_Status', 'C') IS NULL
+    ALTER TABLE SalesInvoices ADD CONSTRAINT CK_SalesInvoices_Status CHECK (Status IN (N'Draft', N'Posted', N'Voided'));
+GO
+
 IF OBJECT_ID('CK_SalesInvoices_FreeSaleRecipient', 'C') IS NULL
     ALTER TABLE SalesInvoices ADD CONSTRAINT CK_SalesInvoices_FreeSaleRecipient
         CHECK (IsFreeSale = 0 OR (FreeSaleRecipient IS NOT NULL AND LEN(LTRIM(FreeSaleRecipient)) > 0));
@@ -677,7 +697,7 @@ SELECT  v.PartyId, v.VoucherDate,
         CASE WHEN v.VoucherType = N'Receipt' THEN v.Amount ELSE 0 END,
         CASE v.VoucherType WHEN N'Receipt' THEN N'سند قبض' ELSE N'سند صرف' END
 FROM    Vouchers v
-WHERE   v.PartyType = N'Customer' AND v.PartyId IS NOT NULL;
+WHERE   v.PartyType = N'Customer' AND v.PartyId IS NOT NULL AND v.IsVoided = 0;
 GO
 
 CREATE OR ALTER VIEW vw_CustomerBalances AS
@@ -688,4 +708,88 @@ SELECT  c.Id AS CustomerId, c.Name, c.CustomerType, c.ParentAgentId,
 FROM    Customers c
 LEFT JOIN vw_CustomerStatement s ON s.CustomerId = c.Id
 GROUP BY c.Id, c.Name, c.CustomerType, c.ParentAgentId;
+GO
+
+/* ============================================================
+   إلغاء فاتورة مرحّلة (بدل الحذف): كل أثر للترحيل يُعكس بحركة مقابلة في نفس المعاملة
+   - المخزون: حركة واردة بنفس الكميات والتشغيلات
+   - القيد: قيد عكسي بنفس تاريخ الفاتورة (فيبقى أثر الشهر صحيحًا)
+   - الصندوق: حركة الصندوق المرتبطة تُعلَّم ملغاة
+   - محفظة المندوب: حركة صادرة بنفس المبلغ
+   الشهر المقفل يمنع الإلغاء (مشغّلات 27_controls.sql) حتى يفتحه المدير.
+   ============================================================ */
+CREATE OR ALTER PROCEDURE sp_Sales_VoidInvoice
+    @InvoiceId  INT,
+    @Reason     NVARCHAR(300),
+    @UserId     INT
+AS
+BEGIN
+    SET NOCOUNT ON; SET XACT_ABORT ON;
+
+    IF dbo.fn_UserCan(@UserId, N'Sales', N'Delete') = 0
+       AND NOT EXISTS (SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
+                       WHERE u.Id = @UserId AND rp.ModuleCode = N'Special:VoidPosted' AND rp.CanView = 1)
+        THROW 51060, N'لا تملك صلاحية إلغاء الفواتير المرحّلة.', 1;
+    IF LEN(LTRIM(ISNULL(@Reason, N''))) = 0
+        THROW 51061, N'اكتب سبب الإلغاء.', 1;
+
+    BEGIN TRY
+    BEGIN TRAN;
+
+    DECLARE @status NVARCHAR(20), @num NVARCHAR(30), @date DATE, @jeId INT, @repId INT, @paid DECIMAL(18,2), @pay NVARCHAR(20), @opening BIT;
+    SELECT @status = Status, @num = InvoiceNumber, @date = InvoiceDate, @jeId = JournalEntryId,
+           @repId = SalesRepEmployeeId, @paid = AmountPaidNow, @pay = PaymentMethod, @opening = IsOpeningBalance
+    FROM SalesInvoices WITH (UPDLOCK, HOLDLOCK) WHERE Id = @InvoiceId;
+
+    IF @status IS NULL THROW 51062, N'الفاتورة غير موجودة.', 1;
+    IF @status = N'Voided' THROW 51063, N'الفاتورة ملغاة مسبقًا.', 1;
+    IF @status <> N'Posted' THROW 51064, N'الفاتورة مسودة: احذف المسودة بدل إلغائها.', 1;
+    IF @opening = 1 THROW 51065, N'الرصيد الافتتاحي المنقول لا يُلغى من هنا.', 1;
+
+    -- 1) المخزون: عكس كل حركة صادرة بالفاتورة
+    INSERT INTO StockTransactions (ItemId, WarehouseId, BatchId, QuantityBaseUnits, TransactionType,
+                                   FreeIssueRecipient, ReferenceTable, ReferenceId, TransactionDate, CreatedByUserId)
+    SELECT ItemId, WarehouseId, BatchId, -QuantityBaseUnits, N'SalesVoid',
+           FreeIssueRecipient, N'SalesInvoices', @InvoiceId, SYSUTCDATETIME(), @UserId
+    FROM StockTransactions
+    WHERE ReferenceTable = N'SalesInvoices' AND ReferenceId = @InvoiceId AND TransactionType <> N'SalesVoid';
+
+    -- 2) القيد العكسي
+    IF @jeId IS NOT NULL
+    BEGIN
+        DECLARE @revId INT, @revNum NVARCHAR(30) = N'SJ-' + CAST(YEAR(@date) AS NVARCHAR(4)) + N'-'
+                + RIGHT(N'000000' + CAST(NEXT VALUE FOR seq_SalesJournalNumber AS NVARCHAR(10)), 6);
+        INSERT INTO JournalEntries (EntryNumber, EntryDate, EntryType, Description, CreatedByUserId, IsPosted, SourceTable, SourceId)
+        VALUES (@revNum, @date, N'AutoSales', N'إلغاء فاتورة مبيعات ' + @num + N' — ' + @Reason, @UserId, 0, N'SalesInvoices', @InvoiceId);
+        SET @revId = SCOPE_IDENTITY();
+        INSERT INTO JournalEntryLines (JournalEntryId, AccountId, Debit, Credit, Description)
+        SELECT @revId, AccountId, Credit, Debit, N'عكس: ' + ISNULL(Description, N'')
+        FROM JournalEntryLines WHERE JournalEntryId = @jeId;
+        UPDATE JournalEntries SET IsPosted = 1 WHERE Id = @revId;
+    END;
+
+    -- 3) الصندوق
+    IF OBJECT_ID('CashBoxTransactions', 'U') IS NOT NULL
+        UPDATE CashBoxTransactions SET IsVoided = 1, VoidReason = N'إلغاء الفاتورة: ' + @Reason,
+                                       ModifiedByUserId = @UserId, ModifiedAt = SYSUTCDATETIME()
+        WHERE ReferenceTable = N'SalesInvoices' AND ReferenceId = @InvoiceId AND IsVoided = 0;
+
+    -- 4) محفظة المندوب
+    IF @repId IS NOT NULL AND @paid > 0 AND @pay <> N'Electronic'
+        INSERT INTO RepWalletTransactions (EmployeeId, Description, AmountIn, AmountOut, ReferenceTable, ReferenceId, JournalEntryId)
+        VALUES (@repId, N'إلغاء فاتورة ' + @num, 0, @paid, N'SalesInvoices', @InvoiceId, @jeId);
+
+    -- 5) الحالة (توزيع الدفعات يُعاد من الخدمة بعد الإلغاء)
+    IF OBJECT_ID('PaymentAllocations', 'U') IS NOT NULL
+        DELETE FROM PaymentAllocations WHERE SalesInvoiceId = @InvoiceId;
+    UPDATE SalesInvoices SET Status = N'Voided', VoidReason = @Reason, VoidedByUserId = @UserId, VoidedAt = SYSUTCDATETIME()
+    WHERE Id = @InvoiceId;
+
+    COMMIT;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        THROW;
+    END CATCH;
+END;
 GO
