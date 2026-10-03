@@ -1,0 +1,91 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.PartnersSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:PartnersSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="320"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- الشركاء وكشف المختار -->
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    <TextBlock Text="الشركاء ونسبهم وأرصدتهم" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding PercentHint}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <DataGrid DockPanel.Dock="Top" ItemsSource="{Binding Partners}" SelectedItem="{Binding Selected}" IsReadOnly="True" MaxHeight="200">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الشريك" Binding="{Binding Name}" Width="*" MinWidth="120"/>
+                        <DataGridTextColumn Header="النسبة" Binding="{Binding SharePercent, StringFormat={}{0:0.##}%}" Width="70"/>
+                        <DataGridCheckBoxColumn Header="المدير" Binding="{Binding IsManager, Mode=OneWay}" Width="55"/>
+                        <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="50"/>
+                        <DataGridTextColumn Header="مجموع الأرباح" Binding="{Binding TotalShares, StringFormat=N0}" Width="110"/>
+                        <DataGridTextColumn Header="المسحوب" Binding="{Binding TotalWithdrawals, StringFormat=N0}" Width="100"/>
+                        <DataGridTextColumn Header="الرصيد" Binding="{Binding Balance, StringFormat=N0}" Width="110"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <DockPanel DockPanel.Dock="Top" Margin="0,12,0,6">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Command="{Binding PrintStatementCommand}" Content="طباعة كشف الشريك"/>
+                    <TextBlock Text="{Binding Selected.Name, StringFormat='كشف حساب: {0}', TargetNullValue='اختر شريكًا لعرض كشفه'}" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <DataGrid ItemsSource="{Binding Statement}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding TxDate, StringFormat=yyyy/MM/dd}" Width="90"/>
+                        <DataGridTextColumn Header="النوع" Binding="{Binding KindText}" Width="90"/>
+                        <DataGridTextColumn Header="الرقم" Binding="{Binding TxNumber}" Width="115" MinWidth="105"/>
+                        <DataGridTextColumn Header="المرجع" Binding="{Binding Reference}" Width="105"/>
+                        <DataGridTextColumn Header="له" Binding="{Binding Credit, StringFormat=N0}" Width="95"/>
+                        <DataGridTextColumn Header="عليه" Binding="{Binding Debit, StringFormat=N0}" Width="95"/>
+                        <DataGridTextColumn Header="الرصيد" Binding="{Binding Balance, StringFormat=N0}" Width="100"/>
+                        <DataGridTextColumn Header="ملاحظات" Binding="{Binding Notes}" Width="*" MinWidth="120"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <!-- التحرير والسحب -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Command="{Binding NewCommand}" Content="+ شريك جديد"/>
+                        <TextBlock Text="{Binding EditorTitle}" Style="{StaticResource SectionTitle}" Margin="0"/>
+                    </DockPanel>
+                    <TextBlock Text="اسم الشريك" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="النسبة من الأرباح (%)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding SharePercent}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                    <CheckBox Content="المدير" IsChecked="{Binding IsManager}" Margin="0,8,0,0"/>
+                    <CheckBox Content="فعّال (يدخل في توزيع الأرباح)" IsChecked="{Binding IsActive}" Margin="0,6,0,0"/>
+                    <TextBlock Text="ملاحظات" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding PartnerNotes}"/>
+                    <Button Style="{StaticResource PrimaryButton}" Command="{Binding SaveCommand}" Content="حفظ الشريك (للأدمن)" Margin="0,10,0,0" HorizontalAlignment="Left"/>
+
+                    <Separator Margin="0,16,0,8"/>
+                    <TextBlock Text="سحب أرباح من الصندوق" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="{Binding Selected.Balance, StringFormat='رصيد الشريك المختار: {0:N0} د.ع', TargetNullValue='اختر الشريك من الجدول'}" Style="{StaticResource Muted}"/>
+                    <TextBlock Text="المبلغ (د.ع)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Amount}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                    <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                    <DatePicker SelectedDate="{Binding Date}"/>
+                    <TextBlock Text="ملاحظات" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding WithdrawNotes}"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding WithdrawCommand}" IsEnabled="{Binding HasSelection}" Margin="0,10,0,0" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="سحب وطباعة السند (للأدمن)"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

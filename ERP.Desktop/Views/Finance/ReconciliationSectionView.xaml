@@ -1,0 +1,124 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.ReconciliationSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ReconciliationSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="330"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- الحساب والتفاصيل -->
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <TextBlock Text="التاريخ:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <DatePicker SelectedDate="{Binding Date}" Width="130" Margin="0,0,14,0"/>
+                    <TextBlock Text="تقييم المنتج التام:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Valuations}" SelectedItem="{Binding Valuation}" DisplayMemberPath="Label" Width="130" Margin="0,0,14,0"/>
+                    <Button Style="{StaticResource PrimaryButton}" Command="{Binding ComputeCommand}" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8EF;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="احسب المطابقة"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding PrintPreviewCommand}" Content="طباعة المعاينة" Margin="0,0,8,0"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding PostCommand}" IsEnabled="{Binding HasSnapshot}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="اعتماد وتوزيع (للأدمن)"/>
+                        </StackPanel>
+                    </Button>
+                </WrapPanel>
+                <TextBlock DockPanel.Dock="Top" Text="المواد الأولية وتحت التصنيع تُقيَّم دائمًا بسعر الكلفة؛ المنتج التام حسب اختيارك. مخزن التالف لا يدخل. التأمينات تُطرح لأنها أمانات."
+                           Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                <!-- الملخص -->
+                <Border DockPanel.Dock="Top" Background="#F0FDFA" CornerRadius="8" Padding="14,10" Margin="0,0,0,10"
+                        Visibility="{Binding HasSnapshot, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <WrapPanel>
+                            <TextBlock Text="{Binding Snapshot.RawMaterials, StringFormat='مواد أولية: {0:N0}'}" Margin="0,0,18,4"/>
+                            <TextBlock Text="{Binding Snapshot.WorkInProcess, StringFormat='تحت التصنيع: {0:N0}'}" Margin="0,0,18,4"/>
+                            <TextBlock Text="{Binding Snapshot.FinishedGoods, StringFormat='منتج تام: {0:N0}'}" Margin="0,0,18,4"/>
+                            <TextBlock Text="{Binding Snapshot.CustomerDebts, StringFormat='ديون العملاء: {0:N0}'}" Margin="0,0,18,4"/>
+                            <TextBlock Text="{Binding Snapshot.CashInBoxes, StringFormat='الصناديق: {0:N0}'}" Margin="0,0,18,4"/>
+                            <TextBlock Text="{Binding Snapshot.CashWithReps, StringFormat='مع المندوبين: {0:N0}'}" Margin="0,0,18,4"/>
+                            <TextBlock Text="{Binding Snapshot.EmployeeAdvances, StringFormat='سلف الموظفين: {0:N0}'}" Margin="0,0,18,4"/>
+                            <TextBlock Text="{Binding Snapshot.SupplierDebts, StringFormat='− ديون الموردين: {0:N0}'}" Foreground="{StaticResource DangerBrush}" Margin="0,0,18,4"/>
+                            <TextBlock Text="{Binding Snapshot.CustomerDeposits, StringFormat='− التأمينات: {0:N0}'}" Foreground="{StaticResource DangerBrush}" Margin="0,0,18,4"/>
+                        </WrapPanel>
+                        <WrapPanel Margin="0,6,0,0">
+                            <TextBlock Text="{Binding Snapshot.NetAssets, StringFormat='صافي الموجودات: {0:N0} د.ع'}" FontSize="16" FontWeight="Bold" Margin="0,0,24,0"/>
+                            <TextBlock Text="{Binding Snapshot.PreviousNetAssets, StringFormat='السابقة: {0:N0}', TargetNullValue=''}" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <TextBlock Text="{Binding Snapshot.PartnerWithdrawals, StringFormat='+ سحوبات الشركاء: {0:N0}'}" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <TextBlock Text="{Binding Snapshot.OwnerDeposits, StringFormat='− إيداعات المالك: {0:N0}'}" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                        </WrapPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="{Binding SurplusLabel, StringFormat='{}{0}: '}" FontSize="17" FontWeight="Bold" Foreground="#0F766E"/>
+                            <TextBlock Text="{Binding SurplusText}" FontSize="17" FontWeight="Bold" Foreground="#0F766E"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <DataGrid ItemsSource="{Binding Lines}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="القسم" Binding="{Binding Section}" Width="140"/>
+                        <DataGridTextColumn Header="البيان" Binding="{Binding Description}" Width="*" MinWidth="180"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding Quantity, StringFormat=#\,0.###}" Width="100"/>
+                        <DataGridTextColumn Header="سعر الوحدة" Binding="{Binding UnitValue, StringFormat=#\,0.####}" Width="100"/>
+                        <DataGridTextColumn Header="القيمة" Binding="{Binding Value, StringFormat=N0}" Width="120"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <!-- التوزيع والسجل -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="توزيع الفائض على الشركاء" Style="{StaticResource SectionTitle}"/>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding SharesHint}" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                <DataGrid DockPanel.Dock="Top" ItemsSource="{Binding Shares}" IsReadOnly="True" MaxHeight="160">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الشريك" Binding="{Binding PartnerName}" Width="*" MinWidth="90"/>
+                        <DataGridTextColumn Header="النسبة" Binding="{Binding SharePercent, StringFormat={}{0:0.##}%}" Width="65"/>
+                        <DataGridTextColumn Header="الحصة" Binding="{Binding Amount, StringFormat=N0}" Width="95"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock DockPanel.Dock="Top" Text="ملاحظات المطابقة" Style="{StaticResource FieldLabel}"/>
+                <TextBox DockPanel.Dock="Top" Text="{Binding Notes}"/>
+                <StackPanel DockPanel.Dock="Top" Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVisibility}}" Margin="0,10,0,0">
+                    <TextBlock Text="تنبيهات التقييم" FontWeight="SemiBold" Foreground="#B45309"/>
+                    <ItemsControl ItemsSource="{Binding Warnings}" MaxHeight="110">
+                        <ItemsControl.Template>
+                            <ControlTemplate><ScrollViewer VerticalScrollBarVisibility="Auto"><ItemsPresenter/></ScrollViewer></ControlTemplate>
+                        </ItemsControl.Template>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate><TextBlock Text="{Binding StringFormat='• {0}'}" TextWrapping="Wrap" FontSize="11" Foreground="#92400E"/></DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Top" Text="المطابقات السابقة" Style="{StaticResource SectionTitle}" Margin="0,14,0,6"/>
+                <DataGrid ItemsSource="{Binding History}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الرقم" Binding="{Binding ReconNumber}" Width="100" MinWidth="95"/>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding ReconDate, StringFormat=yyyy/MM/dd}" Width="85"/>
+                        <DataGridTextColumn Header="الفائض" Binding="{Binding Surplus, StringFormat=N0}" Width="*" MinWidth="80"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE749;" ToolTip="طباعة المطابقة" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

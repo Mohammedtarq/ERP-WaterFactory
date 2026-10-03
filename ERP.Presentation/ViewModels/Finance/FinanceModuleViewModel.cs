@@ -16,6 +16,8 @@ public class FinanceModuleViewModel : ModuleViewModel
     {
         UseDashboard(s, d, ModuleCode.Finance, ModuleDashboardViewModel.Finance);
         Boxes = Add(new CashBoxesSectionViewModel(s, d));
+        Reconciliation = Add(new ReconciliationSectionViewModel(s, d));
+        Partners = Add(new PartnersSectionViewModel(s, d));
         Add(new ChartOfAccountsSectionViewModel(s, d));
         Add(new JournalEntriesSectionViewModel(s, d));
         Add(new VouchersSectionViewModel(s, d));
@@ -24,6 +26,8 @@ public class FinanceModuleViewModel : ModuleViewModel
     }
 
     public CashBoxesSectionViewModel Boxes { get; }
+    public ReconciliationSectionViewModel Reconciliation { get; }
+    public PartnersSectionViewModel Partners { get; }
 }
 
 // ============================ دليل الحسابات ============================

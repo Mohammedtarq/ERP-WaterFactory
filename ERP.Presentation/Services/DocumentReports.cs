@@ -367,6 +367,83 @@ public static class DocumentReports
         return r;
     }
 
+    // ============================ المطابقة والشركاء ============================
+
+    private static ReportDocument BuildReconciliation(AppSession s, string title, string? stamp, string? number, DateTime date, FinishedGoodsValuation valuation,
+        IEnumerable<(string section, string description, decimal? qty, decimal? unit, decimal value)> lines,
+        decimal assets, decimal liabilities, decimal net, string? previous, decimal? previousNet, decimal withdrawals, decimal ownerDeposits,
+        bool baseline, decimal surplus, IEnumerable<(string name, decimal percent, decimal amount)> shares, string? notes)
+    {
+        var r = New(s, title, stamp, notes);
+        r.Field("رقم المطابقة", number).Field("التاريخ", date.ToString("yyyy/MM/dd"))
+         .Field("تقييم المنتج التام", ArabicLabels.Of(valuation)).Field("المطابقة السابقة", previous);
+        r.Columns.AddRange(new[] { "القسم", "البيان", "الكمية", "سعر الوحدة", "القيمة" });
+        foreach (var l in lines)
+            r.Rows.Add(new[] { l.section, l.description, l.qty is { } q ? Q(q) : "", l.unit is { } u ? $"{u:#,0.####}" : "", N(l.value) });
+        r.Total("إجمالي الموجودات", $"{N(assets)} د.ع").Total("الالتزامات (موردون + تأمينات)", $"{N(liabilities)} د.ع")
+         .Total("صافي الموجودات", $"{N(net)} د.ع", true);
+        if (baseline) r.Total("الفائض", "مطابقة أساس — لا توزيع");
+        else
+        {
+            r.Total("صافي المطابقة السابقة", $"{N(previousNet ?? 0)} د.ع");
+            if (withdrawals != 0) r.Total("+ سحوبات الشركاء منذ السابقة", $"{N(withdrawals)} د.ع");
+            if (ownerDeposits != 0) r.Total("− إيداعات المالك منذ السابقة", $"{N(ownerDeposits)} د.ع");
+            r.Total(surplus >= 0 ? "الفائض (الربح)" : "الخسارة", $"{N(surplus)} د.ع", true);
+            foreach (var (name, percent, amount) in shares) r.Total($"حصة {name} ({percent:0.##}%)", $"{N(amount)} د.ع");
+        }
+        r.Signatures.AddRange(new[] { "المحاسب", "المدير" });
+        return r;
+    }
+
+    /// <summary>معاينة مطابقة قبل الاعتماد.</summary>
+    public static ReportDocument ReconciliationPreview(AppSession s, ReconciliationSnapshot x) =>
+        BuildReconciliation(s, "مطابقة الموجودات", "معاينة — غير معتمدة", null, x.ReconDate, x.Valuation,
+            x.Lines.Select(l => (l.Section, l.Description, l.Quantity, l.UnitValue, l.Value)), x.TotalAssets, x.TotalLiabilities, x.NetAssets,
+            x.PreviousNumber, x.PreviousNetAssets, x.PartnerWithdrawals, x.OwnerDeposits, x.IsBaseline, x.Surplus,
+            x.Shares.Select(sh => (sh.PartnerName, sh.SharePercent, sh.Amount)), null);
+
+    public static async Task<ReportDocument?> ReconciliationAsync(AppSession s, ProjectDbContext db, int reconId)
+    {
+        var svc = new ReconciliationService(db);
+        var x = await svc.GetAsync(reconId);
+        if (x is null) return null;
+        var shares = await svc.GetSharesAsync(reconId);
+        var assets = x.RawMaterialsValue + x.WorkInProcessValue + x.FinishedGoodsValue + x.CustomerDebts + x.CashInBoxes + x.CashWithReps + x.EmployeeAdvances + x.SupplierAdvances;
+        return BuildReconciliation(s, "مطابقة الموجودات", null, x.ReconNumber, x.ReconDate, x.FinishedGoodsValuation,
+            x.Lines.OrderBy(l => l.Id).Select(l => (l.Section, l.Description, l.Quantity, l.UnitValue, l.Value)), assets, x.SupplierDebts + x.CustomerDeposits,
+            x.NetAssets, x.PreviousReconciliation?.ReconNumber, x.PreviousNetAssets, x.PartnerWithdrawalsSincePrevious, x.OwnerDepositsSincePrevious,
+            x.IsBaseline, x.Surplus, shares.Select(t => (t.Partner.Name, t.SharePercent ?? 0, t.Amount)), x.Notes);
+    }
+
+    public static async Task<ReportDocument?> PartnerStatementAsync(AppSession s, ProjectDbContext db, int partnerId)
+    {
+        var p = await db.Partners.AsNoTracking().FirstOrDefaultAsync(x => x.Id == partnerId);
+        if (p is null) return null;
+        var rows = await new ReconciliationService(db).GetPartnerStatementAsync(partnerId);
+        var r = New(s, "كشف حساب شريك");
+        r.Field("الشريك", p.Name).Field("النسبة", $"{p.SharePercent:0.##}%").Field("الصفة", p.IsManager ? "المدير" : null);
+        r.Columns.AddRange(new[] { "التاريخ", "النوع", "الرقم", "المرجع", "له", "عليه", "الرصيد", "ملاحظات" });
+        foreach (var x in rows)
+            r.Rows.Add(new[] { x.TxDate.ToString("yyyy/MM/dd"), x.KindText, x.TxNumber, x.Reference ?? "", x.Credit == 0 ? "" : N(x.Credit),
+                               x.Debit == 0 ? "" : N(x.Debit), N(x.Balance), x.Notes ?? "" });
+        r.Total("مجموع الأرباح المستحقة", $"{N(rows.Sum(x => x.Credit))} د.ع").Total("مجموع المسحوب والخسائر", $"{N(rows.Sum(x => x.Debit))} د.ع")
+         .Total("الرصيد المتبقي للشريك", $"{N(rows.LastOrDefault()?.Balance ?? 0)} د.ع", true);
+        r.Signatures.AddRange(new[] { "الشريك", "المحاسب" });
+        return r;
+    }
+
+    public static async Task<ReportDocument?> PartnerWithdrawalAsync(AppSession s, ProjectDbContext db, int txId)
+    {
+        var t = await db.PartnerTransactions.AsNoTracking().Include(x => x.Partner).Include(x => x.CreatedByUser).FirstOrDefaultAsync(x => x.Id == txId);
+        if (t is null) return null;
+        var balance = await db.PartnerTransactions.Where(x => x.PartnerId == t.PartnerId && x.Id <= t.Id).SumAsync(x => x.Amount);
+        var r = new ReportDocument { CompanyName = s.ProjectName, Title = "سند سحب أرباح شريك", PrintedBy = s.FullName, Notes = t.Notes, Key = "PartnerWithdrawal", ReceiptCapable = true };
+        r.Field("الرقم", t.TxNumber).Field("التاريخ", t.TxDate.ToString("yyyy/MM/dd")).Field("الشريك", t.Partner.Name).Field("المستخدم", t.CreatedByUser.Username);
+        r.Total("المبلغ", $"{N(-t.Amount)} د.ع", true).Total("المبلغ كتابةً", ArabicNumberWords.Amount(-t.Amount)).Total("رصيد الشريك بعد السحب", $"{N(balance)} د.ع");
+        r.Signatures.AddRange(new[] { "المستلم (الشريك)", "أمين الصندوق" });
+        return r;
+    }
+
     // ============================ المبيعات ============================
 
     public static async Task<ReportDocument?> SalesInvoiceAsync(AppSession s, ProjectDbContext db, int invoiceId)

@@ -88,6 +88,8 @@
                         <ComboBox ItemsSource="{Binding SourcingOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Editor.SourcingMethod}"/>
                         <TextBlock Text="سعر البيع للقطعة (د.ع)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.SalePrice, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <TextBlock Text="سعر الكلفة للقطعة (د.ع) — يُحدَّث من آخر شراء" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.CostPrice, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                         <TextBlock Text="حد التنبيه الأدنى (قطعة)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.MinStockAlertLevel, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                         <CheckBox Content="فعّال" IsChecked="{Binding Editor.IsActive}"/>

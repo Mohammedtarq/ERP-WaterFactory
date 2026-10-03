@@ -727,4 +727,74 @@ public class ScreenFlowTests
         Assert.Equal(before, dep.Balance);
         Assert.Empty(_f.Unhandled);
     }
+    [Fact]
+    public async Task Reconciliation_screen_valuation_choice_partners_and_baseline()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var fin = shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);
+        await fin.IdleAsync();
+
+        // الشركاء: تُضاف يدويًا بنسب مختلفة، ومحمد المدير
+        var partners = fin.Partners;
+        await Open(fin, partners);
+        Assert.Contains("لا يوجد شركاء", partners.PercentHint);
+        async Task AddPartner(string name, decimal percent, bool manager)
+        {
+            partners.NewCommand.Execute(null);
+            partners.Name = name;
+            partners.SharePercent = percent;
+            partners.IsManager = manager;
+            await partners.SaveCommand.ExecuteAsync();
+        }
+        await AddPartner("محمد", 50, true);
+        await AddPartner("شريك ب", 30, false);
+        Assert.Contains("80%", partners.PercentHint);
+        await AddPartner("شريك ج", 30, false);                       // يتجاوز 100%
+        Assert.Contains(dialogs.Errors, e => e.Contains("المتاح 20%"));
+        dialogs.Errors.Clear();
+        partners.SharePercent = 20;
+        await partners.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal("مجموع النسب 100% ✓", partners.PercentHint);
+        Assert.True(partners.Partners.Single(p => p.Name == "محمد").IsManager);
+
+        // المطابقة: المنتج التام بسعر الكلفة أو بسعر البيع
+        var rec = fin.Reconciliation;
+        await Open(fin, rec);
+        await rec.ComputeCommand.ExecuteAsync();
+        Assert.True(rec.HasSnapshot);
+        var atCost = rec.Snapshot!;
+        rec.Valuation = rec.Valuations.Single(v => v.Value == FinishedGoodsValuation.SalePrice);
+        await rec.IdleAsync();
+        var atSale = rec.Snapshot!;
+        Assert.Equal(FinishedGoodsValuation.SalePrice, atSale.Valuation);
+        Assert.Equal(atCost.RawMaterials, atSale.RawMaterials);                // المواد الأولية بالكلفة دائمًا
+        Assert.Equal(atCost.CustomerDebts, atSale.CustomerDebts);
+        Assert.Contains(rec.Lines, l => l.Section == Data.Services.ReconciliationService.FgSection && l.Description.Contains("W500") && l.UnitValue == 250);
+        rec.PrintPreviewCommand.Execute(null);
+        Assert.Equal("معاينة — غير معتمدة", dialogs.Reports.Last().Stamp);
+        Assert.Contains(dialogs.Reports.Last().HeaderFields, f => f.Label == "تقييم المنتج التام" && f.Value == "بسعر البيع");
+
+        // أول مطابقة = أساس، تُطبع بعد الاعتماد
+        Assert.True(atSale.IsBaseline);
+        Assert.Equal("مطابقة أساس", rec.SurplusLabel);
+        await rec.PostCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        var saved = Assert.Single(rec.History);
+        Assert.True(saved.IsBaseline);
+        Assert.Equal("مطابقة الموجودات", dialogs.Reports.Last().Title);
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الفائض" && t.Value.Contains("أساس"));
+
+        // لا أرباح بعد ← السحب مرفوض، وكشف الشريك فارغ
+        await Open(fin, partners);
+        partners.Selected = partners.Partners.Single(p => p.Name == "محمد");
+        await partners.IdleAsync();
+        Assert.Empty(partners.Statement);
+        partners.Amount = 1_000;
+        await partners.WithdrawCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("رصيد أرباح محمد 0"));
+        await partners.PrintStatementCommand.ExecuteAsync();
+        Assert.Equal("كشف حساب شريك", dialogs.Reports.Last().Title);
+        Assert.Empty(_f.Unhandled);
+    }
 }

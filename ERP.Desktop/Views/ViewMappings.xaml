@@ -184,6 +184,8 @@
     <DataTemplate DataType="{x:Type vmFinance:ChartOfAccountsSectionViewModel}"><vFinance:ChartOfAccountsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:JournalEntriesSectionViewModel}"><vFinance:JournalEntriesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:VouchersSectionViewModel}"><vFinance:VouchersSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:ReconciliationSectionViewModel}"><vFinance:ReconciliationSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:PartnersSectionViewModel}"><vFinance:PartnersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:MappingRulesSectionViewModel}"><vFinance:MappingRulesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:ExchangeRatesSectionViewModel}"><vFinance:ExchangeRatesSectionView/></DataTemplate>
 
