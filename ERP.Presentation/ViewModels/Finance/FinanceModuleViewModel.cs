@@ -283,8 +283,11 @@ public class VouchersSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         MappingRules.Clear();
-        foreach (var r in await db.AccountMappingRules.AsNoTracking().Include(r => r.DebitAccount).Include(r => r.CreditAccount)
-                     .OrderBy(r => r.TransactionType).ToListAsync())
+        // الأكثر استخدامًا في السندات أولًا، ثم البقية بالاسم العربي
+        var common = new[] { "CashReceiptVoucher", "CashPaymentVoucher", "SupplierPaymentVoucher", "SupplierAdvancePayment" };
+        foreach (var r in (await db.AccountMappingRules.AsNoTracking().Include(r => r.DebitAccount).Include(r => r.CreditAccount).ToListAsync())
+                     .OrderBy(r => Array.IndexOf(common, r.TransactionType) is var i && i >= 0 ? i : common.Length)
+                     .ThenBy(r => r.DisplayName, StringComparer.Ordinal))
             MappingRules.Add(r);
         SuggestRule();
         await LoadPartiesAsync();
@@ -363,24 +366,12 @@ public class MappingRulesSectionViewModel : CrudSectionViewModel<AccountMappingR
     public ObservableCollection<ChartOfAccount> Accounts { get; } = new();
 
     /// <summary>أنواع العمليات التي يستخدمها النظام فعليًا، مع شرح كل واحدة.</summary>
-    public IReadOnlyList<Option<string>> KnownTypes { get; } = new[]
-    {
-        new Option<string>("CashReceiptVoucher", "CashReceiptVoucher — سند قبض نقدي"),
-        new Option<string>("CashPaymentVoucher", "CashPaymentVoucher — سند صرف نقدي"),
-        new Option<string>("SupplierAdvancePayment", "SupplierAdvancePayment — دفعة مقدمة لمورد"),
-        new Option<string>("GoodsReceiptOnAccount", "GoodsReceiptOnAccount — استلام بضاعة على الحساب"),
-        new Option<string>("SupplierAdvanceOffset", "SupplierAdvanceOffset — تسوية دفعة مقدمة"),
-        new Option<string>("SalesInvoiceCash", "SalesInvoiceCash — فاتورة مبيعات نقدية"),
-        new Option<string>("SalesInvoiceCredit", "SalesInvoiceCredit — فاتورة مبيعات آجلة"),
-        new Option<string>("SalesInvoiceElectronic", "SalesInvoiceElectronic — فاتورة دفع إلكتروني"),
-        new Option<string>("SalesInvoiceRepCash", "SalesInvoiceRepCash — نقد مندوب (كاش فان)"),
-        new Option<string>("SalesTax", "SalesTax — ضريبة المبيعات (الدائن فقط)"),
-        new Option<string>("LoadingSuppliesCharge", "LoadingSuppliesCharge — مستلزمات التحميل (الدائن فقط)"),
-    };
+    public IReadOnlyList<Option<string>> KnownTypes { get; } = Data.Setup.DefaultConfiguration.Rules
+        .Select(r => new Option<string>(r.type, RuleNames.Of(r.type))).OrderBy(o => o.Label, StringComparer.Ordinal).ToList();
 
     public IEnumerable<string> MissingTypes =>
         KnownTypes.Select(k => k.Value).Where(t => Items.All(r => r.TransactionType != t));
-    public string MissingText => MissingTypes.Any() ? "قواعد غير معرّفة بعد: " + string.Join("، ", MissingTypes) : "كل القواعد المطلوبة معرّفة ✓";
+    public string MissingText => MissingTypes.Any() ? "قواعد غير معرّفة بعد: " + string.Join("، ", MissingTypes.Select(RuleNames.Of)) : "كل القواعد المطلوبة معرّفة ✓";
 
     protected override int GetId(AccountMappingRule e) => e.Id;
     protected override string Describe(AccountMappingRule e) => e.TransactionType;
@@ -393,8 +384,8 @@ public class MappingRulesSectionViewModel : CrudSectionViewModel<AccountMappingR
 
     protected override async Task<List<AccountMappingRule>> QueryAsync(ProjectDbContext db)
     {
-        var list = await db.AccountMappingRules.AsNoTracking().Include(r => r.DebitAccount).Include(r => r.CreditAccount)
-            .OrderBy(r => r.TransactionType).ToListAsync();
+        var list = (await db.AccountMappingRules.AsNoTracking().Include(r => r.DebitAccount).Include(r => r.CreditAccount).ToListAsync())
+            .OrderBy(r => r.DisplayName, StringComparer.Ordinal).ToList();
         OnPropertyChanged(nameof(MissingText));
         return list;
     }

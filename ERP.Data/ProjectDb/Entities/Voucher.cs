@@ -34,6 +34,10 @@ public class AccountMappingRule
     public int Id { get; set; }
     public string TransactionType { get; set; } = string.Empty;  // مثال: "CashReceiptVoucher"
 
+    /// <summary>الاسم العربي لنوع العملية (للعرض فقط).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string DisplayName => Services.RuleNames.Of(TransactionType);
+
     public int DebitAccountId { get; set; }
     public ChartOfAccount DebitAccount { get; set; } = null!;
 

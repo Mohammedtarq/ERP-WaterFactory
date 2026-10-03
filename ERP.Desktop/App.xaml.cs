@@ -62,9 +62,27 @@ public partial class App : Application
     private void ShowUnexpected(Exception ex)
     {
         var root = ex.GetBaseException();
+        var where = root.TargetSite is { } site ? $"{site.DeclaringType?.Name}.{site.Name}" : root.GetType().Name;
+        var log = LogError(ex);
         var hint = root is SqlException
             ? "تحقق من اتصال قاعدة البيانات، ثم أعد المحاولة."
-            : "أرسل نص هذه الرسالة كاملًا للدعم الفني.";
-        _dialogs.Error($"حدث خطأ غير متوقع:\n{root.Message}\n\n{hint}");
+            : "أرسل صورة هذه الرسالة للدعم الفني، ومعها ملف التفاصيل إن أمكن.";
+        _dialogs.Error($"حدث خطأ غير متوقع:\n{root.Message}\nالموضع: {where}\n\n{hint}" + (log is null ? "" : $"\n\nالتفاصيل محفوظة في:\n{log}"));
+    }
+
+    /// <summary>يحفظ التفاصيل الكاملة (مكان الخطأ في الكود) لتشخيصه — آخر 200 KB فقط.</summary>
+    private static string? LogError(Exception ex)
+    {
+        try
+        {
+            var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ERP-WaterFactory");
+            System.IO.Directory.CreateDirectory(dir);
+            var path = System.IO.Path.Combine(dir, "errors.log");
+            if (System.IO.File.Exists(path) && new System.IO.FileInfo(path).Length > 200_000) System.IO.File.Delete(path);
+            var version = typeof(App).Assembly.GetName().Version;
+            System.IO.File.AppendAllText(path, $"===== {DateTime.Now:yyyy/MM/dd HH:mm:ss} (v{version}) =====\n{ex}\n\n");
+            return path;
+        }
+        catch (Exception) { return null; }
     }
 }

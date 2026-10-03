@@ -28,7 +28,7 @@
                     <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
                     <DatePicker SelectedDate="{Binding VoucherDate}"/>
                     <TextBlock Text="نوع العملية (العقل المالي)" Style="{StaticResource FieldLabel}"/>
-                    <ComboBox ItemsSource="{Binding MappingRules}" SelectedItem="{Binding MappingRule}" DisplayMemberPath="TransactionType" FlowDirection="LeftToRight"/>
+                    <ComboBox ItemsSource="{Binding MappingRules}" SelectedItem="{Binding MappingRule}" DisplayMemberPath="DisplayName"/>
                     <Border Background="#F5F3FF" CornerRadius="6" Padding="10,8" Margin="0,8,0,0">
                         <TextBlock Text="{Binding RulePreview}" Foreground="#6D28D9" TextWrapping="Wrap" FontSize="12"/>
                     </Border>

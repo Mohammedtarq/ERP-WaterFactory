@@ -37,7 +37,7 @@
 
                 <DataGrid ItemsSource="{Binding Items}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="نوع العملية" Binding="{Binding TransactionType}" Width="200"/>
+                        <DataGridTextColumn Header="نوع العملية" Binding="{Binding DisplayName}" Width="230"/>
                         <DataGridTextColumn Header="الحساب المدين" Binding="{Binding DebitAccount.AccountName}" Width="*"/>
                         <DataGridTextColumn Header="الحساب الدائن" Binding="{Binding CreditAccount.AccountName}" Width="*"/>
                         <DataGridTemplateColumn Header="" Width="84">
@@ -75,7 +75,7 @@
                     <StackPanel>
                         <TextBlock Text="نوع العملية" Style="{StaticResource FieldLabel}"/>
                         <ComboBox ItemsSource="{Binding KnownTypes}" DisplayMemberPath="Label" SelectedValuePath="Value"
-                                  IsEditable="True" Text="{Binding Editor.TransactionType}" FlowDirection="LeftToRight"/>
+                                  SelectedValue="{Binding Editor.TransactionType}"/>
                         <TextBlock Text="الحساب المدين" Style="{StaticResource FieldLabel}"/>
                         <ComboBox ItemsSource="{Binding Accounts}" DisplayMemberPath="AccountName" SelectedValuePath="Id" SelectedValue="{Binding Editor.DebitAccountId}"/>
                         <TextBlock Text="الحساب الدائن" Style="{StaticResource FieldLabel}"/>
