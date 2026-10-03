@@ -28,13 +28,13 @@
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
                 <DataGrid ItemsSource="{Binding Orders}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="80"/>
+                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="80" MinWidth="80"/>
                         <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="1.4*" MinWidth="130"/>
                         <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="*" MinWidth="80"/>
-                        <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="90"/>
+                        <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="90" MinWidth="90"/>
                         <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityToProduce, StringFormat=N0}" Width="60"/>
                         <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="60"/>
-                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="125"/>
+                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="125" MinWidth="120"/>
                         <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.8*" MinWidth="190"/>
                         <DataGridTemplateColumn Header="" Width="180">
                             <DataGridTemplateColumn.CellTemplate>
