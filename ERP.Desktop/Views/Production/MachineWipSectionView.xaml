@@ -47,7 +47,7 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="التاريخ" Binding="{Binding ChangedAt, StringFormat='yyyy/MM/dd HH:mm'}" Width="120"/>
                             <DataGridTextColumn Header="الماكينة" Binding="{Binding Machine.Name}" Width="100"/>
-                            <DataGridTextColumn Header="المادة" Binding="{Binding Item.ItemName}" Width="*"/>
+                            <DataGridTextColumn Header="المادة" Binding="{Binding Item.ItemName}" Width="*" MinWidth="130"/>
                             <DataGridTextColumn Header="النوع" Binding="{Binding Kind, Converter={StaticResource EnumArabicConverter}}" Width="80"/>
                             <DataGridTextColumn Header="قبل" Binding="{Binding BeforeQuantity, StringFormat=N0}" Width="70"/>
                             <DataGridTextColumn Header="بعد" Binding="{Binding AfterQuantity, StringFormat=N0}" Width="70"/>
@@ -76,7 +76,7 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="110"/>
                             <DataGridTextColumn Header="النوع" Binding="{Binding MachineType}" Width="80"/>
-                            <DataGridTextColumn Header="المادة الأولية" Binding="{Binding RawItemName}" Width="*"/>
+                            <DataGridTextColumn Header="المادة الأولية" Binding="{Binding RawItemName}" Width="*" MinWidth="130"/>
                             <DataGridTextColumn Header="المنتج" Binding="{Binding ProductsText}" Width="120"/>
                             <DataGridTextColumn Header="المرحّل" Binding="{Binding CarriedOver, StringFormat=N0}" Width="80"/>
                             <DataGridTextColumn Header="المصروف" Binding="{Binding Issued, StringFormat=N0}" Width="80"/>

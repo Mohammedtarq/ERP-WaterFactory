@@ -157,12 +157,12 @@
                         <Border Style="{StaticResource Card}" Padding="0">
                             <DataGrid ItemsSource="{Binding Lines}" IsReadOnly="True" BorderThickness="0">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="80"/>
-                                    <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
-                                    <DataGridTextColumn Header="الوحدة" Binding="{Binding LevelName}" Width="90"/>
-                                    <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityInLevel, StringFormat=N0}" Width="80"/>
-                                    <DataGridTextColumn Header="بالقطعة" Binding="{Binding Pieces, StringFormat=N0}" Width="90"/>
-                                    <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchLabel}" Width="220"/>
+                                    <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="95"/>
+                                    <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="2*" MinWidth="130"/>
+                                    <DataGridTextColumn Header="الوحدة" Binding="{Binding LevelName}" Width="60"/>
+                                    <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityInLevel, StringFormat=N0}" Width="70"/>
+                                    <DataGridTextColumn Header="بالقطعة" Binding="{Binding Pieces, StringFormat=N0}" Width="70"/>
+                                    <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchLabel}" Width="1.6*" MinWidth="130"/>
                                     <DataGridTemplateColumn Header="" Width="46">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>

@@ -35,14 +35,14 @@
 
                 <DataGrid ItemsSource="{Binding Items}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="90"/>
-                        <DataGridTextColumn Header="اسم الصنف" Binding="{Binding ItemName}" Width="*"/>
-                        <DataGridTextColumn Header="الباركود" Binding="{Binding BarCode}" Width="130"/>
-                        <DataGridTextColumn Header="الوحدة" Binding="{Binding BaseUnitName}" Width="70"/>
-                        <DataGridTextColumn Header="المصدر" Binding="{Binding SourcingMethod, Converter={StaticResource EnumArabicConverter}}" Width="100"/>
-                        <DataGridTextColumn Header="سعر البيع" Binding="{Binding SalePrice, StringFormat=N0}" Width="90"/>
-                        <DataGridTextColumn Header="حد التنبيه" Binding="{Binding MinStockAlertLevel, StringFormat=N0}" Width="80"/>
-                        <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="50"/>
+                        <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="95"/>
+                        <DataGridTextColumn Header="اسم الصنف" Binding="{Binding ItemName}" Width="2*" MinWidth="130"/>
+                        <DataGridTextColumn Header="الباركود" Binding="{Binding BarCode}" Width="*"/>
+                        <DataGridTextColumn Header="الوحدة" Binding="{Binding BaseUnitName}" Width="55"/>
+                        <DataGridTextColumn Header="المصدر" Binding="{Binding SourcingMethod, Converter={StaticResource EnumArabicConverter}}" Width="65"/>
+                        <DataGridTextColumn Header="سعر البيع" Binding="{Binding SalePrice, StringFormat=N0}" Width="75"/>
+                        <DataGridTextColumn Header="حد التنبيه" Binding="{Binding MinStockAlertLevel, StringFormat=N0}" Width="70"/>
+                        <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="45"/>
                         <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>

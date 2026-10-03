@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
@@ -71,6 +72,8 @@ public class TutorialTests
             async Task Shot(string name, ViewModelBase? busy = null)
             {
                 if (busy is not null) await busy.IdleAsync();
+                await UiThread.SettleAsync();
+                RefreshBindings(main);
                 await UiThread.SettleAsync();
                 Assert.True(dialogs.Errors.Count == 0, $"قبل الصورة {name}: " + string.Join(" | ", dialogs.Errors));
                 shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{Dir}/{name}.png"));
@@ -250,6 +253,21 @@ public class TutorialTests
         Assert.Equal(27, shots.Count);
         Assert.Empty(dialogs.Errors);
         lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
+    }
+
+    /// <summary>
+    /// نماذج التحرير مرتبطة بالكيان نفسه (بلا إشعار تغيير)، فما يكتبه المستخدم يصل للكيان مباشرة،
+    /// أما ما يضبطه الاختبار برمجيًا فلا يظهر في الحقول. نعيد قراءة كل الربطات قبل التصوير لتطابق الصورة ما سيُحفَظ.
+    /// </summary>
+    private static void RefreshBindings(DependencyObject root)
+    {
+        foreach (var d in Descendants<FrameworkElement>(root).Prepend((FrameworkElement)root))
+        {
+            var values = d.GetLocalValueEnumerator();
+            while (values.MoveNext())
+                if (BindingOperations.GetBindingExpressionBase(d, values.Current.Property) is { } expression)
+                    expression.UpdateTarget();
+        }
     }
 
     /// <summary>يختار تبويبًا داخليًا (مثل "الأرصدة الحالية") في الشاشة الظاهرة.</summary>

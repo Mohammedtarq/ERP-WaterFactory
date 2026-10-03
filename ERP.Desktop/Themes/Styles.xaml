@@ -241,6 +241,8 @@
         <Setter Property="CanUserAddRows" Value="False"/>
         <Setter Property="CanUserDeleteRows" Value="False"/>
         <Setter Property="IsReadOnly" Value="True"/>
+        <!-- عند ضيق المساحة يقلّص DataGrid حتى الأعمدة الثابتة إلى 20 بكسل فتصبح غير مقروءة؛ الحد الأدنى يُظهر شريط تمرير أفقي بدلًا من ذلك -->
+        <Setter Property="MinColumnWidth" Value="48"/>
         <Setter Property="HeadersVisibility" Value="Column"/>
         <Setter Property="GridLinesVisibility" Value="Horizontal"/>
         <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource BorderBrush}"/>
