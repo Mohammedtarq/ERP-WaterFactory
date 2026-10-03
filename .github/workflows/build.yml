@@ -73,6 +73,18 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
+      - name: فحص صياغة سكربتات PowerShell على Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $bad = 0
+          Get-ChildItem tools -Recurse -Filter *.ps1 | ForEach-Object {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
+            if ($errs) { $bad++; $errs | ForEach-Object { Write-Host "$($_.Extent.File):$($_.Extent.StartLineNumber) $($_.Message)" } }
+            $bytes = [IO.File]::ReadAllBytes($_.FullName)
+            if (-not ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)) { $bad++; Write-Host "$($_.Name): missing UTF-8 BOM" }
+          }
+          if ($bad) { exit 1 }
       - name: النشر (self-contained win-x64)
         shell: pwsh
         run: ./tools/publish.ps1
