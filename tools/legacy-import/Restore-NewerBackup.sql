@@ -21,18 +21,24 @@ CREATE TABLE #Files (
     UniqueId UNIQUEIDENTIFIER, ReadOnlyLSN NUMERIC(25,0), ReadWriteLSN NUMERIC(25,0), BackupSizeInBytes BIGINT,
     SourceBlockSize INT, FileGroupId INT, LogGroupGUID UNIQUEIDENTIFIER, DifferentialBaseLSN NUMERIC(25,0),
     DifferentialBaseGUID UNIQUEIDENTIFIER, IsReadOnly BIT, IsPresent BIT, TDEThumbprint VARBINARY(32), SnapshotUrl NVARCHAR(360));
-DECLARE @ReadError NVARCHAR(2000) = NULL;
-BEGIN TRY
-    INSERT INTO #Files EXEC (N'RESTORE FILELISTONLY FROM DISK = N''' + @BackupFile + N'''');
-END TRY
-BEGIN CATCH
-    SET @ReadError = ERROR_MESSAGE();
-END CATCH;
+-- 1) هل الملف موجود ويستطيع SQL Server رؤيته؟ (xp_fileexist يرى الملفات بصلاحيات خدمة SQL Server)
+DECLARE @Exists INT = 0;
+EXEC master.dbo.xp_fileexist @BackupFile, @Exists OUTPUT;
+IF @Exists = 0
+BEGIN
+    DECLARE @Missing NVARCHAR(1200) = N'SQL Server لا يجد الملف: ' + @BackupFile + NCHAR(13) + NCHAR(10) +
+        N'تأكد من الاسم والامتداد (قد يكون الاسم الفعلي ALRAHMA.bak.bak إن كانت الامتدادات مخفية)، وأن الملف داخل C:\RahmaBackup';
+    RAISERROR(@Missing, 16, 1);
+    DROP TABLE #Files;
+    RETURN;
+END;
+
+-- 2) قراءة محتويات النسخة (رسائل SQL Server الأصلية تظهر كما هي إن فشلت)
+INSERT INTO #Files EXEC (N'RESTORE FILELISTONLY FROM DISK = N''' + @BackupFile + N'''');
 IF NOT EXISTS (SELECT 1 FROM #Files)
 BEGIN
-    -- رسالة SQL Server الأصلية تحدد السبب: الملف غير موجود (error 2) أو لا صلاحية لقراءته (error 5) أو ليس نسخة صالحة
-    DECLARE @Msg NVARCHAR(2400) = N'تعذّر قراءة ملف النسخة: ' + @BackupFile + NCHAR(13) + NCHAR(10) +
-                                 N'السبب من SQL Server: ' + ISNULL(@ReadError, N'غير معروف');
+    DECLARE @Msg NVARCHAR(1200) = N'الملف موجود لكن تعذّرت قراءته كنسخة احتياطية: ' + @BackupFile +
+        N' — انظر رسائل SQL Server أعلاه (Operating system error 5 = لا صلاحية: انقل الملف إلى مجلد Backup الخاص بـ SQL Server)';
     RAISERROR(@Msg, 16, 1);
     DROP TABLE #Files;
     RETURN;
