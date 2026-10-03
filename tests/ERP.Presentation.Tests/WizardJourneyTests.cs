@@ -201,6 +201,59 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.True(fleet.HasAlerts);
         Assert.Contains("سنوية كيا بونكو", fleet.AlertsText);
 
+        // طلب تحميل من مدير المبيعات ← حفظه حمولة افتراضية ← تجهيز أمين المخزن بأقل من المطلوب
+        var loads = reps.LoadOrders;
+        await Open(reps, loads);
+        Assert.NotNull(loads.Van);
+        var loadLine = Assert.Single(loads.Lines);
+        loadLine.Product = loads.Products.Single(i => i.ItemCode == "W-500");
+        Assert.Equal("كارتون", loadLine.Level!.LevelName);
+        loadLine.Quantity = 5;
+        Assert.Equal(60m, loads.TotalPieces);
+        await loads.SaveDefaultCommand.ExecuteAsync();
+        await loads.CreateCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(1, loads.PendingCount);
+        await loads.IdleAsync();
+        Assert.True(loads.CanPrepare);
+        Assert.Equal(5m, Assert.Single(loads.PrepareLines).Prepared);
+        loads.PrepareLines[0].Prepared = 4;
+        await loads.PrepareCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(0, loads.PendingCount);
+        Assert.StartsWith("RL-", loads.Orders.Single().DocumentNumber);
+        loads.Lines.Clear();
+        await loads.UseDefaultCommand.ExecuteAsync();                // الحمولة الافتراضية محفوظة
+        Assert.Equal(5m, Assert.Single(loads.Lines).Quantity);
+
+        // التسوية: مرتجع ما جُهّز (4 كراتين سليمة)، مصروف وقود، وتسليم كل النقد
+        var settle = reps.Settlement;
+        await Open(reps, settle);
+        Assert.Equal(168m, settle.VanPieces);                         // 120 + 48
+        Assert.Equal(5000m, settle.WalletBalance);
+        settle.InvoiceRemaining = true;
+        await settle.SaveCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("العميل"));
+        dialogs.Errors.Clear();
+        settle.InvoiceRemaining = false;
+        settle.LineItem = settle.ItemsLookup.Single(i => i.ItemCode == "W-500");
+        await settle.IdleAsync();
+        settle.LineQuantity = 4;
+        settle.AddReturnCommand.Execute(null);
+        settle.ExpenseAmount = 1000;
+        settle.ExpenseDescription = "وقود";
+        settle.AddExpenseCommand.Execute(null);
+        Assert.Equal(4000m, settle.ExpectedBeforeInvoice);
+        settle.ReceivedCash = 4000;
+        await settle.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        var settled = Assert.Single(settle.History);
+        Assert.Equal((48m, 1000m, 4000m, 0m), (settled.ReturnedPieces, settled.FieldExpenses, settled.ReceivedCash, settled.Difference));
+        Assert.Equal(120m, settle.VanPieces);
+        Assert.Equal(0m, settle.WalletBalance);
+        await settle.PrintCommand.ExecuteAsync(settled);
+        Assert.StartsWith("تسوية مندوب", dialogs.Reports.Last().Title);
+
         // ---------------- 5) الإنتاج: أمر ← تشغيل ← مختبر ← تعبئة ----------------
         var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
         var orders = prod.Orders;

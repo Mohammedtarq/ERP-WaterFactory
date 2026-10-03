@@ -119,6 +119,13 @@ public partial class ProjectDbContext : DbContext
     public DbSet<FreeIssueBeneficiary> FreeIssueBeneficiaries => Set<FreeIssueBeneficiary>();
     public DbSet<PendingProductionShortage> PendingProductionShortages => Set<PendingProductionShortage>();
 
+    // ---- المندوبون: التحميل والتسوية (30_rep_loads_settlement.sql) ----
+    public DbSet<RepDefaultLoad> RepDefaultLoads => Set<RepDefaultLoad>();
+    public DbSet<RepLoadOrder> RepLoadOrders => Set<RepLoadOrder>();
+    public DbSet<RepLoadOrderLine> RepLoadOrderLines => Set<RepLoadOrderLine>();
+    public DbSet<RepSettlement> RepSettlements => Set<RepSettlement>();
+    public DbSet<RepFreeGood> RepFreeGoods => Set<RepFreeGood>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Employee>()
@@ -316,6 +323,8 @@ public partial class ProjectDbContext : DbContext
 
         // ================= المبيعات والعملاء =================
         modelBuilder.Entity<Customer>().Property(c => c.CustomerType).HasConversion<string>();
+        modelBuilder.Entity<Customer>().Property(c => c.CreditLimit).HasPrecision(18, 2);
+        modelBuilder.Entity<SalesInvoiceLine>().Property(l => l.ListUnitPrice).HasPrecision(18, 2);
         modelBuilder.Entity<Customer>().HasOne(c => c.ParentAgent).WithMany().HasForeignKey(c => c.ParentAgentId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<AgentItemPrice>().HasIndex(a => new { a.CustomerId, a.ItemId }).IsUnique();
@@ -371,6 +380,7 @@ public partial class ProjectDbContext : DbContext
 
         // ================= المندوبون =================
         modelBuilder.Entity<RepWalletTransaction>().HasOne(w => w.Employee).WithMany().HasForeignKey(w => w.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<RepWalletTransaction>().HasOne(w => w.Vehicle).WithMany().HasForeignKey(w => w.VehicleId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<RepTerritory>().HasIndex(t => new { t.EmployeeId, t.TerritoryName }).IsUnique();
         modelBuilder.Entity<RepTerritory>().HasOne(t => t.Employee).WithMany().HasForeignKey(t => t.EmployeeId).OnDelete(DeleteBehavior.Restrict);
@@ -587,6 +597,53 @@ public partial class ProjectDbContext : DbContext
             e.HasOne(p => p.Warehouse).WithMany().HasForeignKey(p => p.WarehouseId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.SalesInvoice).WithMany().HasForeignKey(p => p.SalesInvoiceId).OnDelete(DeleteBehavior.Restrict);
             e.Ignore(p => p.Open);
+        });
+        modelBuilder.Entity<RepDefaultLoad>(e =>
+        {
+            e.Property(l => l.QuantityInLevel).HasPrecision(18, 3);
+            e.HasOne(l => l.RepEmployee).WithMany().HasForeignKey(l => l.RepEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.PackagingLevel).WithMany().HasForeignKey(l => l.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<RepLoadOrder>(e =>
+        {
+            e.Property(o => o.Status).HasConversion<string>();
+            e.Property(o => o.LoadDate).HasColumnType("date");
+            e.HasOne(o => o.RepEmployee).WithMany().HasForeignKey(o => o.RepEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(o => o.VanWarehouse).WithMany().HasForeignKey(o => o.VanWarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(o => o.FromWarehouse).WithMany().HasForeignKey(o => o.FromWarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(o => o.RequestedByUser).WithMany().HasForeignKey(o => o.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(o => o.PreparedByUser).WithMany().HasForeignKey(o => o.PreparedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(o => o.StockDocument).WithMany().HasForeignKey(o => o.StockDocumentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(o => o.Lines).WithOne(l => l.RepLoadOrder).HasForeignKey(l => l.RepLoadOrderId);
+        });
+        modelBuilder.Entity<RepLoadOrderLine>(e =>
+        {
+            e.Property(l => l.QuantityInLevel).HasPrecision(18, 3);
+            e.Property(l => l.PreparedQuantity).HasPrecision(18, 3);
+            e.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.PackagingLevel).WithMany().HasForeignKey(l => l.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<RepSettlement>(e =>
+        {
+            e.Property(x => x.SettlementDate).HasColumnType("date");
+            foreach (var p in new[] { nameof(RepSettlement.ReturnedPieces), nameof(RepSettlement.FreePieces) }) e.Property(p).HasPrecision(18, 3);
+            foreach (var p in new[] { nameof(RepSettlement.FreeCost), nameof(RepSettlement.FieldExpenses), nameof(RepSettlement.ExpectedCash),
+                                      nameof(RepSettlement.ReceivedCash), nameof(RepSettlement.Difference) }) e.Property(p).HasPrecision(18, 2);
+            e.HasOne(x => x.RepEmployee).WithMany().HasForeignKey(x => x.RepEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.VanWarehouse).WithMany().HasForeignKey(x => x.VanWarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ReturnDocument).WithMany().HasForeignKey(x => x.ReturnDocumentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.AutoInvoice).WithMany().HasForeignKey(x => x.AutoInvoiceId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(x => x.FreeGoods).WithOne(f => f.RepSettlement).HasForeignKey(f => f.RepSettlementId);
+            e.ToTable(tb => tb.HasTrigger("trg_RepSettlements_PeriodLock"));
+        });
+        modelBuilder.Entity<RepFreeGood>(e =>
+        {
+            e.Property(f => f.QuantityBaseUnits).HasPrecision(18, 3);
+            e.Property(f => f.UnitCost).HasPrecision(18, 4);
+            e.HasOne(f => f.Item).WithMany().HasForeignKey(f => f.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(f => f.Customer).WithMany().HasForeignKey(f => f.CustomerId).OnDelete(DeleteBehavior.Restrict);
         });
         // محرك الكلفة (28_costing_purchasing.sql): الحركة المخزنية تأخذ كلفتها من مشغّل
         modelBuilder.Entity<StockTransaction>().ToTable(tb => tb.HasTrigger("trg_StockTransactions_Cost"));

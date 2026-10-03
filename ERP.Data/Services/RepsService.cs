@@ -51,7 +51,7 @@ public class RepsService
         if (lines.Count == 0) return FinanceOperationResult.Fail("أضف صنفًا واحدًا على الأقل");
         if (fromId == toId) return FinanceOperationResult.Fail("المخزن المصدر والهدف متطابقان");
 
-        await using var tx = await _db.Database.BeginTransactionAsync();
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
         foreach (var line in lines.GroupBy(l => (l.ItemId, l.BatchId)).Select(g => new StockLineInput(g.Key.ItemId, g.Key.BatchId, g.Sum(x => x.Quantity))))
         {
             var (alloc, error) = await LedgerHelper.AllocateAsync(_db, line.ItemId, fromId, line.BatchId, line.Quantity);
@@ -65,7 +65,7 @@ public class RepsService
             }
             await _db.SaveChangesAsync();   // الحجز التالي يرى ما خُصم للتو
         }
-        await tx.CommitAsync();
+        if (tx is not null) await tx.CommitAsync();
         return FinanceOperationResult.Ok();
     }
 
@@ -127,19 +127,19 @@ public class RepsService
     }
 
     /// <summary>خروج نقد من المحفظة (مصروف ميداني أو تسليم للخزينة) — لا يُسمح بتجاوز الرصيد.</summary>
-    private async Task<FinanceOperationResult> WalletOutAsync(int repId, decimal amount, DateTime date, string description, string rule, int userId)
+    private async Task<FinanceOperationResult> WalletOutAsync(int repId, decimal amount, DateTime date, string description, string rule, int userId, int? vehicleId = null)
     {
         var error = await ValidateRepAsync(repId, amount);
         if (error is not null) return FinanceOperationResult.Fail(error);
         var balance = await GetWalletBalanceAsync(repId);
         if (amount > balance) return FinanceOperationResult.Fail($"المبلغ أكبر من رصيد المحفظة ({balance:N0} د.ع)");
 
-        await using var tx = await _db.Database.BeginTransactionAsync();
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
         var (entry, jeError) = await LedgerHelper.PostJournalAsync(_db, rule, amount, date, JournalEntryType.AutoVoucher, description, userId,
                                                                    "RepWalletTransactions", null, "RW");
         if (jeError is not null) return FinanceOperationResult.Fail(jeError);
         var walletTx = new RepWalletTransaction { EmployeeId = repId, TransactionDate = date, Description = description,
-                                                  AmountOut = amount, JournalEntry = entry, ReferenceTable = "Wallet" };
+                                                  AmountOut = amount, JournalEntry = entry, ReferenceTable = "Wallet", VehicleId = vehicleId };
         _db.RepWalletTransactions.Add(walletTx);
         await _db.SaveChangesAsync();
         // النقد المسلَّم يدخل صندوق المستخدم المستلم (أو الافتراضي)
@@ -149,12 +149,12 @@ public class RepsService
             await new CashBoxService(_db).RecordAutoAsync(userId, CashBoxTxType.RepHandover, amount, date, "RepWalletTransactions", walletTx.Id,
                                                           repName, $"تسليم نقد من المندوب {repName}", entry!.Id);
         }
-        await tx.CommitAsync();
+        if (tx is not null) await tx.CommitAsync();
         return FinanceOperationResult.Ok();
     }
 
-    public Task<FinanceOperationResult> RecordFieldExpenseAsync(int repId, decimal amount, string description, DateTime date, int userId) =>
-        WalletOutAsync(repId, amount, date, $"مصروف ميداني: {description}", FieldExpenseRule, userId);
+    public Task<FinanceOperationResult> RecordFieldExpenseAsync(int repId, decimal amount, string description, DateTime date, int userId, int? vehicleId = null) =>
+        WalletOutAsync(repId, amount, date, $"مصروف ميداني: {description}", FieldExpenseRule, userId, vehicleId);
 
     public Task<FinanceOperationResult> RecordCashHandoverAsync(int repId, decimal amount, DateTime date, int userId) =>
         WalletOutAsync(repId, amount, date, "تسليم نقد للخزينة", CashHandoverRule, userId);

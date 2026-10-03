@@ -48,6 +48,14 @@ IF COL_LENGTH('Vouchers', 'IsVoided') IS NULL
                              VoidedAt DATETIME2 NULL;
 GO
 
+-- سعر القائمة لحظة البيع: الخصم في الحسابات الختامية = (سعر القائمة − سعر الوكيل) × الكمية
+IF COL_LENGTH('SalesInvoiceLines', 'ListUnitPrice') IS NULL
+    ALTER TABLE SalesInvoiceLines ADD ListUnitPrice DECIMAL(18,2) NULL;
+-- حد الدين بالمبلغ: تجاوزه يوقف البيع الآجل حتى يوافق من يملك الصلاحية
+IF COL_LENGTH('Customers', 'CreditLimit') IS NULL
+    ALTER TABLE Customers ADD CreditLimit DECIMAL(18,2) NULL;
+GO
+
 -- البيع بانتظار الإنتاج: ما بيع فوق الرصيد المسجّل يُسجَّل عجزًا باسم الصنف والفاتورة، ويُسوّى تلقائيًا عند تسجيل الإنتاج
 IF OBJECT_ID('PendingProductionShortages', 'U') IS NULL
 CREATE TABLE PendingProductionShortages (
@@ -299,10 +307,11 @@ BEGIN
         SET @UnitPrice = ROUND(dbo.fn_Sales_BaseUnitPrice(@custId, @ItemId, @agentPricing) * @baseUnits, 2);
 
     INSERT INTO SalesInvoiceLines
-        (SalesInvoiceId, ItemId, BatchId, PackagingLevelId, QuantityInLevel, QuantityBaseUnits, UnitPrice, LineTotal)
+        (SalesInvoiceId, ItemId, BatchId, PackagingLevelId, QuantityInLevel, QuantityBaseUnits, UnitPrice, LineTotal, ListUnitPrice)
     VALUES
         (@InvoiceId, @ItemId, @BatchId, @PackagingLevelId, @QuantityInLevel,
-         @QuantityInLevel * @baseUnits, @UnitPrice, ROUND(@QuantityInLevel * @UnitPrice, 2));
+         @QuantityInLevel * @baseUnits, @UnitPrice, ROUND(@QuantityInLevel * @UnitPrice, 2),
+         CASE WHEN @free = 1 THEN 0 ELSE ROUND((SELECT SalePrice FROM Items WHERE Id = @ItemId) * @baseUnits, 2) END);
 
     SET @NewLineId = SCOPE_IDENTITY();
     SELECT @NewLineId AS LineId, @UnitPrice AS UnitPrice;
@@ -480,6 +489,21 @@ BEGIN
 
     IF @pay = N'Partial' AND @free = 0 AND (@paid <= 0 OR @paid >= @total)
         THROW 51034, N'في الدفع الجزئي يجب أن يكون المبلغ المدفوع أكبر من صفر وأقل من إجمالي الفاتورة.', 1;
+
+    -- حد الدين: الآجل أو الجزئي يُرفض إن تجاوز رصيدُ العميل بعد الفاتورة حدَّه، إلا لمن يملك صلاحية التجاوز
+    DECLARE @limit DECIMAL(18,2) = (SELECT CreditLimit FROM Customers WHERE Id = @custId);
+    IF @free = 0 AND @total > @paid AND @limit IS NOT NULL
+    BEGIN
+        DECLARE @balance DECIMAL(18,2) = ISNULL((SELECT Balance FROM vw_CustomerBalances WHERE CustomerId = @custId), 0);
+        IF @balance + (@total - @paid) > @limit
+           AND NOT EXISTS (SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
+                           WHERE u.Id = @UserId AND rp.ModuleCode = N'Special:CreditOverride' AND rp.CanView = 1)
+        BEGIN
+            DECLARE @limitMsg NVARCHAR(400) = N'العميل تجاوز حد دينه (' + FORMAT(@limit, N'N0') + N' د.ع): رصيده الحالي ' + FORMAT(@balance, N'N0')
+                     + N' والفاتورة تضيف ' + FORMAT(@total - @paid, N'N0') + N'. البيع الآجل موقوف حتى يوافق المدير، أو اقبض نقدًا.';
+            THROW 51046, @limitMsg, 1;
+        END;
+    END;
 
     -- ---------- 2) خصم المخزون ----------
     -- قفل على مستوى المخزن لمنع بيعين متزامنين لنفس الكمية

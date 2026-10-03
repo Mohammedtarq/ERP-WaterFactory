@@ -19,6 +19,10 @@ public class RepWalletTransaction
     public string? ReferenceTable { get; set; }
     public int? ReferenceId { get; set; }
 
+    /// <summary>السيارة التي صُرف عليها المصروف الميداني (وقود، تصليح...).</summary>
+    public int? VehicleId { get; set; }
+    public Vehicle? Vehicle { get; set; }
+
     public int? JournalEntryId { get; set; }
     public JournalEntry? JournalEntry { get; set; }
 }

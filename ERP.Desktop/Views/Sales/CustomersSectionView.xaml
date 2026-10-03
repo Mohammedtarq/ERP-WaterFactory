@@ -40,6 +40,7 @@
                         <DataGridTextColumn Header="الوكيل" Binding="{Binding ParentAgent.Name}" Width="150"/>
                         <DataGridTextColumn Header="المحافظة" Binding="{Binding Province}" Width="100"/>
                         <DataGridTextColumn Header="الهاتف" Binding="{Binding Phone}" Width="120"/>
+                        <DataGridTextColumn Header="حد الدين" Binding="{Binding CreditLimit, StringFormat=N0}" Width="90"/>
                         <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="50"/>
                         <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
@@ -90,6 +91,9 @@
                         <TextBox Text="{Binding Editor.Phone}" FlowDirection="LeftToRight"/>
                         <TextBlock Text="العنوان" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.Address}"/>
+                        <TextBlock Text="حد الدين (د.ع) — فارغ = بلا حد" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.CreditLimit, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"
+                                 ToolTip="البيع الآجل الذي يتجاوز هذا الحد يتوقف حتى يوافق من يملك صلاحية «تجاوز حد دين العميل»"/>
                         <CheckBox Content="فعّال" IsChecked="{Binding Editor.IsActive}"/>
                         <TextBlock Text="الوكيل: سعر خاص لكل صنف. العميل الفرعي: يرث سعر وكيله، ومديونيته مستقلة عنه. المباشر: السعر العادي." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>
                     </StackPanel>

@@ -83,4 +83,6 @@ public class SalesInvoiceLine
     public decimal QuantityBaseUnits { get; set; }      // محسوبة تلقائيًا بالقطعة لخصم المخزون
     public decimal UnitPrice { get; set; }
     public decimal LineTotal { get; set; }
+    /// <summary>سعر القائمة لحظة البيع (لإظهار خصم الوكلاء في الحسابات الختامية): (القائمة − السعر) × الكمية.</summary>
+    public decimal? ListUnitPrice { get; set; }
 }

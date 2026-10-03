@@ -16,6 +16,9 @@ public class Customer
     public string? Address { get; set; }
     public bool IsActive { get; set; } = true;
 
+    /// <summary>حد الدين بالمبلغ: الآجل الذي يتجاوزه يوقف حتى يوافق المدير (NULL = بلا حد).</summary>
+    public decimal? CreditLimit { get; set; }
+
     // ملاحظة: مديونية كل عميل (وكيل أو فرعي) مستقلة تمامًا وتُحسب من
     // SalesInvoices + Vouchers الخاصة به فقط — لا حقل رصيد هنا، بنفس مبدأ
     // "السجل بدل العمود" المستخدم في المخزون والمالية.

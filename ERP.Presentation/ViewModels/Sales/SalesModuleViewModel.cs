@@ -1102,6 +1102,7 @@ public class CustomersSectionViewModel : CrudSectionViewModel<Customer>
         if (string.IsNullOrWhiteSpace(e.Name)) return "أدخل اسم العميل";
         if (e.CustomerType == CustomerType.SubCustomer && e.ParentAgentId is null) return "العميل الفرعي يجب ربطه بوكيل";
         if (e.CustomerType == CustomerType.SubCustomer && e.ParentAgentId == e.Id) return "العميل لا يمكن أن يكون وكيلًا لنفسه";
+        if (e.CreditLimit < 0) return "حد الدين لا يكون سالبًا";
         return null;
     }
 
