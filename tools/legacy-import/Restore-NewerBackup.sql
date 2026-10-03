@@ -21,14 +21,19 @@ CREATE TABLE #Files (
     UniqueId UNIQUEIDENTIFIER, ReadOnlyLSN NUMERIC(25,0), ReadWriteLSN NUMERIC(25,0), BackupSizeInBytes BIGINT,
     SourceBlockSize INT, FileGroupId INT, LogGroupGUID UNIQUEIDENTIFIER, DifferentialBaseLSN NUMERIC(25,0),
     DifferentialBaseGUID UNIQUEIDENTIFIER, IsReadOnly BIT, IsPresent BIT, TDEThumbprint VARBINARY(32), SnapshotUrl NVARCHAR(360));
+DECLARE @ReadError NVARCHAR(2000) = NULL;
 BEGIN TRY
     INSERT INTO #Files EXEC (N'RESTORE FILELISTONLY FROM DISK = N''' + @BackupFile + N'''');
 END TRY
 BEGIN CATCH
+    SET @ReadError = ERROR_MESSAGE();
 END CATCH;
 IF NOT EXISTS (SELECT 1 FROM #Files)
 BEGIN
-    RAISERROR(N'تعذّر قراءة ملف النسخة. تأكد من المسار في @BackupFile، وضع الملف في مجلد يستطيع SQL Server قراءته (انظر التعليمات).', 16, 1);
+    -- رسالة SQL Server الأصلية تحدد السبب: الملف غير موجود (error 2) أو لا صلاحية لقراءته (error 5) أو ليس نسخة صالحة
+    DECLARE @Msg NVARCHAR(2400) = N'تعذّر قراءة ملف النسخة: ' + @BackupFile + NCHAR(13) + NCHAR(10) +
+                                 N'السبب من SQL Server: ' + ISNULL(@ReadError, N'غير معروف');
+    RAISERROR(@Msg, 16, 1);
     DROP TABLE #Files;
     RETURN;
 END;
