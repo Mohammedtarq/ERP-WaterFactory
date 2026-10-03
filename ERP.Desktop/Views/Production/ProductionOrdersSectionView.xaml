@@ -28,14 +28,14 @@
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
                 <DataGrid ItemsSource="{Binding Orders}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="100"/>
-                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="2*" MinWidth="150"/>
-                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="*" MinWidth="90"/>
+                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="80"/>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="1.4*" MinWidth="130"/>
+                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="*" MinWidth="80"/>
                         <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="90"/>
-                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityToProduce, StringFormat=N0}" Width="70"/>
-                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="70"/>
-                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="110"/>
-                        <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.3*" MinWidth="120"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityToProduce, StringFormat=N0}" Width="60"/>
+                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="60"/>
+                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="125"/>
+                        <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.8*" MinWidth="190"/>
                         <DataGridTemplateColumn Header="" Width="180">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
