@@ -112,7 +112,12 @@ public static class RahmaLegacyReader
                        ROW_NUMBER() OVER (PARTITION BY LTRIM(RTRIM(rawProudectname)), LTRIM(RTRIM(ISNULL(spichalname, N''))), LTRIM(RTRIM(ISNULL(color, N'')))
                                           ORDER BY CASE WHEN priceperone > 0 THEN 0 ELSE 1 END, [date] DESC, id DESC) AS rn
                 FROM RawDetelsProudectTable)
-            SELECT nm, sp, co, SUM(CAST(number AS DECIMAL(18,3))), MAX(CASE WHEN rn = 1 THEN priceperone END), COUNT(*)
+            SELECT nm, sp, co, SUM(CAST(number AS DECIMAL(18,3))),
+                   -- كلفة الرصيد المنقول = المتوسط المرجّح للدفعات المتبقية بأسعارها، وإلا سعر آخر دفعة
+                   ISNULL(SUM(CASE WHEN number > 0 AND priceperone > 0 THEN CAST(number AS DECIMAL(18,3)) * CAST(priceperone AS DECIMAL(18,4)) END)
+                          / NULLIF(SUM(CASE WHEN number > 0 AND priceperone > 0 THEN CAST(number AS DECIMAL(18,3)) END), 0),
+                          MAX(CASE WHEN rn = 1 THEN priceperone END)),
+                   COUNT(*)
             FROM l GROUP BY nm, sp, co");
         var raw = new Dictionary<string, (RahmaRawKind kind, string legacyName, string descriptor, decimal remaining, decimal? cost, int lots)>();
         void AddRaw(string legacyName, string special, string color, decimal remaining, decimal? cost, int lotCount)

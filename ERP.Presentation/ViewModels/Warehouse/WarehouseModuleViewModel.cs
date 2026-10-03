@@ -96,6 +96,8 @@ public class ItemsSectionViewModel : CrudSectionViewModel<Item>
         if (string.IsNullOrWhiteSpace(e.ItemName)) return "أدخل اسم الصنف";
         if (e.SalePrice < 0) return "سعر البيع لا يمكن أن يكون سالبًا";
         if (e.MinStockAlertLevel < 0) return "حد التنبيه لا يمكن أن يكون سالبًا";
+        if (e.UnitWeightGrams < 0) return "وزن القطعة لا يمكن أن يكون سالبًا";
+        if (e.LeadTimeDays < 0) return "مدة التجهيز لا يمكن أن تكون سالبة";
         return null;
     }
 
@@ -104,6 +106,9 @@ public class ItemsSectionViewModel : CrudSectionViewModel<Item>
         e.ItemCode = e.ItemCode.Trim();
         e.ItemName = e.ItemName.Trim();
         e.BarCode = string.IsNullOrWhiteSpace(e.BarCode) ? null : e.BarCode.Trim();
+        // متوسط الكلفة يحسبه محرك الكلفة مع كل وارد: تعديل بيانات الصنف لا يمسّه (يُدخل يدويًا للصنف الجديد فقط)
+        if (e.Id != 0)
+            e.CostPrice = await db.Items.Where(i => i.Id == e.Id).Select(i => i.CostPrice).FirstOrDefaultAsync();
 
         // كل صنف جديد يحصل تلقائيًا على مستوى التعبئة الأساسي (القطعة) حتى يمكن بيعه فورًا
         if (e.Id == 0)

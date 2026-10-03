@@ -45,6 +45,10 @@ public class GoodsReceiptLine
 
     public decimal QuantityReceived { get; set; }
     public decimal UnitCost { get; set; }
+    /// <summary>كما في فاتورة المورد: الوحدة (كرتون، باليت، طن...) والكمية وسعر الوحدة.</summary>
+    public string? PurchaseUnit { get; set; }
+    public decimal? PurchaseQuantity { get; set; }
+    public decimal? PurchaseUnitPrice { get; set; }
 
     public int BatchId { get; set; }
     public ItemBatch Batch { get; set; } = null!;

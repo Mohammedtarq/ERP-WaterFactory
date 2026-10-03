@@ -40,6 +40,8 @@ public class StockTransaction
     public ItemBatch? Batch { get; set; }
 
     public decimal QuantityBaseUnits { get; set; }
+    /// <summary>كلفة القطعة لحظة الحركة: الوارد المسعَّر يحملها، وغيره يأخذ المتوسط المرجّح الساري (trg_StockTransactions_Cost).</summary>
+    public decimal? UnitCost { get; set; }
     public StockTransactionType TransactionType { get; set; }
     public DamageReason? DamageReason { get; set; }
     public string? FreeIssueRecipient { get; set; }

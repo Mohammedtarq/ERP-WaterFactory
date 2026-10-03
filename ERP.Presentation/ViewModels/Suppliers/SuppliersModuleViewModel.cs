@@ -15,11 +15,16 @@ public class SuppliersModuleViewModel : ModuleViewModel
         : base("الموردون والمشتريات", Icons.Suppliers, ModuleColors.Suppliers)
     {
         UseDashboard(s, d, ModuleCode.Suppliers, ModuleDashboardViewModel.Suppliers);
+        PurchaseInvoice = Add(new PurchaseInvoiceSectionViewModel(s, d));
         Add(new SuppliersSectionViewModel(s, d));
+        Reorder = Add(new ReorderSectionViewModel(s, d));
         Add(new PurchaseOrdersSectionViewModel(s, d));
         Add(new GoodsReceiptSectionViewModel(s, d));
         Add(new SupplierStatementSectionViewModel(s, d));
     }
+
+    public PurchaseInvoiceSectionViewModel PurchaseInvoice { get; }
+    public ReorderSectionViewModel Reorder { get; }
 }
 
 // ============================ الموردون ============================

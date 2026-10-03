@@ -11,8 +11,15 @@ public class Item
     public string BaseUnitName { get; set; } = "قطعة";
     public SourcingMethod SourcingMethod { get; set; } = SourcingMethod.Manufactured;
     public decimal SalePrice { get; set; }
-    /// <summary>سعر الكلفة للوحدة الأساسية: يُحدَّث تلقائيًا من آخر استلام شراء، ويمكن تعديله يدويًا. للمنتج المصنَّع تُحسب الكلفة من وصفته.</summary>
+    /// <summary>
+    /// متوسط الكلفة المرجّح للقطعة: يُعاد حسابه تلقائيًا في قاعدة البيانات مع كل وارد مسعَّر (استلام شراء، ناتج إنتاج).
+    /// يُدخل يدويًا فقط عند إنشاء الصنف (رصيد افتتاحي).
+    /// </summary>
     public decimal? CostPrice { get; set; }
+    /// <summary>وزن القطعة بالغرام: يحوّل الشراء بالكغم أو الطن إلى عدد قطع (مثل رول الشرنك).</summary>
+    public decimal? UnitWeightGrams { get; set; }
+    /// <summary>مدة تجهيز المورد بالأيام: تدخل في نقطة إعادة الطلب ومقترح الشراء.</summary>
+    public int? LeadTimeDays { get; set; }
     /// <summary>حد التنبيه — عند وصول الرصيد لهذه الكمية أو أقل، يظهر تنبيه نقص مخزون.</summary>
     public decimal? MinStockAlertLevel { get; set; }
     public bool IsActive { get; set; } = true;

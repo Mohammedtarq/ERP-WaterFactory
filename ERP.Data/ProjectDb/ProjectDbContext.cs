@@ -422,6 +422,12 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.SalesInvoice).WithMany().HasForeignKey(a => a.SalesInvoiceId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.AllocatedByUser).WithMany().HasForeignKey(a => a.AllocatedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Item>().Property(i => i.CostPrice).HasPrecision(18, 4);
+        modelBuilder.Entity<Item>().Property(i => i.UnitWeightGrams).HasPrecision(18, 3);
+        modelBuilder.Entity<StockTransaction>().Property(t => t.UnitCost).HasPrecision(18, 4);
+        modelBuilder.Entity<GoodsReceiptLine>().Property(l => l.UnitCost).HasPrecision(18, 4);
+        modelBuilder.Entity<GoodsReceiptLine>().Property(l => l.PurchaseQuantity).HasPrecision(18, 3);
+        modelBuilder.Entity<GoodsReceiptLine>().Property(l => l.PurchaseUnitPrice).HasPrecision(18, 4);
+        modelBuilder.Entity<PurchaseOrderLine>().Property(l => l.ExpectedUnitCost).HasPrecision(18, 4);
         modelBuilder.Entity<DamagedSale>(e =>
         {
             e.Property(s => s.TotalAmount).HasPrecision(18, 2);
@@ -546,5 +552,7 @@ public partial class ProjectDbContext : DbContext
         // جداول عليها مشغّلات قفل الفترة: EF لا يستخدم OUTPUT المباشر معها
         foreach (var t in new[] { typeof(JournalEntry), typeof(SalesInvoice), typeof(Voucher), typeof(CashBoxTransaction), typeof(StockDocument), typeof(GoodsReceipt) })
             modelBuilder.Entity(t).ToTable(tb => tb.HasTrigger("trg_" + tb.Name + "_PeriodLock"));
+        // محرك الكلفة (28_costing_purchasing.sql): الحركة المخزنية تأخذ كلفتها من مشغّل
+        modelBuilder.Entity<StockTransaction>().ToTable(tb => tb.HasTrigger("trg_StockTransactions_Cost"));
     }
 }

@@ -27,7 +27,7 @@ public class RahmaRawPlan
     public string NewName { get; set; } = "";
     public decimal LegacyRemaining { get; init; }           // مجموع المتبقي من الدفعات
     public decimal Quantity { get; set; }                   // الكمية المنقولة (قابلة للتعديل بعد الجرد)
-    public decimal? UnitCost { get; init; }                 // سعر آخر دفعة
+    public decimal? UnitCost { get; init; }                 // المتوسط المرجّح للدفعات المتبقية (أو سعر آخر دفعة)
     public decimal? AlertLevel { get; init; }
     public int Lots { get; init; }
     public bool IsSpecialLabel => Kind == RahmaRawKind.Label && Descriptor.Length > 0;

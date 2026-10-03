@@ -1,0 +1,40 @@
+<UserControl x:Class="ERP.Desktop.Views.Suppliers.ReorderSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Suppliers;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ReorderSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock Text="الاستهلاك على آخر (يوم)" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox Text="{Binding HistoryDays, UpdateSourceTrigger=LostFocus}" Width="60" FlowDirection="LeftToRight"/>
+                    <TextBlock Text="الطلب يكفي (يوم)" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                    <TextBox Text="{Binding CoverDays, UpdateSourceTrigger=LostFocus}" Width="60" FlowDirection="LeftToRight"/>
+                    <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="12,0,0,0"/>
+                    <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                </StackPanel>
+                <TextBlock Text="مقترح الشراء" Style="{StaticResource SectionTitle}" Margin="0"/>
+            </DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                       Text="نقطة الطلب = الاستهلاك اليومي × (مدة تجهيز المورد + 7 أيام أمان)، أو حد التنبيه إن كان أكبر. أدخل مدة التجهيز لكل مادة من بطاقة الصنف."/>
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+            <DataGrid ItemsSource="{Binding Rows}">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الحالة" Binding="{Binding Status}" Width="90"/>
+                    <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="100"/>
+                    <DataGridTextColumn Header="المادة" Binding="{Binding ItemName}" Width="*"/>
+                    <DataGridTextColumn Header="الرصيد" Binding="{Binding OnHand, StringFormat=N0}" Width="100"/>
+                    <DataGridTextColumn Header="الاستهلاك اليومي" Binding="{Binding DailyUse, StringFormat=N0}" Width="110"/>
+                    <DataGridTextColumn Header="يكفي (يوم)" Binding="{Binding CoverDays, StringFormat=N1, TargetNullValue='—'}" Width="90"/>
+                    <DataGridTextColumn Header="مدة التجهيز" Binding="{Binding LeadTimeDays}" Width="90"/>
+                    <DataGridTextColumn Header="نقطة الطلب" Binding="{Binding ReorderPoint, StringFormat=N0}" Width="100"/>
+                    <DataGridTextColumn Header="الكمية المقترحة" Binding="{Binding SuggestedQuantity, StringFormat=N0}" Width="120"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

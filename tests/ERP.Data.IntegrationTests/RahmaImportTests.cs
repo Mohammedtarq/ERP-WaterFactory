@@ -99,7 +99,7 @@ public class RahmaImportTests
         Assert.Equal(11, plan.RawMaterials.Count);
         var preform = plan.RawMaterials.Single(m => m.NewCode == "RH-PRE");
         Assert.Equal(1500, preform.LegacyRemaining);
-        Assert.Equal(38.44m, preform.UnitCost);                     // سعر آخر دفعة
+        Assert.Equal(32.2933m, preform.UnitCost);                   // المتوسط المرجّح للدفعات المتبقية: (1000×38.44 + 500×20) ÷ 1500
         Assert.Equal(500000, preform.AlertLevel);
         Assert.Equal(new[] { "RH-CAP", "RH-CAP-001", "RH-CAP-002" }, plan.RawMaterials.Where(m => m.Kind == RahmaRawKind.Cap).Select(m => m.NewCode));
         Assert.Equal(150, plan.RawMaterials.Single(m => m.Kind == RahmaRawKind.Cap && m.Descriptor == "اسود").Quantity);   // اللون المكتوب في خانة الاسم الخاص يُدمج
@@ -189,7 +189,7 @@ public class RahmaImportTests
         var bomLines = await db.BOMLines.Include(l => l.RawMaterialItem).Where(l => l.BOM.FinishedItemId == item.Id).ToListAsync();
         Assert.Equal(4, bomLines.Count);
         Assert.Equal(0.025m, bomLines.Single(l => l.RawMaterialItem.ItemCode == "RH-CTN").QuantityPerUnit);
-        Assert.Equal(38.44m, (await db.Items.SingleAsync(i => i.ItemCode == "RH-PRE")).CostPrice);
+        Assert.Equal(32.2933m, (await db.Items.SingleAsync(i => i.ItemCode == "RH-PRE")).CostPrice);
 
         var hassoun = await db.Customers.SingleAsync(c => c.Name == "مطعم الحسون");
         Assert.Equal("07701112222", hassoun.Phone);

@@ -195,6 +195,8 @@
     <!-- Suppliers -->
     <DataTemplate DataType="{x:Type vmSuppliers:SuppliersSectionViewModel}"><vSuppliers:SuppliersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSuppliers:PurchaseOrdersSectionViewModel}"><vSuppliers:PurchaseOrdersSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSuppliers:PurchaseInvoiceSectionViewModel}"><vSuppliers:PurchaseInvoiceSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSuppliers:ReorderSectionViewModel}"><vSuppliers:ReorderSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSuppliers:GoodsReceiptSectionViewModel}"><vSuppliers:GoodsReceiptSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSuppliers:SupplierStatementSectionViewModel}"><vSuppliers:SupplierStatementSectionView/></DataTemplate>
 

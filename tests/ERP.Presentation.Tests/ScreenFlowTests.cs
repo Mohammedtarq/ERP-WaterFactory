@@ -196,6 +196,55 @@ public class ScreenFlowTests
     }
 
     [Fact]
+    public async Task Purchase_invoice_screen_buys_in_cartons_and_reorder_screen_loads()
+    {
+        int capId;
+        await using (var db = _f.NewDb())
+        {
+            var cap = new Item { ItemCode = "CAP-SCR", ItemName = "سدادة شاشة الشراء", SourcingMethod = SourcingMethod.Purchased, LeadTimeDays = 10 };
+            db.Items.Add(cap);
+            await db.SaveChangesAsync();
+            var piece = new ItemPackagingLevel { ItemId = cap.Id, LevelName = "قطعة", ContainsQuantity = 1, EquivalentBaseUnits = 1 };
+            db.ItemPackagingLevels.Add(piece);
+            await db.SaveChangesAsync();
+            db.ItemPackagingLevels.Add(new ItemPackagingLevel { ItemId = cap.Id, LevelName = "كرتون", ParentLevelId = piece.Id, ContainsQuantity = 500, EquivalentBaseUnits = 500 });
+            await db.SaveChangesAsync();
+            capId = cap.Id;
+        }
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var sup = shell.Open<SuppliersModuleViewModel>(ModuleCode.Suppliers);
+        var inv = sup.PurchaseInvoice;
+        await Open(sup, inv);
+
+        inv.Supplier = inv.SuppliersLookup.Single(x => x.Id == _f.SupplierId);
+        inv.Warehouse = inv.Warehouses.Single(w => w.Id == _f.MainWarehouseId);
+        var line = inv.Lines[0];
+        line.Material = inv.ItemsLookup.Single(i => i.Id == capId);
+        await line.LoadUnits;
+        Assert.Equal("كرتون", line.Unit!.Label);                     // الوحدة الأكبر افتراضيًا
+        line.Quantity = 2;
+        line.UnitPrice = 10_000;
+        Assert.Equal(1000m, line.Pieces);
+        Assert.Equal(20m, line.CostPerPiece);
+        Assert.Equal(20_000m, inv.Total);
+        inv.PaidNow = 5_000;
+        Assert.Equal(15_000m, inv.Remaining);
+        inv.PaidNow = 0;                                              // لا حركة نقدية: صناديق الاختبارات الأخرى مشتركة
+        await inv.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.NotNull(inv.LastReceiptId);
+        Assert.Single(inv.Lines);                                     // الشاشة جاهزة لفاتورة جديدة
+
+        await using (var db = _f.NewDb())
+        {
+            Assert.Equal(20m, (await db.Items.FirstAsync(i => i.Id == capId)).CostPrice);
+            Assert.Equal(1000m, await db.StockTransactions.Where(t => t.ItemId == capId).SumAsync(t => t.QuantityBaseUnits));
+        }
+        await Open(sup, sup.Reorder);
+        Assert.Contains(sup.Reorder.Rows, r => r.ItemId == capId && r.LeadTimeDays == 10);
+    }
+
+    [Fact]
     public async Task Free_sale_requires_recipient_and_skips_journal()
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
