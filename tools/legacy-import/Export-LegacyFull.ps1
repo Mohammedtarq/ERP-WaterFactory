@@ -19,7 +19,7 @@ $ErrorActionPreference = "Stop"
 $inv = [System.Globalization.CultureInfo]::InvariantCulture
 
 function Open-Connection([string]$db) {
-    $cs = "Server=$Server;Database=$db;Integrated Security=True;TrustServerCertificate=True;Connect Timeout=15;Application Intent=ReadOnly"
+    $cs = "Server=$Server;Database=$db;Integrated Security=True;TrustServerCertificate=True;Connect Timeout=15"
     $c = New-Object System.Data.SqlClient.SqlConnection $cs
     $c.Open()
     return $c
