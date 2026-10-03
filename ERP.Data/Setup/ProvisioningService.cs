@@ -177,6 +177,7 @@ public static class DefaultConfiguration
         ("1101", "الصندوق - النقدية", AccountType.Asset),
         ("1102", "البنك / الدفع الإلكتروني", AccountType.Asset),
         ("1103", "عهدة المندوبين", AccountType.Asset),
+        ("1104", "سلف ومسحوبات الموظفين", AccountType.Asset),
         ("1201", "العملاء", AccountType.Asset),
         ("1301", "المخزون", AccountType.Asset),
         ("1302", "دفعات مقدمة للموردين", AccountType.Asset),
@@ -217,6 +218,8 @@ public static class DefaultConfiguration
         (CustomerDepositService.ReceiptRule, "1101", "2104"),
         (CustomerDepositService.RefundRule, "2104", "1101"),
         (CustomerDepositService.OpeningRule, "3101", "2104"),
+        (EmployeeDeductionService.PayoutRule, "1104", "1101"),
+        (EmployeeDeductionService.OpeningRule, "1104", "3101"),
     };
 
     private static readonly string[] AllModules =

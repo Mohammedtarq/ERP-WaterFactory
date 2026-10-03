@@ -320,14 +320,50 @@ public static class DocumentReports
         var r = New(s, $"كشف رواتب {run.PeriodMonth:00}/{run.PeriodYear}", run.Status == PayrollRunStatus.Draft ? "مسودة — غير معتمد" : null);
         r.Field("الشهر", $"{run.PeriodMonth:00}/{run.PeriodYear}").Field("الحالة", ArabicLabels.Of(run.Status)).Field("اعتمده", run.ApprovedByUser?.Username)
          .Field("عدد الموظفين", run.Lines.Count.ToString());
-        r.Columns.AddRange(new[] { "#", "الموظف", "العملة", "الأساسي", "خصم الغياب", "مخصصات", "حوافز", "الصافي", "التوقيع" });
+        r.Columns.AddRange(new[] { "#", "الموظف", "العملة", "الأساسي", "خصم الغياب", "مخصصات", "حوافز", "قسط السلفة", "المسحوبات", "العقوبات", "الصافي", "التوقيع" });
         var i = 0;
         foreach (var l in run.Lines.OrderBy(l => l.Employee.FullName))
             r.Rows.Add(new[] { (++i).ToString(), l.Employee.FullName, l.Currency, N(l.BaseSalary), N(l.AbsenceDeduction), N(l.Allowances),
-                               N(l.MonthlyIncentiveAmount + l.RepIncentiveAmount + l.SalesManagerIncentiveAmount), N(l.NetSalary), "" });
+                               N(l.MonthlyIncentiveAmount + l.RepIncentiveAmount + l.SalesManagerIncentiveAmount),
+                               N(l.LoanDeduction), N(l.WithdrawalDeduction), N(l.PenaltyDeduction), N(l.NetSalary), "" });
         foreach (var g in run.Lines.GroupBy(l => l.Currency))
             r.Total($"صافي الرواتب ({g.Key})", N(g.Sum(l => l.NetSalary)), g.Key == "IQD");
         r.Signatures.AddRange(new[] { "مسؤول الموارد البشرية", "المحاسب", "المدير" });
+        return r;
+    }
+
+    /// <summary>سند صرف سلفة/مسحوب أو إشعار عقوبة، مع خطة الاستقطاع وما استُقطع حتى الآن.</summary>
+    public static async Task<ReportDocument?> EmployeeDeductionAsync(AppSession s, ProjectDbContext db, int deductionId)
+    {
+        var d = await new EmployeeDeductionService(db).GetAsync(deductionId);
+        if (d is null) return null;
+        var deducted = d.Installments.Where(i => i.PayrollRun.Status == PayrollRunStatus.Approved).Sum(i => i.Amount);
+        var title = d.Kind switch
+        {
+            EmployeeDeductionKind.Loan => "سند صرف سلفة موظف",
+            EmployeeDeductionKind.Withdrawal => "سند صرف مسحوب من الراتب",
+            _ => "إشعار عقوبة (خصم من الراتب)"
+        };
+        var r = new ReportDocument
+        {
+            CompanyName = s.ProjectName, Title = title, Stamp = d.IsVoided ? "ملغى" : null, PrintedBy = s.FullName,
+            Key = "EmployeeDeduction", ReceiptCapable = true
+        };
+        r.Field("الرقم", d.DeductionNumber)
+         .Field("التاريخ", d.EntryDate.ToString("yyyy/MM/dd"))
+         .Field("الموظف", d.Employee.FullName)
+         .Field("القسم / المسمى", d.Employee.JobTitle)
+         .Field(d.Kind == EmployeeDeductionKind.Penalty ? "سبب العقوبة" : "الغرض", d.Reason)
+         .Field(d.Kind == EmployeeDeductionKind.Loan ? "يبدأ الاستقطاع من راتب" : "يُستقطع من راتب", $"{d.StartMonth:00}/{d.StartYear}")
+         .Field("المستخدم", d.CreatedByUser.Username);
+        r.Total("المبلغ", $"{N(d.Amount)} د.ع", true).Total("المبلغ كتابةً", ArabicNumberWords.Amount(d.Amount));
+        if (d.Kind == EmployeeDeductionKind.Loan && d.MonthlyInstallment is { } inst)
+            r.Total("القسط الشهري", $"{N(inst)} د.ع").Total("عدد الأقساط", $"{Math.Ceiling(d.Amount / inst):N0}");
+        if (deducted > 0) r.Total("استُقطع حتى الآن", $"{N(deducted)} د.ع").Total("المتبقي", $"{N(d.Amount - deducted)} د.ع");
+        if (d.IsVoided) r.Total("سبب الإلغاء", d.VoidReason ?? "");
+        r.Signatures.AddRange(d.Kind == EmployeeDeductionKind.Penalty
+            ? new[] { "الموظف (اطّلعت)", "مسؤول الموارد البشرية", "المدير" }
+            : new[] { "المستلم (الموظف)", "أمين الصندوق", "المدير" });
         return r;
     }
 

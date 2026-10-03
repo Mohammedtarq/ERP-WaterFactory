@@ -18,6 +18,7 @@ public class HrModuleViewModel : ModuleViewModel
         Attendance = Add(new AttendanceSectionViewModel(s, d));
         Incentives = Add(new MonthlyIncentiveSectionViewModel(s, d));
         Payroll = Add(new PayrollSectionViewModel(s, d));
+        Deductions = Add(new EmployeeDeductionsSectionViewModel(s, d));
         Add(new PromotionsSectionViewModel(s, d));
         Add(new EmployeesSectionViewModel(s, d));
         Add(new ShiftsSectionViewModel(s, d));
@@ -30,6 +31,7 @@ public class HrModuleViewModel : ModuleViewModel
     public AttendanceSectionViewModel Attendance { get; }
     public MonthlyIncentiveSectionViewModel Incentives { get; }
     public PayrollSectionViewModel Payroll { get; }
+    public EmployeeDeductionsSectionViewModel Deductions { get; }
 }
 
 /// <summary>اختيار الشهر/السنة المشترك بين شاشات الحوافز والرواتب.</summary>
@@ -239,6 +241,9 @@ public class PayrollRow
     public decimal RepIncentive { get; init; }
     public decimal ManagerIncentive { get; init; }
     public decimal MonthlyIncentive { get; init; }
+    public decimal LoanDeduction { get; init; }
+    public decimal WithdrawalDeduction { get; init; }
+    public decimal PenaltyDeduction { get; init; }
     public decimal NetSalary { get; init; }
 }
 
@@ -285,7 +290,8 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
             {
                 EmployeeName = l.Employee.FullName, Currency = l.Currency, BaseSalary = l.BaseSalary, Allowances = l.Allowances,
                 AbsenceDeduction = l.AbsenceDeduction, RepIncentive = l.RepIncentiveAmount, ManagerIncentive = l.SalesManagerIncentiveAmount,
-                MonthlyIncentive = l.MonthlyIncentiveAmount, NetSalary = l.NetSalary
+                MonthlyIncentive = l.MonthlyIncentiveAmount, LoanDeduction = l.LoanDeduction, WithdrawalDeduction = l.WithdrawalDeduction,
+                PenaltyDeduction = l.PenaltyDeduction, NetSalary = l.NetSalary
             });
         Summary = await new HrService(db).SummarizeAsync(run.Id);
     }

@@ -35,5 +35,9 @@ public class PayrollLine
     public decimal RepIncentiveAmount { get; set; }
     public decimal SalesManagerIncentiveAmount { get; set; }
     public decimal MonthlyIncentiveAmount { get; set; }
+    /// <summary>استقطاعات الشهر بعملة الراتب: قسط السلفة، المسحوبات، العقوبات.</summary>
+    public decimal LoanDeduction { get; set; }
+    public decimal WithdrawalDeduction { get; set; }
+    public decimal PenaltyDeduction { get; set; }
     public decimal NetSalary { get; set; }
 }

@@ -53,7 +53,7 @@
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
             <DataGrid ItemsSource="{Binding Rows}">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*"/>
+                    <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*" MinWidth="140"/>
                     <DataGridTextColumn Header="العملة" Binding="{Binding Currency}" Width="60"/>
                     <DataGridTextColumn Header="الأساسي" Binding="{Binding BaseSalary, StringFormat=N0}" Width="100"/>
                     <DataGridTextColumn Header="البدلات" Binding="{Binding Allowances, StringFormat=N0}" Width="90"/>
@@ -61,6 +61,9 @@
                     <DataGridTextColumn Header="حافز المندوب" Binding="{Binding RepIncentive, StringFormat=N0}" Width="100"/>
                     <DataGridTextColumn Header="حافز المدير" Binding="{Binding ManagerIncentive, StringFormat=N0}" Width="95"/>
                     <DataGridTextColumn Header="الحافز الشهري" Binding="{Binding MonthlyIncentive, StringFormat=N0}" Width="100"/>
+                    <DataGridTextColumn Header="قسط السلفة" Binding="{Binding LoanDeduction, StringFormat=N0}" Width="95"/>
+                    <DataGridTextColumn Header="المسحوبات" Binding="{Binding WithdrawalDeduction, StringFormat=N0}" Width="95"/>
+                    <DataGridTextColumn Header="العقوبات" Binding="{Binding PenaltyDeduction, StringFormat=N0}" Width="85"/>
                     <DataGridTextColumn Header="الصافي" Binding="{Binding NetSalary, StringFormat=N2}" Width="120"/>
                 </DataGrid.Columns>
             </DataGrid>

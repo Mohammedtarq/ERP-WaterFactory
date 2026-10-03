@@ -227,7 +227,8 @@ public class HrService
     /// البدلات = المبالغ لمرة واحدة السارية داخل الشهر،
     /// الخصم = (الأساسي ÷ 30) × أيام الغياب،
     /// الحوافز (مندوب + مدير مبيعات + شهري) بالدينار، وتُحوَّل للدولار لموظفي الدولار بسعر الصرف،
-    /// الصافي = الأساسي + البدلات + الحوافز − الخصم.
+    /// الاستقطاعات (قسط السلفة، المسحوبات، العقوبات) بالدينار وتُحوَّل لموظفي الدولار،
+    /// الصافي = الأساسي + البدلات + الحوافز − خصم الغياب − الاستقطاعات.
     /// </summary>
     public async Task<(FinanceOperationResult result, int? runId)> GenerateAsync(int month, int year)
     {
@@ -265,7 +266,10 @@ public class HrService
         else
         {
             _db.PayrollLines.RemoveRange(run.Lines);
+            _db.EmployeeDeductionInstallments.RemoveRange(await _db.EmployeeDeductionInstallments.Where(i => i.PayrollRunId == run.Id).ToListAsync());
         }
+        var deductionPlan = (await new EmployeeDeductionService(_db).PlanForPeriodAsync(month, year, run.Id == 0 ? null : run.Id))
+            .Where(p => employees.Any(e => e.Id == p.deduction.EmployeeId)).ToList();
 
         foreach (var e in employees)
         {
@@ -281,6 +285,11 @@ public class HrService
             // الحوافز محسوبة بالدينار؛ موظف الدولار يستلمها محوّلة
             decimal Fx(decimal iqd) => e.SalaryCurrency == SalaryCurrency.USD ? Math.Round(iqd / usdRate!.Value, 2) : iqd;
             rep = Fx(rep); manager = Fx(manager); monthly = Fx(monthly);
+            var mineDeductions = deductionPlan.Where(p => p.deduction.EmployeeId == e.Id).ToList();
+            decimal Ded(EmployeeDeductionKind k) => Fx(mineDeductions.Where(p => p.deduction.Kind == k).Sum(p => p.amount));
+            var loan = Ded(EmployeeDeductionKind.Loan);
+            var withdrawal = Ded(EmployeeDeductionKind.Withdrawal);
+            var penalty = Ded(EmployeeDeductionKind.Penalty);
 
             run.Lines.Add(new PayrollLine
             {
@@ -292,9 +301,14 @@ public class HrService
                 RepIncentiveAmount = rep,
                 SalesManagerIncentiveAmount = manager,
                 MonthlyIncentiveAmount = monthly,
-                NetSalary = baseSalary + allowances + rep + manager + monthly - deduction
+                LoanDeduction = loan,
+                WithdrawalDeduction = withdrawal,
+                PenaltyDeduction = penalty,
+                NetSalary = baseSalary + allowances + rep + manager + monthly - deduction - loan - withdrawal - penalty
             });
         }
+        foreach (var (d, amount) in deductionPlan)
+            _db.EmployeeDeductionInstallments.Add(new EmployeeDeductionInstallment { EmployeeDeduction = d, PayrollRun = run, Amount = amount });
 
         await _db.SaveChangesAsync();
         return (FinanceOperationResult.Ok(), run.Id);
@@ -331,6 +345,25 @@ public class HrService
         if (rule is null)
             return (FinanceOperationResult.Fail($"قاعدة الربط المحاسبي \"{HrRules.PayrollMappingRule}\" (مصروف الرواتب / رواتب مستحقة) غير معرّفة. أضفها من المالية ← العقل المالي."), null);
 
+        // مسودة قديمة: استقطاع أُلغي أو أُضيف بعد التوليد ← يلزم إعادة التوليد قبل الاعتماد
+        var installments = await _db.EmployeeDeductionInstallments.Include(i => i.EmployeeDeduction)
+                                    .Where(i => i.PayrollRunId == run.Id).ToListAsync();
+        var plan = await new EmployeeDeductionService(_db).PlanForPeriodAsync(run.PeriodMonth, run.PeriodYear, run.Id);
+        var activeIds = run.Lines.Select(l => l.EmployeeId).ToHashSet();
+        var planned = plan.Where(p => activeIds.Contains(p.deduction.EmployeeId)).ToDictionary(p => p.deduction.Id, p => p.amount);
+        var recorded = installments.ToDictionary(i => i.EmployeeDeductionId, i => i.Amount);
+        if (planned.Count != recorded.Count || planned.Any(p => recorded.GetValueOrDefault(p.Key) != p.Value))
+            return (FinanceOperationResult.Fail("تغيّرت السلف أو المسحوبات أو العقوبات بعد توليد الرواتب — أعد توليد الرواتب ثم اعتمدها"), null);
+        var advancesIqd = installments.Where(i => i.EmployeeDeduction.Kind != EmployeeDeductionKind.Penalty).Sum(i => i.Amount);
+        var advancesAccountId = 0;
+        if (advancesIqd > 0)
+        {
+            var payout = await _db.AccountMappingRules.FirstOrDefaultAsync(r => r.TransactionType == EmployeeDeductionService.PayoutRule);
+            if (payout is null)
+                return (FinanceOperationResult.Fail($"قاعدة الربط المحاسبي \"{EmployeeDeductionService.PayoutRule}\" غير معرّفة. أضفها من المالية ← العقل المالي."), null);
+            advancesAccountId = payout.DebitAccountId;
+        }
+
         var summary = await SummarizeAsync(run.Id);
         if (summary.TotalNetUsd != 0 && summary.UsdRate is null)
             return (FinanceOperationResult.Fail("لا يوجد سعر صرف للدولار لتحويل رواتب الدولار في القيد"), null);
@@ -347,8 +380,11 @@ public class HrService
             SourceTable = "PayrollRuns",
             SourceId = run.Id
         };
-        entry.Lines.Add(new JournalEntryLine { AccountId = rule.DebitAccountId, Debit = summary.TotalInIqd, Description = "مصروف الرواتب والحوافز" });
+        // المصروف = الصافي + ما استُقطع من سلف ومسحوبات (صُرفت سابقًا نقدًا)؛ العقوبة تُنقص المصروف نفسه
+        entry.Lines.Add(new JournalEntryLine { AccountId = rule.DebitAccountId, Debit = summary.TotalInIqd + advancesIqd, Description = "مصروف الرواتب والحوافز" });
         entry.Lines.Add(new JournalEntryLine { AccountId = rule.CreditAccountId, Credit = summary.TotalInIqd, Description = "رواتب مستحقة الدفع" });
+        if (advancesIqd > 0)
+            entry.Lines.Add(new JournalEntryLine { AccountId = advancesAccountId, Credit = advancesIqd, Description = "استقطاع سلف ومسحوبات الموظفين" });
         _db.JournalEntries.Add(entry);
         await _db.SaveChangesAsync();
 

@@ -26,7 +26,7 @@ public class HrScreenTests
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
-        Assert.Equal(10, hr.Home.Sections.Count());
+        Assert.Equal(11, hr.Home.Sections.Count());
 
         // 1) شفت صباحي
         var shifts = hr.Section<ShiftsSectionViewModel>();
@@ -118,7 +118,7 @@ public class HrScreenTests
         Assert.Equal(pay.Summary!.TotalNetIqd, pay.Summary.TotalInIqd);
         await pay.PrintCommand.ExecuteAsync();
         Assert.StartsWith("كشف رواتب", dialogs.Reports.Last().Title);
-        Assert.Contains(dialogs.Reports.Last().Rows, r => r[1] == "موظف الإنتاج" && r[7] == "625,000");
+        Assert.Contains(dialogs.Reports.Last().Rows, r => r[1] == "موظف الإنتاج" && r[10] == "625,000");
 
         await using var db = _f.NewDb();
         var je = await db.JournalEntries.Include(j => j.Lines).SingleAsync(j => j.EntryType == JournalEntryType.AutoPayroll);
@@ -129,6 +129,94 @@ public class HrScreenTests
         await att.IdleAsync();
         await att.SaveCommand.ExecuteAsync();
         Assert.Contains(dialogs.Errors, e => e.Contains("معتمدة"));
+        Assert.Empty(_f.Unhandled);
+    }
+    [Fact]
+    public async Task Loan_withdrawal_and_penalty_screen_with_receipts_and_admin_void()
+    {
+        // موظف خاص بالاختبار؛ يُوقَف في النهاية حتى لا يدخل رواتب الاختبارات الأخرى
+        int empId;
+        await using (var db = _f.NewDb())
+        {
+            var e = new Employee { FullName = "عامل التعبئة — شاشة السلف", BaseSalary = 500_000 };
+            db.Employees.Add(e);
+            await db.SaveChangesAsync();
+            empId = e.Id;
+        }
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        await using (var db = _f.NewDb())
+        {
+            // تمويل الصندوق بقدر ما سيُصرف بالضبط، فيبقى رصيده كما كان بعد الاختبار
+            var cash = new Data.Services.CashBoxService(db);
+            var boxId = await db.CashBoxes.Where(b => b.IsActive && b.IsDefault).Select(b => b.Id).FirstAsync();
+            var adminId = await db.Users.Where(u => u.Username == AppFixture.AdminUser).Select(u => u.Id).SingleAsync();
+            Assert.True((await cash.DepositAsync(boxId, 260_000, DateTime.Today, "تمويل سلف الاختبار", null, adminId)).result.Success);
+        }
+
+        var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
+        await hr.IdleAsync();
+        var ded = hr.Deductions;
+        await Open(hr, ded);
+        ded.Employee = ded.Employees.Single(e => e.Id == empId);
+
+        // سلفة بأقساط
+        ded.Kind = ded.Kinds.Single(k => k.Value == EmployeeDeductionKind.Loan);
+        Assert.True(ded.IsLoan);
+        ded.Amount = 200_000;
+        ded.Installment = 50_000;
+        Assert.Equal("عدد الأقساط: 4 شهر", ded.InstallmentsText);
+        await ded.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        var loanReceipt = dialogs.Reports.Last();
+        Assert.Equal("سند صرف سلفة موظف", loanReceipt.Title);
+        Assert.Contains(loanReceipt.Totals, t => t.Label == "القسط الشهري" && t.Value == "50,000 د.ع");
+        Assert.Contains(loanReceipt.Totals, t => t.Label == "عدد الأقساط" && t.Value == "4");
+
+        // مسحوب
+        ded.Kind = ded.Kinds.Single(k => k.Value == EmployeeDeductionKind.Withdrawal);
+        ded.Amount = 60_000;
+        await ded.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal("سند صرف مسحوب من الراتب", dialogs.Reports.Last().Title);
+
+        // عقوبة: السبب إلزامي
+        ded.Kind = ded.Kinds.Single(k => k.Value == EmployeeDeductionKind.Penalty);
+        Assert.True(ded.IsPenalty);
+        ded.Amount = 15_000;
+        await ded.SaveCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("سبب العقوبة"));
+        dialogs.Errors.Clear();
+        ded.Reason = "غياب دون إذن";
+        await ded.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        var notice = dialogs.Reports.Last();
+        Assert.Equal("إشعار عقوبة (خصم من الراتب)", notice.Title);
+        Assert.Contains(notice.HeaderFields, f => f.Label == "سبب العقوبة" && f.Value == "غياب دون إذن");
+
+        // السجل مصفّى على الموظف: ثلاثة بانتظار الراتب
+        ded.FilterEmployee = ded.Employees.Single(e => e.Id == empId);
+        await ded.IdleAsync();
+        Assert.Equal(3, ded.Rows.Count);
+        Assert.All(ded.Rows, r => Assert.Equal("بانتظار الراتب", r.StatusText));
+        Assert.Equal(275_000, ded.TotalRemaining);
+
+        // إلغاء العقوبة (للأدمن) بسبب
+        var penaltyRow = ded.Rows.Single(r => r.Kind == EmployeeDeductionKind.Penalty);
+        ded.BeginVoidCommand.Execute(penaltyRow);
+        ded.VoidReason = "أُلغيت بقرار المدير";
+        await ded.VoidCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.DoesNotContain(ded.Rows, r => r.Id == penaltyRow.Id);           // "غير المُستقطع بالكامل فقط"
+        ded.OpenOnly = false;
+        await ded.IdleAsync();
+        Assert.Equal("ملغى", ded.Rows.Single(r => r.Id == penaltyRow.Id).StatusText);
+
+        await using (var db = _f.NewDb())
+        {
+            var e = await db.Employees.SingleAsync(x => x.Id == empId);
+            e.IsActive = false;
+            await db.SaveChangesAsync();
+        }
         Assert.Empty(_f.Unhandled);
     }
 }

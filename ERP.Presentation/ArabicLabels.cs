@@ -73,6 +73,8 @@ public static class ArabicLabels
         [CashBoxTxType.SalesReceipt] = "مبيعات نقدية", [CashBoxTxType.VoucherReceipt] = "سند قبض",
         [CashBoxTxType.VoucherPayment] = "سند صرف", [CashBoxTxType.RepHandover] = "تسليم نقد مندوب",
         [CashBoxTxType.CustomerDepositIn] = "استلام تأمين عميل", [CashBoxTxType.CustomerDepositOut] = "إرجاع تأمين عميل",
+        [CashBoxTxType.EmployeeAdvance] = "سلفة / مسحوب موظف",
+        [EmployeeDeductionKind.Loan] = "سلفة", [EmployeeDeductionKind.Withdrawal] = "مسحوب", [EmployeeDeductionKind.Penalty] = "عقوبة",
         [CustomerDepositKind.Receipt] = "استلام تأمين", [CustomerDepositKind.Refund] = "إرجاع تأمين", [CustomerDepositKind.Opening] = "رصيد افتتاحي",
     };
 

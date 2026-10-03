@@ -87,6 +87,8 @@ public class ProjectDbContext : DbContext
     public DbSet<Machine> Machines => Set<Machine>();
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
     public DbSet<CustomerDeposit> CustomerDeposits => Set<CustomerDeposit>();
+    public DbSet<EmployeeDeduction> EmployeeDeductions => Set<EmployeeDeduction>();
+    public DbSet<EmployeeDeductionInstallment> EmployeeDeductionInstallments => Set<EmployeeDeductionInstallment>();
     public DbSet<WipAdjustment> WipAdjustments => Set<WipAdjustment>();
     public DbSet<BatchNumberChange> BatchNumberChanges => Set<BatchNumberChange>();
     public DbSet<QualityTest> QualityTests => Set<QualityTest>();
@@ -405,6 +407,22 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.Voucher).WithMany().HasForeignKey(a => a.VoucherId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.SalesInvoice).WithMany().HasForeignKey(a => a.SalesInvoiceId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.AllocatedByUser).WithMany().HasForeignKey(a => a.AllocatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<EmployeeDeduction>(e =>
+        {
+            e.Property(d => d.Kind).HasConversion<string>();
+            e.Property(d => d.Amount).HasPrecision(18, 2);
+            e.Property(d => d.MonthlyInstallment).HasPrecision(18, 2);
+            e.Ignore(d => d.PaysCash);
+            e.HasOne(d => d.Employee).WithMany().HasForeignKey(d => d.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(d => d.JournalEntry).WithMany().HasForeignKey(d => d.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(d => d.CreatedByUser).WithMany().HasForeignKey(d => d.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(d => d.Installments).WithOne(i => i.EmployeeDeduction).HasForeignKey(i => i.EmployeeDeductionId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<EmployeeDeductionInstallment>(e =>
+        {
+            e.Property(i => i.Amount).HasPrecision(18, 2);
+            e.HasOne(i => i.PayrollRun).WithMany().HasForeignKey(i => i.PayrollRunId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<CustomerDeposit>(e =>
         {
             e.Property(d => d.Kind).HasConversion<string>();

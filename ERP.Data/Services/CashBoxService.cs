@@ -390,6 +390,7 @@ public class CashBoxService
         CashBoxTxType.VoucherPayment => "سند صرف",
         CashBoxTxType.CustomerDepositIn => "استلام تأمين عميل",
         CashBoxTxType.CustomerDepositOut => "إرجاع تأمين عميل",
+        CashBoxTxType.EmployeeAdvance => "سلفة / مسحوب موظف",
         _ => "تسليم نقد مندوب"
     };
 
