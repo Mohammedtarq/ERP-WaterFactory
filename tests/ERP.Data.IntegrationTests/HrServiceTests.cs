@@ -199,8 +199,11 @@ public class HrServiceTests
         Assert.Equal(1_000m, u.NetSalary);
 
         // إعادة التوليد تستبدل السطور ولا تكررها
+        // (لا نقارن العدد الكلي: مجموعة اختبارات أخرى تشارك القاعدة وقد تضيف موظفًا بالتوازي بين التوليدين)
         await hr.GenerateAsync(HrFixture.Month, HrFixture.Year);
-        Assert.Equal(lines.Count, await db.PayrollLines.CountAsync(l => l.PayrollRunId == runId));
+        var regenerated = await db.PayrollLines.AsNoTracking().Where(l => l.PayrollRunId == runId).Select(l => l.EmployeeId).ToListAsync();
+        Assert.Equal(regenerated.Count, regenerated.Distinct().Count());
+        Assert.All(lines.Keys, id => Assert.Contains(id, regenerated));
 
         // ------------------ الاعتماد ------------------
         var (ar, summary) = await hr.ApproveAsync(runId!.Value, _f.UserId);
