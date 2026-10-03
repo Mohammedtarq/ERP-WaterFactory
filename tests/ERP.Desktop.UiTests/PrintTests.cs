@@ -153,6 +153,29 @@ public class PrintTests
         });
     }
 
+    /// <summary>
+    /// خلل اكتُشف من صور الدليل: عمود "#" بعرض ثابت كان يبتلع عرض الجدول فتتكدّس حروف بقية الأعمدة عموديًا
+    /// ويمتد مستند من 3 أسطر إلى صفحتين. الآن: صفحة واحدة، ونص كل خلية على سطر واحد.
+    /// </summary>
+    [Fact]
+    public async Task Short_document_with_number_column_fits_one_page()
+    {
+        await UiThread.RunAsync(() =>
+        {
+            var r = new ReportDocument { CompanyName = "مصنع", Title = "مستند إدخال مخزني", Branding = Branding() };
+            r.Field("رقم المستند", "SR-2026-000001").Field("المخزن", "مخزن المواد الأولية").Field("المصدر", "شركة البلاستيك الحديثة — فاتورة 4471");
+            r.Columns.AddRange(new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع", "التشغيلة", "الصلاحية" });
+            r.Rows.Add(new[] { "1", "سدادة زرقاء 330 مل (RM-CAP330)", "قطعة", "5,000", "5,000", "CAP-2610", "2028/10/03" });
+            r.Rows.Add(new[] { "2", "لاصق ماء البصرة 330 مل (RM-LBL330)", "قطعة", "10,000", "10,000", "LBL-2610", "2028/10/03" });
+            r.Rows.Add(new[] { "3", "نايلون شرنك 20 قنينة (RM-SHR20)", "قطعة", "500", "500", "SHR-2610", "2028/10/03" });
+            r.Total("إجمالي القطع", "15,500", true);
+            var paginator = ReportRenderer.A4(r);
+            Assert.Equal(1, paginator.PageCount);
+            var page = paginator.GetPage(0);
+            SavePage(page.Visual, page.Size, Path.Combine(PrintDir, "A4_short_document.png"));
+        });
+    }
+
     /// <summary>إخفاء الأعمدة والصفوف الصفرية يُطبَّق على الناتج المطبوع نفسه.</summary>
     [Fact]
     public async Task Hidden_columns_and_zero_rows_are_removed_from_the_printout()

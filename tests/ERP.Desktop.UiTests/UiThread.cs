@@ -67,6 +67,10 @@ public static class UiThread
         using (var ctx = dv.RenderOpen())
         {
             ctx.DrawRectangle(Brushes.White, null, new Rect(0, 0, w, h));
+            // انعكاس الاتجاه (RTL) تطبّقه النافذة عند الرسم على الشاشة، والفرشاة تنسخ الشكل المنطقي غير المعكوس:
+            // نعكسه هنا حتى تطابق الصورة ما يراه المستخدم (القائمة يمينًا والنص مقروء)
+            if (element.FlowDirection == FlowDirection.RightToLeft)
+                ctx.PushTransform(new MatrixTransform(-1, 0, 0, 1, w, 0));
             ctx.DrawRectangle(new VisualBrush(element), null, new Rect(0, 0, w, h));
         }
         bmp.Render(dv);

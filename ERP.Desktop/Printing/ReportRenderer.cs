@@ -221,7 +221,9 @@ public static class ReportRenderer
         {
             var t = new Table { CellSpacing = 0 };
             foreach (var (c, i) in r.Columns.Select((c, i) => (c, i)))
-                t.Columns.Add(new TableColumn { Width = c == "#" ? new GridLength(30) : new GridLength(ColumnWeight(r, i), GridUnitType.Star) });
+                // كل الأعمدة نسبية: خلط عرض ثابت (بكسل) مع النسبي في جدول FlowDocument باتجاه RTL يجعل العمود الثابت
+                // يبتلع العرض كله فتنضغط بقية الأعمدة وتتكدّس حروفها عموديًا
+                t.Columns.Add(new TableColumn { Width = new GridLength(c == "#" ? 0.45 : ColumnWeight(r, i), GridUnitType.Star) });
             var head = new TableRowGroup();
             var hr = new TableRow { Background = tint };
             foreach (var c in r.Columns)

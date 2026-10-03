@@ -7,6 +7,7 @@
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:BomSectionViewModel}"
              x:Name="Root">
     <Border Style="{StaticResource Card}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <DockPanel>
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
                 <TextBlock Text="المنتج النهائي:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
@@ -48,7 +49,7 @@
                 </WrapPanel>
             </Border>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
-            <DataGrid ItemsSource="{Binding Lines}">
+            <DataGrid ItemsSource="{Binding Lines}" MinHeight="170">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="الدور" Binding="{Binding ComponentRole}" Width="110"/>
                     <DataGridTextColumn Header="المادة الأولية" Binding="{Binding RawMaterialName}" Width="*"/>
@@ -64,5 +65,6 @@
                 </DataGrid.Columns>
             </DataGrid>
         </DockPanel>
+        </ScrollViewer>
     </Border>
 </UserControl>

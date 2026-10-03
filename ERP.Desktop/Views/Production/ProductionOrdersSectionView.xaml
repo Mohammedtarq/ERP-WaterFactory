@@ -29,13 +29,13 @@
                 <DataGrid ItemsSource="{Binding Orders}">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="100"/>
-                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="*"/>
-                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="130"/>
-                        <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="100"/>
-                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityToProduce, StringFormat=N0}" Width="80"/>
-                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="80"/>
-                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="120"/>
-                        <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="200"/>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="2*" MinWidth="150"/>
+                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="*" MinWidth="90"/>
+                        <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="90"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityToProduce, StringFormat=N0}" Width="70"/>
+                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="70"/>
+                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="110"/>
+                        <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.3*" MinWidth="120"/>
                         <DataGridTemplateColumn Header="" Width="180">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -78,60 +78,63 @@
                 Visibility="{Binding IsComposing, Converter={StaticResource BoolToVisibility}}">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top" Text="أمر إنتاج جديد" Style="{StaticResource SectionTitle}"/>
-                <StackPanel DockPanel.Dock="Top">
-                    <TextBlock Text="المنتج النهائي (له قائمة مواد)" Style="{StaticResource FieldLabel}"/>
-                    <ComboBox ItemsSource="{Binding FinishedItems}" SelectedItem="{Binding FinishedItem}" DisplayMemberPath="ItemName"/>
-                    <TextBlock Text="وصفة مخصصة لعميل (اختياري)" Style="{StaticResource FieldLabel}"/>
-                    <ComboBox ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name"/>
-                    <TextBlock Text="رقم الدفعة (مولَّد تلقائيًا ويمكن تعديله)" Style="{StaticResource FieldLabel}"/>
-                    <TextBox Text="{Binding BatchNumber, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
-                    <TextBlock Text="الكمية المطلوب إنتاجها (قطعة)" Style="{StaticResource FieldLabel}"/>
-                    <TextBox Text="{Binding Quantity}" FlowDirection="LeftToRight"/>
-                    <TextBlock Text="مخزن المواد الأولية المفضّل (يُصرف من كل مخازن المواد الأولية بترتيب الصلاحية)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
-                    <ComboBox ItemsSource="{Binding RawWarehouses}" SelectedItem="{Binding RawWarehouse}" DisplayMemberPath="Name"/>
-                    <TextBlock Text="الماكينة (تُصرف المواد إلى رصيدها تحت التصنيع)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
-                    <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding Machine}" DisplayMemberPath="Name"/>
-                    <Button Content="إضافة الصنف للأمر (أمر متعدد الأصناف)" Style="{StaticResource SecondaryButton}" Command="{Binding AddLineCommand}" Margin="0,10,0,0" HorizontalAlignment="Left"/>
-                    <ItemsControl ItemsSource="{Binding ComposeLines}" Margin="0,6,0,0">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <DockPanel Margin="0,2">
-                                    <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="حذف الصنف من الأمر" Style="{StaticResource RowIconButton}" Tag="#DC2626"
-                                            Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
-                                    <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
-                                        <Run Text="{Binding ItemName, Mode=OneWay}" FontWeight="SemiBold"/>
-                                        <Run Text=" — "/><Run Text="{Binding Quantity, Mode=OneWay, StringFormat=N0}"/><Run Text=" قطعة — دفعة "/>
-                                        <Run Text="{Binding BatchNumber, Mode=OneWay}"/>
-                                        <Run Text="{Binding RecipeName, Mode=OneWay}" Foreground="{StaticResource MutedTextBrush}"/>
-                                    </TextBlock>
-                                </DockPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <Button Content="معاينة المواد المطلوبة" Style="{StaticResource SecondaryButton}" Command="{Binding PreviewCommand}" Margin="0,10,0,6" HorizontalAlignment="Left"/>
-                </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
                     <Button Content="إنشاء الأمر" Style="{StaticResource SuccessButton}" Command="{Binding CreateCommand}"/>
                     <Button Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CancelComposeCommand}"/>
                 </StackPanel>
-                <DataGrid ItemsSource="{Binding Preview}">
-                    <DataGrid.RowStyle>
-                        <Style TargetType="DataGridRow">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsSufficient}" Value="False">
-                                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGrid.RowStyle>
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="المادة" Binding="{Binding RawMaterialName}" Width="*"/>
-                        <DataGridTextColumn Header="المطلوب" Binding="{Binding Required, StringFormat=N0}" Width="80"/>
-                        <DataGridTextColumn Header="المتاح" Binding="{Binding Available, StringFormat=N0}" Width="80"/>
-                        <DataGridTextColumn Header="للأصناف" Binding="{Binding UsedBy}" Width="110"/>
-                        <DataGridTextColumn Header="الموقع" Binding="{Binding WhereText}" Width="120"/>
-                    </DataGrid.Columns>
-                </DataGrid>
+                <!-- الحقول والمعاينة داخل منطقة تمرير: الزرّان في الأسفل يبقيان ظاهرين مهما صغرت النافذة -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <TextBlock Text="المنتج النهائي (له قائمة مواد)" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding FinishedItems}" SelectedItem="{Binding FinishedItem}" DisplayMemberPath="ItemName"/>
+                        <TextBlock Text="وصفة مخصصة لعميل (اختياري)" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name"/>
+                        <TextBlock Text="رقم الدفعة (مولَّد تلقائيًا ويمكن تعديله)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding BatchNumber, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="الكمية المطلوب إنتاجها (قطعة)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Quantity}" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="مخزن المواد الأولية المفضّل (يُصرف من كل مخازن المواد الأولية بترتيب الصلاحية)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                        <ComboBox ItemsSource="{Binding RawWarehouses}" SelectedItem="{Binding RawWarehouse}" DisplayMemberPath="Name"/>
+                        <TextBlock Text="الماكينة (تُصرف المواد إلى رصيدها تحت التصنيع)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                        <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding Machine}" DisplayMemberPath="Name"/>
+                        <Button Content="إضافة الصنف للأمر (أمر متعدد الأصناف)" Style="{StaticResource SecondaryButton}" Command="{Binding AddLineCommand}" Margin="0,10,0,0" HorizontalAlignment="Left"/>
+                        <ItemsControl ItemsSource="{Binding ComposeLines}" Margin="0,6,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,2">
+                                        <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="حذف الصنف من الأمر" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
+                                            <Run Text="{Binding ItemName, Mode=OneWay}" FontWeight="SemiBold"/>
+                                            <Run Text=" — "/><Run Text="{Binding Quantity, Mode=OneWay, StringFormat=N0}"/><Run Text=" قطعة — دفعة "/>
+                                            <Run Text="{Binding BatchNumber, Mode=OneWay}"/>
+                                            <Run Text="{Binding RecipeName, Mode=OneWay}" Foreground="{StaticResource MutedTextBrush}"/>
+                                        </TextBlock>
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Content="معاينة المواد المطلوبة" Style="{StaticResource SecondaryButton}" Command="{Binding PreviewCommand}" Margin="0,10,0,6" HorizontalAlignment="Left"/>
+                        <DataGrid ItemsSource="{Binding Preview}" MinHeight="140" MaxHeight="320">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSufficient}" Value="False">
+                                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="المادة" Binding="{Binding RawMaterialName}" Width="*"/>
+                                <DataGridTextColumn Header="المطلوب" Binding="{Binding Required, StringFormat=N0}" Width="80"/>
+                                <DataGridTextColumn Header="المتاح" Binding="{Binding Available, StringFormat=N0}" Width="80"/>
+                                <DataGridTextColumn Header="للأصناف" Binding="{Binding UsedBy}" Width="110"/>
+                                <DataGridTextColumn Header="الموقع" Binding="{Binding WhereText}" Width="120"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </ScrollViewer>
             </DockPanel>
         </Border>
         <Border Grid.Column="1" Style="{StaticResource Card}" Width="400" Margin="12,0,0,0"
