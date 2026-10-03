@@ -22,6 +22,9 @@ jobs:
     needs: test
     runs-on: windows-latest
     timeout-minutes: 40
+    # الكتابة مطلوبة فقط لخطوة "صور دليل الاستخدام" (تعمل عند وجود [guide] في رسالة الدفعة)
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -37,6 +40,22 @@ jobs:
           ERP_UI_SQL_CONNECTION: Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True;
           ERP_UI_SCREENSHOTS: ${{ github.workspace }}\ui-screenshots
         run: dotnet test tests/ERP.Desktop.UiTests -p:NuGetAudit=false --logger "console;verbosity=normal"
+      # دليل الاستخدام المصوَّر: تُحفظ صور الدرس في المستودع (docs/user-guide/images) على نفس الفرع،
+      # فقط عند طلبها صراحةً بـ [guide] في رسالة الدفعة، وبـ [skip ci] حتى لا تبدأ دفعة جديدة.
+      - name: صور دليل الاستخدام
+        if: success() && github.event_name == 'push' && contains(github.event.head_commit.message, '[guide]')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force docs/user-guide/images | Out-Null
+          Copy-Item ui-screenshots/tutorial/*.png docs/user-guide/images/ -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/user-guide/images
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "صور دليل الاستخدام من الشاشات الفعلية [skip ci]"
+            git push origin "HEAD:${{ github.ref_name }}"
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
