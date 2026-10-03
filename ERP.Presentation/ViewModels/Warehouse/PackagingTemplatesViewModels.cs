@@ -111,5 +111,6 @@ public class TemplateRoleChoice : ObservableObject
     private Item? _item;
     public string Role { get; init; } = "";
     public string RatioText { get; init; } = "";
-    public Item? Item { get => _item; set => SetProperty(ref _item, value); }
+    // ليس "Item": WPF يعامل خاصية بهذا الاسم كمفهرس عند كتابة null من القائمة المنسدلة فيرمي NullReferenceException
+    public Item? ChosenItem { get => _item; set => SetProperty(ref _item, value); }
 }

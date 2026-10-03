@@ -352,7 +352,7 @@ public class ScreenFlowTests
         var adj = wh.LegacyAdjustment;
         await Open(wh, adj);
 
-        adj.Item = adj.ItemsLookup.Single(i => i.Id == _f.WaterItemId);
+        adj.AdjustItem = adj.ItemsLookup.Single(i => i.Id == _f.WaterItemId);
         adj.Warehouse = adj.Warehouses.Single(w => w.Id == _f.MainWarehouseId);
         await adj.IdleAsync();
         var available = adj.AvailableBalance!.Value;
@@ -441,7 +441,7 @@ public class ScreenFlowTests
         po.NewOrderCommand.Execute(null);
         po.Supplier = po.SuppliersLookup.Single(s => s.Id == _f.SupplierId);
         po.Warehouse = po.Warehouses.Single(w => w.Id == _f.MainWarehouseId);
-        po.Lines[0].Item = po.ItemsLookup.Single(i => i.Id == _f.WaterItemId);
+        po.Lines[0].LineItem = po.ItemsLookup.Single(i => i.Id == _f.WaterItemId);
         po.Lines[0].Quantity = 240;
         po.Lines[0].UnitCost = 90;
         Assert.Equal(21600m, po.Total);

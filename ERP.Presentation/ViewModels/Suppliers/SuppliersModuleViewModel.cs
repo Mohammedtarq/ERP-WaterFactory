@@ -54,7 +54,8 @@ public class PurchaseLineInput : ObservableObject
 
     public PurchaseLineInput(Action changed) => _changed = changed;
 
-    public Item? Item { get => _item; set => SetProperty(ref _item, value); }
+    // ليس "Item": WPF يعامل خاصية بهذا الاسم كمفهرس عند كتابة null من القائمة المنسدلة فيرمي NullReferenceException
+    public Item? LineItem { get => _item; set => SetProperty(ref _item, value); }
     public decimal Quantity { get => _quantity; set { if (SetProperty(ref _quantity, value)) { OnPropertyChanged(nameof(LineTotal)); _changed(); } } }
     public decimal UnitCost { get => _unitCost; set { if (SetProperty(ref _unitCost, value)) { OnPropertyChanged(nameof(LineTotal)); _changed(); } } }
     public decimal LineTotal => Quantity * UnitCost;
@@ -181,7 +182,7 @@ public class PurchaseOrdersSectionViewModel : SectionViewModel
     private async Task SaveAsync()
     {
         if (Supplier is null || Warehouse is null) { Dialogs.Error("اختر المورد والمخزن المستهدف"); return; }
-        var lines = Lines.Where(l => l.Item is not null && l.Quantity > 0).ToList();
+        var lines = Lines.Where(l => l.LineItem is not null && l.Quantity > 0).ToList();
         if (lines.Count == 0) { Dialogs.Error("أضف صنفًا واحدًا على الأقل بكمية أكبر من صفر"); return; }
         if (lines.Any(l => l.UnitCost < 0)) { Dialogs.Error("التكلفة لا يمكن أن تكون سالبة"); return; }
         if (NeedsAdvance && (AdvanceAmount <= 0 || AdvanceAmount > Total)) { Dialogs.Error("الدفعة المقدمة يجب أن تكون أكبر من صفر ولا تتجاوز إجمالي الأمر"); return; }
@@ -189,7 +190,7 @@ public class PurchaseOrdersSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         if (await RunOperationAsync(() => new SupplierPurchasingService(db).CreatePurchaseOrderAsync(
                 Supplier.Id, Warehouse.Id, OrderDate, ExpectedDate, Terms.Value, NeedsAdvance ? AdvanceAmount : 0,
-                lines.Select(l => new PurchaseOrderLineInput(l.Item!.Id, l.Quantity, l.UnitCost)).ToList(), Session.UserId),
+                lines.Select(l => new PurchaseOrderLineInput(l.LineItem!.Id, l.Quantity, l.UnitCost)).ToList(), Session.UserId),
             "تم إنشاء أمر الشراء"))
         {
             IsComposing = false;

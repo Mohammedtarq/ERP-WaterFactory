@@ -111,7 +111,7 @@
                                         <ColumnDefinition Width="90"/>
                                         <ColumnDefinition Width="36"/>
                                     </Grid.ColumnDefinitions>
-                                    <ComboBox ItemsSource="{Binding DataContext.ItemsLookup, ElementName=Root}" SelectedItem="{Binding Item}" DisplayMemberPath="ItemName"/>
+                                    <ComboBox ItemsSource="{Binding DataContext.ItemsLookup, ElementName=Root}" SelectedItem="{Binding LineItem}" DisplayMemberPath="ItemName"/>
                                     <TextBox Grid.Column="1" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" ToolTip="الكمية" Margin="6,0,0,0" FlowDirection="LeftToRight"/>
                                     <TextBox Grid.Column="2" Text="{Binding UnitCost, UpdateSourceTrigger=PropertyChanged}" ToolTip="التكلفة للوحدة" Margin="6,0,0,0" FlowDirection="LeftToRight"/>
                                     <Button Grid.Column="3" Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626"

@@ -115,6 +115,21 @@ public class XamlBindingTests
         }
     }
 
+    /// <summary>
+    /// WPF يعامل خاصية اسمها "Item" في نهاية مسار الربط كمفهرس عند كتابة null إليها (فراغ اختيار القائمة المنسدلة
+    /// عند مغادرة الشاشة) فيرمي NullReferenceException داخل PropertyPathWorker — لا يُربط أي عنصر بخاصية بهذا الاسم.
+    /// </summary>
+    [Fact]
+    public void No_binding_ends_on_a_property_named_Item()
+    {
+        var offenders = new List<string>();
+        foreach (var file in Directory.GetFiles(XamlDir, "*.xaml", SearchOption.AllDirectories))
+            foreach (Match m in Regex.Matches(File.ReadAllText(file), @"\{Binding\s+(?:Path=)?(?<path>[\w.\[\]]+)"))
+                if (m.Groups["path"].Value.Split('.')[^1] == "Item")
+                    offenders.Add($"{Path.GetFileName(file)}: {m.Value}");
+        Assert.True(offenders.Count == 0, "ربط بخاصية اسمها Item (سمّها باسم آخر):\n" + string.Join("\n", offenders));
+    }
+
     // ------------------------------------------------------------------
 
     private static Type ResolveDesignType(XElement root)

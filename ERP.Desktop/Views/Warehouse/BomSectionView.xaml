@@ -26,7 +26,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
                                     <TextBlock Text="{Binding Role}" Width="110" VerticalAlignment="Center" FontWeight="SemiBold"/>
                                     <TextBlock Text="{Binding RatioText}" Width="90" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
-                                    <ComboBox ItemsSource="{Binding DataContext.AllItems, ElementName=Root}" SelectedItem="{Binding Item}" DisplayMemberPath="ItemName" Width="240"/>
+                                    <ComboBox ItemsSource="{Binding DataContext.AllItems, ElementName=Root}" SelectedItem="{Binding ChosenItem}" DisplayMemberPath="ItemName" Width="240"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

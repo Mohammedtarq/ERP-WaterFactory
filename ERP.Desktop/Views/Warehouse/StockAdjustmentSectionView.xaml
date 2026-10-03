@@ -17,7 +17,7 @@
                 <TextBlock Text="نوع التسوية" Style="{StaticResource FieldLabel}"/>
                 <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding Kind}" DisplayMemberPath="Label"/>
                 <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
-                <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding Item}" DisplayMemberPath="ItemName" IsTextSearchEnabled="True"/>
+                <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding AdjustItem}" DisplayMemberPath="ItemName" IsTextSearchEnabled="True"/>
                 <TextBlock Text="المخزن" Style="{StaticResource FieldLabel}"/>
                 <ComboBox ItemsSource="{Binding Warehouses}" SelectedItem="{Binding Warehouse}" DisplayMemberPath="Name"/>
                 <TextBlock Text="التشغيلة (اختياري)" Style="{StaticResource FieldLabel}"/>

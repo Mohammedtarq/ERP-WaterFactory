@@ -167,9 +167,9 @@ public class TutorialTests
             await bom.IdleAsync();
             bom.Template = bom.Templates.Single(t => t.Name == "330×20 شرنك");
             Item Pick(string code) => bom.AllItems.Single(i => i.ItemCode == code);
-            bom.RoleChoices.Single(c => c.Role == "شرنك").Item = Pick("RM-SHR20");
-            bom.RoleChoices.Single(c => c.Role == "غطاء").Item = Pick("RM-CAP330");
-            bom.RoleChoices.Single(c => c.Role == "لاصق").Item = Pick("RM-LBL330");
+            bom.RoleChoices.Single(c => c.Role == "شرنك").ChosenItem = Pick("RM-SHR20");
+            bom.RoleChoices.Single(c => c.Role == "غطاء").ChosenItem = Pick("RM-CAP330");
+            bom.RoleChoices.Single(c => c.Role == "لاصق").ChosenItem = Pick("RM-LBL330");
             await Shot("12-اختيار-القالب-والسدادة-واللاصق", bom);
             await bom.ApplyTemplateCommand.ExecuteAsync();
             await Shot("13-وصفة-المنتج-بعد-تطبيق-القالب", bom);

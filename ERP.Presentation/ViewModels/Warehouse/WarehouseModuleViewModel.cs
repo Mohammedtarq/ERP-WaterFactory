@@ -349,7 +349,8 @@ public class StockAdjustmentSectionViewModel : SectionViewModel
     }
     public bool NeedsReason => Kind.Value == StockAdjustmentKind.Damaged;
 
-    public Item? Item { get => _item; set { if (SetProperty(ref _item, value)) Background(RefreshBatchesAsync()); } }
+    // ليس "Item": WPF يعامل خاصية بهذا الاسم كمفهرس عند كتابة null من القائمة المنسدلة فيرمي NullReferenceException
+    public Item? AdjustItem { get => _item; set { if (SetProperty(ref _item, value)) Background(RefreshBatchesAsync()); } }
     public Data.ProjectDb.Entities.Warehouse? Warehouse { get => _warehouse; set { if (SetProperty(ref _warehouse, value)) Background(RefreshBalanceAsync()); } }
     public ItemBatch? Batch { get => _batch; set { if (SetProperty(ref _batch, value)) Background(RefreshBalanceAsync()); } }
     public decimal Quantity { get => _quantity; set => SetProperty(ref _quantity, value); }
@@ -389,28 +390,28 @@ public class StockAdjustmentSectionViewModel : SectionViewModel
     {
         Batches.Clear();
         Batch = null;
-        if (Item is null) return;
+        if (AdjustItem is null) return;
         await using var db = Session.NewDb();
-        foreach (var b in await db.ItemBatches.AsNoTracking().Where(b => b.ItemId == Item.Id).OrderBy(b => b.ExpiryDate).ToListAsync()) Batches.Add(b);
+        foreach (var b in await db.ItemBatches.AsNoTracking().Where(b => b.ItemId == AdjustItem.Id).OrderBy(b => b.ExpiryDate).ToListAsync()) Batches.Add(b);
         await RefreshBalanceAsync();
     }
 
     private async Task RefreshBalanceAsync()
     {
-        if (Item is null || Warehouse is null) { AvailableBalance = null; return; }
+        if (AdjustItem is null || Warehouse is null) { AvailableBalance = null; return; }
         await using var db = Session.NewDb();
-        AvailableBalance = await new InventoryService(db).GetBalanceAsync(Item.Id, Warehouse.Id, Batch?.Id);
+        AvailableBalance = await new InventoryService(db).GetBalanceAsync(AdjustItem.Id, Warehouse.Id, Batch?.Id);
     }
 
     private async Task SubmitAsync()
     {
         if (!Require(Kind.Value == StockAdjustmentKind.Return ? CanAdd : CanEdit, "تسوية المخزون")) return;
-        if (Item is null || Warehouse is null) { Dialogs.Error("اختر الصنف والمخزن"); return; }
+        if (AdjustItem is null || Warehouse is null) { Dialogs.Error("اختر الصنف والمخزن"); return; }
 
         await using var db = Session.NewDb();
         var ok = await RunOperationAsync(
-            () => new InventoryService(db).AdjustAsync(Kind.Value, Item.Id, Warehouse.Id, Batch?.Id, Quantity, Reason?.Value, Notes, Session.UserId),
-            $"تم تسجيل {Kind.Label}: {Quantity:0.###} قطعة من {Item.ItemName}");
+            () => new InventoryService(db).AdjustAsync(Kind.Value, AdjustItem.Id, Warehouse.Id, Batch?.Id, Quantity, Reason?.Value, Notes, Session.UserId),
+            $"تم تسجيل {Kind.Label}: {Quantity:0.###} قطعة من {AdjustItem.ItemName}");
         if (!ok) return;
         Quantity = 0;
         Notes = null;
@@ -495,7 +496,7 @@ public class BomSectionViewModel : SectionViewModel
             if (!SetProperty(ref _template, value)) return;
             RoleChoices.Clear();
             foreach (var l in value?.Lines.OrderBy(l => l.Id) ?? Enumerable.Empty<PackagingTemplateLine>())
-                RoleChoices.Add(new TemplateRoleChoice { Role = l.ComponentRole, RatioText = l.RatioText, Item = AllItems.FirstOrDefault(i => i.Id == l.DefaultItemId) });
+                RoleChoices.Add(new TemplateRoleChoice { Role = l.ComponentRole, RatioText = l.RatioText, ChosenItem = AllItems.FirstOrDefault(i => i.Id == l.DefaultItemId) });
         }
     }
     public AsyncRelayCommand ApplyTemplateCommand { get; }
@@ -507,7 +508,7 @@ public class BomSectionViewModel : SectionViewModel
         if (FinishedItem is null || Template is null) { Dialogs.Error("اختر المنتج النهائي والقالب"); return; }
         if (Lines.Count > 0 && !Dialogs.Confirm($"استبدال قائمة مواد {FinishedItem.ItemName} الحالية بمكونات القالب {Template.Name}؟")) return;
         await using var db = Session.NewDb();
-        var choices = RoleChoices.Where(c => c.Item is not null).ToDictionary(c => c.Role, c => c.Item!.Id);
+        var choices = RoleChoices.Where(c => c.ChosenItem is not null).ToDictionary(c => c.Role, c => c.ChosenItem!.Id);
         if (await RunOperationAsync(() => new PackagingTemplateService(db).ApplyToItemAsync(FinishedItem.Id, Template.Id, choices),
                                     $"طُبّق القالب {Template.Name} على {FinishedItem.ItemName}"))
             await LoadBomAsync();
