@@ -48,6 +48,21 @@ IF COL_LENGTH('Vouchers', 'IsVoided') IS NULL
                              VoidedAt DATETIME2 NULL;
 GO
 
+-- البيع بانتظار الإنتاج: ما بيع فوق الرصيد المسجّل يُسجَّل عجزًا باسم الصنف والفاتورة، ويُسوّى تلقائيًا عند تسجيل الإنتاج
+IF OBJECT_ID('PendingProductionShortages', 'U') IS NULL
+CREATE TABLE PendingProductionShortages (
+    Id                  INT IDENTITY(1,1) PRIMARY KEY,
+    ItemId              INT             NOT NULL FOREIGN KEY REFERENCES Items(Id),
+    WarehouseId         INT             NOT NULL FOREIGN KEY REFERENCES Warehouses(Id),
+    Quantity            DECIMAL(18,3)   NOT NULL CHECK (Quantity > 0),
+    SettledQuantity     DECIMAL(18,3)   NOT NULL DEFAULT 0,
+    SalesInvoiceId      INT             NULL FOREIGN KEY REFERENCES SalesInvoices(Id),
+    CreatedByUserId     INT             NOT NULL FOREIGN KEY REFERENCES Users(Id),
+    CreatedAt           DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+    SettledAt           DATETIME2       NULL
+);
+GO
+
 DECLARE @oldStatusCk sysname = (SELECT TOP 1 name FROM sys.check_constraints
                                 WHERE parent_object_id = OBJECT_ID('SalesInvoices')
                                   AND definition LIKE N'%Draft%' AND definition NOT LIKE N'%Voided%');
@@ -252,9 +267,10 @@ BEGIN
     IF dbo.fn_UserCan(@UserId, N'Sales', N'Edit') = 0 AND dbo.fn_UserCan(@UserId, N'Sales', N'Add') = 0
         THROW 51010, N'لا تملك صلاحية تعديل فواتير المبيعات.', 1;
 
-    DECLARE @status NVARCHAR(20), @custId INT, @agentPricing BIT, @free BIT;
-    SELECT @status = Status, @custId = CustomerId, @agentPricing = IsAgentPricing, @free = IsFreeSale
-    FROM SalesInvoices WHERE Id = @InvoiceId;
+    DECLARE @status NVARCHAR(20), @custId INT, @agentPricing BIT, @free BIT, @rawSale BIT;
+    SELECT @status = i.Status, @custId = i.CustomerId, @agentPricing = i.IsAgentPricing, @free = i.IsFreeSale,
+           @rawSale = CASE WHEN w.WarehouseType = N'RawMaterial' THEN 1 ELSE 0 END
+    FROM SalesInvoices i JOIN Warehouses w ON w.Id = i.WarehouseId WHERE i.Id = @InvoiceId;
 
     IF @status IS NULL THROW 51011, N'الفاتورة غير موجودة.', 1;
     IF @status <> N'Draft' THROW 51012, N'لا يمكن تعديل فاتورة مرحّلة.', 1;
@@ -264,8 +280,9 @@ BEGIN
         THROW 51014, N'الصنف غير موجود أو غير فعّال.', 1;
 
     DECLARE @baseUnits DECIMAL(18,3);
+    -- بيع المواد الأولية (من مخزنها، بصلاحية خاصة في الواجهة) يقبل أي وحدة للمادة
     SELECT @baseUnits = EquivalentBaseUnits FROM ItemPackagingLevels
-    WHERE Id = @PackagingLevelId AND ItemId = @ItemId AND IsSellableUnit = 1;
+    WHERE Id = @PackagingLevelId AND ItemId = @ItemId AND (IsSellableUnit = 1 OR @rawSale = 1);
 
     IF @baseUnits IS NULL
         THROW 51015, N'وحدة البيع المختارة لا تخص هذا الصنف أو غير قابلة للبيع.', 1;
@@ -476,7 +493,12 @@ BEGIN
              ELSE CASE WHEN @free = 1 THEN N'FreeIssue' ELSE N'SalesIssue' END END;
 
     DECLARE @alloc TABLE (ItemId INT, BatchId INT NULL, Qty DECIMAL(18,3));
+    DECLARE @short TABLE (ItemId INT, Qty DECIMAL(18,3));
     DECLARE @lineItem INT, @lineBatch INT, @need DECIMAL(18,3), @itemName NVARCHAR(200), @msg NVARCHAR(400);
+    -- البيع بانتظار الإنتاج: مخزن المنتج التام فقط، وبصلاحية خاصة تحددها الإدارة
+    DECLARE @canPend BIT = CASE WHEN @whType = N'FinishedGoods' AND EXISTS (
+            SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
+            WHERE u.Id = @UserId AND rp.ModuleCode = N'Special:SellPending' AND rp.CanView = 1) THEN 1 ELSE 0 END;
 
     -- الطلب مجمّعًا حسب الصنف/التشغيلة (سطران لنفس الصنف يُحسبان معًا)
     DECLARE req CURSOR LOCAL FAST_FORWARD FOR
@@ -504,6 +526,13 @@ BEGIN
           AND (@lineBatch IS NULL OR b.BatchId = @lineBatch);
 
         DELETE FROM @avail WHERE Qty <= 0;
+
+        IF ISNULL((SELECT SUM(Qty) FROM @avail), 0) < @need AND @canPend = 1 AND @lineBatch IS NULL
+        BEGIN
+            -- يخرج المتاح كله، والفرق عجز بانتظار الإنتاج
+            INSERT INTO @short (ItemId, Qty) VALUES (@lineItem, @need - ISNULL((SELECT SUM(Qty) FROM @avail), 0));
+            SET @need = ISNULL((SELECT SUM(Qty) FROM @avail), 0);
+        END;
 
         IF ISNULL((SELECT SUM(Qty) FROM @avail), 0) < @need
         BEGIN
@@ -536,6 +565,16 @@ BEGIN
            SYSUTCDATETIME(), @UserId
     FROM @alloc WHERE Qty > 0
     GROUP BY ItemId, BatchId;
+
+    -- العجز بانتظار الإنتاج: حركة بلا تشغيلة تُسوّى عند تسجيل الإنتاج، مع سجل باسم الصنف والفاتورة
+    INSERT INTO StockTransactions
+        (ItemId, WarehouseId, BatchId, QuantityBaseUnits, TransactionType,
+         FreeIssueRecipient, ReferenceTable, ReferenceId, TransactionDate, CreatedByUserId)
+    SELECT ItemId, @whId, NULL, -SUM(Qty), @txType,
+           CASE WHEN @free = 1 THEN @recipient END, N'SalesInvoices', @InvoiceId, SYSUTCDATETIME(), @UserId
+    FROM @short GROUP BY ItemId;
+    INSERT INTO PendingProductionShortages (ItemId, WarehouseId, Quantity, SalesInvoiceId, CreatedByUserId)
+    SELECT ItemId, @whId, SUM(Qty), @InvoiceId, @UserId FROM @short GROUP BY ItemId;
 
     -- ---------- 3) القيد المحاسبي (العقل المالي) ----------
     DECLARE @jeId INT = NULL;
@@ -778,6 +817,11 @@ BEGIN
     IF @repId IS NOT NULL AND @paid > 0 AND @pay <> N'Electronic'
         INSERT INTO RepWalletTransactions (EmployeeId, Description, AmountIn, AmountOut, ReferenceTable, ReferenceId, JournalEntryId)
         VALUES (@repId, N'إلغاء فاتورة ' + @num, 0, @paid, N'SalesInvoices', @InvoiceId, @jeId);
+
+    -- 4ب) عجز بانتظار الإنتاج لهذه الفاتورة: يُغلق (البضاعة عادت أصلًا بالحركة العكسية)
+    IF OBJECT_ID('PendingProductionShortages', 'U') IS NOT NULL
+        UPDATE PendingProductionShortages SET SettledQuantity = Quantity, SettledAt = SYSUTCDATETIME()
+        WHERE SalesInvoiceId = @InvoiceId AND SettledQuantity < Quantity;
 
     -- 5) الحالة (توزيع الدفعات يُعاد من الخدمة بعد الإلغاء)
     IF OBJECT_ID('PaymentAllocations', 'U') IS NOT NULL

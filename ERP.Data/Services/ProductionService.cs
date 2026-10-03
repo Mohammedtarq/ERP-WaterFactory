@@ -344,8 +344,12 @@ public class ProductionService
     /// الاستهلاك الفعلي لصنف = مكوناته (قائمة مواده) × الكمية المُنتَجة منه فعلًا، يُخصم من تحت تصنيع ماكينة الأمر.
     /// يرفض إن لم يكفِ رصيد الماكينة (يُصرف إضافي أولًا) دون أي خصم جزئي.
     /// </summary>
+    /// <summary>كلفة المواد المستهلكة في آخر تعبئة (بالمتوسط المرجّح لحظة الاستهلاك) — تصبح كلفة القطع المعبّأة.</summary>
+    private decimal _lastConsumedCost;
+
     private async Task<string?> ConsumeForProducedAsync(ProductionOrder order, ProductionOrderLine line, decimal pieces, int userId)
     {
+        _lastConsumedCost = 0;
         if (order.Machine is null) return null;   // أمر قديم: استُهلكت مواده كاملة عند البدء
         var plan = new List<(ProductionOrderConsumption c, decimal qty)>();
         foreach (var c in order.Consumptions.Where(c => c.ProductionOrderLineId == line.Id))
@@ -364,6 +368,7 @@ public class ProductionService
         {
             var (alloc, error) = await LedgerHelper.AllocateAsync(_db, c.RawMaterialItemId, order.Machine.WipWarehouseId, null, qty);
             if (error is not null) return error;
+            _lastConsumedCost += qty * (await _db.Items.Where(i => i.Id == c.RawMaterialItemId).Select(i => i.CostPrice).FirstAsync() ?? 0);
             foreach (var (batchId, q) in alloc)
                 _db.StockTransactions.Add(new StockTransaction { ItemId = c.RawMaterialItemId, WarehouseId = order.Machine.WipWarehouseId, BatchId = batchId,
                                                                  QuantityBaseUnits = -q, TransactionType = StockTransactionType.ProductionConsume,
@@ -469,6 +474,7 @@ public class ProductionService
                                                  ResultingFinishedGoodsWarehouseId = fg.Id, CreatedByUserId = userId });
         _db.StockTransactions.Add(new StockTransaction { ItemId = line.FinishedItemId, WarehouseId = fg.Id, BatchId = line.OutputBatchId,
                                                          QuantityBaseUnits = pieces, TransactionType = StockTransactionType.ProductionOutput,
+                                                         UnitCost = _lastConsumedCost > 0 ? Math.Round(_lastConsumedCost / pieces, 4) : null,
                                                          ReferenceTable = "ProductionOrders", ReferenceId = orderId, CreatedByUserId = userId });
         await _db.SaveChangesAsync();
         var allPacked = true;

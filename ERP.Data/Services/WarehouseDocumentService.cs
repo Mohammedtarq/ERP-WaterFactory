@@ -12,7 +12,7 @@ public record StockDocumentLineInput(int ItemId, int PackagingLevelId, decimal Q
 public record StockDocumentRequest(
     StockDocumentType Type, int WarehouseId, DateTime Date, IReadOnlyList<StockDocumentLineInput> Lines, int UserId,
     int? CounterWarehouseId = null, string? PartyName = null, DamageReason? DamageReason = null, string? Notes = null,
-    bool MoveDamagedToDamagedWarehouse = true);
+    bool MoveDamagedToDamagedWarehouse = true, BeneficiaryCategory? Category = null);
 
 /// <summary>ملخص حركة صنف في مخزن خلال فترة (تقرير "الرصيد والمتبقي").</summary>
 public class StockSummaryRow
@@ -149,6 +149,14 @@ public class WarehouseDocumentService
 
         // داخل معاملة المستدعي إن وُجدت (مثل بيع المواد التالفة: مستند + قيد + صندوق في عملية واحدة)
         await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        // المسحوب المجاني: تصنيف الجهة من قائمة الجهات الثابتة (أو كما اختير صراحةً) لتقرير شهري لكل جهة
+        BeneficiaryCategory? category = null;
+        if (r.Type == StockDocumentType.FreeIssue)
+        {
+            var name = Clean(r.PartyName);
+            category = r.Category ?? await _db.FreeIssueBeneficiaries.Where(b => b.Name == name).Select(b => (BeneficiaryCategory?)b.Category).FirstOrDefaultAsync()
+                       ?? BeneficiaryCategory.Other;
+        }
         var seq = await _db.Database.SqlQueryRaw<int>("SELECT NEXT VALUE FOR seq_StockDocuments AS [Value]").ToListAsync();
         var doc = new StockDocument
         {
@@ -157,7 +165,7 @@ public class WarehouseDocumentService
             DocumentDate = r.Date.Date, PartyName = rep?.FullName ?? Clean(r.PartyName), RepEmployeeId = rep?.Id,
             DamageReason = r.Type == StockDocumentType.Damaged ? r.DamageReason
                          : r.Type == StockDocumentType.RepReturn && r.Lines.Any(l => l.IsDamaged) ? ProjectDb.Entities.DamageReason.Field : null,
-            Notes = Clean(r.Notes), CreatedByUserId = r.UserId
+            Notes = Clean(r.Notes), CreatedByUserId = r.UserId, BeneficiaryCategory = category
         };
         _db.StockDocuments.Add(doc);
         await _db.SaveChangesAsync();

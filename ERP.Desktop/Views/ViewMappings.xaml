@@ -252,4 +252,10 @@
     <DataTemplate DataType="{x:Type vmProduction:CustomRecipesSectionViewModel}"><vProduction:CustomRecipesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmProduction:MachinesSectionViewModel}"><vProduction:MachinesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmProduction:MachineWipSectionViewModel}"><vProduction:MachineWipSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:DailyProductionSectionViewModel}"><vProduction:DailyProductionSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:ProductionMonthSectionViewModel}"><vProduction:ProductionMonthSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:PendingProductionSectionViewModel}"><vProduction:PendingProductionSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:StocktakeSectionViewModel}"><vWarehouse:StocktakeSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:LossesSectionViewModel}"><vWarehouse:LossesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:BeneficiariesSectionViewModel}"><vWarehouse:BeneficiariesSectionView/></DataTemplate>
 </ResourceDictionary>

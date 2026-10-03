@@ -15,6 +15,9 @@ public class ProductionModuleViewModel : ModuleViewModel
         : base("الإنتاج والمختبر", Icons.Production, ModuleColors.Production)
     {
         UseDashboard(s, d, ModuleCode.Production, ModuleDashboardViewModel.Production);
+        Daily = Add(new DailyProductionSectionViewModel(s, d));
+        Add(new ProductionMonthSectionViewModel(s, d));
+        Add(new PendingProductionSectionViewModel(s, d));
         Orders = Add(new ProductionOrdersSectionViewModel(s, d));
         Qc = Add(new QcSectionViewModel(s, d));
         Packing = Add(new PackingSectionViewModel(s, d));
@@ -24,6 +27,7 @@ public class ProductionModuleViewModel : ModuleViewModel
         Add(new CustomRecipesSectionViewModel(s, d));
     }
 
+    public DailyProductionSectionViewModel Daily { get; }
     public ProductionOrdersSectionViewModel Orders { get; }
     public QcSectionViewModel Qc { get; }
     public PackingSectionViewModel Packing { get; }

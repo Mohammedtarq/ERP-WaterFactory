@@ -459,7 +459,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         if (LineItem is null) { LineLevel = null; LineBatch = null; return; }
 
         await using var db = Session.NewDb();
-        foreach (var l in await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == LineItem.Id && l.IsSellableUnit)
+        // بيع المواد الأولية يقبل أي وحدة للمادة (كرتون، قطعة...)؛ غيره وحدات البيع فقط
+        var anyUnit = Mode == SaleMode.RawMaterials;
+        foreach (var l in await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == LineItem.Id && (l.IsSellableUnit || anyUnit))
                      .OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync())
             LevelOptions.Add(l);
 
@@ -523,9 +525,14 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
         var needed = LineQuantity * LineLevel.EquivalentBaseUnits
                      + Lines.Where(l => l.ItemId == LineItem.Id && l.BatchId == LineBatch?.BatchId).Sum(l => l.BaseUnits);
-        if (LineAvailable is decimal available && needed > available &&
-            !Dialogs.Confirm($"الكمية المطلوبة ({needed:N0} قطعة) أكبر من المتاح ({available:N0}). سيُرفض الترحيل ما لم يتوفر الرصيد. إضافة السطر على أي حال؟"))
-            return;
+        if (LineAvailable is decimal available && needed > available)
+        {
+            var pending = Mode == SaleMode.Direct && Has(SpecialPermission.SellPendingProduction) && LineBatch?.BatchId is null;
+            var question = pending
+                ? $"الكمية المطلوبة ({needed:N0} قطعة) أكبر من المتاح ({available:N0}). يخرج المتاح، ويُسجَّل الفرق ({needed - available:N0}) بيعًا بانتظار الإنتاج يُسوّى تلقائيًا عند تسجيل الإنتاج. متابعة؟"
+                : $"الكمية المطلوبة ({needed:N0} قطعة) أكبر من المتاح ({available:N0}). سيُرفض الترحيل ما لم يتوفر الرصيد. إضافة السطر على أي حال؟";
+            if (!Dialogs.Confirm(question)) return;
+        }
 
         var suggested = await SuggestPriceAsync(LineItem.Id, LineLevel.Id);
         var line = new InvoiceLineDraft(RaiseTotals)

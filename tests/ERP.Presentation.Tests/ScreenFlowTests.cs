@@ -245,6 +245,33 @@ public class ScreenFlowTests
     }
 
     [Fact]
+    public async Task Stocktake_sheet_converts_big_units_to_pieces_and_production_screens_open()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var wh = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
+        var st = wh.Stocktake;
+        await Open(wh, st);
+        st.Warehouse = st.Warehouses.Single(w => w.Id == _f.MainWarehouseId);
+        await st.IdleAsync();
+        var line = st.Lines.Single(l => l.Row.ItemId == _f.WaterItemId);
+        Assert.Equal("كارتون", line.Cells[0].Unit);                 // الوحدة الأكبر أولًا
+        line.Cells[0].Count = 2;                                      // 2 كرتون × 12
+        line.Cells.Single(c => c.PiecesPerUnit == 1).Count = 5;
+        Assert.True(line.Counted);
+        Assert.Equal(29m, line.CountedPieces);
+        Assert.Equal(29m - line.Row.SystemQuantity, line.Variance);
+        st.PrintSheetCommand.Execute(null);
+        Assert.StartsWith("ورقة جرد", dialogs.Reports.Last().Title);
+        Assert.DoesNotContain(dialogs.Reports.Last().Rows, r => r.Contains(line.Row.SystemQuantity.ToString("N0")) && r[0] == line.Row.ItemCode && r[3] != "");
+
+        var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
+        await Open(prod, prod.Daily);
+        prod.Daily.Lines[0].Packs = 0;
+        await prod.Daily.SaveCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("أضف منتجًا"));
+    }
+
+    [Fact]
     public async Task Free_sale_requires_recipient_and_skips_journal()
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);

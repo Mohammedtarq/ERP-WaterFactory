@@ -174,6 +174,8 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
 
     public DateTime DocumentDate { get => _documentDate; set => SetProperty(ref _documentDate, value); }
     public string? PartyName { get => _partyName; set => SetProperty(ref _partyName, value); }
+    /// <summary>جهات المسحوب المجاني الثابتة (يمكن كتابة جهة جديدة، وتُصنَّف "أخرى").</summary>
+    public ObservableCollection<string> PartySuggestions { get; } = new();
     public WarehouseEntity? CounterWarehouse { get => _counterWarehouse; set => SetProperty(ref _counterWarehouse, value); }
     public Option<DamageReason>? DamageReason { get => _damageReason; set => SetProperty(ref _damageReason, value); }
     public bool MoveToDamaged { get => _moveToDamaged; set => SetProperty(ref _moveToDamaged, value); }
@@ -242,6 +244,9 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
             _allItems = await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync();
             FillItems();
         }
+        PartySuggestions.Clear();
+        foreach (var b in await db.FreeIssueBeneficiaries.AsNoTracking().Where(b => b.IsActive).OrderBy(b => b.Name).Select(b => b.Name).ToListAsync())
+            PartySuggestions.Add(b);
         var counterId = CounterWarehouse?.Id;
         OtherWarehouses.Clear();
         foreach (var w in await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.Id != WarehouseId && w.WarehouseType != WarehouseType.WorkInProcess).OrderBy(w => w.Name).ToListAsync())

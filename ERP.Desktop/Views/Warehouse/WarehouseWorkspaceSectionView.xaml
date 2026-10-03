@@ -67,7 +67,8 @@
                                 </StackPanel>
                                 <StackPanel Visibility="{Binding NeedsParty, Converter={StaticResource BoolToVisibility}}">
                                     <TextBlock Text="{Binding PartyLabel}" Style="{StaticResource FieldLabel}"/>
-                                    <TextBox Text="{Binding PartyName, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <ComboBox IsEditable="True" ItemsSource="{Binding PartySuggestions}" Text="{Binding PartyName, UpdateSourceTrigger=PropertyChanged}"
+                                              ToolTip="اختر جهة من القائمة الثابتة أو اكتب اسمًا جديدًا"/>
                                 </StackPanel>
                                 <StackPanel Visibility="{Binding IsDamaged, Converter={StaticResource BoolToVisibility}}">
                                     <TextBlock Text="سبب التلف" Style="{StaticResource FieldLabel}"/>

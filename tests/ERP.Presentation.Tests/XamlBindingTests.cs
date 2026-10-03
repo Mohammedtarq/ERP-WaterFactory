@@ -52,6 +52,14 @@ public class XamlBindingTests
                 if (relative || path is null) continue;
 
                 Type? start = element == "Root" ? rootType : context;
+                // وكيل الربط (BindingProxy): Data = سياق الجذر، لأعمدة الجدول خارج الشجرة المرئية
+                if (value.Contains("Source={StaticResource Proxy}"))
+                {
+                    if (!path.StartsWith("Data.")) continue;
+                    path = path["Data.".Length..];
+                    start = rootType;
+                    element = null;
+                }
                 if (element == "Root")
                 {
                     if (!path.StartsWith("DataContext.")) continue;

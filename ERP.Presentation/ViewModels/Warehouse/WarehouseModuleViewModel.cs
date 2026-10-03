@@ -16,6 +16,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
 
     /// <summary>الشاشة القديمة ما زالت تعمل (للاختبارات ولإعادة إظهارها)، لكنها خارج التبويبات.</summary>
     public StockAdjustmentSectionViewModel LegacyAdjustment { get; }
+    public StocktakeSectionViewModel Stocktake { get; }
 
     private readonly AppSession _session;
     private readonly IDialogService _dialogs;
@@ -31,6 +32,9 @@ public class WarehouseModuleViewModel : ModuleViewModel
         Add(new PackagingSectionViewModel(s, d));
         Add(new LocationsSectionViewModel(s, d));
         Add(new CurrentStockSectionViewModel(s, d));
+        Stocktake = Add(new StocktakeSectionViewModel(s, d));
+        Add(new LossesSectionViewModel(s, d));
+        Add(new BeneficiariesSectionViewModel(s, d));
         // شاشة "تسوية المخزون" القديمة مخفية مؤقتًا (حلّت محلها واجهات المخازن). لا تُحذف قبل التأكد من الشاشات الجديدة.
         LegacyAdjustment = new StockAdjustmentSectionViewModel(s, d);
         if (ShowLegacyAdjustment) Add(LegacyAdjustment);

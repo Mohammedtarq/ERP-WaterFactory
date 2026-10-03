@@ -24,6 +24,8 @@ public class StockDocument
     public int? RepEmployeeId { get; set; }
     public Employee? RepEmployee { get; set; }
     public DamageReason? DamageReason { get; set; }
+    /// <summary>تصنيف جهة المسحوب المجاني (حكومية، سائقون، شركاء...) لتقرير شهري لكل جهة.</summary>
+    public BeneficiaryCategory? BeneficiaryCategory { get; set; }
     public string? Notes { get; set; }
 
     public int CreatedByUserId { get; set; }

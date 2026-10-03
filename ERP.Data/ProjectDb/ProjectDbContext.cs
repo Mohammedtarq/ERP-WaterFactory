@@ -113,6 +113,12 @@ public partial class ProjectDbContext : DbContext
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<PeriodLock> PeriodLocks => Set<PeriodLock>();
 
+    // ---- الإنتاج والمخازن (29_production_stock.sql) ----
+    public DbSet<StockCount> StockCounts => Set<StockCount>();
+    public DbSet<StockCountLine> StockCountLines => Set<StockCountLine>();
+    public DbSet<FreeIssueBeneficiary> FreeIssueBeneficiaries => Set<FreeIssueBeneficiary>();
+    public DbSet<PendingProductionShortage> PendingProductionShortages => Set<PendingProductionShortage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Employee>()
@@ -239,6 +245,7 @@ public partial class ProjectDbContext : DbContext
         {
             e.Property(d => d.DocumentType).HasConversion<string>();
             e.Property(d => d.DamageReason).HasConversion<string>();
+            e.Property(d => d.BeneficiaryCategory).HasConversion<string>();
             e.HasOne(d => d.Warehouse).WithMany().HasForeignKey(d => d.WarehouseId).OnDelete(DeleteBehavior.NoAction);
             e.HasOne(d => d.CounterWarehouse).WithMany().HasForeignKey(d => d.CounterWarehouseId).OnDelete(DeleteBehavior.NoAction);
             e.HasOne(d => d.RepEmployee).WithMany().HasForeignKey(d => d.RepEmployeeId).OnDelete(DeleteBehavior.NoAction);
@@ -552,6 +559,35 @@ public partial class ProjectDbContext : DbContext
         // جداول عليها مشغّلات قفل الفترة: EF لا يستخدم OUTPUT المباشر معها
         foreach (var t in new[] { typeof(JournalEntry), typeof(SalesInvoice), typeof(Voucher), typeof(CashBoxTransaction), typeof(StockDocument), typeof(GoodsReceipt) })
             modelBuilder.Entity(t).ToTable(tb => tb.HasTrigger("trg_" + tb.Name + "_PeriodLock"));
+        modelBuilder.Entity<StockCount>(e =>
+        {
+            e.Property(c => c.CountDate).HasColumnType("date");
+            e.Property(c => c.ShortageValue).HasPrecision(18, 2);
+            e.Property(c => c.SurplusValue).HasPrecision(18, 2);
+            e.HasOne(c => c.Warehouse).WithMany().HasForeignKey(c => c.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(c => c.CreatedByUser).WithMany().HasForeignKey(c => c.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(c => c.Lines).WithOne(l => l.StockCount).HasForeignKey(l => l.StockCountId);
+            e.ToTable(tb => tb.HasTrigger("trg_StockCounts_PeriodLock"));
+        });
+        modelBuilder.Entity<StockCountLine>(e =>
+        {
+            e.Property(l => l.SystemQuantity).HasPrecision(18, 3);
+            e.Property(l => l.CountedQuantity).HasPrecision(18, 3);
+            e.Property(l => l.UnitCost).HasPrecision(18, 4);
+            e.Property(l => l.VarianceValue).HasPrecision(18, 2);
+            e.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.Ignore(l => l.Variance);
+        });
+        modelBuilder.Entity<FreeIssueBeneficiary>().Property(b => b.Category).HasConversion<string>();
+        modelBuilder.Entity<PendingProductionShortage>(e =>
+        {
+            e.Property(p => p.Quantity).HasPrecision(18, 3);
+            e.Property(p => p.SettledQuantity).HasPrecision(18, 3);
+            e.HasOne(p => p.Item).WithMany().HasForeignKey(p => p.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.Warehouse).WithMany().HasForeignKey(p => p.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.SalesInvoice).WithMany().HasForeignKey(p => p.SalesInvoiceId).OnDelete(DeleteBehavior.Restrict);
+            e.Ignore(p => p.Open);
+        });
         // محرك الكلفة (28_costing_purchasing.sql): الحركة المخزنية تأخذ كلفتها من مشغّل
         modelBuilder.Entity<StockTransaction>().ToTable(tb => tb.HasTrigger("trg_StockTransactions_Cost"));
     }
