@@ -19,9 +19,8 @@
         <!-- لوحة الترحيب -->
         <Border Grid.Column="0" Background="{StaticResource SidebarBrush}">
             <StackPanel VerticalAlignment="Center" Margin="48,0">
-                <Border Width="72" Height="72" CornerRadius="18" Background="{StaticResource PrimaryBrush}" HorizontalAlignment="Left">
-                    <TextBlock Text="&#xE9D2;" Style="{StaticResource Icon}" FontSize="34" Foreground="White"/>
-                </Border>
+                <Image Source="pack://application:,,,/Assets/app-256.png" Width="88" Height="88" HorizontalAlignment="Left"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
                 <TextBlock Text="نظام إدارة الأعمال المتكامل" Foreground="White" FontSize="28" FontWeight="Bold" Margin="0,24,0,8"/>
                 <TextBlock Text="المخازن · المبيعات · المشتريات · المالية" Foreground="#94A3B8" FontSize="15"/>
                 <TextBlock Text="دخول موحّد لكل مشاريعك، وصلاحيات دقيقة لكل قسم." Foreground="#94A3B8" FontSize="13" Margin="0,16,0,0" TextWrapping="Wrap"/>

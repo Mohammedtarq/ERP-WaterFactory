@@ -10,6 +10,8 @@
     <RootNamespace>ERP.Desktop</RootNamespace>
     <!-- يسمح ببناء المشروع (للتحقق) على أنظمة غير Windows؛ التشغيل على Windows فقط -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- أيقونة البرنامج: قطرة ماء بأعمدة متصاعدة (الملف التنفيذي، شريط المهام، وكل النوافذ) -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +21,11 @@
   <ItemGroup>
     <ProjectReference Include="..\ERP.Data\ERP.Data.csproj" />
     <ProjectReference Include="..\ERP.Presentation\ERP.Presentation.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <Resource Include="Assets\app-256.png" />
   </ItemGroup>
 
   <ItemGroup>

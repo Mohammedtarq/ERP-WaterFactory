@@ -20,9 +20,7 @@
         <!-- ================= الشريط الجانبي ================= -->
         <DockPanel Grid.Column="0" Background="{StaticResource SidebarBrush}">
             <StackPanel DockPanel.Dock="Top" Margin="18,22,18,18" Orientation="Horizontal">
-                <Border Width="40" Height="40" CornerRadius="10" Background="{StaticResource PrimaryBrush}">
-                    <TextBlock Text="&#xE9D2;" Style="{StaticResource Icon}" FontSize="18" Foreground="White"/>
-                </Border>
+                <Image Source="pack://application:,,,/Assets/app-256.png" Width="42" Height="42" RenderOptions.BitmapScalingMode="HighQuality"/>
                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="نظام ERP" Foreground="White" FontSize="16" FontWeight="Bold"/>
                     <TextBlock Text="{Binding Session.ProjectName}" Foreground="#94A3B8" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="160"/>
