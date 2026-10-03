@@ -50,6 +50,7 @@ public class CashBoxService
 {
     public const string DepositRule = "CashBoxDeposit";        // مدين الصندوق / دائن جاري المالك
     public const string WithdrawalRule = "CashBoxWithdrawal";  // مدين مصروفات عمومية / دائن الصندوق
+    public const string OpeningRule = "CashBoxOpening";        // مدين الصندوق / دائن رأس المال
 
     private readonly ProjectDbContext _db;
     public CashBoxService(ProjectDbContext db) => _db = db;
@@ -156,12 +157,25 @@ public class CashBoxService
         return await ManualAsync(boxId, CashBoxTxType.Withdrawal, -amount, date, party, description, userId, WithdrawalRule);
     }
 
+    /// <summary>
+    /// رصيد افتتاحي للصندوق (للأدمن): الجرد الفعلي عند بدء العمل بالنظام أو النقل من نظام سابق.
+    /// قيده: الصندوق مدين ورأس المال دائن، ويُعدَّل أو يُلغى كأي حركة يدوية.
+    /// </summary>
+    public async Task<(FinanceOperationResult result, CashBoxTransaction? tx)> OpeningAsync(int boxId, decimal amount, DateTime date, string? description, int userId)
+    {
+        if (amount <= 0) return (FinanceOperationResult.Fail("المبلغ يجب أن يكون أكبر من صفر"), null);
+        if (!await IsAdminAsync(userId)) return (FinanceOperationResult.Fail("الرصيد الافتتاحي للصندوق للأدمن فقط"), null);
+        if (!await _db.CashBoxes.AnyAsync(b => b.Id == boxId)) return (FinanceOperationResult.Fail("الصندوق غير موجود"), null);
+        return await ManualAsync(boxId, CashBoxTxType.Opening, amount, date, null, description, userId, OpeningRule);
+    }
+
     private async Task<(FinanceOperationResult, CashBoxTransaction?)> ManualAsync(int boxId, CashBoxTxType type, decimal signed, DateTime date,
         string? party, string? description, int userId, string rule)
     {
-        await using var dbTx = await _db.Database.BeginTransactionAsync();
+        await using var dbTx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
         var boxName = await _db.CashBoxes.Where(b => b.Id == boxId).Select(b => b.Name).FirstAsync();
-        var text = $"{(type == CashBoxTxType.Deposit ? "إيداع في" : "سحب من")} {boxName}" + (string.IsNullOrWhiteSpace(description) ? "" : $" — {description.Trim()}");
+        var verb = type switch { CashBoxTxType.Deposit => "إيداع في", CashBoxTxType.Opening => "رصيد افتتاحي —", _ => "سحب من" };
+        var text = $"{verb} {boxName}" + (string.IsNullOrWhiteSpace(description) ? "" : $" — {description.Trim()}");
         var (entry, jeError) = await LedgerHelper.PostJournalAsync(_db, rule, Math.Abs(signed), date, JournalEntryType.AutoVoucher, text, userId,
                                                                    "CashBoxTransactions", null, "CB");
         if (jeError is not null) return (FinanceOperationResult.Fail(jeError), null);
@@ -175,7 +189,7 @@ public class CashBoxService
         await _db.SaveChangesAsync();
         entry.SourceId = t.Id;
         await _db.SaveChangesAsync();
-        await dbTx.CommitAsync();
+        if (dbTx is not null) await dbTx.CommitAsync();
         return (FinanceOperationResult.Ok(), t);
     }
 

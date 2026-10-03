@@ -415,6 +415,21 @@ public static class DocumentReports
             x.IsBaseline, x.Surplus, shares.Select(t => (t.Partner.Name, t.SharePercent ?? 0, t.Amount)), x.Notes);
     }
 
+    /// <summary>تقرير مطابقة النقل من نظام الرحمة: كل بند في النظام القديم مقابل ما سُجّل فعلًا في النظام الجديد.</summary>
+    public static ReportDocument RahmaReconciliation(AppSession s, Data.Import.RahmaImportPlan plan, IReadOnlyCollection<Data.Import.RahmaReconciliationRow> rows, bool executed)
+    {
+        var r = New(s, "تقرير مطابقة النقل من نظام الرحمة", executed ? null : "تجربة — لم يُحفظ شيء");
+        r.Field("القاعدة القديمة", $"{plan.SourceDatabase} — {plan.SourceServer}").Field("تاريخ الأرصدة الافتتاحية", plan.CutoverDate.ToString("yyyy/MM/dd"))
+         .Field("آخر حركة في القاعدة القديمة", plan.LastActivity?.ToString("yyyy/MM/dd"));
+        r.Columns.AddRange(new[] { "القسم", "البند", "النظام القديم", "النظام الجديد", "الفرق", "الحالة" });
+        foreach (var x in rows)
+            r.Rows.Add(new[] { x.Section, x.Description, N(x.Legacy), N(x.New), x.Matches ? "" : N(x.Difference), x.Matches ? "✓ متطابق" : "✗ مختلف" });
+        r.Total("عدد البنود", rows.Count.ToString()).Total("المتطابقة", rows.Count(x => x.Matches).ToString())
+         .Total("النتيجة", rows.All(x => x.Matches) ? "كل الأرقام متطابقة" : "يوجد اختلاف — لا يُحفظ النقل", true);
+        r.Signatures.AddRange(new[] { "المدير", "المحاسب" });
+        return r;
+    }
+
     public static async Task<ReportDocument?> PartnerStatementAsync(AppSession s, ProjectDbContext db, int partnerId)
     {
         var p = await db.Partners.AsNoTracking().FirstOrDefaultAsync(x => x.Id == partnerId);

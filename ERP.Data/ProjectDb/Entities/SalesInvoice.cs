@@ -42,6 +42,8 @@ public class SalesInvoice
     /// <summary>المتبقي = الإجمالي − المدفوع (عمود محسوب في قاعدة البيانات).</summary>
     public decimal AmountRemaining { get; private set; }
     public string? Notes { get; set; }
+    /// <summary>رصيد افتتاحي منقول من نظام سابق: بلا سطور، يدخل كشف العميل وتوزيع الدفعات، ويُستبعد من إحصاءات المبيعات.</summary>
+    public bool IsOpeningBalance { get; set; }
 
     public int? PostedByUserId { get; set; }
     public User? PostedByUser { get; set; }

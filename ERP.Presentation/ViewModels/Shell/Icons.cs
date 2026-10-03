@@ -45,6 +45,7 @@ public static class Icons
     public const string Clock = "\uE823";
     public const string Currency = "\uE8C7";
     public const string Backup = "\uE74E";
+    public const string Import = "\uE8B5";
 }
 
 /// <summary>لون مميز لكل وحدة — نفس اللون في الشريط الجانبي وتبويبات الوحدة.</summary>

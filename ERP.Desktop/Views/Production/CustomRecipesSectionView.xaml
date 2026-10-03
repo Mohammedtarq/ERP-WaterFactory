@@ -71,7 +71,7 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الوصفة" Binding="{Binding Name}" Width="*"/>
                         <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItem.ItemName}" Width="150"/>
-                        <DataGridTextColumn Header="العميل" Binding="{Binding Customer.Name}" Width="150"/>
+                        <DataGridTextColumn Header="العميل" Binding="{Binding Customer.Name, TargetNullValue='عام (مناسبة)', FallbackValue='عام (مناسبة)'}" Width="150"/>
                         <DataGridCheckBoxColumn Header="فعّالة" Binding="{Binding IsActive, Mode=OneWay}" Width="55"/>
                         <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
@@ -110,7 +110,7 @@
                         <TextBox Text="{Binding Editor.Name}"/>
                         <TextBlock Text="المنتج" Style="{StaticResource FieldLabel}"/>
                         <ComboBox ItemsSource="{Binding FinishedItems}" DisplayMemberPath="ItemName" SelectedValuePath="Id" SelectedValue="{Binding Editor.FinishedItemId}"/>
-                        <TextBlock Text="العميل صاحب الاسم التجاري" Style="{StaticResource FieldLabel}"/>
+                        <TextBlock Text="العميل صاحب الاسم التجاري (فارغ = ملصق مناسبة عام)" Style="{StaticResource FieldLabel}"/>
                         <ComboBox ItemsSource="{Binding Customers}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Editor.CustomerId}"/>
                         <CheckBox Content="فعّالة" IsChecked="{Binding Editor.IsActive}"/>
 

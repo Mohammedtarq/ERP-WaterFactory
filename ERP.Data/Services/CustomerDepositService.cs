@@ -104,7 +104,7 @@ public class CustomerDepositService
             }
         }
 
-        await using var tx = await _db.Database.BeginTransactionAsync();
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;   // أو داخل معاملة المستدعي (النقل من نظام سابق)
         var number = await NextNumberAsync(date);
         var rule = kind switch { CustomerDepositKind.Receipt => ReceiptRule, CustomerDepositKind.Refund => RefundRule, _ => OpeningRule };
         var text = $"{KindLabel(kind)} {number} — {customer.Name}" + (string.IsNullOrWhiteSpace(purpose) ? "" : $" ({purpose.Trim()})");
@@ -129,7 +129,7 @@ public class CustomerDepositService
                 kind == CustomerDepositKind.Receipt ? CashBoxTxType.CustomerDepositIn : CashBoxTxType.CustomerDepositOut,
                 kind == CustomerDepositKind.Receipt ? amount : -amount, date, "CustomerDeposits", deposit.Id, customer.Name, text, entry.Id, box);
 
-        await tx.CommitAsync();
+        if (tx is not null) await tx.CommitAsync();
         return (FinanceOperationResult.Ok(), deposit);
     }
 

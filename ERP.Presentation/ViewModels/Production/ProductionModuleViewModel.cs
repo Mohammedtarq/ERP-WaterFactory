@@ -753,7 +753,6 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
     {
         if (string.IsNullOrWhiteSpace(e.Name)) return "أدخل اسم الوصفة";
         if (e.FinishedItemId == 0) return "اختر المنتج (يجب أن تكون له قائمة مواد)";
-        if (e.CustomerId == 0) return "اختر العميل صاحب الاسم التجاري";
         return null;
     }
 

@@ -89,6 +89,8 @@ public class ProjectDbContext : DbContext
     public DbSet<CustomerDeposit> CustomerDeposits => Set<CustomerDeposit>();
     public DbSet<EmployeeDeduction> EmployeeDeductions => Set<EmployeeDeduction>();
     public DbSet<Partner> Partners => Set<Partner>();
+    public DbSet<LegacyImport> LegacyImports => Set<LegacyImport>();
+    public DbSet<LegacyImportMapEntry> LegacyImportMap => Set<LegacyImportMapEntry>();
     public DbSet<DamagedSale> DamagedSales => Set<DamagedSale>();
     public DbSet<DamagedSaleLine> DamagedSaleLines => Set<DamagedSaleLine>();
     public DbSet<PartnerTransaction> PartnerTransactions => Set<PartnerTransaction>();
@@ -309,6 +311,8 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<AgentItemPrice>().HasOne(a => a.Customer).WithMany().HasForeignKey(a => a.CustomerId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<AgentItemPrice>().HasOne(a => a.Item).WithMany().HasForeignKey(a => a.ItemId).OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<LegacyImport>().HasOne(i => i.ImportedByUser).WithMany().HasForeignKey(i => i.ImportedByUserId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<LegacyImportMapEntry>().ToTable("LegacyImportMap");
         modelBuilder.Entity<SalesInvoice>().HasIndex(s => s.InvoiceNumber).IsUnique();
         modelBuilder.Entity<SalesInvoice>().Property(s => s.PaymentMethod).HasConversion<string>();
         modelBuilder.Entity<SalesInvoice>().Property(s => s.Status).HasConversion<string>();

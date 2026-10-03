@@ -255,10 +255,10 @@ public class SalesService
                   FROM vw_CustomerStatement WHERE CustomerId = {0}", customerId)
             .ToListAsync();
 
-        // ترتيب زمني ثابت: الفاتورة قبل المدفوع عند البيع في نفس اليوم
+        // ترتيب زمني ثابت: الرصيد الافتتاحي ثم الفاتورة قبل المدفوع عند البيع في نفس اليوم
         decimal running = 0;
         var ordered = rows.OrderBy(r => r.TxDate)
-                          .ThenBy(r => r.TxType == "SalesInvoice" ? 0 : 1)
+                          .ThenBy(r => r.TxType == "OpeningBalance" ? 0 : r.TxType == "SalesInvoice" ? 1 : 2)
                           .ThenBy(r => r.DocNumber)
                           .ToList();
         foreach (var r in ordered) r.RunningBalance = running += r.Debit - r.Credit;

@@ -82,7 +82,7 @@ public class EmployeeDeductionService
             if (balance < r.Amount) return Fail($"رصيد الصندوق غير كافٍ: المتاح {balance:N0} د.ع");
         }
 
-        await using var tx = await _db.Database.BeginTransactionAsync();
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;   // أو داخل معاملة المستدعي (النقل من نظام سابق)
         var number = await NextNumberAsync(r.EntryDate);
         var text = $"{KindLabel(r.Kind)} {number} — {employee.FullName}" + (string.IsNullOrWhiteSpace(r.Reason) ? "" : $" ({r.Reason.Trim()})");
         JournalEntry? entry = null;
@@ -108,7 +108,7 @@ public class EmployeeDeductionService
         if (boxId is int box)
             await new CashBoxService(_db).RecordAutoAsync(userId, CashBoxTxType.EmployeeAdvance, -r.Amount, r.EntryDate,
                                                           "EmployeeDeductions", d.Id, employee.FullName, text, entry?.Id, box);
-        await tx.CommitAsync();
+        if (tx is not null) await tx.CommitAsync();
         return (FinanceOperationResult.Ok(), d);
     }
 

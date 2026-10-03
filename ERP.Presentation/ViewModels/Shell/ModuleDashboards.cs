@@ -85,7 +85,7 @@ public class ModuleDashboardViewModel : SessionViewModel
         var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         var since = from < monthStart ? from : monthStart;
         var invoices = await db.SalesInvoices.AsNoTracking()
-            .Where(i => i.Status == DocumentStatus.Posted && !i.IsFreeSale && i.InvoiceDate >= since)
+            .Where(i => i.Status == DocumentStatus.Posted && !i.IsFreeSale && !i.IsOpeningBalance && i.InvoiceDate >= since)
             .Select(i => new { i.Id, i.InvoiceDate, i.TotalAmount, i.AmountPaidNow, i.PaymentMethod }).ToListAsync();
         var today = invoices.Where(i => i.InvoiceDate == DateTime.Today).ToList();
         var receivables = (await new SalesService(db).GetCustomerBalancesAsync()).Where(b => b.Balance > 0).ToList();

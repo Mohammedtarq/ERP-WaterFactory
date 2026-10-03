@@ -227,6 +227,11 @@ public static class DefaultConfiguration
         (ReconciliationService.WithdrawalRule, "3103", "1101"),
         (ReconciliationService.OpeningRule, "3101", "3103"),
         (DamagedSaleService.CashRule, "1101", "4103"),
+        (CashBoxService.OpeningRule, "1101", "3101"),
+        (Import.RahmaImporter.CustomerOpeningRule, "1201", "3101"),
+        (Import.RahmaImporter.CustomerCreditOpeningRule, "3101", "1201"),
+        (Import.RahmaImporter.SupplierOpeningRule, "3101", "2101"),
+        (Import.RahmaImporter.SupplierAdvanceOpeningRule, "1302", "3101"),
     };
 
     private static readonly string[] AllModules =

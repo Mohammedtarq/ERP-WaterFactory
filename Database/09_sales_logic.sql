@@ -31,6 +31,9 @@ IF COL_LENGTH('SalesInvoices', 'PostedByUserId') IS NULL
     ALTER TABLE SalesInvoices ADD PostedByUserId INT NULL CONSTRAINT FK_SalesInvoices_PostedBy FOREIGN KEY REFERENCES Users(Id);
 IF COL_LENGTH('SalesInvoices', 'PostedAt') IS NULL
     ALTER TABLE SalesInvoices ADD PostedAt DATETIME2 NULL;
+-- رصيد افتتاحي منقول من نظام سابق: فاتورة بلا سطور تدخل كشف العميل وتوزيع الدفعات، وتُستبعد من المبيعات
+IF COL_LENGTH('SalesInvoices', 'IsOpeningBalance') IS NULL
+    ALTER TABLE SalesInvoices ADD IsOpeningBalance BIT NOT NULL CONSTRAINT DF_SalesInvoices_IsOpeningBalance DEFAULT 0;
 GO
 
 IF OBJECT_ID('CK_SalesInvoices_FreeSaleRecipient', 'C') IS NULL
@@ -645,7 +648,8 @@ FROM    SalesInvoices i
 JOIN    Customers c  ON c.Id = i.CustomerId
 JOIN    Warehouses w ON w.Id = i.WarehouseId
 LEFT JOIN Employees e ON e.Id = i.SalesRepEmployeeId
-JOIN    vw_SalesInvoiceTotals t ON t.InvoiceId = i.Id;
+JOIN    vw_SalesInvoiceTotals t ON t.InvoiceId = i.Id
+WHERE   i.IsOpeningBalance = 0;
 GO
 
 /* ============================================================
@@ -653,10 +657,11 @@ GO
    مدين = قيمة الفاتورة، دائن = المدفوع عند البيع + سندات القبض
    ============================================================ */
 CREATE OR ALTER VIEW vw_CustomerStatement AS
-SELECT  i.CustomerId, i.InvoiceDate AS TxDate, N'SalesInvoice' AS TxType,
+SELECT  i.CustomerId, i.InvoiceDate AS TxDate,
+        CASE WHEN i.IsOpeningBalance = 1 THEN N'OpeningBalance' ELSE N'SalesInvoice' END AS TxType,
         i.InvoiceNumber AS DocNumber, i.Id AS DocId,
         i.TotalAmount AS Debit, CAST(0 AS DECIMAL(18,2)) AS Credit,
-        N'فاتورة مبيعات' AS Description
+        CASE WHEN i.IsOpeningBalance = 1 THEN ISNULL(i.Notes, N'رصيد افتتاحي') ELSE N'فاتورة مبيعات' END AS Description
 FROM    SalesInvoices i
 WHERE   i.Status = N'Posted' AND i.IsFreeSale = 0
 UNION ALL

@@ -22,4 +22,9 @@
     <None Include="..\..\ERP.Desktop\**\*.xaml" LinkBase="Xaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- نسخة مصغّرة من قاعدة نظام الرحمة لاختبار شاشة النقل -->
+  <ItemGroup>
+    <None Include="..\ERP.Data.IntegrationTests\Rahma\*.sql" LinkBase="Rahma" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

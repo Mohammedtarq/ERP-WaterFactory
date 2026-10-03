@@ -7,8 +7,8 @@ public class CustomRecipe
     public int FinishedItemId { get; set; }
     public Item FinishedItem { get; set; } = null!;
 
-    public int CustomerId { get; set; }
-    public Customer Customer { get; set; } = null!;
+    public int? CustomerId { get; set; }          // فارغ = ملصق مناسبة عام (رمضان، عيد، زواج...)
+    public Customer? Customer { get; set; }
 
     public string Name { get; set; } = string.Empty;   // مثال: وصفة مطعم الحسون
     public bool IsActive { get; set; } = true;

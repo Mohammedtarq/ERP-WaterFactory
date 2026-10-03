@@ -52,7 +52,7 @@ public class DashboardViewModel : SessionViewModel
             var sales = new SalesService(db);
 
             var todayInvoices = await db.SalesInvoices
-                .Where(i => i.Status == DocumentStatus.Posted && i.InvoiceDate == today && !i.IsFreeSale)
+                .Where(i => i.Status == DocumentStatus.Posted && i.InvoiceDate == today && !i.IsFreeSale && !i.IsOpeningBalance)
                 .Select(i => new { i.TotalAmount, i.AmountPaidNow }).ToListAsync();
             var receivables = (await sales.GetCustomerBalancesAsync()).Where(b => b.Balance > 0).Sum(b => b.Balance);
             var low = await new InventoryService(db).GetLowStockAsync();

@@ -25,6 +25,7 @@ public class SettingsModuleViewModel : ModuleViewModel
         if (s.ControlConnectionString is not null) Add(new ProjectsSectionViewModel(s, d));
         Add(new BackupSectionViewModel(s, d));
         Add(new BrandingSectionViewModel(s, d));
+        Add(new RahmaImportSectionViewModel(s, d));
     }
 }
 

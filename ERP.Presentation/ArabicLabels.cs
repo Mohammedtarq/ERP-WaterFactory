@@ -83,7 +83,7 @@ public static class ArabicLabels
     /// <summary>القيم النصية كما تخرج من Views قاعدة البيانات (Status/CustomerType/PaymentMethod/TxType).</summary>
     private static readonly Dictionary<string, string> TextMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["SalesInvoice"] = "فاتورة مبيعات", ["PaidAtSale"] = "مدفوع عند البيع",
+        ["SalesInvoice"] = "فاتورة مبيعات", ["OpeningBalance"] = "رصيد افتتاحي", ["PaidAtSale"] = "مدفوع عند البيع",
         ["ReceiptVoucher"] = "سند قبض", ["PaymentVoucher"] = "سند صرف",
     };
 
