@@ -34,6 +34,21 @@ jobs:
         uses: potatoqualitee/mssqlsuite@v2
         with:
           install: localdb
+      - name: طابعة اختبار (طابور Windows حقيقي منفذه ملف)
+        shell: pwsh
+        run: |
+          Start-Service Spooler -ErrorAction SilentlyContinue
+          Get-PrinterDriver | Format-Table Name -AutoSize
+          $driver = (Get-PrinterDriver | Where-Object Name -match 'Print To PDF' | Select-Object -First 1).Name
+          $ext = '.pdf'
+          if (-not $driver) { $driver = (Get-PrinterDriver | Where-Object Name -match 'XPS Document Writer' | Select-Object -First 1).Name; $ext = '.xps' }
+          if (-not $driver) { Write-Host 'No PDF/XPS printer driver on this runner'; exit 0 }
+          $out = Join-Path $env:RUNNER_TEMP ("erp-print" + $ext)
+          Add-PrinterPort -Name $out
+          Add-Printer -Name 'ERP Test Printer' -DriverName $driver -PortName $out
+          "ERP_TEST_PRINTER=ERP Test Printer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ERP_TEST_PRINTER_OUTPUT=$out" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Printer: $driver -> $out"
       - name: رسم كل الشاشات (بدون بيانات ثم ببيانات تجريبية حقيقية)
         shell: pwsh
         env:

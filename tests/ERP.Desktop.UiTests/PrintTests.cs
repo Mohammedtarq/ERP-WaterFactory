@@ -1,4 +1,5 @@
 using System.IO;
+using System.Printing;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -101,6 +102,44 @@ public class PrintTests
         enc.Frames.Add(BitmapFrame.Create(bmp));
         using var fs = File.Create(path);
         enc.Save(fs);
+    }
+
+    /// <summary>
+    /// الطباعة على طابور Windows حقيقي (طابعة PDF منفذها ملف، يجهّزها CI): هنا ظهر خطأ المستخدم
+    /// "Value cannot be null. (Parameter 'current')" — مسار المعاينة والملف كانا سليمين.
+    /// </summary>
+    [Fact]
+    public async Task Prints_A4_and_receipt_to_a_real_windows_print_queue()
+    {
+        var printer = Environment.GetEnvironmentVariable("ERP_TEST_PRINTER");
+        var output = Environment.GetEnvironmentVariable("ERP_TEST_PRINTER_OUTPUT");
+        if (string.IsNullOrEmpty(printer) || string.IsNullOrEmpty(output)) { _out.WriteLine("لا توجد طابعة اختبار (ERP_TEST_PRINTER)"); return; }
+
+        async Task<long> Printed(Action print)
+        {
+            if (File.Exists(output)) File.Delete(output);
+            await UiThread.RunAsync(print);
+            for (var i = 0; i < 120 && !(File.Exists(output) && new FileInfo(output).Length > 0); i++) await Task.Delay(500);
+            await Task.Delay(1000);
+            return File.Exists(output) ? new FileInfo(output).Length : 0;
+        }
+        PrintQueue Queue() => new LocalPrintServer().GetPrintQueue(printer);
+
+        // تشخيص: المسار القديم (مقسّم الصفحات الخام كما كانت ترسله نافذة الطباعة) — يُسجَّل فقط
+        try
+        {
+            var size = await Printed(() => { var q = Queue(); PrintQueue.CreateXpsDocumentWriter(q).Write(ReportRenderer.A4(StockReport(40)), q.DefaultPrintTicket); });
+            _out.WriteLine($"المسار القديم: {size} بايت");
+        }
+        catch (Exception ex) { _out.WriteLine("المسار القديم فشل: " + ex); }
+
+        var a4 = await Printed(() => { var q = Queue(); ReportPrinter.Print(q, q.DefaultPrintTicket, StockReport(60), PrinterKind.A4, "كشف اختبار"); });
+        Assert.True(a4 > 1000, $"طباعة A4 لم تُنتج ملفًا ({a4} بايت)");
+        File.Copy(output, Path.Combine(PrintDir, "real_queue_A4" + Path.GetExtension(output)), true);
+
+        var receipt = await Printed(() => { var q = Queue(); ReportPrinter.Print(q, null, Invoice(), PrinterKind.Receipt80, "إيصال اختبار"); });
+        Assert.True(receipt > 500, $"طباعة الإيصال لم تُنتج ملفًا ({receipt} بايت)");
+        _out.WriteLine($"A4: {a4} بايت، الإيصال: {receipt} بايت");
     }
 
     /// <summary>الخلل العاجل: عنوان التقرير كان يظهر حرفًا تحت حرف. الآن سطر أفقي واحد بعرض كافٍ.</summary>

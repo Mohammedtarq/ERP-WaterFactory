@@ -111,15 +111,22 @@ public partial class ReportPreviewWindow : Window
         if (Printer == PrinterKind.A4)
         {
             try { dialog.PrintTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4); } catch (Exception) { }
-            if (dialog.ShowDialog() != true) return;
-            dialog.PrintDocument(ReportRenderer.A4(doc), _report.Title);
         }
         else
         {
-            var receipt = ReportRenderer.Receipt(doc);
-            try { dialog.PrintTicket.PageMediaSize = new PageMediaSize(ReportRenderer.ReceiptWidth, Math.Ceiling(receipt.ActualHeight) + 16); } catch (Exception) { }
-            if (dialog.ShowDialog() != true) return;
-            dialog.PrintVisual(receipt, _report.Title);
+            ReportPrinter.BuildReceipt(doc, out var size);
+            try { dialog.PrintTicket.PageMediaSize = new PageMediaSize(size.Width, size.Height); } catch (Exception) { }
+        }
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            ReportPrinter.Print(dialog.PrintQueue, dialog.PrintTicket, doc, Printer, _report.Title);
+        }
+        catch (Exception ex) when (ex is PrintSystemException or PrintQueueException or InvalidOperationException or ArgumentException)
+        {
+            // إلغاء نافذة حفظ ملف PDF أو طابعة غير متاحة: رسالة واضحة بدل خطأ غير متوقع
+            StatusText.Text = "لم تتم الطباعة: " + ex.GetBaseException().Message;
+            return;
         }
         // آخر نوع طابعة لهذا المستند يُتذكّر تلقائيًا
         var pref = PrintPreferences.For(_report.Key);
