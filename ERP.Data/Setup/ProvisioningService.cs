@@ -191,6 +191,7 @@ public static class DefaultConfiguration
         ("3104", "أرباح المطابقة الموزعة", AccountType.Equity),
         ("4101", "إيرادات المبيعات", AccountType.Revenue),
         ("4102", "إيراد مستلزمات التحميل", AccountType.Revenue),
+        ("4103", "إيراد بيع مواد تالفة", AccountType.Revenue),
         ("5101", "مصروفات عمومية", AccountType.Expense),
         ("5102", "مصروف الرواتب والأجور", AccountType.Expense),
         ("5103", "مصروفات ميدانية للمندوبين", AccountType.Expense),
@@ -225,6 +226,7 @@ public static class DefaultConfiguration
         (ReconciliationService.ProfitShareRule, "3104", "3103"),
         (ReconciliationService.WithdrawalRule, "3103", "1101"),
         (ReconciliationService.OpeningRule, "3101", "3103"),
+        (DamagedSaleService.CashRule, "1101", "4103"),
     };
 
     private static readonly string[] AllModules =

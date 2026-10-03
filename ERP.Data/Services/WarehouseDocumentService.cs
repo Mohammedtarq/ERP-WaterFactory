@@ -147,7 +147,8 @@ public class WarehouseDocumentService
             || (r.Type == StockDocumentType.RepReturn && r.Lines.Any(l => l.IsDamaged)))
             damagedStore = await _db.Warehouses.Where(w => w.IsActive && w.WarehouseType == WarehouseType.Damaged).OrderBy(w => w.Id).FirstOrDefaultAsync();
 
-        await using var tx = await _db.Database.BeginTransactionAsync();
+        // داخل معاملة المستدعي إن وُجدت (مثل بيع المواد التالفة: مستند + قيد + صندوق في عملية واحدة)
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
         var seq = await _db.Database.SqlQueryRaw<int>("SELECT NEXT VALUE FOR seq_StockDocuments AS [Value]").ToListAsync();
         var doc = new StockDocument
         {
@@ -228,7 +229,7 @@ public class WarehouseDocumentService
             });
             await _db.SaveChangesAsync();
         }
-        await tx.CommitAsync();
+        if (tx is not null) await tx.CommitAsync();
         return (FinanceOperationResult.Ok(), doc);
 
         void Add(int itemId, int whId, int? batch, decimal qty, StockTransactionType type, DamageReason? reason = null) =>

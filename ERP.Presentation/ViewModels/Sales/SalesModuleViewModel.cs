@@ -190,6 +190,10 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
     public bool IsVanSale => Warehouse?.WarehouseType == WarehouseType.RepVan;
 
+    private bool _handOverNow;
+    /// <summary>فاتورة سيارة مندوب: النقد المقبوض يُسلَّم للصندوق فور الترحيل بدل بقائه في محفظة المندوب.</summary>
+    public bool HandOverNow { get => _handOverNow; set => SetProperty(ref _handOverNow, value); }
+
     public DateTime InvoiceDate
     {
         get => _invoiceDate;
@@ -510,7 +514,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         try
         {
             await using var db = Session.NewDb();
-            var (r, summary) = await new SalesService(db).PostInvoiceAsync(InvoiceId!.Value, Session.UserId);
+            var (r, summary) = await new SalesService(db).PostInvoiceAsync(InvoiceId!.Value, Session.UserId, IsVanSale && HandOverNow);
             if (!r.Success)
             {
                 Dialogs.Error(r.ErrorMessage + "\nالفاتورة محفوظة كمسودة، ويمكن تعديلها وإعادة المحاولة.");
@@ -520,7 +524,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             var msg = IsFreeSale
                 ? $"تم ترحيل البيع المجاني {summary!.InvoiceNumber} وخصم الكميات من المخزون."
                 : $"تم ترحيل الفاتورة {summary!.InvoiceNumber}\nالإجمالي: {summary.TotalAmount:N0} د.ع\n" +
-                  $"المقبوض: {summary.AmountPaidNow:N0} د.ع — المتبقي على العميل: {summary.AmountDue:N0} د.ع";
+                  $"المقبوض: {summary.AmountPaidNow:N0} د.ع — المتبقي على العميل: {summary.AmountDue:N0} د.ع" +
+                  (summary.HandedOverToBox > 0 ? $"\nسُلّم {summary.HandedOverToBox:N0} د.ع للصندوق فورًا" : "") +
+                  (summary.HandoverError is { } he ? $"\nتعذّر التسليم الفوري: {he} — بقي النقد في محفظة المندوب" : "");
             StatusMessage = msg.Replace('\n', ' ');
             if (Dialogs.Confirm(msg + "\n\nطباعة الفاتورة الآن؟"))
             {

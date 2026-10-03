@@ -22,6 +22,9 @@ public record SalesInvoiceLineInput(
 
 public class SalesPostingSummary
 {
+    /// <summary>ما سُلّم من نقد المندوب للصندوق فورًا عند الترحيل.</summary>
+    public decimal HandedOverToBox { get; set; }
+    public string? HandoverError { get; set; }
     public int InvoiceId { get; init; }
     public string InvoiceNumber { get; init; } = string.Empty;
     public decimal SubTotal { get; init; }
@@ -166,7 +169,8 @@ public class SalesService
     /// الترحيل الذري: إما أن تُخصم الكميات ويُنشأ القيد وتُحدَّث محفظة المندوب
     /// كلها معًا، أو لا يحدث أي شيء وتبقى الفاتورة مسودة مع رسالة سبب واضحة.
     /// </summary>
-    public async Task<(FinanceOperationResult result, SalesPostingSummary? summary)> PostInvoiceAsync(int invoiceId, int userId)
+    /// <param name="handOverRepCashNow">فاتورة من سيارة مندوب: يُسلَّم النقد المقبوض للصندوق فورًا بدل بقائه في محفظة المندوب.</param>
+    public async Task<(FinanceOperationResult result, SalesPostingSummary? summary)> PostInvoiceAsync(int invoiceId, int userId, bool handOverRepCashNow = false)
     {
         SalesPostingSummary? summary = null;
         var result = await RunAsync(async cmd =>
@@ -197,6 +201,18 @@ public class SalesService
         {
             var customerId = await _db.SalesInvoices.Where(i => i.Id == invoiceId).Select(i => i.CustomerId).FirstAsync();
             await new CustomerAccountService(_db).SyncAsync(customerId);
+
+            if (handOverRepCashNow && summary is not null)
+            {
+                var inv = await _db.SalesInvoices.AsNoTracking().Where(i => i.Id == invoiceId)
+                    .Select(i => new { i.SalesRepEmployeeId, i.PaymentMethod, i.InvoiceDate }).FirstAsync();
+                if (inv.SalesRepEmployeeId is int repId && summary.AmountPaidNow > 0 && inv.PaymentMethod != InvoicePaymentMethod.Electronic)
+                {
+                    var handover = await new RepsService(_db).RecordCashHandoverAsync(repId, summary.AmountPaidNow, inv.InvoiceDate, userId);
+                    if (handover.Success) summary.HandedOverToBox = summary.AmountPaidNow;
+                    else summary.HandoverError = handover.ErrorMessage;
+                }
+            }
         }
         return (result, summary);
     }

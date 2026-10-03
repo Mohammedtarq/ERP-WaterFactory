@@ -78,7 +78,9 @@ public class ProvisioningTests
         Assert.Equal(DefaultConfiguration.Rules.Length, await db.AccountMappingRules.CountAsync());
         Assert.Equal(DefaultConfiguration.Accounts.Length, await db.ChartOfAccounts.CountAsync());
         Assert.True(await db.Roles.CountAsync() >= 6);
-        Assert.Equal(5, await db.Items.CountAsync());
+        // أصناف البيانات التجريبية الخمسة (اختبارات أخرى على نفس المشروع قد تضيف أصنافها)
+        Assert.True(await db.Items.CountAsync() >= 5);
+        Assert.True(await db.Items.AnyAsync(i => i.ItemCode == "W-1500"));
         Assert.True(await db.BillOfMaterials.AnyAsync());
         Assert.Contains(await db.Warehouses.Select(w => w.WarehouseType).ToListAsync(), t => t == WarehouseType.RepVan);
 

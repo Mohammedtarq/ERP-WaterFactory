@@ -441,4 +441,75 @@ public class WarehouseCashBoxTests
         Assert.Equal(version, shell.Session.DataVersion);
         Assert.Empty(_f.Unhandled);
     }
+    [Fact]
+    public async Task Damaged_sale_screen_sells_from_the_damaged_store_and_van_invoice_offers_instant_handover()
+    {
+        int itemId;
+        await using (var db = _f.NewDb())
+        {
+            var branchId = await db.Branches.Select(b => b.Id).FirstAsync();
+            var damaged = await db.Warehouses.FirstOrDefaultAsync(w => w.WarehouseType == WarehouseType.Damaged);
+            if (damaged is null)
+            {
+                db.Warehouses.Add(damaged = new Warehouse { BranchId = branchId, Name = "مخزن التالف", WarehouseType = WarehouseType.Damaged, IsSellableStock = false });
+                await db.SaveChangesAsync();
+            }
+            var adminId = await db.Users.Where(u => u.Username == AppFixture.AdminUser).Select(u => u.Id).SingleAsync();
+            var item = new Item { ItemCode = "SCRAP-CAP", ItemName = "سدادات مشوهة", SourcingMethod = SourcingMethod.Purchased };
+            db.Items.Add(item);
+            await db.SaveChangesAsync();
+            db.ItemPackagingLevels.Add(new ItemPackagingLevel { ItemId = item.Id, LevelName = "قطعة", ContainsQuantity = 1, EquivalentBaseUnits = 1 });
+            db.StockTransactions.Add(new StockTransaction { ItemId = item.Id, WarehouseId = damaged.Id, QuantityBaseUnits = 500,
+                                                            TransactionType = StockTransactionType.Damaged, CreatedByUserId = adminId });
+            await db.SaveChangesAsync();
+            itemId = item.Id;
+        }
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var wh = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
+        await wh.IdleAsync();
+        var ds = wh.DamagedSales;
+        await Open(wh, ds);
+        var avail = Assert.Single(ds.Available, a => a.ItemId == itemId);
+        Assert.Contains("متاح 500", avail.Display);
+
+        ds.LineItem = avail;
+        ds.LineQuantity = 600;                                      // يفوق المتاح
+        ds.AddLineCommand.Execute(null);
+        Assert.Contains(dialogs.Errors, e => e.Contains("المتاح في مخزن التالف 500"));
+        dialogs.Errors.Clear();
+        ds.LineQuantity = 400;
+        ds.LinePrice = 5;
+        ds.AddLineCommand.Execute(null);
+        Assert.Equal(2_000, ds.Total);
+        await ds.SaveCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("اسم المشتري"));
+        dialogs.Errors.Clear();
+        ds.Buyer = "بائع الخردة";
+        await ds.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Empty(ds.Lines);
+        var invoice = dialogs.Reports.Last();
+        Assert.Equal("فاتورة بيع مواد تالفة", invoice.Title);
+        Assert.Contains(invoice.HeaderFields, f => f.Label == "المشتري" && f.Value == "بائع الخردة");
+        Assert.Contains(invoice.Totals, t => t.Value == "2,000 د.ع" && t.Emphasis);
+        Assert.Equal(100, ds.Available.Single(a => a.ItemId == itemId).Available);
+        var saved = Assert.Single(ds.Sales, x => x.BuyerName == "بائع الخردة");
+
+        // إرجاع رصيد الصندوق كما كان حتى لا يتأثر اختبار الصناديق
+        await using (var db = _f.NewDb())
+        {
+            var adminId = await db.Users.Where(u => u.Username == AppFixture.AdminUser).Select(u => u.Id).SingleAsync();
+            var boxId = await db.CashBoxTransactions.Where(t => t.ReferenceTable == "DamagedSales" && t.ReferenceId == saved.Id).Select(t => t.CashBoxId).SingleAsync();
+            Assert.True((await new Data.Services.CashBoxService(db).WithdrawAsync(boxId, 2_000, DateTime.Today, "تنظيف الاختبار", null, adminId)).result.Success);
+        }
+
+        // فاتورة المبيعات: خيار التسليم الفوري يخص سيارات المندوبين فقط
+        var sales = shell.Open<ERP.Presentation.ViewModels.Sales.SalesModuleViewModel>(ModuleCode.Sales);
+        await sales.IdleAsync();
+        await Open(sales, sales.Invoice);
+        Assert.False(sales.Invoice.IsVanSale);
+        sales.Invoice.HandOverNow = true;
+        Assert.True(sales.Invoice.HandOverNow);
+        Assert.Empty(_f.Unhandled);
+    }
 }

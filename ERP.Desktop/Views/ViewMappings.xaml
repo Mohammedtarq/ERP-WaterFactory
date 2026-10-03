@@ -179,6 +179,7 @@
     <DataTemplate DataType="{x:Type vmWarehouse:BomSectionViewModel}"><vWarehouse:BomSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:PackagingTemplatesSectionViewModel}"><vWarehouse:PackagingTemplatesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:StockAlertsSectionViewModel}"><vWarehouse:StockAlertsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:DamagedSalesSectionViewModel}"><vWarehouse:DamagedSalesSectionView/></DataTemplate>
 
     <!-- Finance -->
     <DataTemplate DataType="{x:Type vmFinance:ChartOfAccountsSectionViewModel}"><vFinance:ChartOfAccountsSectionView/></DataTemplate>

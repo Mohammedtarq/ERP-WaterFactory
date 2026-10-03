@@ -444,6 +444,22 @@ public static class DocumentReports
         return r;
     }
 
+    public static async Task<ReportDocument?> DamagedSaleAsync(AppSession s, ProjectDbContext db, int saleId)
+    {
+        var x = await new DamagedSaleService(db).GetAsync(saleId);
+        if (x is null) return null;
+        var r = new ReportDocument { CompanyName = s.ProjectName, Title = "فاتورة بيع مواد تالفة", Notes = x.Notes, PrintedBy = s.FullName,
+                                     Key = "DamagedSale", ReceiptCapable = true, ReceiptColumns = new[] { 0, 1, 2, 3 } };
+        r.Field("الرقم", x.SaleNumber).Field("التاريخ", x.SaleDate.ToString("yyyy/MM/dd")).Field("المشتري", x.BuyerName)
+         .Field("مستند الإخراج", x.StockDocument.DocumentNumber).Field("المستخدم", x.CreatedByUser.Username);
+        r.Columns.AddRange(new[] { "المادة", "الكمية", "السعر", "المبلغ" });
+        foreach (var l in x.Lines)
+            r.Rows.Add(new[] { l.Item.ItemName, Q(l.Quantity), $"{l.UnitPrice:#,0.##}", N(l.Amount) });
+        r.Total("الإجمالي (نقدًا)", $"{N(x.TotalAmount)} د.ع", true).Total("المبلغ كتابةً", ArabicNumberWords.Amount(x.TotalAmount));
+        r.Signatures.AddRange(new[] { "المشتري", "أمين المخزن", "أمين الصندوق" });
+        return r;
+    }
+
     // ============================ المبيعات ============================
 
     public static async Task<ReportDocument?> SalesInvoiceAsync(AppSession s, ProjectDbContext db, int invoiceId)

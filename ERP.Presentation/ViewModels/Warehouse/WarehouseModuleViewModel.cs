@@ -38,8 +38,11 @@ public class WarehouseModuleViewModel : ModuleViewModel
         Add(new BomSectionViewModel(s, d));
         Add(new PackagingTemplatesSectionViewModel(s, d));
         Add(new StockAlertsSectionViewModel(s, d));
+        DamagedSales = Add(new DamagedSalesSectionViewModel(s, d));
         Background(RefreshWorkspacesAsync());
     }
+
+    public DamagedSalesSectionViewModel DamagedSales { get; }
 
     /// <summary>واجهة مستقلة لكل مخزن فعّال (مواد أولية، منتج تام، كاش فان، تالف، وأي مخزن جديد).</summary>
     public IReadOnlyList<WarehouseWorkspaceSectionViewModel> Workspaces => Tabs.OfType<WarehouseWorkspaceSectionViewModel>().ToList();

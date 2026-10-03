@@ -89,6 +89,8 @@ public class ProjectDbContext : DbContext
     public DbSet<CustomerDeposit> CustomerDeposits => Set<CustomerDeposit>();
     public DbSet<EmployeeDeduction> EmployeeDeductions => Set<EmployeeDeduction>();
     public DbSet<Partner> Partners => Set<Partner>();
+    public DbSet<DamagedSale> DamagedSales => Set<DamagedSale>();
+    public DbSet<DamagedSaleLine> DamagedSaleLines => Set<DamagedSaleLine>();
     public DbSet<PartnerTransaction> PartnerTransactions => Set<PartnerTransaction>();
     public DbSet<AssetReconciliation> AssetReconciliations => Set<AssetReconciliation>();
     public DbSet<AssetReconciliationLine> AssetReconciliationLines => Set<AssetReconciliationLine>();
@@ -412,6 +414,21 @@ public class ProjectDbContext : DbContext
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.SalesInvoice).WithMany().HasForeignKey(a => a.SalesInvoiceId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PaymentAllocation>().HasOne(a => a.AllocatedByUser).WithMany().HasForeignKey(a => a.AllocatedByUserId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Item>().Property(i => i.CostPrice).HasPrecision(18, 4);
+        modelBuilder.Entity<DamagedSale>(e =>
+        {
+            e.Property(s => s.TotalAmount).HasPrecision(18, 2);
+            e.HasOne(s => s.StockDocument).WithMany().HasForeignKey(s => s.StockDocumentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(s => s.JournalEntry).WithMany().HasForeignKey(s => s.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(s => s.CreatedByUser).WithMany().HasForeignKey(s => s.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(s => s.Lines).WithOne(l => l.DamagedSale).HasForeignKey(l => l.DamagedSaleId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<DamagedSaleLine>(e =>
+        {
+            e.Property(l => l.Quantity).HasPrecision(18, 3);
+            e.Property(l => l.UnitPrice).HasPrecision(18, 4);
+            e.Property(l => l.Amount).HasPrecision(18, 2);
+            e.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<Partner>(e =>
         {
             e.Property(p => p.SharePercent).HasPrecision(7, 4);
