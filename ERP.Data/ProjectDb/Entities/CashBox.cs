@@ -5,7 +5,8 @@ public enum CashBoxType { Main, User }
 public enum CashBoxTxType
 {
     Opening, Deposit, Withdrawal, TransferIn, TransferOut,
-    SalesReceipt, VoucherReceipt, VoucherPayment, RepHandover
+    SalesReceipt, VoucherReceipt, VoucherPayment, RepHandover,
+    CustomerDepositIn, CustomerDepositOut
 }
 
 /// <summary>صندوق مالي: رئيسي أو خاص بمستخدم. الرصيد = مجموع حركاته غير الملغاة.</summary>

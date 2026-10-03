@@ -18,6 +18,7 @@ public class SalesModuleViewModel : ModuleViewModel
         Invoice = Add(new SalesInvoiceSectionViewModel(s, d));
         InvoiceList = Add(new SalesInvoiceListSectionViewModel(s, d, OpenInvoiceAsync));
         Statement = Add(new CustomerStatementSectionViewModel(s, d));
+        Deposits = Add(new CustomerDepositsSectionViewModel(s, d));
         Add(new CustomersSectionViewModel(s, d));
         Add(new AgentPricesSectionViewModel(s, d));
         Add(new LoadingSettingsSectionViewModel(s, d));
@@ -30,6 +31,7 @@ public class SalesModuleViewModel : ModuleViewModel
     public SalesInvoiceSectionViewModel Invoice { get; }
     public SalesInvoiceListSectionViewModel InvoiceList { get; }
     public CustomerStatementSectionViewModel Statement { get; }
+    public CustomerDepositsSectionViewModel Deposits { get; }
 
     /// <summary>فتح فاتورة من القائمة داخل تبويب الفاتورة (مسودة للتعديل، مرحّلة للعرض فقط).</summary>
     public async Task OpenInvoiceAsync(int invoiceId)
@@ -817,6 +819,7 @@ public class CustomerStatementSectionViewModel : SectionViewModel
         r.Field("العميل", Customer?.Name)
          .Field("نوع العميل", Customer is null ? null : ArabicLabels.Of(Customer.CustomerType))
          .Field("الوكيل", Customer?.ParentAgent?.Name)
+         .Field("رصيد التأمين (منفصل عن الدين)", DepositBalance > 0 ? $"{DepositBalance:N0} د.ع" : null)
          .Field("الفترة", Rows.Count == 0 ? "لا توجد حركات" : $"{Rows[0].TxDate:yyyy/MM/dd} — {Rows[^1].TxDate:yyyy/MM/dd}");
         r.Columns.AddRange(new[] { "التاريخ", "النوع", "رقم المستند", "البيان", "مدين", "دائن", "الرصيد" });
         foreach (var x in Rows)
@@ -844,7 +847,12 @@ public class CustomerStatementSectionViewModel : SectionViewModel
 
     public string CustomerInfo => Customer is null ? "اختر عميلًا من القائمة أو من جدول الأرصدة" :
         $"{Customer.Name} — {ArabicLabels.Of(Customer.CustomerType)}" +
-        (Customer.ParentAgent is null ? "" : $" (تابع للوكيل {Customer.ParentAgent.Name})");
+        (Customer.ParentAgent is null ? "" : $" (تابع للوكيل {Customer.ParentAgent.Name})") +
+        (DepositBalance > 0 ? $" — تأمين قائم: {DepositBalance:N0} د.ع (أمانة منفصلة عن الدين)" : "");
+
+    private decimal _depositBalance;
+    /// <summary>رصيد تأمينات العميل — يُعرض للعلم فقط ولا يدخل في رصيد الدين.</summary>
+    public decimal DepositBalance { get => _depositBalance; private set { if (SetProperty(ref _depositBalance, value)) OnPropertyChanged(nameof(CustomerInfo)); } }
 
     public decimal TotalDebit => Rows.Sum(r => r.Debit);
     public decimal TotalCredit => Rows.Sum(r => r.Credit);
@@ -876,10 +884,12 @@ public class CustomerStatementSectionViewModel : SectionViewModel
         Rows.Clear();
         Invoices.Clear();
         Payments.Clear();
+        DepositBalance = 0;
         if (Customer is not null)
         {
             await using var db = Session.NewDb();
             var account = new CustomerAccountService(db);
+            DepositBalance = await new CustomerDepositService(db).GetBalanceAsync(Customer.Id);
             await account.SyncAsync(Customer.Id);   // التوزيع الأقدم أولًا محدَّث دائمًا قبل العرض
             foreach (var r in await new SalesService(db).GetCustomerStatementAsync(Customer.Id))
             {

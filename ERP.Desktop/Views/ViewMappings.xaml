@@ -197,6 +197,7 @@
     <DataTemplate DataType="{x:Type vmSales:SalesInvoiceSectionViewModel}"><vSales:SalesInvoiceSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSales:SalesInvoiceListSectionViewModel}"><vSales:SalesInvoiceListSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSales:CustomerStatementSectionViewModel}"><vSales:CustomerStatementSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSales:CustomerDepositsSectionViewModel}"><vSales:CustomerDepositsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSales:CustomersSectionViewModel}"><vSales:CustomersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSales:AgentPricesSectionViewModel}"><vSales:AgentPricesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSales:LoadingSettingsSectionViewModel}"><vSales:LoadingSettingsSectionView/></DataTemplate>

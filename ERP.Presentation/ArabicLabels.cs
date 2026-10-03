@@ -72,6 +72,8 @@ public static class ArabicLabels
         [CashBoxTxType.TransferIn] = "مناقلة واردة", [CashBoxTxType.TransferOut] = "مناقلة صادرة",
         [CashBoxTxType.SalesReceipt] = "مبيعات نقدية", [CashBoxTxType.VoucherReceipt] = "سند قبض",
         [CashBoxTxType.VoucherPayment] = "سند صرف", [CashBoxTxType.RepHandover] = "تسليم نقد مندوب",
+        [CashBoxTxType.CustomerDepositIn] = "استلام تأمين عميل", [CashBoxTxType.CustomerDepositOut] = "إرجاع تأمين عميل",
+        [CustomerDepositKind.Receipt] = "استلام تأمين", [CustomerDepositKind.Refund] = "إرجاع تأمين", [CustomerDepositKind.Opening] = "رصيد افتتاحي",
     };
 
     /// <summary>القيم النصية كما تخرج من Views قاعدة البيانات (Status/CustomerType/PaymentMethod/TxType).</summary>

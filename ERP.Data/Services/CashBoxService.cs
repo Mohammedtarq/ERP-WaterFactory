@@ -348,6 +348,8 @@ public class CashBoxService
         var voucherIds = raw.Where(r => r.ReferenceTable == "Vouchers" && r.ReferenceId != null).Select(r => r.ReferenceId!.Value).ToList();
         var invoices = await _db.SalesInvoices.Where(i => invoiceIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.InvoiceNumber);
         var vouchers = await _db.Vouchers.Where(v => voucherIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id, v => v.VoucherNumber);
+        var depositIds = raw.Where(r => r.ReferenceTable == "CustomerDeposits" && r.ReferenceId != null).Select(r => r.ReferenceId!.Value).ToList();
+        var deposits = await _db.CustomerDeposits.Where(d => depositIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.DepositNumber);
 
         var balance = opening;
         var rows = new List<CashBoxTxRow>();
@@ -363,6 +365,7 @@ public class CashBoxService
                 {
                     "SalesInvoices" when r.ReferenceId is { } i => invoices.GetValueOrDefault(i),
                     "Vouchers" when r.ReferenceId is { } v => vouchers.GetValueOrDefault(v),
+                    "CustomerDeposits" when r.ReferenceId is { } d => deposits.GetValueOrDefault(d),
                     _ => null
                 },
                 CreatedBy = r.User, IsVoided = r.IsVoided, VoidReason = r.VoidReason, IsModified = r.Modified, IsManual = IsManual(r.TxType)
@@ -385,6 +388,8 @@ public class CashBoxService
         CashBoxTxType.SalesReceipt => "مبيعات نقدية",
         CashBoxTxType.VoucherReceipt => "سند قبض",
         CashBoxTxType.VoucherPayment => "سند صرف",
+        CashBoxTxType.CustomerDepositIn => "استلام تأمين عميل",
+        CashBoxTxType.CustomerDepositOut => "إرجاع تأمين عميل",
         _ => "تسليم نقد مندوب"
     };
 

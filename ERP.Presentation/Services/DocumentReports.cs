@@ -216,6 +216,40 @@ public static class DocumentReports
         return r;
     }
 
+    /// <summary>سند تأمين عميل (استلام/إرجاع/افتتاحي) مع رصيد التأمين بعده — يصلح للكاشير 80mm.</summary>
+    public static async Task<ReportDocument?> CustomerDepositAsync(AppSession s, ProjectDbContext db, int depositId)
+    {
+        var svc = new CustomerDepositService(db);
+        var d = await svc.GetAsync(depositId);
+        if (d is null) return null;
+        var balanceAfter = (await svc.GetHistoryAsync(d.CustomerId)).First(r => r.Id == d.Id).Balance;
+        var title = d.Kind switch
+        {
+            CustomerDepositKind.Receipt => "سند استلام تأمين",
+            CustomerDepositKind.Refund => "سند إرجاع تأمين",
+            _ => "رصيد تأمين افتتاحي"
+        };
+        var r = new ReportDocument
+        {
+            CompanyName = s.ProjectName, Title = title, Stamp = d.IsVoided ? "ملغى" : null, Notes = d.Notes, PrintedBy = s.FullName,
+            Key = "CustomerDeposit", ReceiptCapable = true
+        };
+        r.Field("رقم السند", d.DepositNumber)
+         .Field("التاريخ", d.DepositDate.ToString("yyyy/MM/dd"))
+         .Field(d.Kind == CustomerDepositKind.Refund ? "أرجعنا إلى" : "استلمنا من", d.Customer.Name)
+         .Field("الغرض", d.Purpose)
+         .Field("الستيكر / الوصفة الخاصة", d.CustomRecipe?.Name)
+         .Field("المبلغ بالعملة الأصلية", d.CurrencyAmount is { } ca ? $"{ca:N2} {d.Currency}" : null)
+         .Field("المستخدم", d.CreatedByUser.Username);
+        r.Total("المبلغ", $"{N(d.Amount)} د.ع", true)
+         .Total("المبلغ كتابةً", ArabicNumberWords.Amount(d.Amount))
+         .Total("رصيد تأمين العميل بعد السند", $"{N(balanceAfter)} د.ع");
+        if (d.IsVoided) r.Total("سبب الإلغاء", d.VoidReason ?? "");
+        r.Signatures.AddRange(d.Kind == CustomerDepositKind.Refund ? new[] { "المستلم (العميل)", "أمين الصندوق", "المدير" }
+                                                                    : new[] { "المستلم (أمين الصندوق)", "الدافع (العميل)" });
+        return r;
+    }
+
     public static async Task<ReportDocument?> JournalEntryAsync(AppSession s, ProjectDbContext db, int entryId)
     {
         var e = await db.JournalEntries.AsNoTracking().Include(x => x.CreatedByUser).Include(x => x.Lines).ThenInclude(l => l.Account)

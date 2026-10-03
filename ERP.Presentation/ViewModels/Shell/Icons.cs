@@ -38,6 +38,7 @@ public static class Icons
     public const string Price = "\uE8EC";
     public const string Truck = "\uE804";
     public const string Lock = "\uE72E";
+    public const string Shield = "\uEA18";
     public const string Calendar = "\uE787";
     public const string Star = "\uE734";
     public const string Up = "\uE74A";

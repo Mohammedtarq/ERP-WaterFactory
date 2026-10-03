@@ -183,6 +183,7 @@ public static class DefaultConfiguration
         ("2101", "الموردون", AccountType.Liability),
         ("2102", "ضريبة مبيعات مستحقة", AccountType.Liability),
         ("2103", "رواتب مستحقة الدفع", AccountType.Liability),
+        ("2104", "تأمينات العملاء (أمانات)", AccountType.Liability),
         ("3101", "رأس المال", AccountType.Equity),
         ("3102", "جاري المالك (إيداعات وسحوبات الصندوق)", AccountType.Equity),
         ("4101", "إيرادات المبيعات", AccountType.Revenue),
@@ -213,6 +214,9 @@ public static class DefaultConfiguration
         (RepsService.DebtCollectionRule, "1103", "1201"),
         (CashBoxService.DepositRule, "1101", "3102"),
         (CashBoxService.WithdrawalRule, "5101", "1101"),
+        (CustomerDepositService.ReceiptRule, "1101", "2104"),
+        (CustomerDepositService.RefundRule, "2104", "1101"),
+        (CustomerDepositService.OpeningRule, "3101", "2104"),
     };
 
     private static readonly string[] AllModules =

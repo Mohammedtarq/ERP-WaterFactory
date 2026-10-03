@@ -58,7 +58,7 @@ public class ScreenFlowTests
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var sales = shell.Open<SalesModuleViewModel>(ModuleCode.Sales);
         Assert.IsType<HomeSectionViewModel>(sales.SelectedTab);
-        Assert.Equal(7, sales.Home.Sections.Count());                 // + صندوقي
+        Assert.Equal(8, sales.Home.Sections.Count());                 // + صندوقي + تأمينات العملاء
 
         // الرصيد قبل البيع من شاشة الرصيد الحالي
         var warehouse = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
@@ -639,6 +639,92 @@ public class ScreenFlowTests
         backup.Folder = "/no/such/folder";
         await backup.BackupCommand.ExecuteAsync();
         Assert.Contains(dialogs.Errors, e => e.Contains("تعذّر النسخ الاحتياطي"));
+        Assert.Empty(_f.Unhandled);
+    }
+    [Fact]
+    public async Task Customer_deposit_receipt_refund_void_and_statement_stays_debt_only()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var sales = shell.Open<SalesModuleViewModel>(ModuleCode.Sales);
+        await sales.IdleAsync();
+        var dep = sales.Deposits;
+        await Open(sales, dep);
+
+        dep.Customer = dep.Customers.Single(c => c.Id == _f.DirectId);
+        await dep.IdleAsync();
+        var before = dep.Balance;
+        Assert.Equal(CustomerDepositsSectionViewModel.DefaultPurpose, dep.Purpose);
+        Assert.True(dep.IsReceipt);
+        dep.Amount = 200_000;
+        await dep.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(before + 200_000, dep.Balance);
+        Assert.Equal(0, dep.Amount);
+
+        // سند الاستلام يُطبع مباشرة بعد الحفظ
+        var receipt = dialogs.Reports.Last();
+        Assert.Equal("سند استلام تأمين", receipt.Title);
+        Assert.True(receipt.ReceiptCapable);
+        Assert.Contains(receipt.HeaderFields, f => f.Label == "استلمنا من" && f.Value == "زبون مباشر");
+        Assert.Contains(receipt.HeaderFields, f => f.Label == "الغرض" && f.Value == CustomerDepositsSectionViewModel.DefaultPurpose);
+        Assert.Contains(receipt.Totals, t => t.Label == "المبلغ" && t.Value == "200,000 د.ع" && t.Emphasis);
+        Assert.Contains(receipt.Totals, t => t.Label == "رصيد تأمين العميل بعد السند" && t.Value == $"{before + 200_000:N0} د.ع");
+        Assert.Contains(dep.Balances, b => b.CustomerId == _f.DirectId && b.Balance == dep.Balance);
+
+        // الإرجاع لا يتجاوز الرصيد
+        dep.Kind = dep.Kinds.Single(k => k.Value == CustomerDepositKind.Refund);
+        Assert.False(dep.IsReceipt);
+        dep.Amount = dep.Balance + 1;
+        await dep.SaveCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("لا يمكن إرجاع أكثر منه"));
+        dialogs.Errors.Clear();
+        dep.Amount = 50_000;
+        await dep.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(before + 150_000, dep.Balance);
+        Assert.Equal("سند إرجاع تأمين", dialogs.Reports.Last().Title);
+
+        // كشف الحساب: التأمين يظهر للعلم فقط ولا يدخل في الدين
+        await Open(sales, sales.Statement);
+        sales.Statement.Customer = sales.Statement.Customers.Single(c => c.Id == _f.DirectId);
+        await sales.Statement.IdleAsync();
+        Assert.Contains($"تأمين قائم: {before + 150_000:N0}", sales.Statement.CustomerInfo);
+        Assert.DoesNotContain(sales.Statement.Rows, r => r.DocNumber.StartsWith("DP-"));
+
+        // إلغاء سند الإرجاع (للأدمن) يعيد الرصيد
+        await Open(sales, dep);
+        var refundRow = dep.History.First(r => r.Kind == CustomerDepositKind.Refund && !r.IsVoided);
+        dep.BeginVoidCommand.Execute(refundRow);
+        Assert.True(dep.IsVoiding);
+        await dep.VoidCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("سبب الإلغاء"));
+        dialogs.Errors.Clear();
+        dep.VoidReason = "إرجاع بالخطأ";
+        await dep.VoidCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(before + 200_000, dep.Balance);
+        Assert.False(dep.IsVoiding);
+        Assert.True(dep.History.Single(r => r.Id == refundRow.Id).IsVoided);
+
+        // موظف المبيعات يسجّل التأمينات لكن لا يلغيها
+        var (clerkShell, clerkDialogs) = await _f.LoginAsync(AppFixture.ClerkUser, AppFixture.ClerkPassword);
+        var clerkSales = clerkShell.Open<SalesModuleViewModel>(ModuleCode.Sales);
+        await clerkSales.IdleAsync();
+        await Open(clerkSales, clerkSales.Deposits);
+        clerkSales.Deposits.Customer = clerkSales.Deposits.Customers.Single(c => c.Id == _f.DirectId);
+        await clerkSales.Deposits.IdleAsync();
+        clerkSales.Deposits.BeginVoidCommand.Execute(clerkSales.Deposits.History.First(r => !r.IsVoided));
+        clerkSales.Deposits.VoidReason = "محاولة";
+        await clerkSales.Deposits.VoidCommand.ExecuteAsync();
+        Assert.Contains(clerkDialogs.Errors, e => e.Contains("للأدمن فقط"));
+
+        // تنظيف: إلغاء الاستلام يعيد الصندوق والرصيد كما كانا (لا أثر على اختبارات الصناديق)
+        await dep.LoadAsync();
+        dep.BeginVoidCommand.Execute(dep.History.First(r => r.Kind == CustomerDepositKind.Receipt && !r.IsVoided));
+        dep.VoidReason = "تنظيف الاختبار";
+        await dep.VoidCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(before, dep.Balance);
         Assert.Empty(_f.Unhandled);
     }
 }
