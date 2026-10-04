@@ -67,6 +67,7 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
         {
             if (!SetProperty(ref _kind, value)) return;
             foreach (var n in new[] { nameof(IsLoan), nameof(IsPenalty), nameof(KindHint), nameof(SaveLabel), nameof(StartLabel) }) OnPropertyChanged(n);
+            ApplyWithdrawalCutoff();
         }
     }
     public bool IsLoan => Kind.Value == EmployeeDeductionKind.Loan;
@@ -74,7 +75,7 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
     public string KindHint => Kind.Value switch
     {
         EmployeeDeductionKind.Loan => "تُصرف من صندوقك الآن، وتُستقطع بالقسط الشهري من الرواتب بدءًا من شهر البداية حتى السداد.",
-        EmployeeDeductionKind.Withdrawal => "يُصرف من صندوقك الآن، ويُستقطع كاملًا من راتب الشهر المحدد.",
+        EmployeeDeductionKind.Withdrawal => $"يُصرف من صندوقك الآن، ويُستقطع كاملًا من راتب الشهر المحدد. المسحوبات تُغلق يوم {HrRules.WithdrawalCutoffDay}: ما بعده يُستقطع من الشهر التالي.",
         _ => "لا يُصرف شيء من الصندوق؛ يُخصم المبلغ من راتب الشهر المحدد. السبب إلزامي."
     };
     public string SaveLabel => IsPenalty ? "حفظ العقوبة وطباعة الإشعار" : $"صرف {Kind.Label} وطباعة السند";
@@ -83,7 +84,17 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
     public decimal Amount { get => _amount; set { if (SetProperty(ref _amount, value)) OnPropertyChanged(nameof(InstallmentsText)); } }
     public decimal Installment { get => _installment; set { if (SetProperty(ref _installment, value)) OnPropertyChanged(nameof(InstallmentsText)); } }
     public string InstallmentsText => IsLoan && Installment > 0 && Amount > 0 ? $"عدد الأقساط: {Math.Ceiling(Amount / Installment):N0} شهر" : "";
-    public DateTime Date { get => _date; set => SetProperty(ref _date, value); }
+    public DateTime Date { get => _date; set { if (SetProperty(ref _date, value)) ApplyWithdrawalCutoff(); } }
+
+    /// <summary>المسحوب بعد يوم الإغلاق ينتقل تلقائيًا لرواتب الشهر التالي.</summary>
+    private void ApplyWithdrawalCutoff()
+    {
+        if (Kind.Value != EmployeeDeductionKind.Withdrawal) return;
+        var (m, y) = HrRules.FirstWithdrawalPeriod(Date);
+        if (StartYear * 12 + StartMonth >= y * 12 + m) return;
+        StartMonth = m;
+        StartYear = y;
+    }
     public int StartMonth { get => _startMonth; set => SetProperty(ref _startMonth, value); }
     public int StartYear { get => _startYear; set => SetProperty(ref _startYear, value); }
     public string? Reason { get => _reason; set => SetProperty(ref _reason, value); }
@@ -101,7 +112,7 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var (selected, filter) = (Employee?.Id, FilterEmployee?.Id);
         Employees.Clear();
-        foreach (var e in await db.Employees.AsNoTracking().Where(e => e.IsActive).OrderBy(e => e.FullName).ToListAsync()) Employees.Add(e);
+        foreach (var e in await db.Employees.AsNoTracking().Where(e => e.IsActive && !e.IsTemporary).OrderBy(e => e.FullName).ToListAsync()) Employees.Add(e);
         _employee = Employees.FirstOrDefault(e => e.Id == selected);
         _filterEmployee = Employees.FirstOrDefault(e => e.Id == filter);
         OnPropertyChanged(nameof(Employee));

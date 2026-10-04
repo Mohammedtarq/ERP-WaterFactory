@@ -19,6 +19,7 @@ public class HrModuleViewModel : ModuleViewModel
         Incentives = Add(new MonthlyIncentiveSectionViewModel(s, d));
         Payroll = Add(new PayrollSectionViewModel(s, d));
         Deductions = Add(new EmployeeDeductionsSectionViewModel(s, d));
+        TempWorkers = Add(new TempWorkersSectionViewModel(s, d));
         Add(new PromotionsSectionViewModel(s, d));
         Add(new EmployeesSectionViewModel(s, d));
         Add(new ShiftsSectionViewModel(s, d));
@@ -32,6 +33,7 @@ public class HrModuleViewModel : ModuleViewModel
     public MonthlyIncentiveSectionViewModel Incentives { get; }
     public PayrollSectionViewModel Payroll { get; }
     public EmployeeDeductionsSectionViewModel Deductions { get; }
+    public TempWorkersSectionViewModel TempWorkers { get; }
 }
 
 /// <summary>اختيار الشهر/السنة المشترك بين شاشات الحوافز والرواتب.</summary>
@@ -397,7 +399,11 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
 
     protected override Employee CreateNew() => new() { HireDate = DateTime.Today, BranchId = Branches.FirstOrDefault()?.Id, ShiftId = Shifts.FirstOrDefault()?.Id };
     protected override string? Validate(Employee e) =>
-        string.IsNullOrWhiteSpace(e.FullName) ? "أدخل اسم الموظف" : e.BaseSalary < 0 ? "الراتب لا يمكن أن يكون سالبًا" : null;
+        string.IsNullOrWhiteSpace(e.FullName) ? "أدخل اسم الموظف"
+        : e.BaseSalary < 0 ? "الراتب لا يمكن أن يكون سالبًا"
+        : e.IsTemporary && e.DailyWage is null or <= 0 ? "العامل الوقتي يحتاج أجرًا يوميًا"
+        : e.IsTemporary && (e.IsSalesRep || e.IsSalesManager) ? "العامل الوقتي لا يكون مندوبًا أو مدير مبيعات"
+        : null;
 }
 
 // ============================ الشفتات والأقسام ============================

@@ -154,6 +154,8 @@ public class FinalAccountsService
         var salaries = await _db.PayrollRuns.AsNoTracking()
             .Where(r => r.Status == PayrollRunStatus.Approved && r.PeriodYear == year && r.PeriodMonth == month && r.JournalEntryId != null)
             .SelectMany(r => r.JournalEntry!.Lines).SumAsync(l => (decimal?)l.Debit) ?? 0;
+        // أجور العمال الوقتيين المصروفة في الشهر
+        salaries += await LedgerAsync("5102", q => q.Where(l => l.JournalEntry.SourceTable == "TempWorkerPayments"));
 
         // ---- الخسائر بالكلفة ----
         var losses = await new ProductionStockReports(_db).MonthlyLossesAsync(year, month);

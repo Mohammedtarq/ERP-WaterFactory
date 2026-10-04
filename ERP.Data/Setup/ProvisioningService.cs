@@ -237,6 +237,7 @@ public static class DefaultConfiguration
         (FinanceEntryService.ExpenseRule, "5101", "1101"),
         (FinanceEntryService.NonOperatingRule, "5104", "1101"),
         (FinanceEntryService.OtherIncomeRule, "1101", "4104"),
+        (TempWorkersService.WagesRule, "5102", "1101"),
     };
 
     private static readonly string[] AllModules =

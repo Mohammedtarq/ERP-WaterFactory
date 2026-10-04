@@ -233,6 +233,7 @@
     <DataTemplate DataType="{x:Type vmHR:MonthlyIncentiveSectionViewModel}"><vHR:MonthlyIncentiveSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:PayrollSectionViewModel}"><vHR:PayrollSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:EmployeeDeductionsSectionViewModel}"><vHR:EmployeeDeductionsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:TempWorkersSectionViewModel}"><vHR:TempWorkersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:PromotionsSectionViewModel}"><vHR:PromotionsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:EmployeesSectionViewModel}"><vHR:EmployeesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:ShiftsSectionViewModel}"><vHR:ShiftsSectionView/></DataTemplate>

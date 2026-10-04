@@ -20,6 +20,16 @@ public static class HrRules
     public const string PayrollMappingRule = "PayrollAccrual";
 
     public const string Iqd = "IQD";
+
+    /// <summary>مسحوبات الراتب تُغلق هذا اليوم من كل شهر: المسحوب بعده يُستقطع من رواتب الشهر التالي.</summary>
+    public const int WithdrawalCutoffDay = 25;
+
+    /// <summary>أول شهر رواتب يُستقطع منه مسحوب بتاريخ معيّن.</summary>
+    public static (int month, int year) FirstWithdrawalPeriod(DateTime entryDate)
+    {
+        var d = entryDate.Day > WithdrawalCutoffDay ? entryDate.AddMonths(1) : entryDate;
+        return (d.Month, d.Year);
+    }
     public const string Usd = "USD";
 }
 
@@ -239,7 +249,8 @@ public class HrService
         if (run?.Status == PayrollRunStatus.Approved)
             return (FinanceOperationResult.Fail($"رواتب {month}/{year} معتمدة مسبقًا ولا يمكن إعادة توليدها"), run.Id);
 
-        var employees = await _db.Employees.AsNoTracking().Where(e => e.IsActive && (e.HireDate == null || e.HireDate <= end))
+        // العمال الوقتيون خارج الرواتب الشهرية: يُصرف أجرهم من شاشة العمال الوقتيين
+        var employees = await _db.Employees.AsNoTracking().Where(e => e.IsActive && !e.IsTemporary && (e.HireDate == null || e.HireDate <= end))
                                  .OrderBy(e => e.FullName).ToListAsync();
         if (employees.Count == 0) return (FinanceOperationResult.Fail("لا يوجد موظفون فعّالون"), null);
 
@@ -276,7 +287,8 @@ public class HrService
             var mine = movements.Where(m => m.EmployeeId == e.Id).ToList();
             var baseSalary = e.BaseSalary + mine.Where(m => m.ApplicationType == PromotionApplicationType.PermanentAddition).Sum(m => m.Amount);
             var allowances = mine.Where(m => m.ApplicationType == PromotionApplicationType.OneTime && m.EffectiveDate >= start).Sum(m => m.Amount);
-            var deduction = Math.Round(baseSalary / HrRules.DaysPerMonthForDailyWage * absences.GetValueOrDefault(e.Id), 2);
+            // المعفى من البصمة بقرار الإدارة لا يُخصم غيابه
+            var deduction = e.AttendanceExempt ? 0 : Math.Round(baseSalary / HrRules.DaysPerMonthForDailyWage * absences.GetValueOrDefault(e.Id), 2);
 
             var rep = e.IsSalesRep ? await ComputeRepIncentiveAsync(e.Id, month, year) : 0;
             var manager = e.IsSalesManager ? (await ComputeSalesManagerIncentiveAsync(e.Id, month, year)).amount : 0;

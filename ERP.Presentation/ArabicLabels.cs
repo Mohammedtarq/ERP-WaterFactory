@@ -78,7 +78,7 @@ public static class ArabicLabels
         [CashBoxTxType.VoucherPayment] = "سند صرف", [CashBoxTxType.RepHandover] = "تسليم نقد مندوب",
         [CashBoxTxType.CustomerDepositIn] = "استلام تأمين عميل", [CashBoxTxType.CustomerDepositOut] = "إرجاع تأمين عميل",
         [CashBoxTxType.EmployeeAdvance] = "سلفة / مسحوب موظف", [CashBoxTxType.PartnerWithdrawal] = "سحب أرباح شريك",
-        [CashBoxTxType.Expense] = "مصروف", [CashBoxTxType.OtherIncome] = "إيراد آخر",
+        [CashBoxTxType.Expense] = "مصروف", [CashBoxTxType.OtherIncome] = "إيراد آخر", [CashBoxTxType.TempWages] = "أجور عمال وقتيين",
         [FinanceCategoryKind.Operating] = "تشغيلي (يدخل كلفة القنينة)", [FinanceCategoryKind.NonOperating] = "غير تشغيلي (توسعة، مكائن)",
         [FinanceCategoryKind.OtherIncome] = "إيراد آخر",
         [PartnerTxKind.ProfitShare] = "حصة أرباح", [PartnerTxKind.Withdrawal] = "سحب أرباح", [PartnerTxKind.Opening] = "رصيد افتتاحي",

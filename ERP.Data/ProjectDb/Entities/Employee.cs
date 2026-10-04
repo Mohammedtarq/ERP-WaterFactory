@@ -24,4 +24,11 @@ public class Employee
 
     public DateTime? HireDate { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>عامل وقتي: أجر يومي، بلا بصمة ولا سلف، يُصرف أسبوعيًا أو عند إنهاء الخدمة (32_temp_workers.sql).</summary>
+    public bool IsTemporary { get; set; }
+    public decimal? DailyWage { get; set; }
+    /// <summary>معفى من البصمة بقرار الإدارة: لا يُخصم غيابه من الراتب.</summary>
+    public bool AttendanceExempt { get; set; }
+    public DateTime? EndOfServiceDate { get; set; }
 }

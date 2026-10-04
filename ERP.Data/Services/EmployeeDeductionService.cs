@@ -60,6 +60,14 @@ public class EmployeeDeductionService
         if (r.StartMonth is < 1 or > 12) return Fail("شهر الاستقطاع غير صحيح");
         var employee = await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == r.EmployeeId);
         if (employee is null || !employee.IsActive) return Fail("اختر موظفًا فعّالًا");
+        if (employee.IsTemporary && r.Kind != EmployeeDeductionKind.Penalty)
+            return Fail("العمال الوقتيون بلا سلف ولا مسحوبات — يُصرف أجرهم من شاشة العمال الوقتيين");
+        if (r.Kind == EmployeeDeductionKind.Withdrawal && !r.IsOpening)
+        {
+            var (fm, fy) = HrRules.FirstWithdrawalPeriod(r.EntryDate);
+            if (r.StartYear * 12 + r.StartMonth < fy * 12 + fm)
+                return Fail($"مسحوبات الراتب تُغلق يوم {HrRules.WithdrawalCutoffDay}: مسحوب {r.EntryDate:yyyy/MM/dd} يُستقطع من رواتب {fm:00}/{fy}");
+        }
         decimal? installment = null;
         if (r.Kind == EmployeeDeductionKind.Loan)
         {

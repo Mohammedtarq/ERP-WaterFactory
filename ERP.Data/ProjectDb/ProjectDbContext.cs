@@ -131,6 +131,10 @@ public partial class ProjectDbContext : DbContext
     public DbSet<FinanceEntry> FinanceEntries => Set<FinanceEntry>();
     public DbSet<WorkingCapitalSetting> WorkingCapitalSettings => Set<WorkingCapitalSetting>();
 
+    // ---- العمال الوقتيون (32_temp_workers.sql) ----
+    public DbSet<TempWorkDay> TempWorkDays => Set<TempWorkDay>();
+    public DbSet<TempWorkerPayment> TempWorkerPayments => Set<TempWorkerPayment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Employee>()
@@ -671,6 +675,27 @@ public partial class ProjectDbContext : DbContext
             e.Property(x => x.EffectiveFrom).HasColumnType("date");
             e.Property(x => x.Amount).HasPrecision(18, 2);
             e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<Employee>().Property(e => e.DailyWage).HasPrecision(18, 2);
+        modelBuilder.Entity<Employee>().Property(e => e.EndOfServiceDate).HasColumnType("date");
+        modelBuilder.Entity<TempWorkDay>(e =>
+        {
+            e.Property(x => x.WorkDate).HasColumnType("date");
+            e.Property(x => x.Days).HasPrecision(4, 2);
+            e.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Payment).WithMany().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<TempWorkerPayment>(e =>
+        {
+            foreach (var d in new[] { nameof(TempWorkerPayment.PaidDate), nameof(TempWorkerPayment.FromDate), nameof(TempWorkerPayment.ToDate) })
+                e.Property(d).HasColumnType("date");
+            e.Property(x => x.Days).HasPrecision(6, 2);
+            e.Property(x => x.DailyWage).HasPrecision(18, 2);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.JournalEntry).WithMany().HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.ToTable(tb => tb.HasTrigger("trg_TempWorkerPayments_PeriodLock"));
         });
         // محرك الكلفة (28_costing_purchasing.sql): الحركة المخزنية تأخذ كلفتها من مشغّل
         modelBuilder.Entity<StockTransaction>().ToTable(tb => tb.HasTrigger("trg_StockTransactions_Cost"));

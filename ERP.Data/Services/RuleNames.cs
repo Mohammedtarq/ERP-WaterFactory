@@ -10,6 +10,7 @@ public static class RuleNames
         ["FinanceExpense"] = "مصروف تشغيلي من الصندوق",
         ["FinanceNonOperating"] = "مصروف غير تشغيلي (توسعة، مكائن)",
         ["FinanceOtherIncome"] = "إيراد آخر إلى الصندوق",
+        ["TempWagesPayment"] = "صرف أجور العمال الوقتيين",
         ["SupplierPaymentVoucher"] = "دفعة نقدية لمورد",
         ["SupplierAdvancePayment"] = "دفعة مقدمة لمورد",
         ["GoodsReceiptOnAccount"] = "استلام بضاعة على الحساب",
