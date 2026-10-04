@@ -192,6 +192,7 @@ public class ProductionStockReports
                 {
                     StockTransactionType.Damaged or StockTransactionType.RepDamaged => "تلف",
                     StockTransactionType.StocktakeVariance => t.QuantityBaseUnits < 0 ? "نقص جرد" : "زيادة جرد",
+                    StockTransactionType.RepFreeSale => "مجاني المندوب",
                     _ => "مسحوب مجاني"
                 };
                 var doc = t.ReferenceTable == "StockDocuments" && t.ReferenceId is int id && docs.TryGetValue(id, out var d) ? d : null;

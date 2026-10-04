@@ -7,6 +7,9 @@ public static class RuleNames
     {
         ["CashReceiptVoucher"] = "سند قبض نقدي من عميل",
         ["CashPaymentVoucher"] = "سند صرف نقدي (مصروف)",
+        ["FinanceExpense"] = "مصروف تشغيلي من الصندوق",
+        ["FinanceNonOperating"] = "مصروف غير تشغيلي (توسعة، مكائن)",
+        ["FinanceOtherIncome"] = "إيراد آخر إلى الصندوق",
         ["SupplierPaymentVoucher"] = "دفعة نقدية لمورد",
         ["SupplierAdvancePayment"] = "دفعة مقدمة لمورد",
         ["GoodsReceiptOnAccount"] = "استلام بضاعة على الحساب",

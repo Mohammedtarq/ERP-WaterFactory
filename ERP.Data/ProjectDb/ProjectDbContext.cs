@@ -126,6 +126,11 @@ public partial class ProjectDbContext : DbContext
     public DbSet<RepSettlement> RepSettlements => Set<RepSettlement>();
     public DbSet<RepFreeGood> RepFreeGoods => Set<RepFreeGood>();
 
+    // ---- المصروفات والحسابات الختامية (31_expenses_final_accounts.sql) ----
+    public DbSet<FinanceCategory> FinanceCategories => Set<FinanceCategory>();
+    public DbSet<FinanceEntry> FinanceEntries => Set<FinanceEntry>();
+    public DbSet<WorkingCapitalSetting> WorkingCapitalSettings => Set<WorkingCapitalSetting>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Employee>()
@@ -644,6 +649,28 @@ public partial class ProjectDbContext : DbContext
             e.Property(f => f.UnitCost).HasPrecision(18, 4);
             e.HasOne(f => f.Item).WithMany().HasForeignKey(f => f.ItemId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(f => f.Customer).WithMany().HasForeignKey(f => f.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<FinanceCategory>(e =>
+        {
+            e.Property(c => c.Kind).HasConversion<string>();
+            e.HasOne(c => c.Account).WithMany().HasForeignKey(c => c.AccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<FinanceEntry>(e =>
+        {
+            e.Property(x => x.EntryDate).HasColumnType("date");
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Vehicle).WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.JournalEntry).WithMany().HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.ToTable(tb => tb.HasTrigger("trg_FinanceEntries_PeriodLock"));
+        });
+        modelBuilder.Entity<WorkingCapitalSetting>(e =>
+        {
+            e.Property(x => x.EffectiveFrom).HasColumnType("date");
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
         // محرك الكلفة (28_costing_purchasing.sql): الحركة المخزنية تأخذ كلفتها من مشغّل
         modelBuilder.Entity<StockTransaction>().ToTable(tb => tb.HasTrigger("trg_StockTransactions_Cost"));

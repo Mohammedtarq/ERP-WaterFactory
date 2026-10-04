@@ -180,6 +180,18 @@ public class ModuleDashboardViewModel : SessionViewModel
         d.Tile("مدفوعات اليوم", Money(todayOut), Icons.Voucher, "#EF4444", "خارج الصناديق");
         d.Tile("قيود اليوم", entriesToday.ToString(), Icons.Journal, ModuleColors.Finance, "يدوية وتلقائية");
 
+        // «واردات الشهر» = التحصيلات (مبيعات نقدية، سندات قبض، تسليم المندوبين) + الإيرادات الأخرى، كلٌّ على حدة
+        var monthStart = DateTime.Today.AddDays(1 - DateTime.Today.Day);
+        var collectionTypes = new[] { CashBoxTxType.SalesReceipt, CashBoxTxType.VoucherReceipt, CashBoxTxType.RepHandover };
+        var monthIn = await db.CashBoxTransactions.AsNoTracking()
+            .Where(x => !x.IsVoided && x.TxDate >= monthStart && x.Amount > 0
+                        && (collectionTypes.Contains(x.TxType) || x.TxType == CashBoxTxType.OtherIncome))
+            .GroupBy(x => x.TxType).Select(g => new { Type = g.Key, Sum = g.Sum(x => x.Amount) }).ToListAsync();
+        var collections = monthIn.Where(x => x.Type != CashBoxTxType.OtherIncome).Sum(x => x.Sum);
+        var otherIncome = monthIn.Where(x => x.Type == CashBoxTxType.OtherIncome).Sum(x => x.Sum);
+        d.Tile("واردات الشهر", Money(collections + otherIncome), Icons.Statement, "#16A34A",
+               $"تحصيلات {collections:N0} — إيرادات أخرى {otherIncome:N0}");
+
         var inDay = real.Where(x => x.Amount > 0).GroupBy(x => x.TxDate.Date).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
         var outDay = real.Where(x => x.Amount < 0).GroupBy(x => x.TxDate.Date).ToDictionary(g => g.Key, g => -g.Sum(x => x.Amount));
         d.Columns.Add(ColumnChart.Daily("المقبوضات والمدفوعات اليومية — آخر 14 يومًا", "د.ع", days,

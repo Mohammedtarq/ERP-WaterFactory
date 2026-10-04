@@ -1,12 +1,14 @@
 namespace ERP.Data.ProjectDb.Entities;
 
-public enum CashBoxType { Main, User, Bank }
+/// <summary>Home = «صندوق المنزل»: يستقبل الفائض المتحقق خارج الصندوق الرئيسي.</summary>
+public enum CashBoxType { Main, User, Bank, Home }
 
 public enum CashBoxTxType
 {
     Opening, Deposit, Withdrawal, TransferIn, TransferOut,
     SalesReceipt, VoucherReceipt, VoucherPayment, RepHandover,
-    CustomerDepositIn, CustomerDepositOut, EmployeeAdvance, PartnerWithdrawal
+    CustomerDepositIn, CustomerDepositOut, EmployeeAdvance, PartnerWithdrawal,
+    Expense, OtherIncome
 }
 
 /// <summary>صندوق مالي: رئيسي أو خاص بمستخدم. الرصيد = مجموع حركاته غير الملغاة.</summary>

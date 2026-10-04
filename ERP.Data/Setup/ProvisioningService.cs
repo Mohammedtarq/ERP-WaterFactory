@@ -192,9 +192,11 @@ public static class DefaultConfiguration
         ("4101", "إيرادات المبيعات", AccountType.Revenue),
         ("4102", "إيراد مستلزمات التحميل", AccountType.Revenue),
         ("4103", "إيراد بيع مواد تالفة", AccountType.Revenue),
+        ("4104", "إيرادات أخرى", AccountType.Revenue),
         ("5101", "مصروفات عمومية", AccountType.Expense),
         ("5102", "مصروف الرواتب والأجور", AccountType.Expense),
         ("5103", "مصروفات ميدانية للمندوبين", AccountType.Expense),
+        ("5104", "مصروفات غير تشغيلية (توسعة ومكائن)", AccountType.Expense),
     };
 
     /// <summary>قواعد العقل المالي: نوع العملية ← (مدين، دائن).</summary>
@@ -232,6 +234,9 @@ public static class DefaultConfiguration
         (Import.RahmaImporter.CustomerCreditOpeningRule, "3101", "1201"),
         (Import.RahmaImporter.SupplierOpeningRule, "3101", "2101"),
         (Import.RahmaImporter.SupplierAdvanceOpeningRule, "1302", "3101"),
+        (FinanceEntryService.ExpenseRule, "5101", "1101"),
+        (FinanceEntryService.NonOperatingRule, "5104", "1101"),
+        (FinanceEntryService.OtherIncomeRule, "1101", "4104"),
     };
 
     private static readonly string[] AllModules =

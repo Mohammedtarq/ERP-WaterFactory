@@ -670,6 +670,44 @@ public class ScreenFlowTests
 
     /// <summary>فتح كل تبويب في كل وحدة يعمل على SQL Server حقيقي (يلتقط أخطاء ترجمة الاستعلامات).</summary>
     [Fact]
+    public async Task Final_accounts_screens_load_and_expense_needs_an_amount()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var fin = shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);
+
+        var exp = fin.Expenses;
+        await Open(fin, exp);
+        Assert.Contains(exp.Categories, c => c.Name == "توسعة" && c.Kind == FinanceCategoryKind.NonOperating);
+        exp.Category = exp.Categories.Single(c => c.Name == "توسعة");
+        Assert.Contains("غير تشغيلي", exp.KindHint);
+        await exp.SaveCommand.ExecuteAsync();                        // بلا مبلغ: لا حركة نقدية على الصناديق المشتركة
+        Assert.Contains(dialogs.Errors, e => e.Contains("المبلغ"));
+
+        Assert.NotNull(fin.FinalAccounts);
+        await Open(fin, fin.FinalAccounts!);
+        Assert.NotNull(fin.FinalAccounts!.Report);
+        Assert.Equal("صافي ربح الشهر", fin.FinalAccounts.Lines.Last().Label);
+        fin.FinalAccounts.PrintCommand.Execute(null);
+        Assert.StartsWith("هامش كل منتج", dialogs.Reports.Last().Title);
+
+        await Open(fin, fin.WorkingCapital!);
+        Assert.NotNull(fin.WorkingCapital!.Snapshot);
+
+        var sim = fin.CostSimulation!;
+        await Open(fin, sim);
+        Assert.True(sim.Results.Count > 0 || sim.StatusMessage!.Contains("وصفات"));   // قاعدة الشاشات قد تخلو من الوصفات
+        var before = sim.Results.ToDictionary(r => r.ItemId, r => r.SimulatedMaterialCost);
+        foreach (var m in sim.Materials) m.Proposed = m.Current * 2;
+        await sim.SimulateCommand.ExecuteAsync();
+        Assert.All(sim.Results, r => Assert.Equal(before[r.ItemId] * 2, r.SimulatedMaterialCost, 1));
+
+        await Open(fin, fin.DailyCash);
+        Assert.NotEmpty(fin.DailyCash.Boxes);
+        fin.DailyCash.PrintCommand.Execute(null);
+        Assert.StartsWith("التقرير اليومي للصناديق", dialogs.Reports.Last().Title);
+    }
+
+    [Fact]
     public async Task Every_section_of_every_module_loads()
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);

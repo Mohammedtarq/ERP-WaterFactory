@@ -221,6 +221,12 @@
     <DataTemplate DataType="{x:Type vmControls:PeriodLockSectionViewModel}"><vControls:PeriodLockSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:WarehouseWorkspaceSectionViewModel}"><vWarehouse:WarehouseWorkspaceSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:CashBoxesSectionViewModel}"><vFinance:CashBoxesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:ExpensesSectionViewModel}"><vFinance:ExpensesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:FinanceCategoriesSectionViewModel}"><vFinance:FinanceCategoriesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:FinalAccountsSectionViewModel}"><vFinance:FinalAccountsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:WorkingCapitalSectionViewModel}"><vFinance:WorkingCapitalSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:CostSimulationSectionViewModel}"><vFinance:CostSimulationSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmFinance:DailyCashSectionViewModel}"><vFinance:DailyCashSectionView/></DataTemplate>
 
     <!-- HR -->
     <DataTemplate DataType="{x:Type vmHR:AttendanceSectionViewModel}"><vHR:AttendanceSectionView/></DataTemplate>

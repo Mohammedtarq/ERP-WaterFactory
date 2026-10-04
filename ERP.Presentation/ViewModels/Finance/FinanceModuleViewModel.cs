@@ -16,12 +16,19 @@ public class FinanceModuleViewModel : ModuleViewModel
     {
         UseDashboard(s, d, ModuleCode.Finance, ModuleDashboardViewModel.Finance);
         Boxes = Add(new CashBoxesSectionViewModel(s, d));
+        Expenses = Add(new ExpensesSectionViewModel(s, d));
+        DailyCash = Add(new DailyCashSectionViewModel(s, d));
         // المطابقة الحسابية وحصص الشركاء معلومات حساسة: تظهر فقط لمن يملك صلاحية "الحسابات الختامية"
         if (s.Permissions.Has(SpecialPermission.FinalAccounts))
         {
             Reconciliation = Add(new ReconciliationSectionViewModel(s, d));
             Partners = Add(new PartnersSectionViewModel(s, d));
+            FinalAccounts = Add(new FinalAccountsSectionViewModel(s, d));
+            WorkingCapital = Add(new WorkingCapitalSectionViewModel(s, d));
         }
+        if (s.Permissions.Has(SpecialPermission.CostAndProfit))
+            CostSimulation = Add(new CostSimulationSectionViewModel(s, d));
+        Add(new FinanceCategoriesSectionViewModel(s, d));
         PeriodLock = Add(new Controls.PeriodLockSectionViewModel(s, d));
         Add(new ChartOfAccountsSectionViewModel(s, d));
         Add(new JournalEntriesSectionViewModel(s, d));
@@ -31,6 +38,11 @@ public class FinanceModuleViewModel : ModuleViewModel
     }
 
     public CashBoxesSectionViewModel Boxes { get; }
+    public ExpensesSectionViewModel Expenses { get; }
+    public DailyCashSectionViewModel DailyCash { get; }
+    public FinalAccountsSectionViewModel? FinalAccounts { get; }
+    public WorkingCapitalSectionViewModel? WorkingCapital { get; }
+    public CostSimulationSectionViewModel? CostSimulation { get; }
     public ReconciliationSectionViewModel? Reconciliation { get; }
     public PartnersSectionViewModel? Partners { get; }
     public Controls.PeriodLockSectionViewModel PeriodLock { get; }
