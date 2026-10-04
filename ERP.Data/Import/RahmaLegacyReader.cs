@@ -27,7 +27,9 @@ public static class RahmaLegacyReader
             await using var probe = new SqlCommand(
                 $"SELECT CASE WHEN OBJECT_ID(N'{q}.dbo.Fwater', 'U') IS NOT NULL AND OBJECT_ID(N'{q}.dbo.entajdetels', 'U') IS NOT NULL " +
                 $"AND OBJECT_ID(N'{q}.dbo.Customer', 'U') IS NOT NULL THEN 1 ELSE 0 END", conn);
-            if ((int)(await probe.ExecuteScalarAsync())! != 1) continue;
+            // قاعدة قد تُحذف أو تُقفل أو تُستعاد بين القائمة والفحص: تُتخطى بدل إسقاط البحث كله
+            try { if ((int)(await probe.ExecuteScalarAsync())! != 1) continue; }
+            catch (SqlException) { continue; }
             DateTime? last = null;
             try
             {
