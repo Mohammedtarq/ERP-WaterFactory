@@ -107,7 +107,7 @@ public class AttendanceSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        var employees = await db.Employees.AsNoTracking().Include(e => e.Shift).Where(e => e.IsActive).OrderBy(e => e.FullName).ToListAsync();
+        var employees = await db.Employees.AsNoTracking().Include(e => e.Shift).Where(e => e.IsActive && !e.IsTemporary).OrderBy(e => e.FullName).ToListAsync();
         var records = await db.AttendanceRecords.AsNoTracking().Where(a => a.AttendanceDate == Date).ToDictionaryAsync(a => a.EmployeeId);
         Rows.Clear();
         foreach (var e in employees)
@@ -196,7 +196,7 @@ public class MonthlyIncentiveSectionViewModel : PeriodSectionViewModel
         var w = await hr.GetWeightsAsync();
         WeightsText = $"المعادلة: (الانضباط × {w.AttendanceWeight:0.##} + الأداء × {w.PerformanceWeight:0.##} + المهارات × {w.SkillsWeight:0.##}) ÷ 100 ← مبلغ حسب شريحة المقياس";
 
-        var employees = await db.Employees.AsNoTracking().Where(e => e.IsActive).OrderBy(e => e.FullName).ToListAsync();
+        var employees = await db.Employees.AsNoTracking().Where(e => e.IsActive && !e.IsTemporary).OrderBy(e => e.FullName).ToListAsync();
         var saved = await db.MonthlyIncentiveEvaluations.AsNoTracking()
             .Where(e => e.PeriodMonth == Month && e.PeriodYear == Year).ToDictionaryAsync(e => e.EmployeeId);
         Rows.Clear();

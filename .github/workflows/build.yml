@@ -63,6 +63,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force docs/user-guide/images | Out-Null
           Copy-Item ui-screenshots/tutorial/*.png docs/user-guide/images/ -Force
+          New-Item -ItemType Directory -Force docs/user-guide/images/hr | Out-Null
+          Copy-Item ui-screenshots/tutorial-hr/*.png docs/user-guide/images/hr/ -Force
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/user-guide/images

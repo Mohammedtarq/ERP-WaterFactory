@@ -9,6 +9,7 @@ using ERP.Data.Setup;
 using ERP.Desktop.Views.Shell;
 using ERP.Presentation.Services;
 using ERP.Presentation.ViewModels;
+using ERP.Presentation.ViewModels.HR;
 using ERP.Presentation.ViewModels.Production;
 using ERP.Presentation.ViewModels.Shell;
 using ERP.Presentation.ViewModels.Warehouse;
@@ -251,6 +252,206 @@ public class TutorialTests
 
         _out.WriteLine($"الدليل: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, Dir)}");
         Assert.Equal(27, shots.Count);
+        Assert.Empty(dialogs.Errors);
+        lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
+    }
+
+    /// <summary>
+    /// الدليل المصوَّر للموارد البشرية بالترتيب الذي يعمل به القسم:
+    /// قسم ← شفت ← موظف ← عامل وقتي ← حضور يوم ← سلفة ← مقياس الحافز ← التقييم ← الرواتب (توليد، اعتماد، طباعة) ← كشف العمال الوقتيين وصرف أجرهم.
+    /// صورة بعد كل خطوة في مجلد tutorial-hr.
+    /// </summary>
+    [Fact]
+    public async Task Illustrated_guide_human_resources()
+    {
+        var server = Environment.GetEnvironmentVariable("ERP_UI_SQL_CONNECTION");
+        if (server is null) { _out.WriteLine("ERP_UI_SQL_CONNECTION غير معيّن — تخطي"); return; }
+        const string hrDir = "tutorial-hr";
+
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var controlCs = new SqlConnectionStringBuilder(server) { InitialCatalog = $"ERP_TutHrCtl_{suffix}" }.ConnectionString;
+        var install = await new ProvisioningService().InstallAsync(new InstallRequest(
+            controlCs, "مصنع مياه البصرة", $"ERP_TutHrPrj_{suffix}", "المدير العام", "admin", "Admin@123", DemoData: true));
+        Assert.True(install.Success, install.ErrorMessage);
+
+        var dialogs = new TutorialDialogs();
+        var shots = new List<string>();
+        await UiThread.RunAsync(async () =>
+        {
+            var nav = new CapturingNavigator();
+            var login = new LoginViewModel(new AuthService(controlCs), dialogs, nav) { Username = "admin" };
+            await login.LoginCommand.ExecuteAsync("Admin@123");
+            Assert.Null(login.ErrorMessage);
+            await nav.ProjectSelection!.OpenCommand.ExecuteAsync(null);
+            var shell = nav.Shell!;
+            var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1440, Height = 900,
+                                        Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual, WindowState = WindowState.Normal };
+            main.Show();
+
+            async Task Shot(string name, ViewModelBase? busy = null)
+            {
+                if (busy is not null) await busy.IdleAsync();
+                await UiThread.SettleAsync();
+                RefreshBindings(main);
+                await UiThread.SettleAsync();
+                Assert.True(dialogs.Errors.Count == 0, $"قبل الصورة {name}: " + string.Join(" | ", dialogs.Errors));
+                shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{hrDir}/{name}.png"));
+            }
+            async Task Open(ModuleViewModel module, SectionViewModel section)
+            {
+                module.SelectedTab = section;
+                await module.LastActivation;
+                await section.IdleAsync();
+                await UiThread.SettleAsync();
+            }
+            async Task PreviewShot(string name, ReportDocument report)
+            {
+                var preview = new ReportPreviewWindow(report) { ShowActivated = false, ShowInTaskbar = false, Left = 0, Top = 0,
+                                                                WindowStartupLocation = WindowStartupLocation.Manual };
+                preview.Show();
+                await UiThread.SettleAsync();
+                shots.Add(UiThread.Save((FrameworkElement)preview.Content, $"{hrDir}/{name}.png"));
+                preview.Close();
+            }
+
+            var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
+            await hr.IdleAsync();
+            await Shot("01-وحدة-الموارد-البشرية", hr);
+
+            // 1) القسم
+            var deps = hr.Section<DepartmentsSectionViewModel>();
+            await Open(hr, deps);
+            await deps.NewCommand.ExecuteAsync();
+            deps.Editor!.Name = "الإنتاج";
+            await Shot("02-قسم-جديد", deps);
+            await deps.SaveCommand.ExecuteAsync();
+            var depId = deps.Items.Single(x => x.Name == "الإنتاج").Id;
+
+            // 2) الشفت الصباحي للإنتاج 6:00–16:00
+            var shifts = hr.Section<ShiftsSectionViewModel>();
+            await Open(hr, shifts);
+            await shifts.NewCommand.ExecuteAsync();
+            shifts.Editor!.Name = "الإنتاج الصباحي";
+            shifts.Editor.CheckInTime = new TimeSpan(6, 0, 0);
+            shifts.Editor.CheckOutTime = new TimeSpan(16, 0, 0);
+            shifts.Editor.CheckInGraceMinutes = 10;
+            await Shot("03-شفت-الإنتاج-الصباحي", shifts);
+            await shifts.SaveCommand.ExecuteAsync();
+            var shiftId = shifts.Items.Single(x => x.Name == "الإنتاج الصباحي").Id;
+
+            // 3) موظف بالراتب الشهري
+            var emps = hr.Section<EmployeesSectionViewModel>();
+            await Open(hr, emps);
+            await emps.NewCommand.ExecuteAsync();
+            emps.Editor!.FullName = "حسين كاظم";
+            emps.Editor.JobTitle = "مشغّل نافخة";
+            emps.Editor.DepartmentId = depId;
+            emps.Editor.ShiftId = shiftId;
+            emps.Editor.BaseSalary = 750_000;
+            emps.Editor.HireDate = new DateTime(2024, 3, 1);
+            await Shot("04-موظف-جديد", emps);
+            await emps.SaveCommand.ExecuteAsync();
+            var empId = emps.Items.Single(e => e.FullName == "حسين كاظم").Id;
+
+            // 4) عامل وقتي: أجر يومي بلا بصمة ولا سلف
+            await emps.NewCommand.ExecuteAsync();
+            emps.Editor!.FullName = "عباس جاسم";
+            emps.Editor.JobTitle = "عامل تحميل";
+            emps.Editor.DepartmentId = depId;
+            emps.Editor.IsTemporary = true;
+            emps.Editor.DailyWage = 20_000;
+            emps.Editor.HireDate = DateTime.Today.AddDays(-7);
+            await Shot("05-عامل-وقتي-بأجر-يومي", emps);
+            await emps.SaveCommand.ExecuteAsync();
+            await Shot("06-قائمة-الموظفين", emps);
+
+            // 5) الحضور: أول يوم عمل من الشهر الماضي
+            var day = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-1);
+            while (day.DayOfWeek == DayOfWeek.Friday) day = day.AddDays(1);
+            var att = hr.Attendance;
+            await Open(hr, att);
+            att.Date = day;
+            await att.IdleAsync();
+            att.AllPresentCommand.Execute(null);
+            var mine = att.Rows.Single(r => r.EmployeeId == empId);
+            mine.CheckIn = "06:25";
+            mine.CheckOut = "16:00";
+            await Shot("07-تسجيل-حضور-اليوم", att);
+            await att.SaveCommand.ExecuteAsync();
+            await Shot("08-الحضور-بعد-الحفظ-متأخر-25-دقيقة", att);
+
+            // 6) سلفة بأقساط تبدأ من رواتب الشهر الماضي
+            var ded = hr.Deductions;
+            await Open(hr, ded);
+            ded.Employee = ded.Employees.Single(e => e.Id == empId);
+            ded.Kind = ded.Kinds.Single(k => k.Value == EmployeeDeductionKind.Loan);
+            ded.Amount = 300_000;
+            ded.Installment = 100_000;
+            ded.StartMonth = day.Month;
+            ded.StartYear = day.Year;
+            await Shot("09-سلفة-بأقساط", ded);
+            await ded.SaveCommand.ExecuteAsync();
+            await PreviewShot("10-سند-صرف-السلفة", dialogs.Reports.Last());
+
+            // 7) مقياس الحافز الشهري
+            var scale = hr.Section<IncentiveSettingsSectionViewModel>();
+            await Open(hr, scale);
+            async Task Tier(decimal min, decimal max, decimal amount)
+            {
+                await scale.NewCommand.ExecuteAsync();
+                scale.Editor!.MinScore = min;
+                scale.Editor.MaxScore = max;
+                scale.Editor.Amount = amount;
+                await scale.SaveCommand.ExecuteAsync();
+            }
+            await Tier(60, 79.99m, 50_000);
+            await Tier(80, 100, 100_000);
+            await Shot("11-مقياس-الحافز", scale);
+
+            // 8) التقييم الشهري: الانضباط من الحضور، والأداء والمهارات من المسؤول
+            var inc = hr.Incentives;
+            await Open(hr, inc);
+            var irow = inc.Rows.Single(r => r.EmployeeId == empId);
+            irow.Performance = 90;
+            irow.Skills = 85;
+            await inc.SaveAllCommand.ExecuteAsync();
+            await Shot("12-التقييم-الشهري", inc);
+
+            // 9) الرواتب: توليد ← اعتماد ← طباعة
+            var pay = hr.Payroll;
+            await Open(hr, pay);
+            await pay.GenerateCommand.ExecuteAsync();
+            await Shot("13-مسودة-الرواتب", pay);
+            await pay.ApproveCommand.ExecuteAsync();
+            await Shot("14-الرواتب-معتمدة", pay);
+            await pay.PrintCommand.ExecuteAsync();
+            await PreviewShot("15-كشف-الرواتب", dialogs.Reports.Last());
+
+            // 10) العمال الوقتيون: كشف اليوم ← صرف الأجر بوصل
+            var temps = hr.TempWorkers;
+            await Open(hr, temps);
+            foreach (var d in Enumerable.Range(1, 3))
+            {
+                temps.Date = DateTime.Today.AddDays(-d);
+                await temps.IdleAsync();
+                temps.Rows.Single(r => r.FullName == "عباس جاسم").Days = d == 2 ? 0.5m : 1;
+                await temps.SaveDayCommand.ExecuteAsync();
+            }
+            temps.Date = DateTime.Today;
+            await temps.IdleAsync();
+            temps.Rows.Single(r => r.FullName == "عباس جاسم").Days = 1;
+            await Shot("16-كشف-العمال-الوقتيين", temps);
+            await temps.SaveDayCommand.ExecuteAsync();
+            await Shot("17-المستحق-غير-المصروف", temps);
+            await temps.PayCommand.ExecuteAsync(temps.Balances.Single(b => b.FullName == "عباس جاسم"));
+            await Shot("18-بعد-صرف-الأجر", temps);
+            await PreviewShot("19-وصل-أجور-العامل-الوقتي", dialogs.Reports.Last());
+
+            main.Close();
+        });
+
+        _out.WriteLine($"دليل الموارد البشرية: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, hrDir)}");
+        Assert.Equal(19, shots.Count);
         Assert.Empty(dialogs.Errors);
         lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
     }
