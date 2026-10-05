@@ -679,7 +679,8 @@ public class TutorialTests
 
         var dialogs = new TutorialDialogs();
         var shots = new List<string>();
-        await UiThread.RunAsync(async () =>
+        var step = "الدخول";
+        var run = UiThread.RunAsync(async () =>
         {
             var nav = new CapturingNavigator();
             var login = new LoginViewModel(new AuthService(controlCs), dialogs, nav) { Username = "admin" };
@@ -699,6 +700,7 @@ public class TutorialTests
                 await UiThread.SettleAsync();
                 Assert.True(dialogs.Errors.Count == 0, $"قبل الصورة {name}: " + string.Join(" | ", dialogs.Errors));
                 shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{dir}/{name}.png"));
+                step = $"بعد الصورة {name}";
             }
             async Task Open(ModuleViewModel module, SectionViewModel section)
             {
@@ -708,6 +710,7 @@ public class TutorialTests
                 await UiThread.SettleAsync();
             }
 
+            step = "المعالج";
             // ---------- 1) متغير جديد بخطوة واحدة: مطعم، ثم مناسبة ----------
             var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
             await prod.IdleAsync();
@@ -731,6 +734,7 @@ public class TutorialTests
             await Variant("مطعم الياس", "مطعم الياس", null);
             await Variant(null, "زواج سعيد", "03-متغير-مناسبة-بلا-عميل");
 
+            step = "استلام المواد";
             // المواد الخاصة الجديدة تُستلم كأي مادة أولية
             var wh = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
             await wh.IdleAsync();
@@ -750,6 +754,7 @@ public class TutorialTests
             await Shot("04-استلام-الأغطية-والليبلات-الخاصة", raw);
             await raw.SaveCommand.ExecuteAsync();
 
+            step = "أمر اليوم";
             // ---------- 2) أمر اليوم: المنتج نفسه خمس مرات ----------
             shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
             var daily = prod.Daily;
@@ -767,24 +772,29 @@ public class TutorialTests
                 l.Packs = packs;
             }
             await Shot("05-أمر-يوم-واحد-بكل-الأصناف", daily);
+            step = "فحص المواد";
             await daily.PreviewCommand.ExecuteAsync();
             Assert.False(daily.HasShortage);
             await Shot("06-فحص-المواد-قبل-التسجيل", daily);
             daily.TemplateName = "أمر اليوم المعتاد";
             await daily.SaveTemplateCommand.ExecuteAsync();
+            step = "تسجيل الإنتاج";
             await daily.SaveCommand.ExecuteAsync();
             await Shot("07-بعد-التسجيل-تشغيلة-لكل-متغير", daily);
             Assert.Equal(5, daily.LastResult.Count);
+            step = "تكرار آخر إنتاج";
             await daily.RepeatLastCommand.ExecuteAsync();
             await Shot("08-تكرار-آخر-إنتاج-أو-القالب", daily);
             daily.Lines.Clear();
             daily.AddLineCommand.Execute(null);
 
+            step = "متغيرات المنتج";
             // ---------- 3) متغيرات المنتج ----------
             var variants = prod.Section<VariantStockSectionViewModel>();
             await Open(prod, variants);
             await Shot("09-متغيرات-المنتج-الرصيد-والكلفة", variants);
 
+            step = "البيع";
             // ---------- 4) البيع: المتغير بالاسم، والمتاح يحترم الحجز ----------
             var sales = shell.Open<ERP.Presentation.ViewModels.Sales.SalesModuleViewModel>(ModuleCode.Sales);
             await sales.IdleAsync();
@@ -803,6 +813,7 @@ public class TutorialTests
             await inv.IdleAsync();
             await Shot("10-البيع-بمتغير-المناسبة-والمتاح-للزبون", inv);
 
+            step = "طلب التحميل";
             // ---------- 5) طلب التحميل: سطر عام وسطر باسم المطعم ----------
             var reps = shell.Open<ERP.Presentation.ViewModels.Reps.RepsModuleViewModel>(ModuleCode.Reps);
             await reps.IdleAsync();
@@ -821,6 +832,7 @@ public class TutorialTests
             await Shot("11-طلب-تحميل-بمتغير-المطعم", loads);
             loads.Lines.Clear();
 
+            step = "الأرصدة";
             // ---------- 6) أرصدة مخزن المنتج التام بعمود المتغير ----------
             shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
             var fg = wh.Workspaces.First(w => w.WarehouseType == WarehouseType.FinishedGoods);
@@ -832,6 +844,10 @@ public class TutorialTests
 
             main.Close();
         });
+        // تعليق أي خطوة يظهر باسمها بدل انتظار مهلة CI كاملة
+        if (await Task.WhenAny(run, Task.Delay(TimeSpan.FromMinutes(5))) != run)
+            Assert.Fail($"توقف دليل المتغيرات عند: {step} — أخطاء: {string.Join(" | ", dialogs.Errors)}");
+        await run;
 
         _out.WriteLine($"دليل المتغيرات: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, dir)}");
         Assert.Equal(12, shots.Count);
