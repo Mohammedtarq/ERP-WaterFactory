@@ -41,6 +41,8 @@
                         <DataGridTextColumn Header="الخروج" Binding="{Binding CheckOutTime}" Width="90"/>
                         <DataGridTextColumn Header="سماح الخروج (د)" Binding="{Binding CheckOutGraceMinutes}" Width="110"/>
                         <DataGridTextColumn Header="الإضافي بعد" Binding="{Binding OvertimeStartsAfter}" Width="100"/>
+                        <DataGridCheckBoxColumn Header="ليلي" Binding="{Binding IsOvernight, Mode=OneWay}" Width="45"/>
+                        <DataGridCheckBoxColumn Header="دخول فقط" Binding="{Binding IsEntryOnly, Mode=OneWay}" Width="65"/>
                         <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -86,6 +88,8 @@
                         <TextBox Text="{Binding Editor.CheckOutGraceMinutes, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                         <TextBlock Text="يبدأ الإضافي بعد (اختياري)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.OvertimeStartsAfter, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <CheckBox Content="دخول فقط (المبيعات): بصمة الحضور تكفي والأجر كامل" IsChecked="{Binding Editor.IsEntryOnly}" Margin="0,8,0,0"/>
+                        <TextBlock Text="شفت ليلي: اجعل الخروج أصغر من الدخول (مثل 16:00 ← 02:00)، فتُحسب بصمات ما بعد منتصف الليل ليوم بداية الشفت." Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
                         <TextBlock Text="التأخير يُحسب من بداية الشفت إذا تجاوز الدخول فترة السماح. مثال: شفت 08:00 وسماح 10 د ← الدخول 08:11 = تأخير 11 دقيقة." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>
                     </StackPanel>
                 </ScrollViewer>

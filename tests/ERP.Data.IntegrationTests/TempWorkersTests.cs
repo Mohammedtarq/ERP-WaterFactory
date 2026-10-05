@@ -89,8 +89,12 @@ public class TempWorkersTests
             EmployeeDeductionKind.Withdrawal, emp.Id, 25_000, late, late.Month, late.Year), _f.AdminId);
         Assert.False(refused.Success);
         Assert.Contains("25", refused.ErrorMessage);
+        // صندوق ممول بقدر المسحوب: لا يعتمد على ترتيب الاختبارات الأخرى
+        var cash = new CashBoxService(db);
+        var box = (await cash.GetBoxesAsync(_f.AdminId)).First(b => b.BoxType is CashBoxType.Main or CashBoxType.User);
+        Assert.True((await cash.DepositAsync(box.Id, 25_000 + Math.Max(0, -box.Balance), DateTime.Today, "تمويل", null, _f.AdminId)).result.Success);
         var (ok, _) = await svc.CreateAsync(new EmployeeDeductionService.CreateRequest(
-            EmployeeDeductionKind.Withdrawal, emp.Id, 25_000, late, next.Month, next.Year), _f.AdminId);
+            EmployeeDeductionKind.Withdrawal, emp.Id, 25_000, late, next.Month, next.Year, CashBoxId: box.Id), _f.AdminId);
         Assert.True(ok.Success, ok.ErrorMessage);
     }
 

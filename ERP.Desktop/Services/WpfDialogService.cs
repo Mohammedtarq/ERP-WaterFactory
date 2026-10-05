@@ -33,6 +33,12 @@ public class WpfDialogService : IDialogService
         return dlg.ShowDialog(Owner) == true ? dlg.FileName : null;
     }
 
+    public string? PickFile(string title, string filter)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog { Title = title, Filter = filter };
+        return dlg.ShowDialog(Owner) == true ? dlg.FileName : null;
+    }
+
     private static MessageBoxResult Show(string message, MessageBoxButton buttons, MessageBoxImage icon) =>
         Owner is { } owner
             ? MessageBox.Show(owner, message, Caption, buttons, icon, MessageBoxResult.None, Rtl)

@@ -16,6 +16,7 @@ public class HrModuleViewModel : ModuleViewModel
     {
         UseDashboard(s, d, ModuleCode.HR, ModuleDashboardViewModel.Hr);
         Attendance = Add(new AttendanceSectionViewModel(s, d));
+        Fingerprint = Add(new FingerprintImportSectionViewModel(s, d));
         Incentives = Add(new MonthlyIncentiveSectionViewModel(s, d));
         Payroll = Add(new PayrollSectionViewModel(s, d));
         Deductions = Add(new EmployeeDeductionsSectionViewModel(s, d));
@@ -30,6 +31,7 @@ public class HrModuleViewModel : ModuleViewModel
     }
 
     public AttendanceSectionViewModel Attendance { get; }
+    public FingerprintImportSectionViewModel Fingerprint { get; }
     public MonthlyIncentiveSectionViewModel Incentives { get; }
     public PayrollSectionViewModel Payroll { get; }
     public EmployeeDeductionsSectionViewModel Deductions { get; }
@@ -404,6 +406,13 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
         : e.IsTemporary && e.DailyWage is null or <= 0 ? "العامل الوقتي يحتاج أجرًا يوميًا"
         : e.IsTemporary && (e.IsSalesRep || e.IsSalesManager) ? "العامل الوقتي لا يكون مندوبًا أو مدير مبيعات"
         : null;
+
+    protected override async Task BeforeSaveAsync(ProjectDbContext db, Employee e)
+    {
+        e.FingerprintCode = string.IsNullOrWhiteSpace(e.FingerprintCode) ? null : e.FingerprintCode.Trim();
+        if (e.FingerprintCode is { } code && await db.Employees.AnyAsync(x => x.FingerprintCode == code && x.Id != e.Id))
+            throw new DbUpdateException($"رقم البصمة {code} مربوط بموظف آخر");
+    }
 }
 
 // ============================ الشفتات والأقسام ============================

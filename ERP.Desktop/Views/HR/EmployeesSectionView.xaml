@@ -44,6 +44,7 @@
                         <DataGridCheckBoxColumn Header="مندوب" Binding="{Binding IsSalesRep, Mode=OneWay}" Width="55"/>
                         <DataGridCheckBoxColumn Header="مدير مبيعات" Binding="{Binding IsSalesManager, Mode=OneWay}" Width="75"/>
                         <DataGridCheckBoxColumn Header="وقتي" Binding="{Binding IsTemporary, Mode=OneWay}" Width="50"/>
+                        <DataGridTextColumn Header="رقم البصمة" Binding="{Binding FingerprintCode}" Width="80"/>
                         <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="50"/>
                         <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
@@ -110,6 +111,8 @@
                         <DatePicker SelectedDate="{Binding Editor.HireDate}"/>
                         <CheckBox Content="مندوب مبيعات (كاش فان)" IsChecked="{Binding Editor.IsSalesRep}"/>
                         <CheckBox Content="مدير مبيعات" IsChecked="{Binding Editor.IsSalesManager}"/>
+                        <TextBlock Text="رقمه في جهاز البصمة" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.FingerprintCode}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                         <CheckBox Content="معفى من البصمة (لا يُخصم غيابه)" IsChecked="{Binding Editor.AttendanceExempt}"/>
                         <CheckBox Content="عامل وقتي (أجر يومي، بلا بصمة ولا سلف)" IsChecked="{Binding Editor.IsTemporary}"/>
                         <TextBlock Text="الأجر اليومي (للعامل الوقتي)" Style="{StaticResource FieldLabel}"/>

@@ -134,6 +134,7 @@ public partial class ProjectDbContext : DbContext
     // ---- العمال الوقتيون (32_temp_workers.sql) ----
     public DbSet<TempWorkDay> TempWorkDays => Set<TempWorkDay>();
     public DbSet<TempWorkerPayment> TempWorkerPayments => Set<TempWorkerPayment>();
+    public DbSet<FingerprintImport> FingerprintImports => Set<FingerprintImport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -696,6 +697,12 @@ public partial class ProjectDbContext : DbContext
             e.HasOne(x => x.JournalEntry).WithMany().HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
             e.ToTable(tb => tb.HasTrigger("trg_TempWorkerPayments_PeriodLock"));
+        });
+        modelBuilder.Entity<FingerprintImport>(e =>
+        {
+            e.Property(x => x.PeriodFrom).HasColumnType("date");
+            e.Property(x => x.PeriodTo).HasColumnType("date");
+            e.HasOne(x => x.ImportedByUser).WithMany().HasForeignKey(x => x.ImportedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
         // محرك الكلفة (28_costing_purchasing.sql): الحركة المخزنية تأخذ كلفتها من مشغّل
         modelBuilder.Entity<StockTransaction>().ToTable(tb => tb.HasTrigger("trg_StockTransactions_Cost"));

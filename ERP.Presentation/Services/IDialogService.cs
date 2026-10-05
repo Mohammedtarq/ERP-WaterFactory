@@ -12,6 +12,9 @@ public interface IDialogService
 
     /// <summary>اختيار صورة (PNG/JPG) من الجهاز — يعيد مسارها أو null عند الإلغاء.</summary>
     string? PickImageFile();
+
+    /// <summary>اختيار ملف من الجهاز بعنوان ومرشّح (مثل ملف البصمة) — يعيد مساره أو null عند الإلغاء.</summary>
+    string? PickFile(string title, string filter) => null;
 }
 
 /// <summary>التنقل بين نوافذ التدفق الرئيسي (دخول ← مشروع ← الواجهة الرئيسية).</summary>

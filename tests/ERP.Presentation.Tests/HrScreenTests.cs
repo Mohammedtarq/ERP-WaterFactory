@@ -26,7 +26,7 @@ public class HrScreenTests
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
-        Assert.Equal(12, hr.Home.Sections.Count());                  // + العمال الوقتيون
+        Assert.Equal(13, hr.Home.Sections.Count());                  // + العمال الوقتيون + استيراد البصمة
 
         // 1) شفت صباحي
         var shifts = hr.Section<ShiftsSectionViewModel>();
@@ -131,6 +131,56 @@ public class HrScreenTests
         Assert.Contains(dialogs.Errors, e => e.Contains("معتمدة"));
         Assert.Empty(_f.Unhandled);
     }
+    [Fact]
+    public async Task Fingerprint_file_preview_and_linking_from_the_screen()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
+        var fp = hr.Fingerprint;
+        await Open(hr, fp);
+        Assert.False(fp.HasPreview);
+
+        // ملف مصطنع بصيغة الجهاز (لا بيانات حقيقية)
+        var day = DateTime.Today.AddDays(-3);
+        var path = Path.Combine(Path.GetTempPath(), $"attlog-{Guid.NewGuid():N}.dat");
+        await File.WriteAllTextAsync(path, $"  77001\t{day:yyyy-MM-dd} 07:58:00\t1\t0\t1\t0\r\n  77001\t{day:yyyy-MM-dd} 16:02:00\t1\t1\t1\t0\r\n");
+        try
+        {
+            dialogs.FileToPick = path;
+            await fp.PickCommand.ExecuteAsync();
+            Assert.Empty(dialogs.Errors);
+            Assert.Equal(Path.GetFileName(path), fp.FileName);
+            var row = Assert.Single(fp.Unmapped, u => u.Code == "77001");
+            Assert.False(fp.HasPreview);                                       // لا موظف مربوط بعد
+            await fp.ApplyCommand.ExecuteAsync();
+            Assert.Contains(dialogs.Errors, e => e.Contains("اربط"));
+            dialogs.Errors.Clear();
+
+            // ربط الرقم بموظف من الشاشة نفسها ← تظهر معاينته
+            await using (var db = _f.NewDb())
+            {
+                var emp = new Employee { FullName = "موظف البصمة — شاشة", BaseSalary = 400_000 };
+                db.Employees.Add(emp);
+                await db.SaveChangesAsync();
+            }
+            await fp.LoadAsync();
+            row = fp.Unmapped.Single(u => u.Code == "77001");
+            row.Employee = fp.AllEmployees.Single(e => e.FullName == "موظف البصمة — شاشة");
+            await fp.LinkCommand.ExecuteAsync();
+            Assert.Empty(dialogs.Errors);
+            Assert.DoesNotContain(fp.Unmapped, u => u.Code == "77001");
+            Assert.Equal(1, Assert.Single(fp.Employees, e => e.Code == "77001").PresentDays);
+            Assert.True(fp.HasPreview);
+        }
+        finally
+        {
+            File.Delete(path);
+            await using var db = _f.NewDb();
+            await db.Employees.Where(e => e.FingerprintCode == "77001")
+                    .ExecuteUpdateAsync(u => u.SetProperty(e => e.IsActive, false).SetProperty(e => e.FingerprintCode, (string?)null));
+        }
+    }
+
     [Fact]
     public async Task Loan_withdrawal_and_penalty_screen_with_receipts_and_admin_void()
     {

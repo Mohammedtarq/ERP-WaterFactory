@@ -27,6 +27,8 @@ public class RecordingDialogs : IDialogService
     public void ShowReport(ReportDocument report) => Reports.Add(report);
     public string? ImageToPick { get; set; }
     public string? PickImageFile() => ImageToPick;
+    public string? FileToPick { get; set; }
+    public string? PickFile(string title, string filter) => FileToPick;
 }
 
 public class RecordingNavigator : INavigator

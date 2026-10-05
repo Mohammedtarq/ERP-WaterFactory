@@ -31,4 +31,7 @@ public class Employee
     /// <summary>معفى من البصمة بقرار الإدارة: لا يُخصم غيابه من الراتب.</summary>
     public bool AttendanceExempt { get; set; }
     public DateTime? EndOfServiceDate { get; set; }
+
+    /// <summary>رقم الموظف في جهاز البصمة (ZKTeco) لربط ملف الحضور ببطاقته (33_fingerprint.sql).</summary>
+    public string? FingerprintCode { get; set; }
 }

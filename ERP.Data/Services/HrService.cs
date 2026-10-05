@@ -88,12 +88,12 @@ public class HrService
         if (date > DateTime.Today) return FinanceOperationResult.Fail("لا يمكن تسجيل حضور ليوم لم يأتِ بعد");
         if (await IsPeriodApprovedAsync(date.Month, date.Year))
             return FinanceOperationResult.Fail("رواتب هذا الشهر معتمدة؛ لا يمكن تعديل حضوره");
-        foreach (var i in inputs)
-            if (i.CheckIn is not null && i.CheckOut is not null && i.CheckOut < i.CheckIn)
-                return FinanceOperationResult.Fail("وقت الخروج قبل وقت الدخول لأحد الموظفين");
-
         var ids = inputs.Select(i => i.EmployeeId).ToList();
         var employees = await _db.Employees.Include(e => e.Shift).Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id);
+        // الخروج قبل الدخول مسموح فقط في الشفت الليلي (يعبر منتصف الليل)
+        foreach (var i in inputs)
+            if (i.CheckIn is not null && i.CheckOut is not null && i.CheckOut < i.CheckIn && employees[i.EmployeeId].Shift?.IsOvernight != true)
+                return FinanceOperationResult.Fail($"وقت الخروج قبل وقت الدخول للموظف {employees[i.EmployeeId].FullName}");
         var existing = await _db.AttendanceRecords.Where(a => a.AttendanceDate == date && ids.Contains(a.EmployeeId))
                                                   .ToDictionaryAsync(a => a.EmployeeId);
         foreach (var input in inputs)
