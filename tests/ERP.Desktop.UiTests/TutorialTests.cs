@@ -14,6 +14,7 @@ using ERP.Presentation.ViewModels.Production;
 using ERP.Presentation.ViewModels.Shell;
 using ERP.Presentation.ViewModels.Warehouse;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -273,6 +274,15 @@ public class TutorialTests
         var install = await new ProvisioningService().InstallAsync(new InstallRequest(
             controlCs, "مصنع مياه البصرة", $"ERP_TutHrPrj_{suffix}", "المدير العام", "admin", "Admin@123", DemoData: true));
         Assert.True(install.Success, install.ErrorMessage);
+        // رصيد افتتاحي للصندوق الافتراضي (كما يفعل المالك أول يوم): منه تُصرف السلفة وأجور العمال الوقتيين
+        await using (var db = new ERP.Data.ProjectDb.ProjectDbContext(new DbContextOptionsBuilder<ERP.Data.ProjectDb.ProjectDbContext>()
+                         .UseSqlServer(install.ProjectConnectionString).Options))
+        {
+            var adminId = await db.Users.Where(u => u.Username == "admin").Select(u => u.Id).SingleAsync();
+            var boxId = await db.CashBoxes.Where(b => b.IsActive && b.IsDefault).Select(b => b.Id).FirstAsync();
+            var (funded, _) = await new CashBoxService(db).OpeningAsync(boxId, 2_000_000, DateTime.Today.AddMonths(-2), "رصيد افتتاحي", adminId);
+            Assert.True(funded.Success, funded.ErrorMessage);
+        }
 
         var dialogs = new TutorialDialogs();
         var shots = new List<string>();
@@ -391,6 +401,7 @@ public class TutorialTests
             ded.StartYear = day.Year;
             await Shot("09-سلفة-بأقساط", ded);
             await ded.SaveCommand.ExecuteAsync();
+            Assert.True(dialogs.Errors.Count == 0, string.Join(" | ", dialogs.Errors));
             await PreviewShot("10-سند-صرف-السلفة", dialogs.Reports.Last());
 
             // 7) مقياس الحافز الشهري
@@ -425,6 +436,7 @@ public class TutorialTests
             await pay.ApproveCommand.ExecuteAsync();
             await Shot("14-الرواتب-معتمدة", pay);
             await pay.PrintCommand.ExecuteAsync();
+            Assert.True(dialogs.Errors.Count == 0, string.Join(" | ", dialogs.Errors));
             await PreviewShot("15-كشف-الرواتب", dialogs.Reports.Last());
 
             // 10) العمال الوقتيون: كشف اليوم ← صرف الأجر بوصل
@@ -444,6 +456,7 @@ public class TutorialTests
             await temps.SaveDayCommand.ExecuteAsync();
             await Shot("17-المستحق-غير-المصروف", temps);
             await temps.PayCommand.ExecuteAsync(temps.Balances.Single(b => b.FullName == "عباس جاسم"));
+            Assert.True(dialogs.Errors.Count == 0, string.Join(" | ", dialogs.Errors));
             await Shot("18-بعد-صرف-الأجر", temps);
             await PreviewShot("19-وصل-أجور-العامل-الوقتي", dialogs.Reports.Last());
 
