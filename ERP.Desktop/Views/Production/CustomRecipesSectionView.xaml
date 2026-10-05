@@ -17,6 +17,13 @@
             <DockPanel>
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Style="{StaticResource SuccessButton}" Command="{Binding OpenWizardCommand}" IsEnabled="{Binding CanAdd}" Margin="0,0,8,0"
+                                ToolTip="مطعم أو مناسبة جديدة: اختر الغطاء والليبل فقط، وتُنشأ أصنافهما إن لم توجد">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE945;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="متغير جديد بخطوة واحدة"/>
+                            </StackPanel>
+                        </Button>
                         <Button Style="{StaticResource PrimaryButton}" Command="{Binding NewCommand}" IsEnabled="{Binding CanAdd}">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
@@ -87,6 +94,53 @@
                         </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <!-- معالج المتغير الجديد -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="420" Margin="12,0,0,0"
+                Visibility="{Binding IsWizardOpen, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="متغير جديد بخطوة واحدة" Style="{StaticResource SectionTitle}"/>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding CreateVariantCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="إنشاء المتغير"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CloseWizardCommand}"/>
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="1) المنتج الأساسي" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding FinishedItems}" SelectedItem="{Binding WizardProduct}" DisplayMemberPath="ItemName"/>
+                        <TextBlock Text="2) صاحب الاسم (المطعم)، أو مناسبة عامة" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding WizardCustomers}" SelectedItem="{Binding WizardCustomer}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
+                        <TextBlock Text="3) اسم المتغير كما يظهر في الإنتاج والبيع" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding WizardName, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBlock Text="4) ما يتغير (الباقي يبقى من الوصفة الأساسية)" Style="{StaticResource FieldLabel}" Margin="0,10,0,4"/>
+                        <ItemsControl ItemsSource="{Binding WizardRoles}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock FontWeight="SemiBold">
+                                                <Run Text="{Binding Role, Mode=OneWay}"/><Run Text=" — الأساسي: " Foreground="{StaticResource MutedTextBrush}"/><Run Text="{Binding BaseName, Mode=OneWay}" Foreground="{StaticResource MutedTextBrush}"/>
+                                            </TextBlock>
+                                            <ComboBox ItemsSource="{Binding DataContext.WizardItems, ElementName=Root}" SelectedItem="{Binding Choice}" DisplayMemberPath="ItemName"
+                                                      IsTextSearchEnabled="True" Margin="0,6,0,0" ToolTip="صنف موجود يحل محل الأساسي"/>
+                                            <CheckBox Content="أو صنف جديد باسم:" IsChecked="{Binding CreateNew}" Margin="0,6,0,0"/>
+                                            <TextBox Text="{Binding NewItemName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CreateNew}" Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="الصنف الجديد يُنشأ مادةً أولية بكلفة المادة الأساسية، ثم يُشترى ويُستلم كأي مادة. تشغيلات متغير المطعم محجوزة له، والمناسبة تُباع لمن يطلبها بالاسم."/>
+                    </StackPanel>
+                </ScrollViewer>
             </DockPanel>
         </Border>
 

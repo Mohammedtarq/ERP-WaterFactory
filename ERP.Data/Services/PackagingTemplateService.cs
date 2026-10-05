@@ -7,6 +7,12 @@ namespace ERP.Data.Services;
 /// <summary>سطر قالب عند الحفظ: الدور، المادة الافتراضية (اختياري)، والنسبة "عدد لكل عدد".</summary>
 public record TemplateLineInput(string Role, int? DefaultItemId, decimal ComponentQuantity, decimal PerUnits);
 
+/// <summary>بديل دور في متغير جديد: صنف موجود، أو اسم صنف مخزني جديد يُنشأ (مثل: ليبل مطعم الحسون).</summary>
+public record VariantRoleInput(string Role, int? ExistingItemId, string? NewItemName);
+
+/// <param name="CustomerId">صاحب الاسم (تُحجز تشغيلاته له)؛ NULL = ملصق مناسبة يُباع لمن يطلبه.</param>
+public record NewVariantRequest(int FinishedItemId, int? CustomerId, string Name, IReadOnlyList<VariantRoleInput> Roles);
+
 /// <summary>
 /// قوالب التعبئة والوصفات المخصصة:
 /// القالب يملأ قائمة مواد الصنف (الصنف يُعرَّف مرة واحدة بوصفة ثابتة)، وبديل العميل يستبدل مكوّن دور معيّن
@@ -109,6 +115,64 @@ public class PackagingTemplateService
         existing.QuantityPerUnit = baseLine.QuantityPerUnit;
         await _db.SaveChangesAsync();
         return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>
+    /// متغير جديد بخطوة واحدة: وصفة مخصصة للمنتج تستبدل مكوّنات أدوار مختارة (الغطاء، الليبل) بأصناف موجودة
+    /// أو بأصناف مخزنية جديدة تُنشأ هنا بكلفة المادة الأساسية، كله أو لا شيء.
+    /// </summary>
+    public async Task<(FinanceOperationResult result, int? recipeId)> CreateVariantAsync(NewVariantRequest r)
+    {
+        var name = (r.Name ?? "").Trim();
+        if (name.Length == 0) return (FinanceOperationResult.Fail("اكتب اسم المتغير (مثل: مطعم الحسون)"), null);
+        var roles = r.Roles.Where(x => x.ExistingItemId is not null || !string.IsNullOrWhiteSpace(x.NewItemName)).ToList();
+        if (roles.Count == 0) return (FinanceOperationResult.Fail("اختر بديلًا لدور واحد على الأقل (الغطاء أو الليبل)"), null);
+        if (await _db.CustomRecipes.AnyAsync(c => c.FinishedItemId == r.FinishedItemId && c.Name == name))
+            return (FinanceOperationResult.Fail($"يوجد متغير باسم «{name}» لهذا المنتج"), null);
+        var baseLines = await GetRolesAsync(r.FinishedItemId);
+        if (baseLines.Count == 0) return (FinanceOperationResult.Fail("قائمة مواد المنتج بلا أدوار — طبّق قالب التعبئة عليه أولًا"), null);
+        if (roles.FirstOrDefault(x => baseLines.All(b => b.ComponentRole != x.Role)) is { } unknown)
+            return (FinanceOperationResult.Fail($"لا يوجد دور \"{unknown.Role}\" في قائمة مواد المنتج"), null);
+        if (r.CustomerId is int cid && !await _db.Customers.AnyAsync(c => c.Id == cid)) return (FinanceOperationResult.Fail("العميل غير موجود"), null);
+
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        var recipe = new CustomRecipe { FinishedItemId = r.FinishedItemId, CustomerId = r.CustomerId, Name = name };
+        foreach (var role in roles)
+        {
+            var baseLine = baseLines.First(b => b.ComponentRole == role.Role);
+            int itemId;
+            if (role.ExistingItemId is int existing)
+            {
+                if (existing == baseLine.RawMaterialItemId) return (FinanceOperationResult.Fail($"بديل {role.Role} هو نفس المادة الأساسية"), null);
+                itemId = existing;
+            }
+            else
+            {
+                var newName = role.NewItemName!.Trim();
+                var item = await _db.Items.FirstOrDefaultAsync(i => i.ItemName == newName);
+                if (item is null)
+                {
+                    var code = $"{baseLine.RawMaterialItem.ItemCode}-V";
+                    var n = 1;
+                    while (await _db.Items.AnyAsync(i => i.ItemCode == $"{code}{n}")) n++;
+                    item = new Item
+                    {
+                        ItemCode = $"{code}{n}", ItemName = newName, SourcingMethod = SourcingMethod.Purchased,
+                        BaseUnitName = baseLine.RawMaterialItem.BaseUnitName, CostPrice = baseLine.RawMaterialItem.CostPrice
+                    };
+                    _db.Items.Add(item);
+                    await _db.SaveChangesAsync();
+                    _db.ItemPackagingLevels.Add(new ItemPackagingLevel { ItemId = item.Id, LevelName = item.BaseUnitName, EquivalentBaseUnits = 1 });
+                }
+                itemId = item.Id;
+            }
+            recipe.Lines.Add(new CustomRecipeLine { ComponentItemId = itemId, ComponentLabel = role.Role, QuantityPerUnit = baseLine.QuantityPerUnit,
+                                                    ReplacesRawMaterialItemId = baseLine.RawMaterialItemId });
+        }
+        _db.CustomRecipes.Add(recipe);
+        await _db.SaveChangesAsync();
+        if (tx is not null) await tx.CommitAsync();
+        return (FinanceOperationResult.Ok(), recipe.Id);
     }
 
     /// <summary>

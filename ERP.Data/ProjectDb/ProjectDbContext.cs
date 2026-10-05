@@ -136,6 +136,10 @@ public partial class ProjectDbContext : DbContext
     public DbSet<TempWorkerPayment> TempWorkerPayments => Set<TempWorkerPayment>();
     public DbSet<FingerprintImport> FingerprintImports => Set<FingerprintImport>();
 
+    // ---- متغيرات المنتج وقوالب أمر اليوم (34_batch_variants.sql) ----
+    public DbSet<DailyProductionTemplate> DailyProductionTemplates => Set<DailyProductionTemplate>();
+    public DbSet<DailyProductionTemplateLine> DailyProductionTemplateLines => Set<DailyProductionTemplateLine>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Employee>()
@@ -703,6 +707,23 @@ public partial class ProjectDbContext : DbContext
             e.Property(x => x.PeriodFrom).HasColumnType("date");
             e.Property(x => x.PeriodTo).HasColumnType("date");
             e.HasOne(x => x.ImportedByUser).WithMany().HasForeignKey(x => x.ImportedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ProductionOrderLine>().HasOne(l => l.PackagingLevel).WithMany().HasForeignKey(l => l.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionOrderLine>().Property(l => l.Packs).HasPrecision(18, 3);
+        modelBuilder.Entity<ItemBatch>().HasOne(b => b.CustomRecipe).WithMany().HasForeignKey(b => b.CustomRecipeId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<SalesInvoiceLine>().HasOne(l => l.CustomRecipe).WithMany().HasForeignKey(l => l.CustomRecipeId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<RepLoadOrderLine>().HasOne(l => l.CustomRecipe).WithMany().HasForeignKey(l => l.CustomRecipeId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<DailyProductionTemplate>(e =>
+        {
+            e.HasIndex(t => t.Name).IsUnique();
+            e.HasMany(t => t.Lines).WithOne(l => l.Template).HasForeignKey(l => l.TemplateId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<DailyProductionTemplateLine>(e =>
+        {
+            e.Property(l => l.Packs).HasPrecision(18, 3);
+            e.HasOne(l => l.FinishedItem).WithMany().HasForeignKey(l => l.FinishedItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.PackagingLevel).WithMany().HasForeignKey(l => l.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.CustomRecipe).WithMany().HasForeignKey(l => l.CustomRecipeId).OnDelete(DeleteBehavior.Restrict);
         });
         // محرك الكلفة (28_costing_purchasing.sql): الحركة المخزنية تأخذ كلفتها من مشغّل
         modelBuilder.Entity<StockTransaction>().ToTable(tb => tb.HasTrigger("trg_StockTransactions_Cost"));

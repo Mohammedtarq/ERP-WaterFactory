@@ -56,6 +56,13 @@ IF COL_LENGTH('Customers', 'CreditLimit') IS NULL
     ALTER TABLE Customers ADD CreditLimit DECIMAL(18,2) NULL;
 GO
 
+-- متغيرات المنتج التام: التشغيلة تحمل وصفتها (الليبل/الغطاء الخاص)، وسطر البيع قد يطلب متغيرًا بعينه
+IF COL_LENGTH('ItemBatches', 'CustomRecipeId') IS NULL
+    ALTER TABLE ItemBatches ADD CustomRecipeId INT NULL CONSTRAINT FK_ItemBatches_CustomRecipe REFERENCES CustomRecipes(Id);
+IF COL_LENGTH('SalesInvoiceLines', 'CustomRecipeId') IS NULL
+    ALTER TABLE SalesInvoiceLines ADD CustomRecipeId INT NULL CONSTRAINT FK_SalesInvoiceLines_CustomRecipe REFERENCES CustomRecipes(Id);
+GO
+
 -- البيع بانتظار الإنتاج: ما بيع فوق الرصيد المسجّل يُسجَّل عجزًا باسم الصنف والفاتورة، ويُسوّى تلقائيًا عند تسجيل الإنتاج
 IF OBJECT_ID('PendingProductionShortages', 'U') IS NULL
 CREATE TABLE PendingProductionShortages (
@@ -173,6 +180,32 @@ END;
 GO
 
 /* ============================================================
+   من يحق له أي تشغيلة من المنتج التام (مرآة BatchScope في ERP.Data):
+   - @RecipeId محدد ← تشغيلات هذا المتغير فقط، والمحجوز لعميل آخر يحتاج @AllowReserved
+   - غير محدد ← محجوز العميل نفسه أولًا (0)، ثم الأساسي (1)، ثم المحجوز لغيره بالصلاحية (2)؛
+     والمناسبات لا تُصرف إلا بطلبها بالاسم
+   NULL = لا يحق
+   ============================================================ */
+CREATE OR ALTER FUNCTION fn_Stock_BatchPriority (@BatchId INT, @CustomerId INT, @RecipeId INT, @AllowReserved BIT)
+RETURNS INT
+AS
+BEGIN
+    DECLARE @batchRecipe INT, @owner INT;
+    SELECT @batchRecipe = b.CustomRecipeId, @owner = r.CustomerId
+    FROM ItemBatches b LEFT JOIN CustomRecipes r ON r.Id = b.CustomRecipeId
+    WHERE b.Id = @BatchId;
+
+    IF @RecipeId IS NOT NULL
+        RETURN CASE WHEN ISNULL(@batchRecipe, 0) <> @RecipeId THEN NULL
+                    WHEN @owner IS NULL OR @owner = @CustomerId OR @AllowReserved = 1 THEN 0 END;
+    IF @batchRecipe IS NULL RETURN 1;
+    IF @owner = @CustomerId RETURN 0;
+    IF @owner IS NULL RETURN NULL;
+    RETURN CASE WHEN @AllowReserved = 1 THEN 2 END;
+END;
+GO
+
+/* ============================================================
    إنشاء فاتورة مبيعات (مسودة)
    ============================================================ */
 CREATE OR ALTER PROCEDURE sp_Sales_CreateInvoice
@@ -267,7 +300,8 @@ CREATE OR ALTER PROCEDURE sp_Sales_AddInvoiceLine
     @UnitPrice          DECIMAL(18,2)   = NULL,
     @BatchId            INT             = NULL,
     @UserId             INT,
-    @NewLineId          INT             = NULL OUTPUT
+    @NewLineId          INT             = NULL OUTPUT,
+    @CustomRecipeId     INT             = NULL
 AS
 BEGIN
     SET NOCOUNT ON; SET XACT_ABORT ON;
@@ -298,6 +332,9 @@ BEGIN
     IF @BatchId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ItemBatches WHERE Id = @BatchId AND ItemId = @ItemId)
         THROW 51016, N'التشغيلة المختارة لا تخص هذا الصنف.', 1;
 
+    IF @CustomRecipeId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM CustomRecipes WHERE Id = @CustomRecipeId AND FinishedItemId = @ItemId)
+        THROW 51018, N'المتغير المختار لا يخص هذا الصنف.', 1;
+
     IF @UnitPrice IS NOT NULL AND @UnitPrice < 0
         THROW 51017, N'السعر لا يمكن أن يكون سالبًا.', 1;
 
@@ -307,11 +344,12 @@ BEGIN
         SET @UnitPrice = ROUND(dbo.fn_Sales_BaseUnitPrice(@custId, @ItemId, @agentPricing) * @baseUnits, 2);
 
     INSERT INTO SalesInvoiceLines
-        (SalesInvoiceId, ItemId, BatchId, PackagingLevelId, QuantityInLevel, QuantityBaseUnits, UnitPrice, LineTotal, ListUnitPrice)
+        (SalesInvoiceId, ItemId, BatchId, PackagingLevelId, QuantityInLevel, QuantityBaseUnits, UnitPrice, LineTotal, ListUnitPrice, CustomRecipeId)
     VALUES
         (@InvoiceId, @ItemId, @BatchId, @PackagingLevelId, @QuantityInLevel,
          @QuantityInLevel * @baseUnits, @UnitPrice, ROUND(@QuantityInLevel * @UnitPrice, 2),
-         CASE WHEN @free = 1 THEN 0 ELSE ROUND((SELECT SalePrice FROM Items WHERE Id = @ItemId) * @baseUnits, 2) END);
+         CASE WHEN @free = 1 THEN 0 ELSE ROUND((SELECT SalePrice FROM Items WHERE Id = @ItemId) * @baseUnits, 2) END,
+         CASE WHEN @BatchId IS NULL THEN @CustomRecipeId END);
 
     SET @NewLineId = SCOPE_IDENTITY();
     SELECT @NewLineId AS LineId, @UnitPrice AS UnitPrice;
@@ -518,7 +556,11 @@ BEGIN
 
     DECLARE @alloc TABLE (ItemId INT, BatchId INT NULL, Qty DECIMAL(18,3));
     DECLARE @short TABLE (ItemId INT, Qty DECIMAL(18,3));
-    DECLARE @lineItem INT, @lineBatch INT, @need DECIMAL(18,3), @itemName NVARCHAR(200), @msg NVARCHAR(400);
+    DECLARE @lineItem INT, @lineBatch INT, @lineRecipe INT, @need DECIMAL(18,3), @itemName NVARCHAR(200), @msg NVARCHAR(1000), @reservedHint NVARCHAR(500);
+    -- البيع من رصيد محجوز لعميل آخر (تشغيلات مطعم) بصلاحية خاصة
+    DECLARE @canReserved BIT = CASE WHEN EXISTS (
+            SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
+            WHERE u.Id = @UserId AND rp.ModuleCode = N'Special:ReservedStock' AND rp.CanView = 1) THEN 1 ELSE 0 END;
     -- البيع بانتظار الإنتاج: مخزن المنتج التام فقط، وبصلاحية خاصة تحددها الإدارة
     DECLARE @canPend BIT = CASE WHEN @whType = N'FinishedGoods' AND EXISTS (
             SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
@@ -526,12 +568,14 @@ BEGIN
 
     -- الطلب مجمّعًا حسب الصنف/التشغيلة (سطران لنفس الصنف يُحسبان معًا)
     DECLARE req CURSOR LOCAL FAST_FORWARD FOR
-        SELECT ItemId, BatchId, SUM(QuantityBaseUnits)
-        FROM SalesInvoiceLines WHERE SalesInvoiceId = @InvoiceId
-        GROUP BY ItemId, BatchId
-        ORDER BY CASE WHEN BatchId IS NULL THEN 1 ELSE 0 END, ItemId;  -- المحدد أولًا ثم FIFO
+        SELECT l.ItemId, l.BatchId, COALESCE(l.CustomRecipeId, b.CustomRecipeId), SUM(l.QuantityBaseUnits)
+        FROM SalesInvoiceLines l LEFT JOIN ItemBatches b ON b.Id = l.BatchId
+        WHERE l.SalesInvoiceId = @InvoiceId
+        GROUP BY l.ItemId, l.BatchId, COALESCE(l.CustomRecipeId, b.CustomRecipeId)
+        -- المحدد أولًا، ثم المتغير المطلوب بالاسم، ثم FIFO
+        ORDER BY CASE WHEN l.BatchId IS NULL THEN 1 ELSE 0 END, CASE WHEN COALESCE(l.CustomRecipeId, b.CustomRecipeId) IS NULL THEN 1 ELSE 0 END, l.ItemId;
     OPEN req;
-    FETCH NEXT FROM req INTO @lineItem, @lineBatch, @need;
+    FETCH NEXT FROM req INTO @lineItem, @lineBatch, @lineRecipe, @need;
     WHILE @@FETCH_STATUS = 0
     BEGIN
         DECLARE @avail TABLE (BatchId INT NULL, Qty DECIMAL(18,3), Ord INT);
@@ -542,16 +586,18 @@ BEGIN
                b.QuantityBaseUnits - ISNULL((SELECT SUM(a.Qty) FROM @alloc a
                                              WHERE a.ItemId = @lineItem
                                                AND ISNULL(a.BatchId, -1) = ISNULL(b.BatchId, -1)), 0),
-               ROW_NUMBER() OVER (ORDER BY CASE WHEN ib.ExpiryDate IS NULL THEN 1 ELSE 0 END,
+               ROW_NUMBER() OVER (ORDER BY p.Priority, CASE WHEN ib.ExpiryDate IS NULL THEN 1 ELSE 0 END,
                                            ib.ExpiryDate, ib.ManufactureDate, b.BatchId)
         FROM vw_StockBalance b
         LEFT JOIN ItemBatches ib ON ib.Id = b.BatchId
+        CROSS APPLY (SELECT dbo.fn_Stock_BatchPriority(b.BatchId, @custId, @lineRecipe, @canReserved) AS Priority) p
         WHERE b.ItemId = @lineItem AND b.WarehouseId = @whId
-          AND (@lineBatch IS NULL OR b.BatchId = @lineBatch);
+          AND (@lineBatch IS NULL OR b.BatchId = @lineBatch)
+          AND p.Priority IS NOT NULL;
 
         DELETE FROM @avail WHERE Qty <= 0;
 
-        IF ISNULL((SELECT SUM(Qty) FROM @avail), 0) < @need AND @canPend = 1 AND @lineBatch IS NULL
+        IF ISNULL((SELECT SUM(Qty) FROM @avail), 0) < @need AND @canPend = 1 AND @lineBatch IS NULL AND @lineRecipe IS NULL
         BEGIN
             -- يخرج المتاح كله، والفرق عجز بانتظار الإنتاج
             INSERT INTO @short (ItemId, Qty) VALUES (@lineItem, @need - ISNULL((SELECT SUM(Qty) FROM @avail), 0));
@@ -561,9 +607,18 @@ BEGIN
         IF ISNULL((SELECT SUM(Qty) FROM @avail), 0) < @need
         BEGIN
             SELECT @itemName = ItemName FROM Items WHERE Id = @lineItem;
-            SET @msg = N'الرصيد غير كافٍ للصنف "' + @itemName + N'": المطلوب '
+            -- ما لا يحق لهذا البيع من رصيد المتغيرات الأخرى، ليعرف البائع السبب
+            SELECT @reservedHint = STRING_AGG(x.Name + N' ' + FORMAT(x.Qty, N'0.###'), N'، ')
+            FROM (SELECT r.Name, SUM(b.QuantityBaseUnits) AS Qty
+                  FROM vw_StockBalance b JOIN ItemBatches ib ON ib.Id = b.BatchId JOIN CustomRecipes r ON r.Id = ib.CustomRecipeId
+                  WHERE b.ItemId = @lineItem AND b.WarehouseId = @whId AND b.QuantityBaseUnits > 0
+                    AND dbo.fn_Stock_BatchPriority(b.BatchId, @custId, @lineRecipe, @canReserved) IS NULL
+                  GROUP BY r.Name) x;
+            SET @msg = N'الرصيد غير كافٍ للصنف "' + @itemName + N'"'
+                     + ISNULL(N' (' + (SELECT Name FROM CustomRecipes WHERE Id = @lineRecipe) + N')', N'') + N': المطلوب '
                      + FORMAT(@need, N'0.###') + N' قطعة، المتاح '
-                     + FORMAT(ISNULL((SELECT SUM(Qty) FROM @avail), 0), N'0.###') + N' قطعة.';
+                     + FORMAT(ISNULL((SELECT SUM(Qty) FROM @avail), 0), N'0.###') + N' قطعة.'
+                     + ISNULL(N' ويوجد رصيد متغيرات لا يُصرف لهذا البيع: ' + @reservedHint + N' قطعة.', N'');
             THROW 51036, @msg, 1;
         END;
 
@@ -577,7 +632,7 @@ BEGIN
               FROM @avail) x
         WHERE Cum - Qty < @need;
 
-        FETCH NEXT FROM req INTO @lineItem, @lineBatch, @need;
+        FETCH NEXT FROM req INTO @lineItem, @lineBatch, @lineRecipe, @need;
     END;
     CLOSE req; DEALLOCATE req;
 

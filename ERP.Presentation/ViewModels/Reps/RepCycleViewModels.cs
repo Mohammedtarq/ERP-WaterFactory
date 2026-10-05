@@ -14,11 +14,13 @@ public class LoadLineDraft : ObservableObject
     private readonly LoadOrdersSectionViewModel _owner;
     private Item? _product;
     private ItemPackagingLevel? _level;
+    private CustomRecipe? _recipe;
     private decimal _quantity;
 
     public LoadLineDraft(LoadOrdersSectionViewModel owner) => _owner = owner;
 
     public ObservableCollection<ItemPackagingLevel> Levels { get; } = new();
+    public ObservableCollection<CustomRecipe> Recipes { get; } = new();
     public Item? Product
     {
         get => _product;
@@ -26,10 +28,20 @@ public class LoadLineDraft : ObservableObject
         {
             if (!SetProperty(ref _product, value)) return;
             Levels.Clear();
-            if (value is not null) foreach (var l in _owner.LevelsOf(value.Id)) Levels.Add(l);
+            Recipes.Clear();
+            if (value is not null)
+            {
+                foreach (var l in _owner.LevelsOf(value.Id)) Levels.Add(l);
+                Recipes.Add(Production.DailyProductionSectionViewModel.Basic);
+                foreach (var r in _owner.RecipesOf(value.Id)) Recipes.Add(r);
+            }
             Level = Levels.FirstOrDefault();
+            Recipe = Recipes.FirstOrDefault();
         }
     }
+    /// <summary>الأساسي = حمولة عامة؛ اسم مطعم = تحميل تشغيلاته المحجوزة لتوصيلها له.</summary>
+    public CustomRecipe? Recipe { get => _recipe; set => SetProperty(ref _recipe, value); }
+    public int? RecipeId => Recipe is { Id: > 0 } r ? r.Id : null;
     public ItemPackagingLevel? Level { get => _level; set { if (SetProperty(ref _level, value)) Raise(); } }
     public decimal Quantity { get => _quantity; set { if (SetProperty(ref _quantity, value)) Raise(); } }
     public decimal Pieces => Level is null ? 0 : Quantity * Level.EquivalentBaseUnits;
@@ -48,6 +60,7 @@ public class PrepareLineDraft : ObservableObject
     public int LineId { get; init; }
     public string ItemName { get; init; } = "";
     public string LevelName { get; init; } = "";
+    public string VariantName { get; init; } = "أساسي";
     public decimal Requested { get; init; }
     public decimal Prepared { get => _prepared; set => SetProperty(ref _prepared, value); }
 }
@@ -66,6 +79,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     private RepLoadOrderRow? _selectedOrder;
     private string? _cancelReason;
     private List<ItemPackagingLevel> _levels = new();
+    private List<CustomRecipe> _recipes = new();
 
     public LoadOrdersSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Reps, "طلبات التحميل", Icons.Order, "#2563EB",
@@ -121,6 +135,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
 
     internal IEnumerable<ItemPackagingLevel> LevelsOf(int itemId) =>
         _levels.Where(l => l.ItemId == itemId).OrderByDescending(l => l.EquivalentBaseUnits);
+    internal IEnumerable<CustomRecipe> RecipesOf(int itemId) => _recipes.Where(r => r.FinishedItemId == itemId).OrderBy(r => r.Name);
     internal void RaiseTotals() => OnPropertyChanged(nameof(TotalPieces));
 
     public override async Task LoadAsync()
@@ -142,6 +157,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
                 Products.Add(i);
             var ids = Products.Select(p => p.Id).ToList();
             _levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => ids.Contains(l.ItemId)).ToListAsync();
+            _recipes = await db.CustomRecipes.AsNoTracking().Where(r => r.IsActive && ids.Contains(r.FinishedItemId)).ToListAsync();
         }
         _store = Stores.FirstOrDefault(w => w.Id == storeId) ?? Stores.FirstOrDefault();
         OnPropertyChanged(nameof(Store));
@@ -171,6 +187,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         if (order is null) return;
         foreach (var l in order.Lines.OrderBy(l => l.Item.ItemName))
             PrepareLines.Add(new PrepareLineDraft { LineId = l.Id, ItemName = l.Item.ItemName, LevelName = l.PackagingLevel.LevelName,
+                                                    VariantName = l.CustomRecipe?.Name ?? "أساسي",
                                                     Requested = l.QuantityInLevel, Prepared = l.PreparedQuantity ?? l.QuantityInLevel });
     }
 
@@ -195,7 +212,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
 
     private List<RepLoadLineInput> ValidLines() =>
         Lines.Where(l => l.Product is not null && l.Level is not null && l.Quantity > 0)
-             .Select(l => new RepLoadLineInput(l.Product!.Id, l.Level!.Id, l.Quantity)).ToList();
+             .Select(l => new RepLoadLineInput(l.Product!.Id, l.Level!.Id, l.Quantity, l.RecipeId)).ToList();
 
     private async Task SaveDefaultAsync()
     {

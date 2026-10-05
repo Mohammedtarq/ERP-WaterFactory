@@ -76,6 +76,10 @@ public class SalesInvoiceLine
     public int? BatchId { get; set; }                 // اختيار حر، توصية FIFO تُطبَّق في الواجهة فقط
     public ItemBatch? Batch { get; set; }
 
+    /// <summary>متغير مطلوب بالاسم (مطعم، مناسبة). NULL = الأساسي ومحجوز العميل نفسه.</summary>
+    public int? CustomRecipeId { get; set; }
+    public CustomRecipe? CustomRecipe { get; set; }
+
     public int PackagingLevelId { get; set; }
     public ItemPackagingLevel PackagingLevel { get; set; } = null!;
 

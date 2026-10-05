@@ -7,7 +7,7 @@ namespace ERP.Data.Services;
 /// <summary>سطر مستند كما يُدخل في واجهة المخزن (بوحدة التعبئة).</summary>
 public record StockDocumentLineInput(int ItemId, int PackagingLevelId, decimal QuantityInLevel,
                                      int? BatchId = null, string? NewBatchNumber = null, DateTime? NewBatchExpiry = null,
-                                     string? Notes = null, bool IsDamaged = false);
+                                     string? Notes = null, bool IsDamaged = false, int? CustomRecipeId = null);
 
 public record StockDocumentRequest(
     StockDocumentType Type, int WarehouseId, DateTime Date, IReadOnlyList<StockDocumentLineInput> Lines, int UserId,
@@ -49,6 +49,8 @@ public class StockBalanceRow
     public string ItemName { get; init; } = "";
     public string? BatchNumber { get; init; }
     public DateTime? ExpiryDate { get; init; }
+    /// <summary>متغير التشغيلة: فارغ للأساسي، أو اسم المطعم/المناسبة.</summary>
+    public string? Variant { get; init; }
     public decimal Quantity { get; init; }
     /// <summary>الكمية بوحدات التعبئة: "10 كارتون + 3 قطعة".</summary>
     public string Breakdown { get; set; } = "";
@@ -194,7 +196,9 @@ public class WarehouseDocumentService
             }
             else
             {
-                var (allocation, error) = await LedgerHelper.AllocateAsync(_db, l.ItemId, r.WarehouseId, l.BatchId, pieces);
+                // تحميل السيارة بلا تشغيلة محددة: المتغير المطلوب، أو الأساسي فقط فلا يخرج محجوز مطعم في حمولة عامة
+                var scope = l.BatchId is null && (r.Type == StockDocumentType.RepLoad || l.CustomRecipeId is not null) ? BatchScope.Variant(l.CustomRecipeId) : null;
+                var (allocation, error) = await LedgerHelper.AllocateAsync(_db, l.ItemId, r.WarehouseId, l.BatchId, pieces, scope);
                 if (error is not null) return (FinanceOperationResult.Fail(error), null);
                 foreach (var (b, qty) in allocation)
                 {
@@ -338,7 +342,7 @@ public class WarehouseDocumentService
         var itemIds = raw.Select(r => r.ItemId).Distinct().ToList();
         var batchIds = raw.Where(r => r.BatchId != null).Select(r => r.BatchId!.Value).Distinct().ToList();
         var items = await _db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
-        var batches = await _db.ItemBatches.AsNoTracking().Where(b => batchIds.Contains(b.Id)).ToDictionaryAsync(b => b.Id);
+        var batches = await _db.ItemBatches.AsNoTracking().Include(b => b.CustomRecipe).Where(b => batchIds.Contains(b.Id)).ToDictionaryAsync(b => b.Id);
         var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
             .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
         var totals = raw.GroupBy(r => r.ItemId).ToDictionary(g => g.Key, g => g.Sum(x => x.Qty));
@@ -350,6 +354,7 @@ public class WarehouseDocumentService
             return new StockBalanceRow
             {
                 ItemId = r.ItemId, ItemCode = item.ItemCode, ItemName = item.ItemName, BatchNumber = b?.BatchNumber, ExpiryDate = b?.ExpiryDate,
+                Variant = b?.CustomRecipe?.Name,
                 Quantity = r.Qty, Breakdown = Breakdown(r.Qty, levels.GetValueOrDefault(r.ItemId)),
                 BelowAlert = item.MinStockAlertLevel is { } min && totals[r.ItemId] <= min
             };

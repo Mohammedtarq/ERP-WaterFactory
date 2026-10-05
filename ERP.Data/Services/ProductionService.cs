@@ -161,7 +161,7 @@ public class ProductionService
             var chosen = string.IsNullOrWhiteSpace(input.BatchNumber) ? generated : input.BatchNumber.Trim();
             var batch = new ItemBatch
             {
-                ItemId = input.FinishedItemId, BatchNumber = chosen, ProductionOrderId = order.Id,
+                ItemId = input.FinishedItemId, BatchNumber = chosen, ProductionOrderId = order.Id, CustomRecipeId = line.CustomRecipeId,
                 OriginalBatchNumber = chosen == generated ? null : generated
             };
             _db.ItemBatches.Add(batch);
@@ -289,7 +289,7 @@ public class ProductionService
             var batch = line.OutputBatchId is int bid ? await _db.ItemBatches.FindAsync(bid) : null;
             if (batch is null)
             {
-                batch = new ItemBatch { ItemId = line.FinishedItemId, BatchNumber = await NextBatchNumberAsync(), ProductionOrderId = order.Id };
+                batch = new ItemBatch { ItemId = line.FinishedItemId, BatchNumber = await NextBatchNumberAsync(), ProductionOrderId = order.Id, CustomRecipeId = line.CustomRecipeId };
                 _db.ItemBatches.Add(batch);
                 await _db.SaveChangesAsync();
                 line.OutputBatchId = batch.Id;

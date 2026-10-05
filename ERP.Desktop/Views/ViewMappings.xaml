@@ -264,6 +264,7 @@
     <DataTemplate DataType="{x:Type vmProduction:MachineWipSectionViewModel}"><vProduction:MachineWipSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmProduction:DailyProductionSectionViewModel}"><vProduction:DailyProductionSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmProduction:ProductionMonthSectionViewModel}"><vProduction:ProductionMonthSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmProduction:VariantStockSectionViewModel}"><vProduction:VariantStockSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmProduction:PendingProductionSectionViewModel}"><vProduction:PendingProductionSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:StocktakeSectionViewModel}"><vWarehouse:StocktakeSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:LossesSectionViewModel}"><vWarehouse:LossesSectionView/></DataTemplate>

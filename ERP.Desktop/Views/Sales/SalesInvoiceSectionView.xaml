@@ -164,7 +164,7 @@
                             <ComboBox ItemsSource="{Binding LevelOptions}" SelectedItem="{Binding LineLevel}" DisplayMemberPath="LevelName"/>
                         </StackPanel>
                         <StackPanel Grid.Column="4">
-                            <TextBlock Text="التشغيلة" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock Text="التشغيلة / المتغير" Style="{StaticResource FieldLabel}" ToolTip="تلقائي = الأساسي ومحجوز هذا العميل؛ اختر متغيرًا بالاسم لبيع مناسبة أو اسم مطعم"/>
                             <ComboBox ItemsSource="{Binding BatchOptions}" SelectedItem="{Binding LineBatch}" DisplayMemberPath="Label"/>
                         </StackPanel>
                         <StackPanel Grid.Column="6">

@@ -4,7 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ERP.Data.Services;
 
-public record RepLoadLineInput(int ItemId, int PackagingLevelId, decimal QuantityInLevel);
+/// <param name="CustomRecipeId">متغير بعينه (مطعم، مناسبة). NULL = الأساسي.</param>
+public record RepLoadLineInput(int ItemId, int PackagingLevelId, decimal QuantityInLevel, int? CustomRecipeId = null);
 
 /// <summary>مجاني أعطاه المندوب: الكمية بوحدة التعبئة، لمن (اختياري) ولماذا (إلزامي).</summary>
 public record RepFreeLineInput(int ItemId, int PackagingLevelId, decimal QuantityInLevel, int? CustomerId, string Reason);
@@ -140,8 +141,9 @@ public class RepOperationsService
             OrderNumber = $"LO-{year}-{count + 1:D5}", RepEmployeeId = van!.OwnerEmployeeId!.Value, VanWarehouseId = van.Id,
             FromWarehouseId = fromWarehouseId, LoadDate = date.Date, Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
             RequestedByUserId = userId,
-            Lines = lines.GroupBy(l => (l.ItemId, l.PackagingLevelId))
-                         .Select(g => new RepLoadOrderLine { ItemId = g.Key.ItemId, PackagingLevelId = g.Key.PackagingLevelId, QuantityInLevel = g.Sum(x => x.QuantityInLevel) })
+            Lines = lines.GroupBy(l => (l.ItemId, l.PackagingLevelId, l.CustomRecipeId))
+                         .Select(g => new RepLoadOrderLine { ItemId = g.Key.ItemId, PackagingLevelId = g.Key.PackagingLevelId, CustomRecipeId = g.Key.CustomRecipeId,
+                                                             QuantityInLevel = g.Sum(x => x.QuantityInLevel) })
                          .ToList()
         };
         _db.RepLoadOrders.Add(order);
@@ -167,7 +169,7 @@ public class RepOperationsService
             l.PreparedQuantity = qty;
         }
         var docLines = order.Lines.Where(l => l.PreparedQuantity > 0)
-                                  .Select(l => new StockDocumentLineInput(l.ItemId, l.PackagingLevelId, l.PreparedQuantity!.Value)).ToList();
+                                  .Select(l => new StockDocumentLineInput(l.ItemId, l.PackagingLevelId, l.PreparedQuantity!.Value, CustomRecipeId: l.CustomRecipeId)).ToList();
         if (docLines.Count == 0) return (FinanceOperationResult.Fail("لا كمية مجهَّزة — ألغِ الطلب بدل تجهيزه بصفر"), null);
 
         await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
@@ -215,6 +217,7 @@ public class RepOperationsService
 
     public Task<RepLoadOrder?> GetLoadOrderAsync(int orderId) =>
         _db.RepLoadOrders.AsNoTracking().Include(o => o.Lines).ThenInclude(l => l.Item).Include(o => o.Lines).ThenInclude(l => l.PackagingLevel)
+           .Include(o => o.Lines).ThenInclude(l => l.CustomRecipe)
            .Include(o => o.RepEmployee).Include(o => o.VanWarehouse).Include(o => o.FromWarehouse).Include(o => o.StockDocument)
            .FirstOrDefaultAsync(o => o.Id == orderId);
 
@@ -271,10 +274,11 @@ public class RepOperationsService
             var customerIds = r.FreeGoods.Where(f => f.CustomerId != null).Select(f => f.CustomerId!.Value).Distinct().ToList();
             var customers = await _db.Customers.Where(c => customerIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
             var when = r.Date.Date == DateTime.Today ? DateTime.UtcNow : r.Date.Date.AddHours(12).ToUniversalTime();
+            var canReserved = await SpecialPermission.HasAsync(_db, r.UserId, SpecialPermission.ReservedStock);
             foreach (var f in r.FreeGoods)
             {
                 var pieces = f.QuantityInLevel * levels[f.PackagingLevelId];
-                var (alloc, error) = await LedgerHelper.AllocateAsync(_db, f.ItemId, van.Id, null, pieces);
+                var (alloc, error) = await LedgerHelper.AllocateAsync(_db, f.ItemId, van.Id, null, pieces, BatchScope.ForCustomer(f.CustomerId, null, canReserved));
                 if (error is not null) return (FinanceOperationResult.Fail($"المجاني: {error}"), null);
                 var who = f.CustomerId is int cid && customers.TryGetValue(cid, out var name) ? $"{name} — {f.Reason.Trim()}" : f.Reason.Trim();
                 foreach (var (batchId, qty) in alloc)
@@ -295,8 +299,9 @@ public class RepOperationsService
         // 3) ما بقي في السيارة يُفوتر نقدًا
         if (r.InvoiceRemainingToCustomerId is int invoiceCustomer)
         {
+            // لكل تشغيلة سطر: فلا يختلط متغير مطعم بالأساسي، ويطبّق الترحيل قاعدة الحجز على العميل المختار
             var remaining = await _db.StockTransactions.Where(t => t.WarehouseId == van.Id)
-                .GroupBy(t => t.ItemId).Select(g => new { ItemId = g.Key, Qty = g.Sum(t => t.QuantityBaseUnits) })
+                .GroupBy(t => new { t.ItemId, t.BatchId }).Select(g => new { g.Key.ItemId, g.Key.BatchId, Qty = g.Sum(t => t.QuantityBaseUnits) })
                 .Where(x => x.Qty > 0).ToListAsync();
             if (remaining.Count > 0)
             {
@@ -311,7 +316,7 @@ public class RepOperationsService
                                                                  .Select(l => (int?)l.Id).FirstOrDefaultAsync();
                     if (pieceLevel is null)
                         return (FinanceOperationResult.Fail("صنف في السيارة بلا وحدة \"قطعة\" — عرّفها من بطاقة الصنف أو فوتره يدويًا"), null);
-                    var added = await sales.AddLineAsync(invoiceId!.Value, new SalesInvoiceLineInput(x.ItemId, pieceLevel.Value, x.Qty), r.UserId);
+                    var added = await sales.AddLineAsync(invoiceId!.Value, new SalesInvoiceLineInput(x.ItemId, pieceLevel.Value, x.Qty, BatchId: x.BatchId), r.UserId);
                     if (!added.Success) return (added, null);
                 }
                 var (posted, _) = await sales.PostInvoiceAsync(invoiceId!.Value, r.UserId);

@@ -17,6 +17,7 @@ public class ProductionModuleViewModel : ModuleViewModel
         UseDashboard(s, d, ModuleCode.Production, ModuleDashboardViewModel.Production);
         Daily = Add(new DailyProductionSectionViewModel(s, d));
         Add(new ProductionMonthSectionViewModel(s, d));
+        Add(new VariantStockSectionViewModel(s, d));
         Add(new PendingProductionSectionViewModel(s, d));
         Orders = Add(new ProductionOrdersSectionViewModel(s, d));
         Qc = Add(new QcSectionViewModel(s, d));
@@ -717,6 +718,26 @@ public class RecipeLineRow
     public string ReplacesName { get; init; } = "";
 }
 
+/// <summary>دور في معالج المتغير: يبقى أساسيًا، أو يُستبدل بصنف موجود، أو بصنف جديد يُنشأ باسمه.</summary>
+public class VariantRoleRow : ObservableObject
+{
+    private Item? _choice;
+    private bool _createNew;
+    private string _newItemName = "";
+    public VariantRoleRow(string role, string baseName) { Role = role; BaseName = baseName; }
+    public string Role { get; }
+    public string BaseName { get; }
+    public Item? Choice { get => _choice; set { if (SetProperty(ref _choice, value) && value is { Id: > 0 }) CreateNew = false; } }
+    public bool CreateNew { get => _createNew; set { if (SetProperty(ref _createNew, value) && value) Choice = CustomRecipesSectionViewModel.KeepBase; } }
+    public string NewItemName { get => _newItemName; set => SetProperty(ref _newItemName, value); }
+
+    /// <summary>اسم مقترح للصنف الجديد: «ليبل مطعم الحسون».</summary>
+    internal void SuggestName(string variant)
+    {
+        if (!string.IsNullOrWhiteSpace(variant)) NewItemName = $"{Role} {variant.Trim()}";
+    }
+}
+
 public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
 {
     private CustomRecipe? _selectedRecipe;
@@ -731,6 +752,93 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
         AddLineCommand = new AsyncRelayCommand(AddLineAsync);
         DeleteLineCommand = new AsyncRelayCommand(p => p is RecipeLineRow r ? DeleteLineAsync(r) : Task.CompletedTask);
         SetVariantCommand = new AsyncRelayCommand(SetVariantAsync);
+        OpenWizardCommand = new RelayCommand(OpenWizard);
+        CloseWizardCommand = new RelayCommand(() => IsWizardOpen = false);
+        CreateVariantCommand = new AsyncRelayCommand(CreateVariantAsync);
+    }
+
+    // ---------------- متغير جديد بخطوة واحدة ----------------
+    /// <summary>خيار «بلا عميل» في المعالج: ملصق مناسبة يُباع لمن يطلبه.</summary>
+    public static readonly Customer NoCustomer = new() { Id = 0, Name = "— مناسبة عامة (بلا عميل) —" };
+    /// <summary>خيار «بلا تغيير» لدور يبقى على مادته الأساسية.</summary>
+    public static readonly Item KeepBase = new() { Id = 0, ItemName = "— بلا تغيير —" };
+
+    private bool _isWizardOpen;
+    private Item? _wizardProduct;
+    private Customer? _wizardCustomer;
+    private string _wizardName = "";
+    public bool IsWizardOpen { get => _isWizardOpen; set => SetProperty(ref _isWizardOpen, value); }
+    public ObservableCollection<Customer> WizardCustomers { get; } = new();
+    public ObservableCollection<Item> WizardItems { get; } = new();
+    public ObservableCollection<VariantRoleRow> WizardRoles { get; } = new();
+    public Item? WizardProduct { get => _wizardProduct; set { if (SetProperty(ref _wizardProduct, value)) Background(LoadWizardRolesAsync()); } }
+    public Customer? WizardCustomer
+    {
+        get => _wizardCustomer;
+        set
+        {
+            if (!SetProperty(ref _wizardCustomer, value)) return;
+            if (value is { Id: > 0 } c) WizardName = c.Name;
+        }
+    }
+    public string WizardName
+    {
+        get => _wizardName;
+        set
+        {
+            if (!SetProperty(ref _wizardName, value)) return;
+            foreach (var r in WizardRoles.Where(r => r.NewItemName.Length == 0 || r.NewItemName.StartsWith(r.Role + " "))) r.SuggestName(value);
+        }
+    }
+    public RelayCommand OpenWizardCommand { get; }
+    public RelayCommand CloseWizardCommand { get; }
+    public AsyncRelayCommand CreateVariantCommand { get; }
+
+    private void OpenWizard()
+    {
+        if (!Require(CanAdd, "إضافة متغير")) return;
+        Editor = null;   // لوحة واحدة في الجانب
+        WizardCustomers.Clear();
+        WizardCustomers.Add(NoCustomer);
+        foreach (var c in Customers) WizardCustomers.Add(c);
+        WizardItems.Clear();
+        WizardItems.Add(KeepBase);
+        foreach (var i in RawItems) WizardItems.Add(i);
+        WizardName = "";
+        WizardCustomer = NoCustomer;
+        WizardProduct = FinishedItems.Count == 1 ? FinishedItems[0] : null;
+        IsWizardOpen = true;
+    }
+
+    private async Task LoadWizardRolesAsync()
+    {
+        WizardRoles.Clear();
+        if (WizardProduct is null) return;
+        await using var db = Session.NewDb();
+        foreach (var r in await new PackagingTemplateService(db).GetRolesAsync(WizardProduct.Id))
+        {
+            var row = new VariantRoleRow(r.ComponentRole!, r.RawMaterialItem.ItemName) { Choice = KeepBase };
+            row.SuggestName(WizardName);
+            WizardRoles.Add(row);
+        }
+        if (WizardRoles.Count == 0) StatusMessage = "قائمة مواد المنتج بلا أدوار (غطاء، لاصق) — طبّق قالب التعبئة عليه أولًا";
+    }
+
+    private async Task CreateVariantAsync()
+    {
+        if (!Require(CanAdd, "إضافة متغير")) return;
+        if (WizardProduct is null) { Dialogs.Error("اختر المنتج"); return; }
+        var roles = WizardRoles.Select(r => new VariantRoleInput(r.Role, r.Choice is { Id: > 0 } i ? i.Id : null, r.CreateNew ? r.NewItemName : null)).ToList();
+        await using var db = Session.NewDb();
+        var name = WizardName.Trim();
+        if (await RunOperationAsync(async () => (await new PackagingTemplateService(db).CreateVariantAsync(new NewVariantRequest(
+                WizardProduct.Id, WizardCustomer is { Id: > 0 } c ? c.Id : null, WizardName, roles))).result,
+                $"أُضيف المتغير «{name}» — يظهر الآن في إنتاج اليوم والبيع والتحميل"))
+        {
+            IsWizardOpen = false;
+            await LoadAsync();
+            SelectedRecipe = Items.FirstOrDefault(r => r.Name == name && r.FinishedItemId == WizardProduct.Id);
+        }
     }
 
     // ---------------- بديل العميل حسب الدور (من قالب التعبئة) ----------------
@@ -771,6 +879,7 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
 
     protected override int GetId(CustomRecipe e) => e.Id;
     protected override string Describe(CustomRecipe e) => e.Name;
+    protected override void OnEditorChanged() { if (IsEditing) IsWizardOpen = false; }
 
     protected override async Task LoadLookupsAsync(ProjectDbContext db)
     {

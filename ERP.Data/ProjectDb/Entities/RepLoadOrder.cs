@@ -51,6 +51,9 @@ public class RepLoadOrderLine
     public int PackagingLevelId { get; set; }
     public ItemPackagingLevel PackagingLevel { get; set; } = null!;
     public decimal QuantityInLevel { get; set; }
+    /// <summary>المتغير المطلوب تحميله (مطعم، مناسبة). NULL = الأساسي.</summary>
+    public int? CustomRecipeId { get; set; }
+    public CustomRecipe? CustomRecipe { get; set; }
     /// <summary>ما جهّزه أمين المخزن فعلًا (قد يقل عن المطلوب إن نقص الرصيد).</summary>
     public decimal? PreparedQuantity { get; set; }
 }

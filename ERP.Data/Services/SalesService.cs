@@ -16,9 +16,10 @@ public record SalesInvoiceHeaderInput(
 
 /// <param name="UnitPrice">NULL = يُحسب تلقائيًا بالتسعير الهرمي.</param>
 /// <param name="BatchId">NULL = تُختار التشغيلات تلقائيًا (FIFO) وقت الترحيل.</param>
+/// <param name="CustomRecipeId">متغير مطلوب بالاسم (مطعم، مناسبة). NULL = الأساسي ومحجوز العميل نفسه.</param>
 public record SalesInvoiceLineInput(
     int ItemId, int PackagingLevelId, decimal QuantityInLevel,
-    decimal? UnitPrice = null, int? BatchId = null);
+    decimal? UnitPrice = null, int? BatchId = null, int? CustomRecipeId = null);
 
 public class SalesPostingSummary
 {
@@ -119,8 +120,10 @@ public class SalesService
         => await ScalarAsync<decimal?>("SELECT dbo.fn_Sales_LoadingRate(@d)", P("@d", onDate.Date)) ?? 0;
 
     /// <summary>الرصيد المتاح للبيع (بالقطعة) لصنف في مخزن، اختياريًا لتشغيلة محددة.</summary>
-    public Task<decimal> GetAvailableQuantityAsync(int itemId, int warehouseId, int? batchId = null)
-        => _db.StockTransactions
+    /// <param name="scope">قاعدة المتغيرات (العميل، المتغير المطلوب، صلاحية المحجوز)؛ NULL = كل الرصيد.</param>
+    public Task<decimal> GetAvailableQuantityAsync(int itemId, int warehouseId, int? batchId = null, BatchScope? scope = null)
+        => scope is not null ? LedgerHelper.AvailableAsync(_db, itemId, warehouseId, batchId, scope)
+           : _db.StockTransactions
             .Where(t => t.ItemId == itemId && t.WarehouseId == warehouseId && (batchId == null || t.BatchId == batchId))
             .SumAsync(t => t.QuantityBaseUnits);
 
@@ -157,7 +160,7 @@ public class SalesService
         => await ExecAsync("sp_Sales_AddInvoiceLine",
             P("@InvoiceId", invoiceId), P("@ItemId", l.ItemId), P("@PackagingLevelId", l.PackagingLevelId),
             P("@QuantityInLevel", l.QuantityInLevel), P("@UnitPrice", l.UnitPrice), P("@BatchId", l.BatchId),
-            P("@UserId", userId));
+            P("@UserId", userId), P("@CustomRecipeId", l.CustomRecipeId));
 
     public async Task<FinanceOperationResult> DeleteLineAsync(int lineId, int userId)
         => await ExecAsync("sp_Sales_DeleteInvoiceLine", P("@LineId", lineId), P("@UserId", userId));
@@ -242,7 +245,8 @@ public class SalesService
             .Include(i => i.SalesRepEmployee)
             .Include(i => i.Lines).ThenInclude(l => l.Item)
             .Include(i => i.Lines).ThenInclude(l => l.PackagingLevel)
-            .Include(i => i.Lines).ThenInclude(l => l.Batch)
+            .Include(i => i.Lines).ThenInclude(l => l.Batch).ThenInclude(b => b!.CustomRecipe)
+            .Include(i => i.Lines).ThenInclude(l => l.CustomRecipe)
             .FirstOrDefaultAsync(i => i.Id == invoiceId);
 
     public Task<List<SalesInvoiceListRow>> GetInvoiceListAsync(DateTime? from = null, DateTime? to = null, int? customerId = null)

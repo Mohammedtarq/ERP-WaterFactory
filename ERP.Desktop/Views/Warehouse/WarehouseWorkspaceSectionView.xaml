@@ -200,6 +200,7 @@
                                 <DataGridTextColumn Header="الكود" Binding="{Binding ItemCode}" Width="90"/>
                                 <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="2*" MinWidth="140"/>
                                 <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="130"/>
+                                <DataGridTextColumn Header="المتغير" Binding="{Binding Variant, TargetNullValue='أساسي'}" Width="120"/>
                                 <DataGridTextColumn Header="الصلاحية" Binding="{Binding ExpiryDate, StringFormat=yyyy/MM/dd}" Width="100"/>
                                 <DataGridTextColumn Header="الرصيد (قطعة)" Binding="{Binding Quantity, StringFormat=N0}" Width="110"/>
                                 <DataGridTextColumn Header="بوحدات التعبئة" Binding="{Binding Breakdown}" Width="*" MinWidth="110"/>

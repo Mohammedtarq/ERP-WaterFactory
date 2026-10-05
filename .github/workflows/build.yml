@@ -67,6 +67,8 @@ jobs:
           Copy-Item ui-screenshots/tutorial-hr/*.png docs/user-guide/images/hr/ -Force
           New-Item -ItemType Directory -Force docs/user-guide/images/recipes | Out-Null
           Copy-Item ui-screenshots/tutorial-recipes/*.png docs/user-guide/images/recipes/ -Force
+          New-Item -ItemType Directory -Force docs/user-guide/images/variants | Out-Null
+          Copy-Item ui-screenshots/tutorial-variants/*.png docs/user-guide/images/variants/ -Force
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/user-guide/images

@@ -14,4 +14,8 @@ public class ItemBatch
     public DateTime? ExpiryDate { get; set; }
 
     public int? ProductionOrderId { get; set; }   // يُربط فعليًا في مرحلة الإنتاج لاحقًا
+
+    /// <summary>المتغير الذي أُنتجت به (ليبل/غطاء مطعم أو مناسبة). NULL = الأساسي. يحدد من يحق له الصرف منها.</summary>
+    public int? CustomRecipeId { get; set; }
+    public CustomRecipe? CustomRecipe { get; set; }
 }

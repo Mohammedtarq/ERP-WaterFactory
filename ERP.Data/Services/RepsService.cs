@@ -54,7 +54,8 @@ public class RepsService
         await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
         foreach (var line in lines.GroupBy(l => (l.ItemId, l.BatchId)).Select(g => new StockLineInput(g.Key.ItemId, g.Key.BatchId, g.Sum(x => x.Quantity))))
         {
-            var (alloc, error) = await LedgerHelper.AllocateAsync(_db, line.ItemId, fromId, line.BatchId, line.Quantity);
+            var (alloc, error) = await LedgerHelper.AllocateAsync(_db, line.ItemId, fromId, line.BatchId, line.Quantity,
+                                                                  line.BatchId is null && inType == StockTransactionType.RepLoad ? BatchScope.Variant(null) : null);
             if (error is not null) return FinanceOperationResult.Fail(error);
             foreach (var (batchId, qty) in alloc)
             {

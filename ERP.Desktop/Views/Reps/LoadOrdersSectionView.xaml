@@ -37,12 +37,13 @@
                     </WrapPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.2*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="36"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
-                        <TextBlock Grid.Column="1" Text="الوحدة" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
-                        <TextBlock Grid.Column="2" Text="الكمية" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
-                        <TextBlock Grid.Column="3" Text="القطع" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                        <TextBlock Grid.Column="1" Text="المتغير" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                        <TextBlock Grid.Column="2" Text="الوحدة" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                        <TextBlock Grid.Column="3" Text="الكمية" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                        <TextBlock Grid.Column="4" Text="القطع" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
                     </Grid>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom">
@@ -61,13 +62,15 @@
                             <DataTemplate>
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.2*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="36"/>
+                                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="36"/>
                                     </Grid.ColumnDefinitions>
                                     <ComboBox ItemsSource="{Binding DataContext.Products, ElementName=Root}" SelectedItem="{Binding Product}" DisplayMemberPath="ItemName" IsTextSearchEnabled="True"/>
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding Levels}" SelectedItem="{Binding Level}" DisplayMemberPath="LevelName" Margin="6,0,0,0"/>
-                                    <TextBox Grid.Column="2" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
-                                    <TextBlock Grid.Column="3" Text="{Binding Pieces, StringFormat=N0}" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                                    <Button Grid.Column="4" Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626" ToolTip="حذف"
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name" Margin="6,0,0,0"
+                                              ToolTip="الأساسي = حمولة عامة؛ اسم المطعم = تشغيلاته المحجوزة لتوصيلها له"/>
+                                    <ComboBox Grid.Column="2" ItemsSource="{Binding Levels}" SelectedItem="{Binding Level}" DisplayMemberPath="LevelName" Margin="6,0,0,0"/>
+                                    <TextBox Grid.Column="3" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                                    <TextBlock Grid.Column="4" Text="{Binding Pieces, StringFormat=N0}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="5" Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626" ToolTip="حذف"
                                             Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                 </Grid>
                             </DataTemplate>
@@ -122,6 +125,7 @@
                     <DataGrid ItemsSource="{Binding PrepareLines}" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,6,0,0">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="المتغير" Binding="{Binding VariantName}" Width="*" IsReadOnly="True"/>
                             <DataGridTextColumn Header="الوحدة" Binding="{Binding LevelName}" Width="80" IsReadOnly="True"/>
                             <DataGridTextColumn Header="المطلوب" Binding="{Binding Requested, StringFormat=N0}" Width="80" IsReadOnly="True"/>
                             <DataGridTextColumn Header="المجهَّز" Binding="{Binding Prepared, UpdateSourceTrigger=PropertyChanged}" Width="90"/>

@@ -60,6 +60,8 @@ public class InvoiceLineDraft : ObservableObject
     public string LevelName { get; init; } = "";
     public decimal BaseUnitsPerLevel { get; init; }
     public int? BatchId { get; init; }
+    /// <summary>متغير مطلوب بالاسم (مطعم، مناسبة) دون تشغيلة محددة.</summary>
+    public int? CustomRecipeId { get; init; }
     public string BatchLabel { get; init; } = "تلقائي (الأقرب انتهاءً)";
 
     /// <summary>true = السعر عُدّل يدويًا، فلا يُعاد تسعيره عند تغيير العميل.</summary>
@@ -98,7 +100,10 @@ public class InvoiceLineDraft : ObservableObject
 public class BatchOption
 {
     public int? BatchId { get; init; }
+    /// <summary>بلا تشغيلة: صرف تلقائي من هذا المتغير بالاسم.</summary>
+    public int? RecipeId { get; init; }
     public string Label { get; init; } = "";
+    public string ShortLabel { get; init; } = "";
     public override string ToString() => Label;
 }
 
@@ -182,6 +187,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             OnPropertyChanged(nameof(PricingTypeColor));
             OnPropertyChanged(nameof(IsAgentOrSub));
             if (!_suppressReprice) Background(RepriceAsync());
+            if (LineItem is not null) Background(RefreshLineStockAsync());   // المتاح يتبع محجوز العميل
         }
     }
 
@@ -465,15 +471,22 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
                      .OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync())
             LevelOptions.Add(l);
 
-        BatchOptions.Add(new BatchOption { BatchId = null, Label = "تلقائي (الأقرب انتهاءً)" });
+        BatchOptions.Add(new BatchOption { BatchId = null, Label = "تلقائي (الأقرب انتهاءً)", ShortLabel = "تلقائي (الأقرب انتهاءً)" });
         if (Warehouse is not null)
         {
             var batches = await db.StockTransactions.Where(t => t.ItemId == LineItem.Id && t.WarehouseId == Warehouse.Id && t.BatchId != null)
-                .GroupBy(t => new { t.BatchId, t.Batch!.BatchNumber, t.Batch.ExpiryDate })
-                .Select(g => new { g.Key.BatchId, g.Key.BatchNumber, g.Key.ExpiryDate, Qty = g.Sum(t => t.QuantityBaseUnits) })
+                .GroupBy(t => new { t.BatchId, t.Batch!.BatchNumber, t.Batch.ExpiryDate, t.Batch.CustomRecipeId, Recipe = t.Batch.CustomRecipe != null ? t.Batch.CustomRecipe.Name : null })
+                .Select(g => new { g.Key.BatchId, g.Key.BatchNumber, g.Key.ExpiryDate, g.Key.CustomRecipeId, g.Key.Recipe, Qty = g.Sum(t => t.QuantityBaseUnits) })
                 .Where(x => x.Qty > 0).OrderBy(x => x.ExpiryDate).ToListAsync();
+            // المتغيرات الموجودة في المخزن: صرف تلقائي من متغير بالاسم (المطعم أو المناسبة)
+            foreach (var v in batches.Where(b => b.CustomRecipeId != null).GroupBy(b => new { b.CustomRecipeId, b.Recipe }))
+                BatchOptions.Add(new BatchOption { RecipeId = v.Key.CustomRecipeId, Label = $"تلقائي — {v.Key.Recipe} — {v.Sum(b => b.Qty):N0} قطعة", ShortLabel = $"تلقائي — {v.Key.Recipe}" });
             foreach (var b in batches)
-                BatchOptions.Add(new BatchOption { BatchId = b.BatchId, Label = $"{b.BatchNumber} — ينتهي {b.ExpiryDate:yyyy/MM/dd} — {b.Qty:N0} قطعة" });
+                BatchOptions.Add(new BatchOption
+                {
+                    BatchId = b.BatchId, ShortLabel = b.Recipe is null ? b.BatchNumber : $"{b.BatchNumber} ({b.Recipe})",
+                    Label = $"{b.BatchNumber}{(b.Recipe is null ? "" : $" — {b.Recipe}")} — ينتهي {b.ExpiryDate:yyyy/MM/dd} — {b.Qty:N0} قطعة"
+                });
         }
         LineBatch = BatchOptions[0];
         LineLevel = LevelOptions.FirstOrDefault();
@@ -503,7 +516,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     {
         if (LineItem is null || Warehouse is null) { LineAvailable = null; return; }
         await using var db = Session.NewDb();
-        LineAvailable = await new SalesService(db).GetAvailableQuantityAsync(LineItem.Id, Warehouse.Id, LineBatch?.BatchId);
+        // المتاح لهذا العميل: محجوز غيره لا يُحسب إلا بالصلاحية، والمناسبات تُطلب بالاسم
+        var scope = Customer is null ? null : BatchScope.ForCustomer(Customer.Id, LineBatch?.RecipeId, Has(SpecialPermission.ReservedStock));
+        LineAvailable = await new SalesService(db).GetAvailableQuantityAsync(LineItem.Id, Warehouse.Id, LineBatch?.BatchId, scope);
     }
 
     /// <summary>عند تغيير العميل أو خيار تسعير الوكيل: إعادة تسعير السطور غير المعدّلة يدويًا.</summary>
@@ -524,10 +539,10 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         if (LinePrice < 0) { Dialogs.Error("السعر لا يمكن أن يكون سالبًا"); return; }
 
         var needed = LineQuantity * LineLevel.EquivalentBaseUnits
-                     + Lines.Where(l => l.ItemId == LineItem.Id && l.BatchId == LineBatch?.BatchId).Sum(l => l.BaseUnits);
+                     + Lines.Where(l => l.ItemId == LineItem.Id && l.BatchId == LineBatch?.BatchId && l.CustomRecipeId == LineBatch?.RecipeId).Sum(l => l.BaseUnits);
         if (LineAvailable is decimal available && needed > available)
         {
-            var pending = Mode == SaleMode.Direct && Has(SpecialPermission.SellPendingProduction) && LineBatch?.BatchId is null;
+            var pending = Mode == SaleMode.Direct && Has(SpecialPermission.SellPendingProduction) && LineBatch?.BatchId is null && LineBatch?.RecipeId is null;
             var question = pending
                 ? $"الكمية المطلوبة ({needed:N0} قطعة) أكبر من المتاح ({available:N0}). يخرج المتاح، ويُسجَّل الفرق ({needed - available:N0}) بيعًا بانتظار الإنتاج يُسوّى تلقائيًا عند تسجيل الإنتاج. متابعة؟"
                 : $"الكمية المطلوبة ({needed:N0} قطعة) أكبر من المتاح ({available:N0}). سيُرفض الترحيل ما لم يتوفر الرصيد. إضافة السطر على أي حال؟";
@@ -539,7 +554,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         {
             ItemId = LineItem.Id, ItemCode = LineItem.ItemCode, ItemName = LineItem.ItemName,
             PackagingLevelId = LineLevel.Id, LevelName = LineLevel.LevelName, BaseUnitsPerLevel = LineLevel.EquivalentBaseUnits,
-            BatchId = LineBatch?.BatchId, BatchLabel = LineBatch?.BatchId is null ? "تلقائي (الأقرب انتهاءً)" : LineBatch.Label.Split(" — ")[0],
+            BatchId = LineBatch?.BatchId, CustomRecipeId = LineBatch?.RecipeId, BatchLabel = LineBatch?.ShortLabel ?? "تلقائي (الأقرب انتهاءً)",
             QuantityInLevel = LineQuantity
         };
         line.SetSuggestedPrice(LinePrice);
@@ -611,7 +626,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             foreach (var l in Lines)
             {
                 var r = await svc.AddLineAsync(InvoiceId!.Value,
-                    new SalesInvoiceLineInput(l.ItemId, l.PackagingLevelId, l.QuantityInLevel, l.UnitPrice, l.BatchId), Session.UserId);
+                    new SalesInvoiceLineInput(l.ItemId, l.PackagingLevelId, l.QuantityInLevel, l.UnitPrice, l.BatchId, l.CustomRecipeId), Session.UserId);
                 if (!r.Success) { Dialogs.Error($"{l.ItemName}: {r.ErrorMessage}"); return false; }
             }
             return true;
@@ -701,8 +716,10 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
                 {
                     ItemId = l.ItemId, ItemCode = l.Item.ItemCode, ItemName = l.Item.ItemName,
                     PackagingLevelId = l.PackagingLevelId, LevelName = l.PackagingLevel.LevelName,
-                    BaseUnitsPerLevel = l.PackagingLevel.EquivalentBaseUnits, BatchId = l.BatchId,
-                    BatchLabel = l.Batch?.BatchNumber ?? "تلقائي (الأقرب انتهاءً)", QuantityInLevel = l.QuantityInLevel
+                    BaseUnitsPerLevel = l.PackagingLevel.EquivalentBaseUnits, BatchId = l.BatchId, CustomRecipeId = l.CustomRecipeId,
+                    BatchLabel = l.Batch is { } b ? (b.CustomRecipe is null ? b.BatchNumber : $"{b.BatchNumber} ({b.CustomRecipe.Name})")
+                                 : l.CustomRecipe is { } cr ? $"تلقائي — {cr.Name}" : "تلقائي (الأقرب انتهاءً)",
+                    QuantityInLevel = l.QuantityInLevel
                 };
                 draft.SetSuggestedPrice(l.UnitPrice);
                 draft.IsManualPrice = true;   // سعر محفوظ: لا يُعاد تسعيره تلقائيًا

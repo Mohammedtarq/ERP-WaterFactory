@@ -58,6 +58,10 @@ public class ProductionOrderLine
     public decimal QuantityToProduce { get; set; }
     public int? OutputBatchId { get; set; }
     public ItemBatch? OutputBatch { get; set; }
+    /// <summary>إنتاج اليوم: وحدة التعبئة وعدد العبوات كما أُدخلت (34_batch_variants.sql).</summary>
+    public int? PackagingLevelId { get; set; }
+    public ItemPackagingLevel? PackagingLevel { get; set; }
+    public decimal? Packs { get; set; }
 }
 
 /// <summary>تفصيل الاستهلاك الفعلي لكل مادة أولية (BOM + الوصفة المخصصة مدموجَين).</summary>
