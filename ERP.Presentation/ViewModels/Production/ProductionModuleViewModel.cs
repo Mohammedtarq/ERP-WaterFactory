@@ -830,14 +830,17 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
         if (WizardProduct is null) { Dialogs.Error("اختر المنتج"); return; }
         var roles = WizardRoles.Select(r => new VariantRoleInput(r.Role, r.Choice is { Id: > 0 } i ? i.Id : null, r.CreateNew ? r.NewItemName : null)).ToList();
         await using var db = Session.NewDb();
+        // تُلتقط القيم قبل إعادة التحميل: تفريغ القوائم يصفّر اختيارات القوائم المنسدلة المرتبطة بها
         var name = WizardName.Trim();
+        var productId = WizardProduct.Id;
+        var customerId = WizardCustomer is { Id: > 0 } c ? c.Id : (int?)null;
         if (await RunOperationAsync(async () => (await new PackagingTemplateService(db).CreateVariantAsync(new NewVariantRequest(
-                WizardProduct.Id, WizardCustomer is { Id: > 0 } c ? c.Id : null, WizardName, roles))).result,
+                productId, customerId, name, roles))).result,
                 $"أُضيف المتغير «{name}» — يظهر الآن في إنتاج اليوم والبيع والتحميل"))
         {
             IsWizardOpen = false;
             await LoadAsync();
-            SelectedRecipe = Items.FirstOrDefault(r => r.Name == name && r.FinishedItemId == WizardProduct.Id);
+            SelectedRecipe = Items.FirstOrDefault(r => r.Name == name && r.FinishedItemId == productId);
         }
     }
 

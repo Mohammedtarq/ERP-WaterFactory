@@ -726,8 +726,13 @@ public class TutorialTests
                 recipes.WizardRoles.Single(r => r.Role == "لاصق").CreateNew = true;
                 if (customer == "مطعم الحسون") recipes.WizardRoles.Single(r => r.Role == "غطاء").CreateNew = true;
                 if (shot is not null) await Shot(shot, recipes);
+                step = $"إنشاء المتغير {name}";
                 await recipes.CreateVariantCommand.ExecuteAsync();
+                step = $"انتظار الشاشة بعد إنشاء {name}";
                 await recipes.IdleAsync();
+                lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
+                Assert.Contains(recipes.Items, r => r.Name == name);
+                step = $"بعد إنشاء {name}";
             }
             await Variant("مطعم الحسون", "مطعم الحسون", "01-متغير-جديد-لمطعم");
             await Shot("02-المتغير-جاهز-غطاء-وليبل-خاص", recipes);
@@ -845,7 +850,7 @@ public class TutorialTests
             main.Close();
         });
         // تعليق أي خطوة يظهر باسمها بدل انتظار مهلة CI كاملة
-        if (await Task.WhenAny(run, Task.Delay(TimeSpan.FromMinutes(5))) != run)
+        if (await Task.WhenAny(run, Task.Delay(TimeSpan.FromMinutes(3))) != run)
             Assert.Fail($"توقف دليل المتغيرات عند: {step} — أخطاء: {string.Join(" | ", dialogs.Errors)}");
         await run;
 
