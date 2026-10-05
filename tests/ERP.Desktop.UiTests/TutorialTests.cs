@@ -470,6 +470,184 @@ public class TutorialTests
     }
 
     /// <summary>
+    /// الدليل المصوَّر للوصفات المخصصة بمثالين:
+    /// 1) عميل: «مطعم الحسون» يريد ماء 500 مل بلاصق باسمه ← لاصقه يحل محل اللاصق العام.
+    /// 2) مناسبة: «ملصق رمضان» بلا عميل ← يحل محل اللاصق العام، ويُضاف شريط ذهبي على الغطاء (مكوّن إضافي).
+    /// ثم إنتاج اليوم بكل وصفة، وأرصدة مخزن المواد بعده. صورة بعد كل خطوة في مجلد tutorial-recipes.
+    /// </summary>
+    [Fact]
+    public async Task Illustrated_guide_custom_recipes()
+    {
+        var server = Environment.GetEnvironmentVariable("ERP_UI_SQL_CONNECTION");
+        if (server is null) { _out.WriteLine("ERP_UI_SQL_CONNECTION غير معيّن — تخطي"); return; }
+        const string recDir = "tutorial-recipes";
+
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var controlCs = new SqlConnectionStringBuilder(server) { InitialCatalog = $"ERP_TutRcCtl_{suffix}" }.ConnectionString;
+        var install = await new ProvisioningService().InstallAsync(new InstallRequest(
+            controlCs, "مصنع مياه البصرة", $"ERP_TutRcPrj_{suffix}", "المدير العام", "admin", "Admin@123", DemoData: true));
+        Assert.True(install.Success, install.ErrorMessage);
+        await using (var db = new ERP.Data.ProjectDb.ProjectDbContext(new DbContextOptionsBuilder<ERP.Data.ProjectDb.ProjectDbContext>()
+                         .UseSqlServer(install.ProjectConnectionString).Options))
+        {
+            db.Customers.Add(new Customer { Name = "مطعم الحسون", CustomerType = CustomerType.Direct, Province = "البصرة" });
+            await db.SaveChangesAsync();
+        }
+
+        var dialogs = new TutorialDialogs();
+        var shots = new List<string>();
+        await UiThread.RunAsync(async () =>
+        {
+            var nav = new CapturingNavigator();
+            var login = new LoginViewModel(new AuthService(controlCs), dialogs, nav) { Username = "admin" };
+            await login.LoginCommand.ExecuteAsync("Admin@123");
+            Assert.Null(login.ErrorMessage);
+            await nav.ProjectSelection!.OpenCommand.ExecuteAsync(null);
+            var shell = nav.Shell!;
+            var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1440, Height = 900,
+                                        Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual, WindowState = WindowState.Normal };
+            main.Show();
+
+            async Task Shot(string name, ViewModelBase? busy = null)
+            {
+                if (busy is not null) await busy.IdleAsync();
+                await UiThread.SettleAsync();
+                RefreshBindings(main);
+                await UiThread.SettleAsync();
+                Assert.True(dialogs.Errors.Count == 0, $"قبل الصورة {name}: " + string.Join(" | ", dialogs.Errors));
+                shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{recDir}/{name}.png"));
+            }
+            async Task Open(ModuleViewModel module, SectionViewModel section)
+            {
+                module.SelectedTab = section;
+                await module.LastActivation;
+                await section.IdleAsync();
+                await UiThread.SettleAsync();
+            }
+
+            // ---------- التحضير: المواد الخاصة أصناف مخزنية تُشترى وتدخل مخزن المواد ----------
+            var wh = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
+            await wh.IdleAsync();
+            var items = wh.Section<ItemsSectionViewModel>();
+            await Open(wh, items);
+            async Task NewItem(string code, string name, string? shot)
+            {
+                await items.NewCommand.ExecuteAsync();
+                items.Editor!.ItemCode = code;
+                items.Editor.ItemName = name;
+                items.Editor.SourcingMethod = SourcingMethod.Purchased;
+                if (shot is not null) await Shot(shot, items);
+                await items.SaveCommand.ExecuteAsync();
+                await items.IdleAsync();
+            }
+            await NewItem("RM-LBL-HSN", "لاصق مطعم الحسون 500 مل", "01-اللاصق-الخاص-صنف-مخزني");
+            await NewItem("RM-LBL-RMD", "ملصق رمضان 500 مل", null);
+            await NewItem("RM-GLD", "شريط ذهبي للغطاء", null);
+
+            var raw = wh.Workspaces.First(w => w.WarehouseType == WarehouseType.RawMaterial);
+            await Open(wh, raw);
+            raw.Operation = raw.OperationOptions.Single(o => o.Value == StockDocumentType.Receipt);
+            raw.PartyName = "مطبعة الفيحاء — فاتورة 912";
+            async Task Line(string code, decimal qty, string batch)
+            {
+                raw.LineItem = raw.ItemsLookup.Single(i => i.ItemCode == code);
+                await raw.IdleAsync();
+                raw.LineQuantity = qty;
+                raw.LineNewBatch = batch;
+                raw.LineExpiry = DateTime.Today.AddYears(2);
+                await raw.AddLineCommand.ExecuteAsync();
+            }
+            await Line("RM-LBL-HSN", 2000, "HSN-01");
+            await Line("RM-LBL-RMD", 3000, "RMD-01");
+            await Line("RM-GLD", 3000, "GLD-01");
+            await Shot("02-استلام-المواد-الخاصة", raw);
+            await raw.SaveCommand.ExecuteAsync();
+
+            // ---------- المثال الأول: وصفة عميل ----------
+            var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
+            await prod.IdleAsync();
+            var recipes = prod.Section<CustomRecipesSectionViewModel>();
+            await Open(prod, recipes);
+            await Shot("03-الوصفات-المخصصة", recipes);
+
+            await recipes.NewCommand.ExecuteAsync();
+            recipes.Editor!.Name = "وصفة مطعم الحسون";
+            recipes.Editor.FinishedItemId = recipes.FinishedItems.Single(i => i.ItemCode == "W-500").Id;
+            recipes.Editor.CustomerId = recipes.Customers.Single(c => c.Name == "مطعم الحسون").Id;
+            await Shot("04-وصفة-جديدة-لعميل", recipes);
+            await recipes.SaveCommand.ExecuteAsync();
+            await recipes.IdleAsync();
+
+            Item Raw(string code) => recipes.RawItems.Single(i => i.ItemCode == code);
+            recipes.SelectedRecipe = recipes.Items.Single(r => r.Name == "وصفة مطعم الحسون");
+            await recipes.IdleAsync();
+            recipes.NewComponent = Raw("RM-LBL-HSN");
+            recipes.NewLabel = "لاصق أمامي";
+            recipes.NewQuantity = 1;
+            recipes.NewReplaces = Raw("RM-LBL");
+            await Shot("05-اللاصق-الخاص-يحل-محل-العام", recipes);
+            await recipes.AddLineCommand.ExecuteAsync();
+            await Shot("06-وصفة-العميل-جاهزة", recipes);
+
+            // ---------- المثال الثاني: ملصق مناسبة بلا عميل + مكوّن إضافي ----------
+            await recipes.NewCommand.ExecuteAsync();
+            recipes.Editor!.Name = "ملصق رمضان";
+            recipes.Editor.FinishedItemId = recipes.FinishedItems.Single(i => i.ItemCode == "W-500").Id;
+            await recipes.SaveCommand.ExecuteAsync();
+            await recipes.IdleAsync();
+            recipes.SelectedRecipe = recipes.Items.Single(r => r.Name == "ملصق رمضان");
+            await recipes.IdleAsync();
+            recipes.NewComponent = Raw("RM-LBL-RMD");
+            recipes.NewLabel = "لاصق أمامي";
+            recipes.NewQuantity = 1;
+            recipes.NewReplaces = Raw("RM-LBL");
+            await recipes.AddLineCommand.ExecuteAsync();
+            recipes.NewComponent = Raw("RM-GLD");
+            recipes.NewLabel = "شريط ذهبي على الغطاء";
+            recipes.NewQuantity = 1;
+            recipes.NewReplaces = null;
+            await Shot("07-مكوّن-إضافي-بلا-استبدال", recipes);
+            await recipes.AddLineCommand.ExecuteAsync();
+            await Shot("08-ملصق-المناسبة-جاهز", recipes);
+
+            // ---------- الإنتاج بكل وصفة ----------
+            var daily = prod.Daily;
+            await Open(prod, daily);
+            var l1 = daily.Lines[0];
+            l1.Product = daily.Products.Single(i => i.ItemCode == "W-500");
+            l1.Level = l1.Levels.Single(l => l.LevelName == "كارتون");
+            l1.Recipe = l1.Recipes.Single(r => r.Name == "وصفة مطعم الحسون");
+            l1.Packs = 10;
+            await Shot("09-إنتاج-اليوم-بوصفة-العميل", daily);
+            await daily.SaveCommand.ExecuteAsync();
+            await Shot("10-بعد-الإنتاج-التشغيلة-باسم-الوصفة", daily);
+
+            var l2 = daily.Lines[0];
+            l2.Product = daily.Products.Single(i => i.ItemCode == "W-500");
+            l2.Level = l2.Levels.Single(l => l.LevelName == "كارتون");
+            l2.Recipe = l2.Recipes.Single(r => r.Name == "ملصق رمضان");
+            l2.Packs = 20;
+            await daily.SaveCommand.ExecuteAsync();
+            await Shot("11-إنتاج-ملصق-رمضان", daily);
+
+            shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
+            await Open(wh, raw);
+            SelectInnerTab(main, "الأرصدة الحالية");
+            await Shot("12-أرصدة-المواد-بعد-الإنتاج", raw);
+            Assert.Contains(raw.Balances, b => b.ItemCode == "RM-LBL-HSN" && b.Quantity == 2000 - 120);
+            Assert.Contains(raw.Balances, b => b.ItemCode == "RM-LBL-RMD" && b.Quantity == 3000 - 240);
+            Assert.Contains(raw.Balances, b => b.ItemCode == "RM-GLD" && b.Quantity == 3000 - 240);
+
+            main.Close();
+        });
+
+        _out.WriteLine($"دليل الوصفات المخصصة: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, recDir)}");
+        Assert.Equal(12, shots.Count);
+        Assert.Empty(dialogs.Errors);
+        lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
+    }
+
+    /// <summary>
     /// نماذج التحرير مرتبطة بالكيان نفسه (بلا إشعار تغيير)، فما يكتبه المستخدم يصل للكيان مباشرة،
     /// أما ما يضبطه الاختبار برمجيًا فلا يظهر في الحقول. نعيد قراءة كل الربطات قبل التصوير لتطابق الصورة ما سيُحفَظ.
     /// </summary>
