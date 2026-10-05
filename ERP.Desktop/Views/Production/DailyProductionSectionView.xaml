@@ -11,10 +11,11 @@
         <m:BindingProxy x:Key="Proxy" Data="{Binding}"/>
     </UserControl.Resources>
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="380"/>
-        </Grid.ColumnDefinitions>
+        <!-- السطور بعرض الشاشة كاملًا، وآخر تسجيل واحتياج المواد تحتها -->
+        <Grid.RowDefinitions>
+            <RowDefinition Height="1.5*"/>
+            <RowDefinition Height="*" MinHeight="200"/>
+        </Grid.RowDefinitions>
         <Border Style="{StaticResource Card}">
             <DockPanel>
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
@@ -56,8 +57,8 @@
                 </StackPanel>
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="1.2*"/>
-                        <ColumnDefinition Width="90"/><ColumnDefinition Width="100"/><ColumnDefinition Width="90"/><ColumnDefinition Width="36"/>
+                        <ColumnDefinition Width="2*" MinWidth="140"/><ColumnDefinition Width="1.6*" MinWidth="130"/><ColumnDefinition Width="1*" MinWidth="80"/>
+                        <ColumnDefinition Width="70"/><ColumnDefinition Width="80"/><ColumnDefinition Width="60"/><ColumnDefinition Width="36"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="المنتج" Style="{StaticResource FieldLabel}"/>
                     <TextBlock Grid.Column="1" Text="المتغير (الاسم الخاص)" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
@@ -72,8 +73,8 @@
                             <DataTemplate>
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.6*"/><ColumnDefinition Width="1.2*"/>
-                                        <ColumnDefinition Width="90"/><ColumnDefinition Width="100"/><ColumnDefinition Width="90"/><ColumnDefinition Width="36"/>
+                                        <ColumnDefinition Width="2*" MinWidth="140"/><ColumnDefinition Width="1.6*" MinWidth="130"/><ColumnDefinition Width="1*" MinWidth="80"/>
+                                        <ColumnDefinition Width="70"/><ColumnDefinition Width="80"/><ColumnDefinition Width="60"/><ColumnDefinition Width="36"/>
                                     </Grid.ColumnDefinitions>
                                     <ComboBox ItemsSource="{Binding DataContext.Products, ElementName=Root}" SelectedItem="{Binding Product}" DisplayMemberPath="ItemName" IsTextSearchEnabled="True"/>
                                     <ComboBox Grid.Column="1" ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name" Margin="6,0,0,0" ToolTip="الأساسي = الليبل العام؛ الاسم الخاص يستبدل الغطاء والليبل وتُحجز تشغيلته لصاحبه"/>
@@ -90,43 +91,51 @@
                 </ScrollViewer>
             </DockPanel>
         </Border>
-        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <TextBlock Text="آخر تسجيل" Style="{StaticResource SectionTitle}"/>
-                <DataGrid Grid.Row="1" ItemsSource="{Binding LastResult}">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="المنتج" Binding="{Binding ItemName}" Width="*"/>
-                        <DataGridTextColumn Header="المتغير" Binding="{Binding RecipeName, TargetNullValue='أساسي'}" Width="*"/>
-                        <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="100"/>
-                        <DataGridTextColumn Header="القطع" Binding="{Binding Pieces, StringFormat=N0}" Width="60"/>
-                        <DataGridTextColumn Header="كلفة القطعة" Binding="{Binding UnitCost, StringFormat=N2}" Width="70"
-                                            Visibility="{Binding Data.CanSeeCost, Source={StaticResource Proxy}, Converter={StaticResource BoolToVisibility}}"/>
-                    </DataGrid.Columns>
-                </DataGrid>
-                <TextBlock Grid.Row="2" Text="احتياج المواد" Style="{StaticResource SectionTitle}" Margin="0,12,0,6"/>
-                <DataGrid Grid.Row="3" ItemsSource="{Binding Needs}">
-                    <DataGrid.RowStyle>
-                        <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsShort}" Value="True">
-                                    <Setter Property="Foreground" Value="#DC2626"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGrid.RowStyle>
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="المادة" Binding="{Binding ItemName}" Width="*"/>
-                        <DataGridTextColumn Header="المطلوب" Binding="{Binding Required, StringFormat=N0}" Width="70"/>
-                        <DataGridTextColumn Header="المتاح" Binding="{Binding Available, StringFormat=N0}" Width="70"/>
-                        <DataGridTextColumn Header="ينقص" Binding="{Binding Short, StringFormat=N0}" Width="60"/>
-                    </DataGrid.Columns>
-                </DataGrid>
-                <TextBlock Grid.Row="4" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
-                           Text="المنتج نفسه يتكرر بوحدات وأسماء مختلفة في أمر واحد. كل سطر تشغيلة مستقلة بكلفته؛ وتشغيلة الاسم الخاص محجوزة لصاحبها في البيع والتحميل، والمناسبات تُباع لمن يطلبها بالاسم."/>
-            </Grid>
-        </Border>
+        <Grid Grid.Row="1" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Border Style="{StaticResource Card}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="آخر تسجيل" Style="{StaticResource SectionTitle}"/>
+                    <DataGrid ItemsSource="{Binding LastResult}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="المنتج" Binding="{Binding ItemName}" Width="*"/>
+                            <DataGridTextColumn Header="المتغير" Binding="{Binding RecipeName, TargetNullValue='أساسي'}" Width="*"/>
+                            <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="110"/>
+                            <DataGridTextColumn Header="العبوات" Binding="{Binding Packs, StringFormat=N0}" Width="60"/>
+                            <DataGridTextColumn Header="القطع" Binding="{Binding Pieces, StringFormat=N0}" Width="60"/>
+                            <DataGridTextColumn Header="كلفة القطعة" Binding="{Binding UnitCost, StringFormat=N2}" Width="80"
+                                                Visibility="{Binding Data.CanSeeCost, Source={StaticResource Proxy}, Converter={StaticResource BoolToVisibility}}"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+            <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="احتياج المواد" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="المنتج نفسه يتكرر بوحدات وأسماء مختلفة في أمر واحد. كل سطر تشغيلة مستقلة بكلفته؛ وتشغيلة الاسم الخاص محجوزة لصاحبها في البيع والتحميل، والمناسبات تُباع لمن يطلبها بالاسم."/>
+                    <DataGrid ItemsSource="{Binding Needs}">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsShort}" Value="True">
+                                        <Setter Property="Foreground" Value="#DC2626"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="المادة" Binding="{Binding ItemName}" Width="*"/>
+                            <DataGridTextColumn Header="المطلوب" Binding="{Binding Required, StringFormat=N0}" Width="80"/>
+                            <DataGridTextColumn Header="المتاح" Binding="{Binding Available, StringFormat=N0}" Width="80"/>
+                            <DataGridTextColumn Header="ينقص" Binding="{Binding Short, StringFormat=N0}" Width="70"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>
