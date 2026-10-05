@@ -564,6 +564,7 @@ public class PackingSectionViewModel : SectionViewModel
     private ItemPackagingLevel? _level;
     private decimal _units;
     private Data.ProjectDb.Entities.Warehouse? _warehouse;
+    private int _levelsLoad;
 
     public PackingSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Production, "أوامر التعبئة", Icons.Layers, "#0EA5E9", "تحويل الناتج المعتمد إلى كراتين/شرنك في مخزن المنتج التام")
@@ -579,10 +580,25 @@ public class PackingSectionViewModel : SectionViewModel
     public ObservableCollection<PackingRow> History { get; } = new();
 
     public ProductionLineRow? Order { get => _order; set { if (SetProperty(ref _order, value)) { OnPropertyChanged(nameof(RemainingText)); Background(LoadLevelsAsync()); } } }
-    public ItemPackagingLevel? Level { get => _level; set { if (SetProperty(ref _level, value)) OnPropertyChanged(nameof(PiecesText)); } }
+    public ItemPackagingLevel? Level
+    {
+        get => _level;
+        set
+        {
+            if (!SetProperty(ref _level, value)) return;
+            OnPropertyChanged(nameof(PiecesText));
+            OnPropertyChanged(nameof(RemainingText));
+            Units = DefaultUnits();
+        }
+    }
     public decimal Units { get => _units; set { if (SetProperty(ref _units, value)) OnPropertyChanged(nameof(PiecesText)); } }
+    private decimal RemainingPieces => Order is null ? 0 : Order.QuantityToProduce - Order.PackedQuantity;
+    /// <summary>الافتراضي: كل المتبقي بالوحدة المختارة (العدد الصحيح منها).</summary>
+    private decimal DefaultUnits() => Level is { EquivalentBaseUnits: > 0 } l ? Math.Floor(RemainingPieces / l.EquivalentBaseUnits) : 0;
     public Data.ProjectDb.Entities.Warehouse? Warehouse { get => _warehouse; set => SetProperty(ref _warehouse, value); }
-    public string RemainingText => Order is null ? "" : $"المطلوب {Order.QuantityToProduce:N0} — المعبّأ {Order.PackedQuantity:N0} — المتبقي {Order.QuantityToProduce - Order.PackedQuantity:N0} قطعة";
+    public string RemainingText => Order is null ? "" : $"المطلوب {Order.QuantityToProduce:N0} — المعبّأ {Order.PackedQuantity:N0} — المتبقي {RemainingPieces:N0} قطعة"
+        + (Level is { EquivalentBaseUnits: > 1 } l ? $" (= {Math.Floor(RemainingPieces / l.EquivalentBaseUnits):N0} {l.LevelName}"
+           + (RemainingPieces % l.EquivalentBaseUnits is var rest and > 0 ? $" + {rest:N0} قطعة)" : ")") : "");
     public string PiecesText => Level is null ? "" : $"= {Units * Level.EquivalentBaseUnits:N0} قطعة";
     public AsyncRelayCommand PackCommand { get; }
     public AsyncRelayCommand PrintCommand { get; }
@@ -617,21 +633,39 @@ public class PackingSectionViewModel : SectionViewModel
         foreach (var r in rows) History.Add(r);
     }
 
+    /// <summary>
+    /// قد يُطلب التحميل مرتين متزامنتين (فتح الشاشة + إعادة تعبئة قائمة الأوامر)؛ يُعتمد آخر طلب فقط حتى لا تعرض القائمة
+    /// وحدة («قطعة») بينما الحساب يجري بوحدة أخرى («شرنك»). ويُحتفظ باختيار المستخدم إن بقي متاحًا.
+    /// </summary>
     private async Task LoadLevelsAsync()
     {
+        var token = ++_levelsLoad;
+        var keepId = Level?.Id;
+        var itemId = Order?.FinishedItemId;
+        List<ItemPackagingLevel> levels = new();
+        if (itemId is not null)
+        {
+            await using var db = Session.NewDb();
+            levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == itemId).OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync();
+        }
+        if (token != _levelsLoad) return;           // طلب أحدث سيتولى التعبئة
         Levels.Clear();
-        if (Order is null) return;
-        await using var db = Session.NewDb();
-        var itemId = Order.FinishedItemId;
-        foreach (var l in await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == itemId).OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync())
-            Levels.Add(l);
-        Level = Levels.FirstOrDefault();
+        foreach (var l in levels) Levels.Add(l);
+        _level = null;
+        Level = Levels.FirstOrDefault(l => l.Id == keepId) ?? Levels.FirstOrDefault();
     }
 
     private async Task PackAsync()
     {
         if (!Require(CanAdd || CanEdit, "التعبئة")) return;
         if (Order is null || Level is null || Warehouse is null) { Dialogs.Error("اختر الأمر ووحدة التعبئة والمخزن"); return; }
+        if (Units <= 0) { Dialogs.Error("عدد الوحدات يجب أن يكون أكبر من صفر"); return; }
+        if (Units * Level.EquivalentBaseUnits > RemainingPieces)
+        {
+            Dialogs.Error($"{Units:N0} {Level.LevelName} = {Units * Level.EquivalentBaseUnits:N0} قطعة، والمتبقي من الأمر {RemainingPieces:N0} قطعة فقط"
+                          + (Level.EquivalentBaseUnits > 1 ? $" (أي {Math.Floor(RemainingPieces / Level.EquivalentBaseUnits):N0} {Level.LevelName} كحد أقصى)." : "."));
+            return;
+        }
         await using var db = Session.NewDb();
         if (await RunOperationAsync(() => new ProductionService(db).PackAsync(Order.OrderId, Level.Id, Units, Warehouse.Id, Session.UserId),
                                     $"تمت تعبئة {Units:N0} {Level.LevelName} ودخولها {Warehouse.Name}"))

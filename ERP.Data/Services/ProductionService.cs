@@ -465,7 +465,7 @@ public class ProductionService
         var pieces = units * level.EquivalentBaseUnits;
         var packed = await PackedLineQuantityAsync(line.Id);
         if (packed + pieces > line.QuantityToProduce)
-            return FinanceOperationResult.Fail($"التعبئة تتجاوز كمية الأمر: المتبقي {line.QuantityToProduce - packed:N0} قطعة فقط");
+            return FinanceOperationResult.Fail($"التعبئة ({units:N0} {level.LevelName} = {pieces:N0} قطعة) تتجاوز كمية الأمر: المتبقي {line.QuantityToProduce - packed:N0} قطعة فقط");
 
         var consumeError = await ConsumeForProducedAsync(order, line, pieces, userId);
         if (consumeError is not null) return FinanceOperationResult.Fail(consumeError);

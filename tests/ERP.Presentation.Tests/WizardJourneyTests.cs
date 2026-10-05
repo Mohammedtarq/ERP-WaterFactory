@@ -287,6 +287,18 @@ public class WizardJourneyTests : IAsyncLifetime
         var packing = prod.Packing;
         await Open(prod, packing);
         Assert.Equal(order.Id, packing.Order!.OrderId);
+        // تحميلان متزامنان (كما عند فتح الشاشة) لا يتركان القائمة على وحدة والحساب على أخرى
+        await Task.WhenAll(packing.LoadAsync(), packing.LoadAsync());
+        await packing.IdleAsync();
+        Assert.Contains(packing.Level!, packing.Levels);
+        Assert.Equal(packing.Levels.Count, packing.Levels.Select(l => l.Id).Distinct().Count());
+        Assert.Equal("كارتون", packing.Level!.LevelName);                  // الأكبر أولًا
+        Assert.Equal(20m, packing.Units);                                 // افتراضيًا كل المتبقي: 240 ÷ 12
+        Assert.Contains("= 20 كارتون", packing.RemainingText);
+        packing.Units = 25;
+        await packing.PackCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("20 كارتون كحد أقصى"));
+        dialogs.Errors.Clear();
         packing.Level = packing.Levels.Single(l => l.LevelName == "كارتون");
         packing.Units = 20;
         await packing.PackCommand.ExecuteAsync();
