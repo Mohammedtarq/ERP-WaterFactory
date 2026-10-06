@@ -39,5 +39,7 @@ public class PayrollLine
     public decimal LoanDeduction { get; set; }
     public decimal WithdrawalDeduction { get; set; }
     public decimal PenaltyDeduction { get; set; }
+    public decimal SocialSecurityDeduction { get; set; }
+    public decimal SocialSolidarityDeduction { get; set; }
     public decimal NetSalary { get; set; }
 }

@@ -248,6 +248,8 @@ public class PayrollRow
     public decimal LoanDeduction { get; init; }
     public decimal WithdrawalDeduction { get; init; }
     public decimal PenaltyDeduction { get; init; }
+    public decimal SocialSecurity { get; init; }
+    public decimal SocialSolidarity { get; init; }
     public decimal NetSalary { get; init; }
 }
 
@@ -295,7 +297,8 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
                 EmployeeName = l.Employee.FullName, Currency = l.Currency, BaseSalary = l.BaseSalary, Allowances = l.Allowances,
                 AbsenceDeduction = l.AbsenceDeduction, RepIncentive = l.RepIncentiveAmount, ManagerIncentive = l.SalesManagerIncentiveAmount,
                 MonthlyIncentive = l.MonthlyIncentiveAmount, LoanDeduction = l.LoanDeduction, WithdrawalDeduction = l.WithdrawalDeduction,
-                PenaltyDeduction = l.PenaltyDeduction, NetSalary = l.NetSalary
+                PenaltyDeduction = l.PenaltyDeduction, SocialSecurity = l.SocialSecurityDeduction, SocialSolidarity = l.SocialSolidarityDeduction,
+                NetSalary = l.NetSalary
             });
         Summary = await new HrService(db).SummarizeAsync(run.Id);
     }
@@ -405,6 +408,9 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
         : e.BaseSalary < 0 ? "الراتب لا يمكن أن يكون سالبًا"
         : e.IsTemporary && e.DailyWage is null or <= 0 ? "العامل الوقتي يحتاج أجرًا يوميًا"
         : e.IsTemporary && (e.IsSalesRep || e.IsSalesManager) ? "العامل الوقتي لا يكون مندوبًا أو مدير مبيعات"
+        : e.HasSocialSecurity && e.SocialSecurityAmount is null or <= 0 ? "فعّلت الضمان الاجتماعي: أدخل مبلغه الشهري"
+        : e.HasSocialSolidarity && e.SocialSolidarityAmount is null or <= 0 ? "فعّلت التكافل الاجتماعي: أدخل مبلغه الشهري"
+        : (e.HasSocialSecurity || e.HasSocialSolidarity) && e.IsTemporary ? "العامل الوقتي لا تُستقطع منه رواتب شهرية (ضمان أو تكافل)"
         : null;
 
     protected override async Task BeforeSaveAsync(ProjectDbContext db, Employee e)

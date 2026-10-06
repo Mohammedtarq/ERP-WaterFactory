@@ -320,12 +320,13 @@ public static class DocumentReports
         var r = New(s, $"كشف رواتب {run.PeriodMonth:00}/{run.PeriodYear}", run.Status == PayrollRunStatus.Draft ? "مسودة — غير معتمد" : null);
         r.Field("الشهر", $"{run.PeriodMonth:00}/{run.PeriodYear}").Field("الحالة", ArabicLabels.Of(run.Status)).Field("اعتمده", run.ApprovedByUser?.Username)
          .Field("عدد الموظفين", run.Lines.Count.ToString());
-        r.Columns.AddRange(new[] { "#", "الموظف", "العملة", "الأساسي", "خصم الغياب", "مخصصات", "حوافز", "قسط السلفة", "المسحوبات", "العقوبات", "الصافي", "التوقيع" });
+        r.Columns.AddRange(new[] { "#", "الموظف", "العملة", "الأساسي", "خصم الغياب", "مخصصات", "حوافز", "قسط السلفة", "المسحوبات", "العقوبات", "الضمان", "التكافل", "الصافي", "التوقيع" });
         var i = 0;
         foreach (var l in run.Lines.OrderBy(l => l.Employee.FullName))
             r.Rows.Add(new[] { (++i).ToString(), l.Employee.FullName, l.Currency, N(l.BaseSalary), N(l.AbsenceDeduction), N(l.Allowances),
                                N(l.MonthlyIncentiveAmount + l.RepIncentiveAmount + l.SalesManagerIncentiveAmount),
-                               N(l.LoanDeduction), N(l.WithdrawalDeduction), N(l.PenaltyDeduction), N(l.NetSalary), "" });
+                               N(l.LoanDeduction), N(l.WithdrawalDeduction), N(l.PenaltyDeduction), N(l.SocialSecurityDeduction), N(l.SocialSolidarityDeduction),
+                               N(l.NetSalary), "" });
         foreach (var g in run.Lines.GroupBy(l => l.Currency))
             r.Total($"صافي الرواتب ({g.Key})", N(g.Sum(l => l.NetSalary)), g.Key == "IQD");
         r.Signatures.AddRange(new[] { "مسؤول الموارد البشرية", "المحاسب", "المدير" });

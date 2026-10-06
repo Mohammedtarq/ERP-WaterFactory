@@ -64,6 +64,8 @@
                     <DataGridTextColumn Header="قسط السلفة" Binding="{Binding LoanDeduction, StringFormat=N0}" Width="95"/>
                     <DataGridTextColumn Header="المسحوبات" Binding="{Binding WithdrawalDeduction, StringFormat=N0}" Width="95"/>
                     <DataGridTextColumn Header="العقوبات" Binding="{Binding PenaltyDeduction, StringFormat=N0}" Width="85"/>
+                    <DataGridTextColumn Header="الضمان الاجتماعي" Binding="{Binding SocialSecurity, StringFormat=N0}" Width="110"/>
+                    <DataGridTextColumn Header="التكافل الاجتماعي" Binding="{Binding SocialSolidarity, StringFormat=N0}" Width="110"/>
                     <DataGridTextColumn Header="الصافي" Binding="{Binding NetSalary, StringFormat=N2}" Width="120"/>
                 </DataGrid.Columns>
             </DataGrid>

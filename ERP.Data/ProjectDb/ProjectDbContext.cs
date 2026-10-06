@@ -142,6 +142,10 @@ public partial class ProjectDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Employee>().Property(e => e.SocialSecurityAmount).HasPrecision(18, 2);
+        modelBuilder.Entity<Employee>().Property(e => e.SocialSolidarityAmount).HasPrecision(18, 2);
+        modelBuilder.Entity<PayrollLine>().Property(l => l.SocialSecurityDeduction).HasPrecision(18, 2);
+        modelBuilder.Entity<PayrollLine>().Property(l => l.SocialSolidarityDeduction).HasPrecision(18, 2);
         modelBuilder.Entity<Employee>()
             .Property(e => e.SalaryCurrency)
             .HasConversion<string>()

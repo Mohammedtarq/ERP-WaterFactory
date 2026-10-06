@@ -34,4 +34,11 @@ public class Employee
 
     /// <summary>رقم الموظف في جهاز البصمة (ZKTeco) لربط ملف الحضور ببطاقته (33_fingerprint.sql).</summary>
     public string? FingerprintCode { get; set; }
+
+    /// <summary>ضمان اجتماعي: مبلغ ثابت (بعملة الراتب) يُستقطع شهريًا عند التفعيل (35_social_security.sql).</summary>
+    public bool HasSocialSecurity { get; set; }
+    public decimal? SocialSecurityAmount { get; set; }
+    /// <summary>تكافل اجتماعي: مبلغ ثابت يُستقطع شهريًا عند التفعيل.</summary>
+    public bool HasSocialSolidarity { get; set; }
+    public decimal? SocialSolidarityAmount { get; set; }
 }

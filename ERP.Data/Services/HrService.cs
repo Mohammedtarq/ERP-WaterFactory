@@ -18,6 +18,9 @@ public static class HrRules
 
     /// <summary>قاعدة الربط المحاسبي لقيد الرواتب: مدين مصروف الرواتب / دائن رواتب مستحقة.</summary>
     public const string PayrollMappingRule = "PayrollAccrual";
+    /// <summary>المستقطع من الرواتب للضمان والتكافل: الدائن حساب المستحق للجهة.</summary>
+    public const string SocialSecurityRule = "PayrollSocialSecurity";
+    public const string SocialSolidarityRule = "PayrollSocialSolidarity";
 
     public const string Iqd = "IQD";
 
@@ -302,6 +305,9 @@ public class HrService
             var loan = Ded(EmployeeDeductionKind.Loan);
             var withdrawal = Ded(EmployeeDeductionKind.Withdrawal);
             var penalty = Ded(EmployeeDeductionKind.Penalty);
+            // مبالغ ثابتة بعملة الراتب من بطاقة الموظف
+            var social = e.HasSocialSecurity ? e.SocialSecurityAmount ?? 0 : 0;
+            var solidarity = e.HasSocialSolidarity ? e.SocialSolidarityAmount ?? 0 : 0;
 
             run.Lines.Add(new PayrollLine
             {
@@ -316,7 +322,9 @@ public class HrService
                 LoanDeduction = loan,
                 WithdrawalDeduction = withdrawal,
                 PenaltyDeduction = penalty,
-                NetSalary = baseSalary + allowances + rep + manager + monthly - deduction - loan - withdrawal - penalty
+                SocialSecurityDeduction = social,
+                SocialSolidarityDeduction = solidarity,
+                NetSalary = baseSalary + allowances + rep + manager + monthly - deduction - loan - withdrawal - penalty - social - solidarity
             });
         }
         foreach (var (d, amount) in deductionPlan)
@@ -380,6 +388,18 @@ public class HrService
         if (summary.TotalNetUsd != 0 && summary.UsdRate is null)
             return (FinanceOperationResult.Fail("لا يوجد سعر صرف للدولار لتحويل رواتب الدولار في القيد"), null);
 
+        // الضمان والتكافل بالدينار (سطور الدولار بسعر الصرف نفسه)، ولكلٍّ حساب مستحق
+        decimal Iqd(Func<PayrollLine, decimal> pick) => Math.Round(run.Lines.Sum(l => l.Currency == HrRules.Usd ? pick(l) * (summary.UsdRate ?? 0) : pick(l)), 2);
+        var socialIqd = Iqd(l => l.SocialSecurityDeduction);
+        var solidarityIqd = Iqd(l => l.SocialSolidarityDeduction);
+        async Task<int?> CreditOf(string type) => (await _db.AccountMappingRules.FirstOrDefaultAsync(r => r.TransactionType == type))?.CreditAccountId;
+        var socialAccount = socialIqd > 0 ? await CreditOf(HrRules.SocialSecurityRule) : null;
+        var solidarityAccount = solidarityIqd > 0 ? await CreditOf(HrRules.SocialSolidarityRule) : null;
+        if (socialIqd > 0 && socialAccount is null)
+            return (FinanceOperationResult.Fail($"قاعدة الربط المحاسبي \"{HrRules.SocialSecurityRule}\" (الضمان الاجتماعي المستحق) غير معرّفة. أضفها من المالية ← العقل المالي."), null);
+        if (solidarityIqd > 0 && solidarityAccount is null)
+            return (FinanceOperationResult.Fail($"قاعدة الربط المحاسبي \"{HrRules.SocialSolidarityRule}\" (التكافل الاجتماعي المستحق) غير معرّفة. أضفها من المالية ← العقل المالي."), null);
+
         var entry = new JournalEntry
         {
             EntryNumber = $"PR-{run.PeriodYear}-{run.PeriodMonth:D2}",
@@ -393,10 +413,14 @@ public class HrService
             SourceId = run.Id
         };
         // المصروف = الصافي + ما استُقطع من سلف ومسحوبات (صُرفت سابقًا نقدًا)؛ العقوبة تُنقص المصروف نفسه
-        entry.Lines.Add(new JournalEntryLine { AccountId = rule.DebitAccountId, Debit = summary.TotalInIqd + advancesIqd, Description = "مصروف الرواتب والحوافز" });
+        entry.Lines.Add(new JournalEntryLine { AccountId = rule.DebitAccountId, Debit = summary.TotalInIqd + advancesIqd + socialIqd + solidarityIqd, Description = "مصروف الرواتب والحوافز" });
         entry.Lines.Add(new JournalEntryLine { AccountId = rule.CreditAccountId, Credit = summary.TotalInIqd, Description = "رواتب مستحقة الدفع" });
         if (advancesIqd > 0)
             entry.Lines.Add(new JournalEntryLine { AccountId = advancesAccountId, Credit = advancesIqd, Description = "استقطاع سلف ومسحوبات الموظفين" });
+        if (socialIqd > 0)
+            entry.Lines.Add(new JournalEntryLine { AccountId = socialAccount!.Value, Credit = socialIqd, Description = "الضمان الاجتماعي المستقطع من الرواتب" });
+        if (solidarityIqd > 0)
+            entry.Lines.Add(new JournalEntryLine { AccountId = solidarityAccount!.Value, Credit = solidarityIqd, Description = "التكافل الاجتماعي المستقطع من الرواتب" });
         _db.JournalEntries.Add(entry);
         await _db.SaveChangesAsync();
 

@@ -11,6 +11,8 @@ public static class RuleNames
         ["FinanceNonOperating"] = "مصروف غير تشغيلي (توسعة، مكائن)",
         ["FinanceOtherIncome"] = "إيراد آخر إلى الصندوق",
         ["TempWagesPayment"] = "صرف أجور العمال الوقتيين",
+        ["PayrollSocialSecurity"] = "الضمان الاجتماعي المستقطع من الرواتب",
+        ["PayrollSocialSolidarity"] = "التكافل الاجتماعي المستقطع من الرواتب",
         ["SupplierPaymentVoucher"] = "دفعة نقدية لمورد",
         ["SupplierAdvancePayment"] = "دفعة مقدمة لمورد",
         ["GoodsReceiptOnAccount"] = "استلام بضاعة على الحساب",

@@ -45,6 +45,8 @@
                         <DataGridCheckBoxColumn Header="مدير مبيعات" Binding="{Binding IsSalesManager, Mode=OneWay}" Width="75"/>
                         <DataGridCheckBoxColumn Header="وقتي" Binding="{Binding IsTemporary, Mode=OneWay}" Width="50"/>
                         <DataGridTextColumn Header="رقم البصمة" Binding="{Binding FingerprintCode}" Width="80"/>
+                        <DataGridTextColumn Header="الضمان" Binding="{Binding SocialSecurityAmount, StringFormat=N0}" Width="75"/>
+                        <DataGridTextColumn Header="التكافل" Binding="{Binding SocialSolidarityAmount, StringFormat=N0}" Width="75"/>
                         <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="50"/>
                         <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
@@ -117,6 +119,17 @@
                         <CheckBox Content="عامل وقتي (أجر يومي، بلا بصمة ولا سلف)" IsChecked="{Binding Editor.IsTemporary}"/>
                         <TextBlock Text="الأجر اليومي (للعامل الوقتي)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.DailyWage, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="استقطاعات ثابتة شهريًا (بعملة الراتب)" FontWeight="SemiBold"/>
+                                <CheckBox Content="هل للموظف ضمان اجتماعي؟" IsChecked="{Binding Editor.HasSocialSecurity}" Margin="0,6,0,0"/>
+                                <TextBlock Text="مبلغ الضمان الاجتماعي الشهري" Style="{StaticResource FieldLabel}"/>
+                                <TextBox Text="{Binding Editor.SocialSecurityAmount, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                                <CheckBox Content="هل للموظف تكافل اجتماعي؟" IsChecked="{Binding Editor.HasSocialSolidarity}" Margin="0,8,0,0"/>
+                                <TextBlock Text="مبلغ التكافل الاجتماعي الشهري" Style="{StaticResource FieldLabel}"/>
+                                <TextBox Text="{Binding Editor.SocialSolidarityAmount, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                            </StackPanel>
+                        </Border>
                         <CheckBox Content="فعّال" IsChecked="{Binding Editor.IsActive}"/>
                         <TextBlock Text="الراتب الأساسي هنا هو راتب التعيين؛ الزيادات تُسجَّل من الترقيات والعلاوات وتدخل الرواتب تلقائيًا." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>
                     </StackPanel>
