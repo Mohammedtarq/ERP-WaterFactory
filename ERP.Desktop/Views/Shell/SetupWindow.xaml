@@ -25,6 +25,11 @@
                     Visibility="{Binding Reason, Converter={StaticResource NullToCollapsed}}">
                 <TextBlock Text="{Binding Reason}" Foreground="#92400E" TextWrapping="Wrap"/>
             </Border>
+            <DockPanel Margin="0,10,0,0">
+                <Button DockPanel.Dock="Left" Content="جهاز متدرب (قاعدة محلية تجريبية)" Style="{StaticResource SecondaryButton}" Click="OnTraineeClick"
+                        ToolTip="بلا سيرفر: SQL Server LocalDB على هذا الجهاز، ببيانات تجريبية وحساب متدرب جاهز"/>
+                <TextBlock Text="{Binding TraineeInfo}" Foreground="#0F766E" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" Margin="10,0,0,0"/>
+            </DockPanel>
         </StackPanel>
 
         <DockPanel DockPanel.Dock="Bottom" Margin="0,14,0,0">

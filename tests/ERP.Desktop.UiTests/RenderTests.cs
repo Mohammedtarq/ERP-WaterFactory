@@ -32,7 +32,8 @@ public class CapturingNavigator : INavigator
     public void ShowMainShell(MainShellViewModel vm) => Shell = vm;
     public void ShowLogin() { }
     public void ShowSetup(string? reason) { }
-    public void UseControlConnection(string controlConnectionString) { }
+    public string? UsedControlConnection;
+    public void UseControlConnection(string controlConnectionString) => UsedControlConnection = controlConnectionString;
 }
 
 public class MemoryConfig : IConfigStore

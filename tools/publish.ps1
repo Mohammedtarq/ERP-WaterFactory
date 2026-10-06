@@ -9,4 +9,6 @@ Copy-Item docs\INSTALL.md "$out\اقرأني - التثبيت.md" -ErrorAction S
 New-Item "$out\الشبكة" -ItemType Directory -Force | Out-Null
 Copy-Item docs\network-setup.md "$out\الشبكة\دليل تجهيز الشبكة.md" -ErrorAction SilentlyContinue
 Copy-Item tools\network\Setup-SqlServerForLan.ps1 "$out\الشبكة\" -ErrorAction SilentlyContinue
+# المثبّت: سيرفر (مع SQL Server Express) أو جهاز مستخدم أو جهاز متدرب (مع LocalDB وقاعدة تدريب)
+Copy-Item tools\installer\* $out -ErrorAction SilentlyContinue
 Write-Host "الحزمة جاهزة: $out" -ForegroundColor Green

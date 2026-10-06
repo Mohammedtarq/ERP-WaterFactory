@@ -118,7 +118,8 @@ public class HrScreenTests
         Assert.Equal(pay.Summary!.TotalNetIqd, pay.Summary.TotalInIqd);
         await pay.PrintCommand.ExecuteAsync();
         Assert.StartsWith("كشف رواتب", dialogs.Reports.Last().Title);
-        Assert.Contains(dialogs.Reports.Last().Rows, r => r[1] == "موظف الإنتاج" && r[10] == "625,000");
+        var net = dialogs.Reports.Last().Columns.IndexOf("الصافي");
+        Assert.Contains(dialogs.Reports.Last().Rows, r => r[1] == "موظف الإنتاج" && r[net] == "625,000");
 
         await using var db = _f.NewDb();
         var je = await db.JournalEntries.Include(j => j.Lines).SingleAsync(j => j.EntryType == JournalEntryType.AutoPayroll);

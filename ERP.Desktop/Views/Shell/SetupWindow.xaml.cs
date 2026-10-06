@@ -17,8 +17,16 @@ public partial class SetupWindow : Window
     {
         if (Vm is null) return;
         Vm.SqlPassword = SqlPasswordBox.Password;
+        if (Vm.IsTraineeMode && AdminPasswordBox.Password.Length == 0) return;   // كلمة مرور المتدرب المعروفة
         Vm.AdminPassword = AdminPasswordBox.Password;
         Vm.AdminPasswordConfirm = AdminPasswordConfirmBox.Password;
+    }
+
+    private void OnTraineeClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is null) return;
+        Vm.UseTraineeMode();
+        AdminPasswordBox.Password = AdminPasswordConfirmBox.Password = SetupViewModel.TraineePassword;
     }
 
     private void OnTestClick(object sender, RoutedEventArgs e) => PushPasswords();

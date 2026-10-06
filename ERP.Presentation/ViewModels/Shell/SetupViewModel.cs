@@ -35,6 +35,7 @@ public class SetupViewModel : ViewModelBase
         Reason = reason;
         TestConnectionCommand = new AsyncRelayCommand(TestAsync);
         FinishCommand = new AsyncRelayCommand(FinishAsync);
+        UseTraineeModeCommand = new RelayCommand(UseTraineeMode);
 
         // إعداد سابق (مثلًا السيرفر توقف): نملأ الحقول منه
         if (config.LoadControlConnectionString() is { } existing)
@@ -53,6 +54,34 @@ public class SetupViewModel : ViewModelBase
     }
 
     public string? Reason { get; }
+
+    // ---------------- وضع المتدرب ----------------
+    /// <summary>SQL Server LocalDB: نسخة مصغّرة تُثبَّت مع البرنامج على جهاز المتدرب، بلا سيرفر ولا إعداد.</summary>
+    public const string TraineeServer = @"(localdb)\MSSQLLocalDB";
+    public const string TraineeUsername = "trainee";
+    public const string TraineePassword = "Trainee@2026";
+    private bool _isTraineeMode;
+    public bool IsTraineeMode { get => _isTraineeMode; private set { if (SetProperty(ref _isTraineeMode, value)) OnPropertyChanged(nameof(TraineeInfo)); } }
+    public string? TraineeInfo => IsTraineeMode
+        ? $"وضع المتدرب: قاعدة تدريب محلية على هذا الجهاز ببيانات تجريبية. الدخول بعد الإعداد: {TraineeUsername} / {TraineePassword}"
+        : null;
+    public RelayCommand UseTraineeModeCommand { get; }
+
+    /// <summary>يملأ المعالج لجهاز متدرب: LocalDB، تثبيت جديد ببيانات تجريبية، وحساب «متدرب» معروف.</summary>
+    public void UseTraineeMode()
+    {
+        Server = TraineeServer;
+        UseWindowsAuth = true;
+        IsNewInstall = true;
+        DemoData = true;
+        ControlDatabase = "ERP_Training_Control";
+        ProjectName = "تدريب — معمل المياه";
+        ProjectDatabase = "ERP_Training";
+        AdminFullName = "متدرب";
+        AdminUsername = TraineeUsername;
+        AdminPassword = AdminPasswordConfirm = TraineePassword;
+        IsTraineeMode = true;
+    }
     public string ConfigPath => _config.ConfigPath;
     public ObservableCollection<string> Log { get; } = new();
 
@@ -124,7 +153,13 @@ public class SetupViewModel : ViewModelBase
         ErrorMessage = null;
         if (string.IsNullOrWhiteSpace(Server)) { ErrorMessage = "أدخل اسم السيرفر (مثل localhost أو .\\SQLEXPRESS)"; return; }
         if (!ConnectionOk) await TestAsync();
-        if (!ConnectionOk) { ErrorMessage = ConnectionMessage; return; }
+        if (!ConnectionOk)
+        {
+            ErrorMessage = ConnectionMessage + (IsTraineeMode
+                ? "\nLocalDB غير مثبّت على هذا الجهاز: شغّل «تثبيت - جهاز متدرب.cmd» من مجلد البرنامج (يثبّته تلقائيًا)."
+                : "");
+            return;
+        }
 
         var controlCs = BuildControlConnectionString();
         IsBusy = true;

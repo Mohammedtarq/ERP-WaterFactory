@@ -23,6 +23,13 @@ public partial class App : Application
         var controlCs = config.LoadControlConnectionString();
         var navigator = new WpfNavigator(_dialogs, config, controlCs);
 
+        // سكربت التثبيت لجهاز المتدرب: إعداد تلقائي على LocalDB (إن لم يكن الجهاز مُعدًّا مسبقًا)
+        if (e.Args.Contains("--trainee", StringComparer.OrdinalIgnoreCase) && controlCs is null)
+        {
+            navigator.ShowTraineeSetup();
+            return;
+        }
+
         // أول تشغيل: لا يوجد إعداد ← معالج الإعداد
         if (controlCs is null)
         {

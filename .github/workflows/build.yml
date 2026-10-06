@@ -109,6 +109,14 @@ jobs:
       - name: النشر (self-contained win-x64)
         shell: pwsh
         run: ./tools/publish.ps1
+      - name: تجربة المثبّت (جهاز مستخدم، بلا تشغيل)
+        shell: powershell
+        run: |
+          & "dist/ERP-WaterFactory-win-x64/Install-ERP.ps1" -Mode Workstation -NoLaunch -InstallDir "$env:RUNNER_TEMP\erp-install"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$env:RUNNER_TEMP\erp-install\ERP.Desktop.exe")) { throw "المثبّت لم ينسخ البرنامج" }
+          if (Test-Path "$env:RUNNER_TEMP\erp-install\Install-ERP.ps1") { throw "المثبّت نسخ نفسه مع البرنامج" }
+          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'نظام معمل المياه.lnk'))) { throw "لا اختصار على سطح المكتب" }
       - uses: actions/upload-artifact@v4
         with:
           name: ERP-WaterFactory-win-x64

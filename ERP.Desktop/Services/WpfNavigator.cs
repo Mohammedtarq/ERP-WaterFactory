@@ -27,6 +27,15 @@ public class WpfNavigator : INavigator
     }
 
     public void ShowSetup(string? reason) => Replace(new SetupWindow { DataContext = new SetupViewModel(this, _config, reason) });
+
+    /// <summary>تثبيت جهاز متدرب تلقائيًا (من سكربت التثبيت بالوسيط ‎--trainee): قاعدة LocalDB ببيانات تجريبية.</summary>
+    public void ShowTraineeSetup()
+    {
+        var vm = new SetupViewModel(this, _config, "تثبيت جهاز متدرب: قاعدة تدريب محلية ببيانات تجريبية…");
+        vm.UseTraineeMode();
+        Replace(new SetupWindow { DataContext = vm });
+        vm.FinishCommand.Execute(null);
+    }
     public void ShowProjectSelection(ProjectSelectionViewModel vm) => Replace(new ProjectSelectionWindow { DataContext = vm });
     public void ShowMainShell(MainShellViewModel vm) => Replace(new MainWindow { DataContext = vm });
 
