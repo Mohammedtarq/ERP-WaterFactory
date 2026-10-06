@@ -676,12 +676,12 @@ public class ProductionServiceTests
         Assert.Equal(50m, await Balance(check, shared.Id, raw.Id));
         Assert.Equal(200m, await Balance(check, shared.Id, machine.WipWarehouseId));
 
-        // الفحص والتعبئة لكل صنف عبر دفعته: تعبئة أ تستهلك مكونات أ فقط
-        var tests = await prod.GetApplicableTestsAsync(itemA.Id);
+        // فحص واحد للأمر كله (برقم أي دفعة فيه) يسري على الصنفين، ثم التعبئة لكل صنف: تعبئة أ تستهلك مكونات أ فقط
+        var tests = await prod.GetOrderTestsAsync(orderId.Value);
         QcInput For(string name, string value) => new(tests.Single(t => t.TestName.StartsWith(name)).Id, value);
         var ok = new[] { For("درجة", "7.2"), For("الأملاح", "120"), For("إحكام", "سليم") };
         Assert.True((await prod.RecordQcByBatchAsync(orderLines[0].OutputBatch!.BatchNumber, ok, user)).result.Success);
-        Assert.Contains("قبل فحص المختبر", (await prod.PackAsync(orderId.Value, pieceB.Id, 10, fg.Id, user)).ErrorMessage);
+        Assert.All(await prod.GetLinesAsync(orderId), l => Assert.Equal(QCOverallResult.Passed, l.LastQc));
         Assert.True((await prod.PackAsync(orderId.Value, pieceA.Id, 100, fg.Id, user)).Success);
         Assert.Equal(400m, await Balance(check, labelA.Id, raw.Id));
         Assert.Equal(0m, await Balance(check, labelA.Id, machine.WipWarehouseId));
@@ -692,7 +692,6 @@ public class ProductionServiceTests
         Assert.Equal("عُبّئ بالكامل", rows.Single(r => r.FinishedItemId == itemA.Id).StageText);
         Assert.Equal(ProductionOrderStatus.InProgress, (await check.ProductionOrders.AsNoTracking().SingleAsync(o => o.Id == orderId)).Status);
 
-        Assert.True((await prod.RecordQcByBatchAsync(orderLines[1].OutputBatch!.BatchNumber, ok, user)).result.Success);
         Assert.True((await prod.PackAsync(orderId.Value, pieceB.Id, 100, fg.Id, user)).Success);
         await using var final = _f.NewDb();
         Assert.Equal(ProductionOrderStatus.Completed, (await final.ProductionOrders.AsNoTracking().SingleAsync(o => o.Id == orderId)).Status);

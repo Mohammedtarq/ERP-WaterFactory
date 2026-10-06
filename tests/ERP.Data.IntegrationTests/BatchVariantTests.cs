@@ -156,6 +156,105 @@ public class BatchVariantTests
     }
 
     [Fact]
+    public async Task Lab_checks_the_whole_daily_order_once_for_all_its_variants()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "Q1");
+        db.QualityTests.Add(new QualityTest { TestName = "درجة الحموضة Q1", ApplicableItemId = s.Water.Id, StandardMin = 6.5m, StandardMax = 8.5m });
+        await db.SaveChangesAsync();
+        var (r, orderId, _) = await new DailyProductionService(db).RecordAsync(DateTime.Today, new[]
+        {
+            new DailyProductionLineInput(s.Water.Id, s.Shrink.Id, 2),
+            new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 1, s.HassounRecipe.Id),
+            new DailyProductionLineInput(s.Water.Id, s.Shrink.Id, 1, s.Wedding.Id),
+        }, _f.AdminId);
+        Assert.True(r.Success, r.ErrorMessage);
+
+        var prod = new ProductionService(db);
+        var row = (await prod.GetQcOrdersAsync()).Single(o => o.OrderId == orderId);
+        Assert.Equal(3, row.LineCount);
+        Assert.Null(row.LastQc);
+        Assert.Contains(s.HassounRecipe.Name, row.Items);
+
+        // عينة واحدة للأمر: الحموضة خارج المعيار ترفض أصنافه الثلاثة معًا
+        var tests = await prod.GetOrderTestsAsync(orderId!.Value);
+        List<QcInput> Inputs(string ph) => tests.Select(t => t.TestName == "درجة الحموضة Q1" ? new QcInput(t.Id, ph) : new QcInput(t.Id, "", true)).ToList();
+        var (bad, rejected) = await prod.RecordQcAsync(orderId.Value, Inputs("8.9"), _f.AdminId);
+        Assert.True(bad.Success, bad.ErrorMessage);
+        Assert.Equal(QCOverallResult.Rejected, rejected);
+        var results = await db.QCBatchResults.AsNoTracking().Where(q => q.ProductionOrderId == orderId).ToListAsync();
+        Assert.Equal(3, results.Count);
+        Assert.All(results, q => Assert.Equal(QCOverallResult.Rejected, q.OverallResult));
+
+        // إعادة الفحص تنجح للأمر كله
+        var (good, passed) = await prod.RecordQcAsync(orderId.Value, Inputs("7.4"), _f.AdminId);
+        Assert.True(good.Success, good.ErrorMessage);
+        Assert.Equal(QCOverallResult.Passed, passed);
+        Assert.Equal(QCOverallResult.Passed, (await prod.GetQcOrdersAsync()).Single(o => o.OrderId == orderId).LastQc);
+        Assert.All(await prod.GetLinesAsync(orderId), l => Assert.Equal(QCOverallResult.Passed, l.LastQc));
+    }
+
+    /// <summary>
+    /// حافز المندوب بالعبوة: مبلغ للشرنك ومبلغ للكارتون × (المحمّل − الراجع − المجاني) من مستندات اليوم،
+    /// يتجمع على الشهر ويقرؤه الراتب — بلا قيد يومي.
+    /// </summary>
+    [Fact]
+    public async Task Rep_incentive_counts_shrinks_and_cartons_sold_net_of_returns_and_free()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "I1");
+        var (produced, _, _) = await new DailyProductionService(db).RecordAsync(DateTime.Today, new[]
+        {
+            new DailyProductionLineInput(s.Water.Id, s.Shrink.Id, 20),
+            new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 10),
+        }, _f.AdminId);
+        Assert.True(produced.Success, produced.ErrorMessage);
+
+        var rep = new Employee { FullName = "مندوب الحافز I1", IsSalesRep = true, BaseSalary = 500_000 };
+        db.Employees.Add(rep);
+        await db.SaveChangesAsync();
+        var van = new Warehouse { BranchId = s.Fg.BranchId, Name = "سيارة الحافز I1", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id };
+        db.Warehouses.Add(van);
+        await db.SaveChangesAsync();
+
+        var incentive = new RepIncentiveService(db);
+        var rates = (await incentive.RatesAsync()).Where(r => r.ItemId == s.Water.Id).ToList();
+        Assert.Equal(new[] { "كارتون", "شرنك" }, rates.Select(r => r.LevelName));   // العبوات فقط، الأكبر أولًا
+        rates.Single(r => r.LevelName == "شرنك").Rate = 100;
+        rates.Single(r => r.LevelName == "كارتون").Rate = 250;
+        Assert.True((await incentive.SaveRatesAsync(rates, _f.AdminId)).Success);
+        Assert.False((await incentive.SaveRatesAsync(rates, _f.AdminId)).Success);   // لا تغيير
+
+        var ops = new RepOperationsService(db);
+        var (created, order) = await ops.CreateLoadOrderAsync(van.Id, s.Fg.Id, DateTime.Today, new[]
+        {
+            new RepLoadLineInput(s.Water.Id, s.Shrink.Id, 10),
+            new RepLoadLineInput(s.Water.Id, s.Carton.Id, 6),
+        }, null, _f.AdminId);
+        Assert.True(created.Success, created.ErrorMessage);
+        Assert.True((await ops.PrepareLoadOrderAsync(order!.Id, null, _f.AdminId)).result.Success);
+
+        // التسوية: راجع 2 شرنك و1 كارتون، ومجاني شرنك واحد، والباقي مبيع نقدي
+        var (settled, _) = await ops.SettleAsync(new RepSettlementRequest(van.Id, s.Fg.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(s.Water.Id, s.Shrink.Id, 2), new StockDocumentLineInput(s.Water.Id, s.Carton.Id, 1) },
+            new[] { new RepFreeLineInput(s.Water.Id, s.Shrink.Id, 1, null, "ضيافة") }, Array.Empty<RepExpenseInput>(),
+            0, _f.AdminId, InvoiceRemainingToCustomerId: s.General.Id));
+        Assert.True(settled.Success, settled.ErrorMessage);
+
+        var rows = await incentive.RowsAsync(DateTime.Today, DateTime.Today, rep.Id);
+        var shrink = rows.Single(r => r.LevelName == "شرنك");
+        var carton = rows.Single(r => r.LevelName == "كارتون");
+        Assert.Equal((10m, 2m, 1m, 7m, 700m), (shrink.Loaded, shrink.Returned, shrink.Free, shrink.Net, shrink.Amount));
+        Assert.Equal((6m, 1m, 0m, 5m, 1_250m), (carton.Loaded, carton.Returned, carton.Free, carton.Net, carton.Amount));
+        Assert.Equal("كارتون", rows[0].LevelName);
+
+        // الراتب يقرأ مجموع الشهر نفسه
+        var month = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        Assert.Equal(1_950m, await incentive.AmountAsync(rep.Id, month, month.AddMonths(1).AddDays(-1)));
+        Assert.Equal(1_950m, await new HrService(db).ComputeRepIncentiveAsync(rep.Id, DateTime.Today.Month, DateTime.Today.Year));
+    }
+
+    [Fact]
     public async Task Load_order_takes_basic_stock_unless_a_variant_is_named()
     {
         await using var db = _f.NewDb(_f.AdminId);

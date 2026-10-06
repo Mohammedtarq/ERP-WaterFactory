@@ -457,11 +457,11 @@ public class QcHistoryRow
 
 public class QcSectionViewModel : SectionViewModel
 {
-    private ProductionLineRow? _order;
+    private QcOrderRow? _order;
     private string? _lastResult;
 
     public QcSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.Production, "فحص المختبر", Icons.Star, "#8B5CF6", "نتائج اختبارات الدفعة برقمها — فشل اختبار واحد يرفضها")
+        : base(s, d, ModuleCode.Production, "فحص المختبر", Icons.Star, "#8B5CF6", "فحص واحد لأمر الإنتاج كله بكل أصنافه — فشل اختبار واحد يرفض الأمر")
     {
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         PrintCommand = new AsyncRelayCommand(p => p is QcHistoryRow r ? PrintAsync(db => DocumentReports.QcResultAsync(Session, db, r.Id)) : Task.CompletedTask);
@@ -473,11 +473,11 @@ public class QcSectionViewModel : SectionViewModel
     {
         new Option<bool?>(null, "تلقائي من المعيار"), new Option<bool?>(true, "ناجح (قرار الفاحص)"), new Option<bool?>(false, "راسب (قرار الفاحص)")
     };
-    public ObservableCollection<ProductionLineRow> InProgressOrders { get; } = new();
+    public ObservableCollection<QcOrderRow> QcOrders { get; } = new();
     public ObservableCollection<QcLine> Lines { get; } = new();
     public ObservableCollection<QcHistoryRow> History { get; } = new();
 
-    public ProductionLineRow? Order { get => _order; set { if (SetProperty(ref _order, value)) Background(LoadTestsAsync()); } }
+    public QcOrderRow? Order { get => _order; set { if (SetProperty(ref _order, value)) Background(LoadTestsAsync()); } }
     public string? LastResult { get => _lastResult; private set => SetProperty(ref _lastResult, value); }
     public AsyncRelayCommand SaveCommand { get; }
     public AsyncRelayCommand PrintCommand { get; }
@@ -485,12 +485,11 @@ public class QcSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        var lineId = Order?.LineId;
-        InProgressOrders.Clear();
-        // كل دفعة (صنف) في أمر قيد التشغيل لم تُعبّأ بالكامل بعد
-        foreach (var o in (await new ProductionService(db).GetLinesAsync()).Where(o => o.Status == ProductionOrderStatus.InProgress && o.PackedQuantity < o.QuantityToProduce))
-            InProgressOrders.Add(o);
-        _order = InProgressOrders.FirstOrDefault(o => o.LineId == lineId) ?? InProgressOrders.FirstOrDefault();
+        var orderId = Order?.OrderId;
+        QcOrders.Clear();
+        // الأمر يُفحص مرة واحدة لكل أصنافه: قيد التشغيل، وإنتاج آخر 30 يومًا
+        foreach (var o in await new ProductionService(db).GetQcOrdersAsync()) QcOrders.Add(o);
+        _order = QcOrders.FirstOrDefault(o => o.OrderId == orderId) ?? QcOrders.FirstOrDefault(o => o.LastQc is null) ?? QcOrders.FirstOrDefault();
         OnPropertyChanged(nameof(Order));
         await LoadTestsAsync();
 
@@ -514,7 +513,7 @@ public class QcSectionViewModel : SectionViewModel
         Lines.Clear();
         if (Order is null) return;
         await using var db = Session.NewDb();
-        foreach (var t in await new ProductionService(db).GetApplicableTestsAsync(Order.FinishedItemId))
+        foreach (var t in await new ProductionService(db).GetOrderTestsAsync(Order.OrderId))
             Lines.Add(new QcLine(ManualOptions[0])
             {
                 TestId = t.Id, TestName = t.TestName,
@@ -527,21 +526,23 @@ public class QcSectionViewModel : SectionViewModel
     private async Task SaveAsync()
     {
         if (!Require(CanAdd || CanEdit, "تسجيل نتائج المختبر")) return;
-        if (Order is null) { Dialogs.Error("اختر رقم الدفعة المطلوب فحصها"); return; }
+        if (Order is null) { Dialogs.Error("اختر أمر الإنتاج المطلوب فحصه"); return; }
         await using var db = Session.NewDb();
         QCOverallResult? overall = null;
         if (await RunOperationAsync(async () =>
             {
-                // الربط بأمر الإنتاج عبر رقم الدفعة فقط
-                var (r, o) = await new ProductionService(db).RecordQcByBatchAsync(Order.OutputBatch ?? "",
+                var (r, o) = await new ProductionService(db).RecordQcAsync(Order.OrderId,
                     Lines.Select(l => new QcInput(l.TestId, l.Measured, l.Manual.Value)).ToList(), Session.UserId);
                 overall = o;
                 return r;
             }, "تم حفظ نتيجة الفحص"))
         {
+            var count = Order.LineCount == 1 ? "صنفه" : $"أصنافه الـ{Order.LineCount}";
             LastResult = overall == QCOverallResult.Passed
-                ? $"الدفعة {Order.OutputBatch} ناجحة ✓ — يمكن تعبئتها الآن"
-                : $"الدفعة {Order.OutputBatch} مرفوضة ✗ — لا يمكن تعبئتها (أعد الفحص أو ألغِ الأمر)";
+                ? $"الأمر {Order.MONumber}: النتيجة ناجحة ✓ لكل {count}"
+                : Order.Status == ProductionOrderStatus.Completed
+                    ? $"الأمر {Order.MONumber}: النتيجة مرفوضة ✗ لكل {count} — إنتاجه في المخزن: انقله إلى التالف أو أعد الفحص"
+                    : $"الأمر {Order.MONumber}: النتيجة مرفوضة ✗ لكل {count} — لا يمكن تعبئته (أعد الفحص أو ألغِ الأمر)";
             await LoadAsync();
         }
     }

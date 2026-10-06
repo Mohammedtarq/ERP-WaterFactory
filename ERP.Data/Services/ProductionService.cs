@@ -6,6 +6,13 @@ namespace ERP.Data.Services;
 
 public record QcInput(int QualityTestId, string MeasuredValue, bool? ManualPass = null);
 
+/// <summary>أمر إنتاج في شاشة المختبر: يُفحص مرة واحدة لكل أصنافه.</summary>
+public record QcOrderRow(int OrderId, string MONumber, DateTime? Date, string Items, int LineCount, ProductionOrderStatus Status, QCOverallResult? LastQc)
+{
+    public string QcText => LastQc switch { QCOverallResult.Passed => "ناجح", QCOverallResult.Rejected => "مرفوض", _ => "بانتظار الفحص" };
+    public string Display => $"{MONumber} · {Date:yyyy-MM-dd} · {Items} · {QcText}";
+}
+
 /// <summary>صنف في أمر إنتاج جديد: المنتج، الكمية، الوصفة المخصصة، ورقم دفعة معدَّل (فارغ = تلقائي).</summary>
 public record ProductionLineInput(int FinishedItemId, decimal Quantity, int? CustomRecipeId = null, string? BatchNumber = null);
 
@@ -236,14 +243,14 @@ public class ProductionService
            .Where(c => _db.ProductionOrderLines.Any(l => l.ProductionOrderId == orderId && l.OutputBatchId == c.BatchId))
            .OrderBy(c => c.Id).ToListAsync();
 
-    /// <summary>المختبر يربط النتيجة بأمر الإنتاج (وصنفه) عبر رقم الدفعة فقط.</summary>
+    /// <summary>المختبر يصل إلى الأمر برقم أي دفعة فيه، والنتيجة تسري على الأمر كله.</summary>
     public async Task<(FinanceOperationResult result, QCOverallResult? overall)> RecordQcByBatchAsync(string batchNumber, IReadOnlyCollection<QcInput> inputs, int userId)
     {
         batchNumber = (batchNumber ?? "").Trim();
-        var lineId = await _db.ProductionOrderLines.Where(l => l.OutputBatch != null && l.OutputBatch.BatchNumber == batchNumber)
-                                                   .Select(l => (int?)l.Id).FirstOrDefaultAsync();
-        if (lineId is null) return (FinanceOperationResult.Fail($"لا توجد دفعة إنتاج بالرقم \"{batchNumber}\""), null);
-        return await RecordQcForLineAsync(lineId.Value, inputs, userId);
+        var orderId = await _db.ProductionOrderLines.Where(l => l.OutputBatch != null && l.OutputBatch.BatchNumber == batchNumber)
+                                                    .Select(l => (int?)l.ProductionOrderId).FirstOrDefaultAsync();
+        if (orderId is null) return (FinanceOperationResult.Fail($"لا توجد دفعة إنتاج بالرقم \"{batchNumber}\""), null);
+        return await RecordQcAsync(orderId.Value, inputs, userId);
     }
 
     /// <summary>
@@ -398,34 +405,65 @@ public class ProductionService
         return string.Equals(measured.Trim(), test.StandardText?.Trim(), StringComparison.OrdinalIgnoreCase) ? QCLineResult.Pass : QCLineResult.Fail;
     }
 
-    /// <summary>فحص دفعة الصنف الأول في الأمر (الأوامر ذات الصنف الواحد).</summary>
-    public async Task<(FinanceOperationResult result, QCOverallResult? overall)> RecordQcAsync(int orderId, IReadOnlyCollection<QcInput> inputs, int userId)
+    /// <summary>أوامر تنتظر المختبر أو فُحصت حديثًا: قيد التشغيل، وإنتاج آخر <paramref name="days"/> يومًا.</summary>
+    public async Task<List<QcOrderRow>> GetQcOrdersAsync(int days = 30)
     {
-        var lineId = await _db.ProductionOrderLines.Where(l => l.ProductionOrderId == orderId).OrderBy(l => l.LineNo).Select(l => (int?)l.Id).FirstOrDefaultAsync();
-        return lineId is null ? (FinanceOperationResult.Fail("أمر الإنتاج غير موجود"), null) : await RecordQcForLineAsync(lineId.Value, inputs, userId);
+        var since = DateTime.Today.AddDays(-days);
+        var rows = await _db.ProductionOrders.AsNoTracking()
+            .Where(o => o.Status == ProductionOrderStatus.InProgress
+                        || (o.Status == ProductionOrderStatus.Completed && o.Lines.Any(l => l.OutputBatch != null && l.OutputBatch.ManufactureDate >= since)))
+            .Where(o => o.Lines.Any(l => l.OutputBatchId != null))
+            .Select(o => new
+            {
+                o.Id, o.MONumber, o.Status,
+                Date = o.Lines.Select(l => l.OutputBatch!.ManufactureDate).Max(),
+                Items = o.Lines.OrderBy(l => l.LineNo).Select(l => l.FinishedItem.ItemName + (l.CustomRecipe != null ? " — " + l.CustomRecipe.Name : "")).ToList(),
+                LastQc = _db.QCBatchResults.Where(q => q.ProductionOrderId == o.Id).OrderByDescending(q => q.Id).Select(q => (QCOverallResult?)q.OverallResult).FirstOrDefault()
+            })
+            .OrderByDescending(o => o.Id).ToListAsync();
+        return rows.Select(o => new QcOrderRow(o.Id, o.MONumber, o.Date, string.Join("، ", o.Items.Distinct()), o.Items.Count, o.Status, o.LastQc)).ToList();
     }
 
-    /// <summary>فحص دفعة صنف: فشل اختبار واحد فقط يرفض الدفعة كاملة (القاعدة المتفق عليها).</summary>
-    public async Task<(FinanceOperationResult result, QCOverallResult? overall)> RecordQcForLineAsync(int lineId, IReadOnlyCollection<QcInput> inputs, int userId)
+    /// <summary>اختبارات أمر الإنتاج: اتحاد اختبارات كل أصنافه (العامة مرة واحدة).</summary>
+    public async Task<List<QualityTest>> GetOrderTestsAsync(int orderId)
     {
-        var line = await _db.ProductionOrderLines.Include(l => l.ProductionOrder).FirstOrDefaultAsync(l => l.Id == lineId);
-        if (line is null) return (FinanceOperationResult.Fail("أمر الإنتاج غير موجود"), null);
-        if (line.ProductionOrder.Status != ProductionOrderStatus.InProgress || line.OutputBatchId is null)
-            return (FinanceOperationResult.Fail("الفحص يكون لأمر قيد التشغيل"), null);
+        var itemIds = await _db.ProductionOrderLines.Where(l => l.ProductionOrderId == orderId).Select(l => l.FinishedItemId).Distinct().ToListAsync();
+        return await _db.QualityTests.AsNoTracking().Where(t => t.ApplicableItemId == null || itemIds.Contains(t.ApplicableItemId.Value))
+                        .OrderBy(t => t.TestName).ToListAsync();
+    }
 
-        var tests = (await GetApplicableTestsAsync(line.FinishedItemId)).ToDictionary(t => t.Id);
+    /// <summary>
+    /// فحص المختبر للأمر كله: عينة واحدة ونتيجة واحدة تسري على كل أصنافه (تشغيلاته).
+    /// فشل اختبار واحد يرفض الأمر كاملًا (القاعدة المتفق عليها). يصح للأمر قيد التشغيل ولإنتاج اليوم المسجّل.
+    /// </summary>
+    public async Task<(FinanceOperationResult result, QCOverallResult? overall)> RecordQcAsync(int orderId, IReadOnlyCollection<QcInput> inputs, int userId)
+    {
+        var order = await _db.ProductionOrders.Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order is null) return (FinanceOperationResult.Fail("أمر الإنتاج غير موجود"), null);
+        var lines = order.Lines.Where(l => l.OutputBatchId != null).OrderBy(l => l.LineNo).ToList();
+        if (order.Status is not (ProductionOrderStatus.InProgress or ProductionOrderStatus.Completed) || lines.Count == 0)
+            return (FinanceOperationResult.Fail("الفحص يكون لأمر قيد التشغيل أو لإنتاج مسجّل"), null);
+
+        var tests = (await GetOrderTestsAsync(orderId)).ToDictionary(t => t.Id);
         if (tests.Count == 0) return (FinanceOperationResult.Fail("لا توجد اختبارات جودة معرّفة لهذا المنتج — أضفها من تبويب اختبارات الجودة"), null);
         var missing = tests.Keys.Except(inputs.Where(i => !string.IsNullOrWhiteSpace(i.MeasuredValue) || i.ManualPass is not null).Select(i => i.QualityTestId)).ToList();
         if (missing.Count > 0) return (FinanceOperationResult.Fail("أدخل نتيجة كل الاختبارات: " + string.Join("، ", missing.Select(id => tests[id].TestName))), null);
 
-        var result = new QCBatchResult { ProductionOrderId = line.ProductionOrderId, BatchId = line.OutputBatchId.Value, TestedByUserId = userId };
-        foreach (var i in inputs.Where(i => tests.ContainsKey(i.QualityTestId)))
-            result.ResultLines.Add(new QCTestResultLine { QualityTestId = i.QualityTestId, MeasuredValue = i.MeasuredValue.Trim(),
-                                                          Result = Evaluate(tests[i.QualityTestId], i.MeasuredValue, i.ManualPass) });
-        result.OverallResult = result.ResultLines.Any(l => l.Result == QCLineResult.Fail) ? QCOverallResult.Rejected : QCOverallResult.Passed;
-        _db.QCBatchResults.Add(result);
+        var evaluated = inputs.Where(i => tests.ContainsKey(i.QualityTestId))
+                              .Select(i => (test: tests[i.QualityTestId], measured: i.MeasuredValue.Trim(), result: Evaluate(tests[i.QualityTestId], i.MeasuredValue, i.ManualPass)))
+                              .ToList();
+        var overall = evaluated.Any(e => e.result == QCLineResult.Fail) ? QCOverallResult.Rejected : QCOverallResult.Passed;
+        foreach (var line in lines)
+        {
+            var result = new QCBatchResult { ProductionOrderId = order.Id, BatchId = line.OutputBatchId!.Value, TestedByUserId = userId, OverallResult = overall };
+            foreach (var e in evaluated.Where(e => e.test.ApplicableItemId == null || e.test.ApplicableItemId == line.FinishedItemId))
+                result.ResultLines.Add(new QCTestResultLine { QualityTestId = e.test.Id, MeasuredValue = e.measured, Result = e.result });
+            _db.QCBatchResults.Add(result);
+        }
         await _db.SaveChangesAsync();
-        return (FinanceOperationResult.Ok(), result.OverallResult);
+        await new AuditService(_db).LogAsync(userId, "Post", "ProductionOrders", order.Id,
+            $"فحص المختبر للأمر {order.MONumber} ({lines.Count} صنف): {(overall == QCOverallResult.Passed ? "ناجح" : "مرفوض")}");
+        return (FinanceOperationResult.Ok(), overall);
     }
 
     public async Task<decimal> PackedQuantityAsync(int orderId) =>

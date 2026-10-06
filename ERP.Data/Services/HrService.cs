@@ -190,15 +190,11 @@ public class HrService
                                                 && l.SalesInvoice.InvoiceDate >= start && l.SalesInvoice.InvoiceDate <= end);
     }
 
-    /// <summary>حافز المندوب = Σ (الكمية المباعة بالقطعة من فواتيره المرحّلة × حافز القطعة لذلك الصنف).</summary>
+    /// <summary>حافز المندوب الشهري = Σ (المحمّل − الراجع − المجاني) بكل عبوة × مبلغها (جدول حوافز المندوبين).</summary>
     public async Task<decimal> ComputeRepIncentiveAsync(int repEmployeeId, int month, int year)
     {
-        var rates = _db.RepItemIncentiveRates;
-        var total = await PostedSalesLines(month, year)
-            .Where(l => l.SalesInvoice.SalesRepEmployeeId == repEmployeeId)
-            .Join(rates, l => l.ItemId, r => r.ItemId, (l, r) => l.QuantityBaseUnits * r.IncentiveRatePerUnit)
-            .SumAsync(x => (decimal?)x) ?? 0;
-        return Math.Round(total, 2);
+        var (start, end) = Period(month, year);
+        return await new RepIncentiveService(_db).AmountAsync(repEmployeeId, start, end);
     }
 
     public async Task<decimal> TotalSoldQuantityAsync(int month, int year) =>

@@ -441,8 +441,13 @@ public static class DemoData
         db.Employees.Add(rep);
         await db.SaveChangesAsync();
         db.Warehouses.Add(new Data.ProjectDb.Entities.Warehouse { BranchId = fg.BranchId, Name = "كاش فان علي", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id });
-        db.RepItemIncentiveRates.AddRange(new RepItemIncentiveRate { ItemId = w500.Id, IncentiveRatePerUnit = 5 },
-                                          new RepItemIncentiveRate { ItemId = w1500.Id, IncentiveRatePerUnit = 10 });
+        // حافز المندوب لكل عبوة: مبلغ للكارتون ومبلغ للشرنك
+        foreach (var (itemId, rate) in new[] { (w500.Id, 60m), (w1500.Id, 60m) })
+            db.RepItemIncentiveRates.Add(new RepItemIncentiveRate
+            {
+                ItemId = itemId, IncentiveRatePerUnit = rate,
+                PackagingLevelId = await db.ItemPackagingLevels.Where(l => l.ItemId == itemId && l.EquivalentBaseUnits > 1).Select(l => l.Id).FirstAsync()
+            });
         db.RepTerritories.Add(new RepTerritory { EmployeeId = rep.Id, TerritoryName = "الزبير" });
         await db.SaveChangesAsync();
 

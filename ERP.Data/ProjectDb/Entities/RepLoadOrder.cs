@@ -96,6 +96,10 @@ public class RepFreeGood
     public int ItemId { get; set; }
     public Item Item { get; set; } = null!;
     public decimal QuantityBaseUnits { get; set; }
+    /// <summary>الوحدة والعدد كما أُدخلا (لطرح المجاني من حافز العبوة الصحيحة).</summary>
+    public int? PackagingLevelId { get; set; }
+    public ItemPackagingLevel? PackagingLevel { get; set; }
+    public decimal? QuantityInLevel { get; set; }
     public decimal? UnitCost { get; set; }
     public int? CustomerId { get; set; }
     public Customer? Customer { get; set; }

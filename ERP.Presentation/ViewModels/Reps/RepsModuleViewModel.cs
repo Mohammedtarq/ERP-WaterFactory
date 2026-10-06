@@ -18,6 +18,7 @@ public class RepsModuleViewModel : ModuleViewModel
         LoadOrders = Add(new LoadOrdersSectionViewModel(s, d));
         Documents = Add(new RepDocumentsSectionViewModel(s, d));
         Settlement = Add(new RepSettlementSectionViewModel(s, d));
+        Incentives = Add(new RepIncentivesSectionViewModel(s, d));
         // شاشة "عمليات الكاش فان" القديمة مخفية (حلّت محلها مستندات المندوبين المرقمة) — لا تُحذف
         Van = new VanOperationsSectionViewModel(s, d);
         if (ShowLegacyVanOperations) Add(Van);
@@ -34,6 +35,7 @@ public class RepsModuleViewModel : ModuleViewModel
     public LoadOrdersSectionViewModel LoadOrders { get; }
     public RepDocumentsSectionViewModel Documents { get; }
     public RepSettlementSectionViewModel Settlement { get; }
+    public RepIncentivesSectionViewModel Incentives { get; }
     /// <summary>الشاشة القديمة ما زالت تعمل، لكنها خارج التبويبات.</summary>
     public VanOperationsSectionViewModel Van { get; }
     public WalletSectionViewModel Wallet { get; }

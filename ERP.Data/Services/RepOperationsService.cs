@@ -289,7 +289,8 @@ public class RepOperationsService
                         TransactionDate = when, CreatedByUserId = r.UserId
                     });
                 var unitCost = await _db.Items.Where(i => i.Id == f.ItemId).Select(i => i.CostPrice).FirstAsync();
-                settlement.FreeGoods.Add(new RepFreeGood { ItemId = f.ItemId, QuantityBaseUnits = pieces, UnitCost = unitCost, CustomerId = f.CustomerId, Reason = f.Reason.Trim() });
+                settlement.FreeGoods.Add(new RepFreeGood { ItemId = f.ItemId, QuantityBaseUnits = pieces, PackagingLevelId = f.PackagingLevelId, QuantityInLevel = f.QuantityInLevel,
+                                                           UnitCost = unitCost, CustomerId = f.CustomerId, Reason = f.Reason.Trim() });
                 settlement.FreePieces += pieces;
                 settlement.FreeCost += Math.Round(pieces * (unitCost ?? 0), 2);
                 await _db.SaveChangesAsync();

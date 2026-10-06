@@ -1,6 +1,9 @@
 namespace ERP.Data.ProjectDb.Entities;
 
-/// <summary>حافز المندوب: سعر يدوي منفصل لكل صنف — (الكمية المباعة × هذا السعر) تُجمع لكل الأصناف.</summary>
+/// <summary>
+/// حافز المندوب لكل عبوة (37_rep_pack_incentive.sql): مبلغ للشرنك ومبلغ للكارتون من كل صنف.
+/// الحافز الشهري = (المحمّل − الراجع − المجاني) بهذه الوحدة × المبلغ، ويُصرف مع الراتب.
+/// </summary>
 public class RepItemIncentiveRate
 {
     public int Id { get; set; }
@@ -8,6 +11,10 @@ public class RepItemIncentiveRate
     public int ItemId { get; set; }
     public Item Item { get; set; } = null!;
 
+    public int PackagingLevelId { get; set; }
+    public ItemPackagingLevel PackagingLevel { get; set; } = null!;
+
+    /// <summary>المبلغ لكل عبوة من الوحدة (شرنك واحد، كارتون واحد).</summary>
     public decimal IncentiveRatePerUnit { get; set; }
 }
 

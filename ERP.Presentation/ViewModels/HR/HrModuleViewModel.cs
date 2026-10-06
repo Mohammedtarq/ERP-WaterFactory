@@ -504,31 +504,32 @@ public class IncentiveSettingsSectionViewModel : CrudSectionViewModel<IncentiveS
 }
 
 // ============================ حوافز المبيعات ============================
-public class RepIncentiveRatesSectionViewModel : CrudSectionViewModel<RepItemIncentiveRate>
+/// <summary>مبلغ حافز المندوب لكل عبوة: الإدارة تحدد مبلغ الشرنك ومبلغ الكارتون لكل منتج.</summary>
+public class RepIncentiveRatesSectionViewModel : SectionViewModel
 {
     public RepIncentiveRatesSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.HR, "حافز المندوب", Icons.Reps, "#F97316", "حافز لكل قطعة مباعة من كل صنف") { }
-
-    public ObservableCollection<Item> ItemsLookup { get; } = new();
-
-    protected override int GetId(RepItemIncentiveRate e) => e.Id;
-    protected override string Describe(RepItemIncentiveRate e) => $"{e.Item?.ItemName}: {e.IncentiveRatePerUnit:N2}";
-
-    protected override async Task LoadLookupsAsync(ProjectDbContext db)
+        : base(s, d, ModuleCode.HR, "حافز المندوب", Icons.Reps, "#F97316", "مبلغ لكل شرنك ولكل كارتون — يُحسب على المباع (المحمّل − الراجع) ويُصرف مع الراتب")
     {
-        ItemsLookup.Clear();
-        foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync()) ItemsLookup.Add(i);
+        SaveCommand = new AsyncRelayCommand(SaveAsync);
     }
 
-    protected override Task<List<RepItemIncentiveRate>> QueryAsync(ProjectDbContext db) =>
-        db.RepItemIncentiveRates.AsNoTracking().Include(r => r.Item).OrderBy(r => r.Item.ItemName).ToListAsync();
+    public ObservableCollection<RepIncentiveRateRow> Rows { get; } = new();
+    public AsyncRelayCommand SaveCommand { get; }
 
-    protected override string? Validate(RepItemIncentiveRate e)
+    public override async Task LoadAsync()
     {
-        if (e.ItemId == 0) return "اختر الصنف";
-        if (e.IncentiveRatePerUnit < 0) return "الحافز لا يمكن أن يكون سالبًا";
-        if (Items.Any(x => x.Id != e.Id && x.ItemId == e.ItemId)) return "لهذا الصنف حافز مسجّل؛ عدّله بدل إضافة جديد";
-        return null;
+        await using var db = Session.NewDb();
+        Rows.Clear();
+        foreach (var r in await new RepIncentiveService(db).RatesAsync()) Rows.Add(r);
+        StatusMessage = Rows.Count == 0 ? "لا توجد منتجات بوحدات شرنك أو كارتون" : $"{Rows.Count(r => r.Rate > 0)} من {Rows.Count} وحدة لها حافز";
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!Require(CanEdit || CanAdd, "تعديل حافز المندوب")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new RepIncentiveService(db).SaveRatesAsync(Rows.ToList(), Session.UserId), "تم حفظ مبالغ الحافز — تسري على حساب الشهر"))
+            await LoadAsync();
     }
 }
 

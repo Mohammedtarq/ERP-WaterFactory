@@ -69,7 +69,6 @@ public class HrFixture
         db.Items.Add(item);
         db.Branches.Add(branch);
         db.SaveChanges();
-        db.RepItemIncentiveRates.Add(new RepItemIncentiveRate { ItemId = item.Id, IncentiveRatePerUnit = 25 });
         db.SalesManagerIncentiveTiers.AddRange(
             new SalesManagerIncentiveTier { EmployeeId = manager.Id, FromQuantity = 0, ToQuantity = 200, RatePerUnit = 2 },
             new SalesManagerIncentiveTier { EmployeeId = manager.Id, FromQuantity = 200, ToQuantity = null, RatePerUnit = 3 });
@@ -96,6 +95,26 @@ public class HrFixture
         Invoice(new DateTime(2026, 8, 7), rep.Id, 100, status: DocumentStatus.Draft); // مسودة: لا تُحسب
         Invoice(new DateTime(2026, 8, 20), null, 380);                               // للمدير فقط
         Invoice(new DateTime(2026, 9, 2), rep.Id, 999);                              // الشهر التالي: لا يُحسب
+        db.SaveChanges();
+
+        // حافز المندوب بالعبوة: مبلغ للشرنك ومبلغ للكارتون، على (المحمّل − الراجع) من مستندات المندوب
+        var shrink = new ItemPackagingLevel { ItemId = item.Id, LevelName = "شرنك", EquivalentBaseUnits = 20 };
+        var carton = new ItemPackagingLevel { ItemId = item.Id, LevelName = "كارتون", EquivalentBaseUnits = 40 };
+        db.AddRange(shrink, carton);
+        db.SaveChanges();
+        db.RepItemIncentiveRates.AddRange(new RepItemIncentiveRate { ItemId = item.Id, PackagingLevelId = shrink.Id, IncentiveRatePerUnit = 200 },
+                                          new RepItemIncentiveRate { ItemId = item.Id, PackagingLevelId = carton.Id, IncentiveRatePerUnit = 350 });
+        void RepDoc(StockDocumentType type, DateTime date, decimal shrinks, decimal cartons)
+        {
+            var doc = new StockDocument { DocumentNumber = $"HR-D{++n}", DocumentType = type, WarehouseId = wh.Id, DocumentDate = date,
+                                          RepEmployeeId = rep.Id, CreatedByUserId = user.Id };
+            doc.Lines.Add(new StockDocumentLine { ItemId = item.Id, PackagingLevelId = shrink.Id, QuantityInLevel = shrinks, QuantityBaseUnits = shrinks * 20 });
+            doc.Lines.Add(new StockDocumentLine { ItemId = item.Id, PackagingLevelId = carton.Id, QuantityInLevel = cartons, QuantityBaseUnits = cartons * 40 });
+            db.StockDocuments.Add(doc);
+        }
+        RepDoc(StockDocumentType.RepLoad, new DateTime(2026, 8, 5), 10, 5);
+        RepDoc(StockDocumentType.RepReturn, new DateTime(2026, 8, 5), 2, 1);   // 8 شرنك × 200 + 4 كارتون × 350 = 3,000
+        RepDoc(StockDocumentType.RepLoad, new DateTime(2026, 9, 2), 50, 50);   // الشهر التالي: لا يُحسب
         db.SaveChanges();
 
         (UserId, AhmedId, UsdId, RepId, ManagerId, ItemId) = (user.Id, ahmed.Id, usd.Id, rep.Id, manager.Id, item.Id);
@@ -170,7 +189,7 @@ public class HrServiceTests
         Assert.Equal(100_000m, b.Amount);
         Assert.False((await hr.SaveEvaluationAsync(_f.AhmedId, HrFixture.Month, HrFixture.Year, 120, 70)).result.Success);
 
-        // حافز المندوب: 120 قطعة مرحّلة غير مجانية × 25 = 3,000
+        // حافز المندوب: (10 − 2) شرنك × 200 + (5 − 1) كارتون × 350 = 3,000
         Assert.Equal(3_000m, await hr.ComputeRepIncentiveAsync(_f.RepId, HrFixture.Month, HrFixture.Year));
 
         // حافز المدير: مبيعات آب = 120 + 380 = 500 ← 200×2 + 300×3 = 1,300 × 22 يوم = 28,600

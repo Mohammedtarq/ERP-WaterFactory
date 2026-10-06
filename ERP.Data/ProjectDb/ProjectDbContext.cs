@@ -395,7 +395,8 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<MonthlyIncentiveEvaluation>().HasIndex(m => new { m.EmployeeId, m.PeriodMonth, m.PeriodYear }).IsUnique();
         modelBuilder.Entity<MonthlyIncentiveEvaluation>().HasOne(m => m.Employee).WithMany().HasForeignKey(m => m.EmployeeId).OnDelete(DeleteBehavior.Restrict);
 
-        modelBuilder.Entity<RepItemIncentiveRate>().HasIndex(r => r.ItemId).IsUnique();
+        modelBuilder.Entity<RepItemIncentiveRate>().HasIndex(r => new { r.ItemId, r.PackagingLevelId }).IsUnique();
+        modelBuilder.Entity<RepItemIncentiveRate>().HasOne(r => r.PackagingLevel).WithMany().HasForeignKey(r => r.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<RepItemIncentiveRate>().HasOne(r => r.Item).WithMany().HasForeignKey(r => r.ItemId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<SalesManagerIncentiveTier>().HasOne(t => t.Employee).WithMany().HasForeignKey(t => t.EmployeeId).OnDelete(DeleteBehavior.Restrict);
@@ -664,7 +665,9 @@ public partial class ProjectDbContext : DbContext
         {
             e.Property(f => f.QuantityBaseUnits).HasPrecision(18, 3);
             e.Property(f => f.UnitCost).HasPrecision(18, 4);
+            e.Property(f => f.QuantityInLevel).HasPrecision(18, 3);
             e.HasOne(f => f.Item).WithMany().HasForeignKey(f => f.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(f => f.PackagingLevel).WithMany().HasForeignKey(f => f.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(f => f.Customer).WithMany().HasForeignKey(f => f.CustomerId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<FinanceCategory>(e =>
