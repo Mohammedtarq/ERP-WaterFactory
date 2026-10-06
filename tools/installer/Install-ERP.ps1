@@ -98,11 +98,13 @@ function Install-App {
     $exe = Join-Path $InstallDir 'ERP.Desktop.exe'
     $shell = New-Object -ComObject WScript.Shell
     foreach ($folder in @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('CommonPrograms'))) {
-        $lnk = $shell.CreateShortcut((Join-Path $folder 'نظام معمل المياه.lnk'))
+        # WScript.Shell لا يحفظ اسمًا عربيًا على نظام لغته غير عربية: يُحفظ باسم إنجليزي ثم يُعاد تسميته
+        $temp = Join-Path $folder 'ERP-WaterFactory.lnk'
+        $lnk = $shell.CreateShortcut($temp)
         $lnk.TargetPath = $exe
         $lnk.WorkingDirectory = $InstallDir
-        if ($Mode -eq 'Trainee') { $lnk.Description = 'نظام معمل المياه — نسخة التدريب' }
         $lnk.Save()
+        Move-Item -LiteralPath $temp -Destination (Join-Path $folder 'نظام معمل المياه.lnk') -Force
     }
     Ok "ثُبّت البرنامج، واختصاره على سطح المكتب وقائمة البرامج"
     return $exe
