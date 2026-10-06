@@ -42,15 +42,15 @@ public class ProductionStockTests
         Assert.Equal(50m, shortage.Quantity);
         Assert.Equal(-50m, await db.StockTransactions.Where(t => t.ItemId == w500.Id && t.WarehouseId == fg.Id).SumAsync(t => t.QuantityBaseUnits));
 
-        // إنتاج اليوم: 10 كراتين = 120 قطعة؛ المواد من الوصفة (امبولة + سدادة + ليبل) بكلفة 37 للقطعة
+        // إنتاج اليوم: 10 كراتين = 120 قطعة؛ المواد من الوصفة (امبولة + سدادة + ليبلان أمامي وخلفي) بكلفة 39 للقطعة
         var rawBefore = await db.StockTransactions.Where(t => t.Item.ItemCode == "RM-PRE").SumAsync(t => t.QuantityBaseUnits);
         var (r, orderId, lines) = await new DailyProductionService(db).RecordAsync(DateTime.Today,
             new[] { new DailyProductionLineInput(w500.Id, carton.Id, 10) }, _f.AdminId);
         Assert.True(r.Success, r.ErrorMessage);
         var line = Assert.Single(lines);
         Assert.Equal(120m, line.Pieces);
-        Assert.Equal(120m * 37m, line.MaterialCost);
-        Assert.Equal(37m, line.UnitCost);
+        Assert.Equal(120m * 39m, line.MaterialCost);
+        Assert.Equal(39m, line.UnitCost);
         Assert.Equal(50m, line.SettledShortage);
         Assert.Equal(rawBefore - 120, await db.StockTransactions.Where(t => t.Item.ItemCode == "RM-PRE").SumAsync(t => t.QuantityBaseUnits));
         Assert.Equal(ProductionOrderStatus.Completed, (await db.ProductionOrders.FindAsync(orderId))!.Status);
@@ -65,7 +65,7 @@ public class ProductionStockTests
         Assert.DoesNotContain(batches, b => b.Qty < 0);
 
         // متوسط كلفة المنتج التام = كلفة الإنتاج الفعلية (لا رصيد مسعَّر قبله)
-        Assert.Equal(37m, (await db.Items.AsNoTracking().FirstAsync(i => i.Id == w500.Id)).CostPrice);
+        Assert.Equal(39m, (await db.Items.AsNoTracking().FirstAsync(i => i.Id == w500.Id)).CostPrice);
 
         // تقرير الإنتاج الشهري يظهر اليوم بالكراتين والكلفة
         var report = await new ProductionStockReports(db).MonthlyProductionAsync(DateTime.Today.Year, DateTime.Today.Month);

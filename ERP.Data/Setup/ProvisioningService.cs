@@ -428,7 +428,7 @@ public static class DemoData
         var bom = new BillOfMaterials { FinishedItemId = w500.Id };
         bom.Lines.Add(new BOMLine { RawMaterialItemId = preform.Id, QuantityPerUnit = 1 });
         bom.Lines.Add(new BOMLine { RawMaterialItemId = cap.Id, QuantityPerUnit = 1 });
-        bom.Lines.Add(new BOMLine { RawMaterialItemId = label.Id, QuantityPerUnit = 1 });
+        bom.Lines.Add(new BOMLine { RawMaterialItemId = label.Id, QuantityPerUnit = 2 });   // القنينة المربعة: ليبل أمامي وخلفي
         db.BillOfMaterials.Add(bom);
         db.QualityTests.AddRange(
             new QualityTest { TestName = "درجة الحموضة pH", StandardMin = 6.5m, StandardMax = 8.5m },
@@ -461,7 +461,7 @@ public static class DemoData
         await templates.SaveTemplateAsync(null, "330×20 شرنك", "شرنك نايلون يحوي 20 قنينة", new[]
         {
             new TemplateLineInput("شرنك", null, 1, 20), new TemplateLineInput("امبولة", preform.Id, 1, 1),
-            new TemplateLineInput("غطاء", cap.Id, 1, 1), new TemplateLineInput("لاصق", label.Id, 1, 1)
+            new TemplateLineInput("غطاء", cap.Id, 1, 1), new TemplateLineInput("لاصق", label.Id, 2, 1)
         });
     }
 }

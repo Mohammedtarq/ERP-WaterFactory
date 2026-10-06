@@ -326,11 +326,12 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Contains("ترقيم العميل", orders.BatchHistory[0]);
         orders.CloseBatchCommand.Execute(null);
 
-        // تحت التصنيع: صُرف 240 من كل مادة واستُهلك 240 (المُنتَج فعلًا) ← المتبقي صفر والمطابقة سليمة
+        // تحت التصنيع: 240 قنينة ← صُرف 240 امبولة و240 غطاء و480 لاصقًا (أمامي وخلفي) واستُهلك مثلها ← المتبقي صفر والمطابقة سليمة
         var wip = prod.Wip;
         await Open(prod, wip);
         Assert.Equal(3, wip.Rows.Count);
-        Assert.All(wip.Rows, r => Assert.Equal((240m, 240m, 0m, true), (r.Issued, r.Consumed, r.Remaining, r.IsReconciled)));
+        Assert.Equal(new[] { 240m, 240m, 480m }, wip.Rows.Select(r => r.Issued).OrderBy(x => x).ToArray());
+        Assert.All(wip.Rows, r => Assert.Equal((r.Issued, 0m, true), (r.Consumed, r.Remaining, r.IsReconciled)));
         Assert.False(wip.HasAlert);
         wip.PrintCommand.Execute(null);
         Assert.Equal("تقرير تحت التصنيع حسب الماكينة", dialogs.Reports.Last().Title);
