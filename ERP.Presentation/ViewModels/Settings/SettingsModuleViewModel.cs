@@ -409,9 +409,61 @@ public class BackupSectionViewModel : SectionViewModel
         : base(s, d, ModuleCode.SystemSettings, "النسخ الاحتياطي", Icons.Backup, "#0EA5E9", "نسخة كاملة لقواعد البيانات بضغطة واحدة وسجل النسخ السابقة")
     {
         BackupCommand = new AsyncRelayCommand(BackupAsync);
+        RestoreCommand = new AsyncRelayCommand(RestoreAsync);
+        PickRestoreFileCommand = new RelayCommand(() =>
+        {
+            if (Dialogs.PickFile("اختر ملف النسخة الاحتياطية (.bak)", "نسخ SQL Server (*.bak)|*.bak|كل الملفات (*.*)|*.*") is { } path) RestoreFile = path;
+        });
     }
 
     protected override bool ReloadOnActivate => true;
+
+    // ---------------- الاسترداد ----------------
+    private string _restoreFile = "";
+    private BackupHistoryRow? _selectedHistory;
+    /// <summary>ملف النسخة على جهاز السيرفر (من السجل أو من «اختيار ملف»).</summary>
+    public string RestoreFile { get => _restoreFile; set => SetProperty(ref _restoreFile, value); }
+    public BackupHistoryRow? SelectedHistory
+    {
+        get => _selectedHistory;
+        set { if (SetProperty(ref _selectedHistory, value) && value is not null && value.DatabaseName == ProjectDatabase) RestoreFile = value.FilePath; }
+    }
+    public AsyncRelayCommand RestoreCommand { get; }
+    public RelayCommand PickRestoreFileCommand { get; }
+
+    /// <summary>
+    /// استرداد قاعدة المشروع من نسخة: تأكيدان، ونسخة أمان تلقائية من الوضع الحالي قبل الاستبدال،
+    /// ثم يلزم إعادة فتح البرنامج (كل المستخدمين).
+    /// </summary>
+    private async Task RestoreAsync()
+    {
+        if (!Require(CanEdit, "استرداد النسخ الاحتياطي")) return;
+        if (string.IsNullOrWhiteSpace(RestoreFile)) { Dialogs.Error("اختر ملف النسخة من السجل أو من «اختيار ملف»"); return; }
+        if (string.IsNullOrWhiteSpace(Folder)) { Dialogs.Error("حدد مجلد الحفظ: تُؤخذ فيه نسخة أمان من الوضع الحالي قبل الاسترداد"); return; }
+        if (!Dialogs.Confirm($"استرداد قاعدة «{ProjectDatabase}» من:\n{RestoreFile}\n\nكل ما سُجّل بعد تاريخ هذه النسخة سيُستبدل، ويُقطع اتصال المستخدمين الآخرين. تُؤخذ نسخة أمان من الوضع الحالي أولًا. متابعة؟")
+            || !Dialogs.Confirm("تأكيد أخير: هل أنت متأكد من الاسترداد الآن؟")) return;
+        Log.Clear();
+        IsBusy = true;
+        try
+        {
+            Log.Add("جاري التحقق من الملف وأخذ نسخة أمان...");
+            var safety = await new BackupService(Session.ConnectionString).RestoreAsync(ProjectDatabase, RestoreFile.Trim(), Folder);
+            Log.Add($"✓ نسخة أمان قبل الاسترداد: {safety}");
+            Log.Add($"✓ اُستردت {ProjectDatabase} من {RestoreFile.Trim()}");
+            StatusMessage = "اكتمل الاسترداد. أغلق البرنامج وافتحه من جديد على كل الأجهزة.";
+            Dialogs.Info($"اكتمل الاسترداد.\nنسخة الأمان (الوضع السابق): {safety}\n\nأغلق البرنامج وافتحه من جديد على كل الأجهزة.");
+        }
+        catch (Exception ex) when (ex is SqlException or InvalidOperationException)
+        {
+            Log.Add("✗ " + ex.Message);
+            Dialogs.Error("تعذّر الاسترداد، والقاعدة الحالية لم تُمس:\n" + ex.Message +
+                          "\n\nتأكد أن الملف على جهاز السيرفر وأن لخدمة SQL Server صلاحية قراءته.");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     public ObservableCollection<BackupHistoryRow> History { get; } = new();
     public ObservableCollection<string> Log { get; } = new();

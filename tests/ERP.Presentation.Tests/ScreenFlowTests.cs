@@ -781,6 +781,17 @@ public class ScreenFlowTests
         Assert.False(backup.IsOverdue);
         Assert.StartsWith("✓", backup.LastBackupText);
 
+        // الاسترداد: بلا ملف رسالة، ونسخة قاعدة التحكم مرفوضة لقاعدة المشروع دون مساسها
+        await backup.RestoreCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("اختر ملف النسخة"));
+        dialogs.Errors.Clear();
+        backup.SelectedHistory = backup.History.First(h => h.DatabaseName == backup.ProjectDatabase);
+        Assert.Equal(backup.SelectedHistory.FilePath, backup.RestoreFile);
+        backup.RestoreFile = backup.History.First(h => h.DatabaseName == "ERP_ControlDB").FilePath;
+        await backup.RestoreCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("تعذّر الاسترداد") && e.Contains("ليست"));
+        dialogs.Errors.Clear();
+
         // مجلد غير موجود على السيرفر: رسالة واضحة بدل انهيار
         backup.Folder = "/no/such/folder";
         await backup.BackupCommand.ExecuteAsync();
