@@ -110,9 +110,10 @@ jobs:
         shell: pwsh
         run: ./tools/publish.ps1
       - name: تجربة المثبّت (جهاز مستخدم، بلا تشغيل)
-        shell: powershell
+        # نص الخطوة بـ PowerShell 7 (يقرأ العربية)، والمثبّت نفسه على Windows PowerShell 5.1 كما في أجهزة المعمل
+        shell: pwsh
         run: |
-          & "dist/ERP-WaterFactory-win-x64/Install-ERP.ps1" -Mode Workstation -NoLaunch -InstallDir "$env:RUNNER_TEMP\erp-install"
+          powershell -NoProfile -ExecutionPolicy Bypass -File "dist/ERP-WaterFactory-win-x64/Install-ERP.ps1" -Mode Workstation -NoLaunch -InstallDir "$env:RUNNER_TEMP\erp-install"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           if (-not (Test-Path "$env:RUNNER_TEMP\erp-install\ERP.Desktop.exe")) { throw "المثبّت لم ينسخ البرنامج" }
           if (Test-Path "$env:RUNNER_TEMP\erp-install\Install-ERP.ps1") { throw "المثبّت نسخ نفسه مع البرنامج" }
