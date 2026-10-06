@@ -15,6 +15,9 @@ public interface IDialogService
 
     /// <summary>اختيار ملف من الجهاز بعنوان ومرشّح (مثل ملف البصمة) — يعيد مساره أو null عند الإلغاء.</summary>
     string? PickFile(string title, string filter) => null;
+
+    /// <summary>فتح رابط خارجي (WhatsApp، موقع) بالمتصفح أو التطبيق الافتراضي.</summary>
+    void OpenUrl(string url) { }
 }
 
 /// <summary>التنقل بين نوافذ التدفق الرئيسي (دخول ← مشروع ← الواجهة الرئيسية).</summary>

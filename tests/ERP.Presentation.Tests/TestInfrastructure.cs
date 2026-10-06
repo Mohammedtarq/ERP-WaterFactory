@@ -23,6 +23,8 @@ public class RecordingDialogs : IDialogService
     public void Info(string message) => Infos.Add(message);
     public void Error(string message) => Errors.Add(message);
     public bool Confirm(string message) => ConfirmAnswer;
+    public List<string> Urls { get; } = new();
+    public void OpenUrl(string url) => Urls.Add(url);
     public List<ReportDocument> Reports { get; } = new();
     public void ShowReport(ReportDocument report) => Reports.Add(report);
     public string? ImageToPick { get; set; }

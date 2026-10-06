@@ -353,7 +353,32 @@ public class SupplierStatementSectionViewModel : SectionViewModel
     private Supplier? _supplier;
 
     public SupplierStatementSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.Suppliers, "كشف حساب المورد", Icons.Statement, "#8B5CF6", "الاستلامات والدفعات والرصيد المستحق") { }
+        : base(s, d, ModuleCode.Suppliers, "كشف حساب المورد", Icons.Statement, "#8B5CF6", "الاستلامات والدفعات والرصيد المستحق")
+    {
+        WhatsAppCommand = new AsyncRelayCommand(SendWhatsAppAsync);
+    }
+
+    public AsyncRelayCommand WhatsAppCommand { get; }
+
+    /// <summary>يفتح محادثة WhatsApp برقم المورد ونص الكشف (المستحق وآخر 5 حركات).</summary>
+    private async Task SendWhatsAppAsync()
+    {
+        if (Supplier is null) { Dialogs.Error("اختر المورد أولًا"); return; }
+        if (WhatsAppLink.NormalizeIraqPhone(Supplier.Phone) is not { } phone)
+        { Dialogs.Error($"رقم هاتف «{Supplier.Name}» فارغ أو غير صحيح — صحّحه من بطاقة المورد (مثل 07701234567)"); return; }
+        await using var db = Session.NewDb();
+        var company = await db.CompanyProfiles.AsNoTracking().FirstOrDefaultAsync();
+        var balance = Balance switch
+        {
+            > 0 => $"المستحق لكم علينا: {Balance:N0} د.ع",
+            < 0 => $"رصيد مدفوع مقدمًا لكم: {-Balance:N0} د.ع",
+            _ => "الحساب متوازن (لا رصيد)"
+        };
+        var last = Rows.Reverse().Take(5).Select(r => (r.Date, $"{r.DocType} {r.DocNumber}".Trim(), r.Debit != 0 ? r.Debit : r.Credit));
+        Dialogs.OpenUrl(WhatsAppLink.Build(phone, WhatsAppLink.StatementText(company?.NameAr is { Length: > 0 } n ? n : Session.ProjectName,
+                                                                            Supplier.Name, balance, last, company?.Phones)));
+        StatusMessage = $"فُتحت محادثة {Supplier.Name} على WhatsApp — اضغط «إرسال»";
+    }
 
     public ObservableCollection<Supplier> SuppliersLookup { get; } = new();
     public ObservableCollection<StatementRow> Rows { get; } = new();

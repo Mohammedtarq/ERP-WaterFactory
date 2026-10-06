@@ -10,6 +10,8 @@
         <DockPanel>
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                 <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                <Button DockPanel.Dock="Right" Content="WhatsApp" ToolTip="إرسال الكشف (المستحق وآخر الحركات) على WhatsApp برقم المورد" Style="{StaticResource SecondaryButton}"
+                        Foreground="#16A34A" Command="{Binding WhatsAppCommand}" Margin="0,0,6,0"/>
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="المورد:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
                     <ComboBox ItemsSource="{Binding SuppliersLookup}" SelectedItem="{Binding Supplier}" DisplayMemberPath="Name" Width="280"/>

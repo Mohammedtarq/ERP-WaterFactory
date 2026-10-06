@@ -275,4 +275,70 @@ public class BatchVariantTests
         Assert.True(await db.AuditLogs.AnyAsync(a => a.TableName == "ItemBatches" && a.RecordId == batch.BatchId.ToString()));
         Assert.Equal(0m, await FgAsync(db, s, null));
     }
+    /// <summary>
+    /// يوم عمل كامل: إنتاج أساسي ومطعم ← طلب تحميل بسطر لكل متغير ← بيع من السيارة للمطعم ولزبون عام ←
+    /// تسوية المندوب بالمرتجع والنقد ← الأرصدة وتقرير المتغيرات والحسابات الختامية متسقة.
+    /// </summary>
+    [Fact]
+    public async Task Full_day_production_load_van_sales_settlement_and_reports_agree()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "S4");
+        var (produced, _, _) = await new DailyProductionService(db).RecordAsync(DateTime.Today, new[]
+        {
+            new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 10),
+            new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 5, s.HassounRecipe.Id),
+        }, _f.AdminId);
+        Assert.True(produced.Success, produced.ErrorMessage);
+
+        var rep = new Employee { FullName = "مندوب يوم كامل", IsSalesRep = true, BaseSalary = 500_000 };
+        db.Employees.Add(rep);
+        await db.SaveChangesAsync();
+        var van = new Warehouse { BranchId = s.Fg.BranchId, Name = "سيارة يوم كامل", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id };
+        db.Warehouses.Add(van);
+        await db.SaveChangesAsync();
+        var ops = new RepOperationsService(db);
+        var (created, order) = await ops.CreateLoadOrderAsync(van.Id, s.Fg.Id, DateTime.Today, new[]
+        {
+            new RepLoadLineInput(s.Water.Id, s.Carton.Id, 8),
+            new RepLoadLineInput(s.Water.Id, s.Carton.Id, 5, s.HassounRecipe.Id),
+        }, null, _f.AdminId);
+        Assert.True(created.Success, created.ErrorMessage);
+        Assert.True((await ops.PrepareLoadOrderAsync(order!.Id, null, _f.AdminId)).result.Success);
+
+        var sales = new SalesService(db);
+        async Task<int> VanSaleAsync(Customer c, decimal pieces)
+        {
+            var (ok, id) = await sales.CreateInvoiceAsync(new SalesInvoiceHeaderInput(c.Id, van.Id, DateTime.Today, InvoicePaymentMethod.Cash, SalesRepEmployeeId: rep.Id), _f.AdminId);
+            Assert.True(ok.Success, ok.ErrorMessage);
+            Assert.True((await sales.AddLineAsync(id!.Value, new SalesInvoiceLineInput(s.Water.Id, s.Piece.Id, pieces), _f.AdminId)).Success);
+            var (posted, _) = await sales.PostInvoiceAsync(id.Value, _f.AdminId);
+            Assert.True(posted.Success, posted.ErrorMessage);
+            return id.Value;
+        }
+        var toHassoun = await VanSaleAsync(s.Hassoun, 60);
+        var toGeneral = await VanSaleAsync(s.General, 50);
+        Assert.Equal(new Dictionary<int, decimal> { [s.HassounRecipe.Id] = 60 }, await IssuedByVariantAsync(db, toHassoun));
+        Assert.Equal(new Dictionary<int, decimal> { [0] = 50 }, await IssuedByVariantAsync(db, toGeneral));
+
+        // التسوية: المرتجع 46 قطعة للمخزن، والنقد كاملًا
+        var wallet = await new RepsService(db).GetWalletBalanceAsync(rep.Id);
+        Assert.Equal(110 * 250m, wallet);
+        var (settled, settlement) = await ops.SettleAsync(new RepSettlementRequest(van.Id, s.Fg.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(s.Water.Id, s.Piece.Id, 46) }, Array.Empty<RepFreeLineInput>(), Array.Empty<RepExpenseInput>(),
+            wallet, _f.AdminId));
+        Assert.True(settled.Success, settled.ErrorMessage);
+        Assert.Equal((27_500m, 0m, 46m), (settlement!.ExpectedCash, settlement.Difference, settlement.ReturnedPieces));
+        Assert.Equal(0m, await db.StockTransactions.Where(t => t.WarehouseId == van.Id).SumAsync(t => t.QuantityBaseUnits));
+        Assert.Equal((70m, 0m), (await FgAsync(db, s, null), await FgAsync(db, s, s.HassounRecipe.Id)));
+
+        // تقرير المتغيرات والحسابات الختامية يتفقان مع ما حدث
+        var rows = (await new VariantStockService(db).SummaryAsync(DateTime.Today, DateTime.Today)).Where(r => r.ItemName == s.Water.ItemName).ToList();
+        Assert.Equal((120m, 50m, 70m), (rows.Single(r => r.RecipeId == null).Produced, rows.Single(r => r.RecipeId == null).Sold, rows.Single(r => r.RecipeId == null).Balance));
+        Assert.Equal((60m, 60m, 0m), (rows.Single(r => r.RecipeId == s.HassounRecipe.Id).Produced, rows.Single(r => r.RecipeId == s.HassounRecipe.Id).Sold,
+                                      rows.Single(r => r.RecipeId == s.HassounRecipe.Id).Balance));
+        var month = await new FinalAccountsService(db).MonthAsync(DateTime.Today.Year, DateTime.Today.Month);
+        Assert.True(month.Revenue >= 27_500m);
+        Assert.Contains(month.Products, p => p.ItemName == s.Water.ItemName);
+    }
 }

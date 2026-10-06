@@ -18,6 +18,8 @@
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                     <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                     <Button DockPanel.Dock="Right" Content="&#xE749;" ToolTip="طباعة الكشف" Style="{StaticResource RowIconButton}" Tag="#8B5CF6" Command="{Binding PrintCommand}"/>
+                    <Button DockPanel.Dock="Right" Content="WhatsApp" ToolTip="إرسال الكشف (الرصيد وآخر الحركات) على WhatsApp برقم العميل" Style="{StaticResource SecondaryButton}"
+                            Foreground="#16A34A" Command="{Binding WhatsAppCommand}" Margin="0,0,6,0"/>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="العميل:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
                         <ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding Customer}" DisplayMemberPath="Name" Width="280" IsTextSearchEnabled="True"/>

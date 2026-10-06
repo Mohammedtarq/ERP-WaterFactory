@@ -926,6 +926,23 @@ public class CustomerStatementSectionViewModel : SectionViewModel
         });
         AllocateCommand = new AsyncRelayCommand(AllocateAsync);
         ResetAutoCommand = new AsyncRelayCommand(p => p is CustomerPaymentRow r ? ResetAutoAsync(r) : Task.CompletedTask);
+        WhatsAppCommand = new AsyncRelayCommand(SendWhatsAppAsync);
+    }
+
+    public AsyncRelayCommand WhatsAppCommand { get; }
+
+    /// <summary>يفتح محادثة WhatsApp برقم العميل ونص الكشف (الرصيد وآخر 5 حركات) جاهزًا للإرسال.</summary>
+    private async Task SendWhatsAppAsync()
+    {
+        if (Customer is null) { Dialogs.Error("اختر العميل أولًا"); return; }
+        if (WhatsAppLink.NormalizeIraqPhone(Customer.Phone) is not { } phone)
+        { Dialogs.Error($"رقم هاتف «{Customer.Name}» فارغ أو غير صحيح — صحّحه من بطاقة العميل (مثل 07701234567)"); return; }
+        await using var db = Session.NewDb();
+        var company = await db.CompanyProfiles.AsNoTracking().FirstOrDefaultAsync();
+        var last = Rows.Reverse().Take(5).Select(r => (r.TxDate, $"{r.TxType} {r.DocNumber}".Trim(), r.Debit != 0 ? r.Debit : r.Credit));
+        Dialogs.OpenUrl(WhatsAppLink.Build(phone, WhatsAppLink.StatementText(company?.NameAr is { Length: > 0 } n ? n : Session.ProjectName,
+                                                                            Customer.Name, BalanceText, last, company?.Phones)));
+        StatusMessage = $"فُتحت محادثة {Customer.Name} على WhatsApp — اضغط «إرسال»، وأرفق PDF الكشف من الطباعة إن أردت";
     }
 
     // ---------------- الفواتير والمدفوعات والتوزيع ----------------
