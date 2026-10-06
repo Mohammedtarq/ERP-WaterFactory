@@ -20,6 +20,7 @@ public class SettingsModuleViewModel : ModuleViewModel
         : base("إعدادات النظام", Icons.Settings, ModuleColors.Settings)
     {
         Add(new RolesPermissionsSectionViewModel(s, d));
+        Add(new SectionLayoutSectionViewModel(s, d));
         Add(new UsersSectionViewModel(s, d));
         Add(new BranchesSectionViewModel(s, d));
         if (s.ControlConnectionString is not null) Add(new ProjectsSectionViewModel(s, d));
@@ -469,5 +470,118 @@ public class BackupSectionViewModel : SectionViewModel
         {
             IsBusy = false;
         }
+    }
+}
+
+// ============================ توزيع الأقسام ============================
+public sealed record ModuleOption(string Code, string Name);
+
+/// <summary>سطر قسم: أين يظهر، وهل يظهر للدور المختار.</summary>
+public class SectionLayoutRow : ObservableObject
+{
+    private string _target;
+    private bool _visible;
+    public SectionLayoutRow(SectionEntry entry, string target, bool visible)
+    {
+        Entry = entry;
+        _target = OriginalTarget = target;
+        _visible = OriginalVisible = visible;
+    }
+    public SectionEntry Entry { get; }
+    public string Title => Entry.Title;
+    public string HomeTitle => Entry.HomeTitle;
+    public bool Movable => Entry.Movable;
+    public string OriginalTarget { get; private set; }
+    public bool OriginalVisible { get; private set; }
+    public string Target { get => _target; set { if (SetProperty(ref _target, value)) OnPropertyChanged(nameof(IsMoved)); } }
+    public bool Visible { get => _visible; set => SetProperty(ref _visible, value); }
+    public bool IsMoved => Target != Entry.HomeModule;
+    public bool Changed => Target != OriginalTarget || Visible != OriginalVisible;
+    internal void Accept() { OriginalTarget = Target; OriginalVisible = Visible; }
+}
+
+/// <summary>
+/// توزيع الأقسام بقرار الإدارة: نقل شاشة إلى وحدة أخرى (يعمل عليها من يملك صلاحية تلك الوحدة دون صلاحية الأصلية)،
+/// وإخفاء شاشات عن دور (مثل موظف مبيعات يرى الفاتورة وكشف الحساب فقط). يسري عند الدخول التالي.
+/// </summary>
+public class SectionLayoutSectionViewModel : SectionViewModel
+{
+    private Role? _role;
+    private string _moduleFilter = "";
+    private List<SectionLayoutRow> _all = new();
+
+    public SectionLayoutSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.SystemSettings, "توزيع الأقسام", Icons.Layers, "#0EA5E9", "نقل شاشة إلى وحدة أخرى، وإخفاء شاشات عن دور — بقرار الإدارة")
+    {
+        SaveCommand = new AsyncRelayCommand(SaveAsync);
+        ResetRoleCommand = new RelayCommand(() => { foreach (var r in _all) r.Visible = true; });
+    }
+
+    protected override bool HasPendingInput => _all.Any(r => r.Changed);
+    public ObservableCollection<Role> Roles { get; } = new();
+    public ObservableCollection<SectionLayoutRow> Rows { get; } = new();
+    /// <summary>الوحدات التي تُنقل إليها الأقسام.</summary>
+    public IReadOnlyList<ModuleOption> Targets { get; } =
+        RolesPermissionsSectionViewModel.Modules.Where(m => SectionCatalog.IsConfigurable(m.code)).Select(m => new ModuleOption(m.code, m.name)).ToList();
+    public IReadOnlyList<string> ModuleFilters { get; } =
+        new[] { "" }.Concat(RolesPermissionsSectionViewModel.Modules.Where(m => SectionCatalog.IsConfigurable(m.code)).Select(m => m.name)).ToList();
+    public Role? Role { get => _role; set { if (SetProperty(ref _role, value)) Background(LoadAsync()); } }
+    public string ModuleFilter { get => _moduleFilter; set { if (SetProperty(ref _moduleFilter, value)) ApplyFilter(); } }
+    public AsyncRelayCommand SaveCommand { get; }
+    public RelayCommand ResetRoleCommand { get; }
+    public int MovedCount => _all.Count(r => r.IsMoved);
+    public int HiddenCount => _all.Count(r => !r.Visible);
+
+    public override async Task LoadAsync()
+    {
+        await using var db = Session.NewDb();
+        var keep = Role?.Id;
+        Roles.Clear();
+        foreach (var r in await db.Roles.AsNoTracking().OrderBy(r => r.Name).ToListAsync()) Roles.Add(r);
+        _role = Roles.FirstOrDefault(r => r.Id == keep) ?? Roles.FirstOrDefault();
+        OnPropertyChanged(nameof(Role));
+        var svc = new SectionLayoutService(db);
+        var placements = await svc.PlacementsAsync();
+        var hidden = _role is null ? new HashSet<string>() : await svc.HiddenAsync(_role.Id);
+        _all = SectionCatalog.Entries(Session, Dialogs)
+            .Select(e => new SectionLayoutRow(e, placements.GetValueOrDefault(e.Key) ?? e.HomeModule, !hidden.Contains(e.Key))).ToList();
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        Rows.Clear();
+        foreach (var r in _all.Where(r => ModuleFilter.Length == 0 || r.HomeTitle == ModuleFilter)) Rows.Add(r);
+        OnPropertyChanged(nameof(MovedCount));
+        OnPropertyChanged(nameof(HiddenCount));
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!Require(CanEdit, "توزيع الأقسام")) return;
+        var changed = _all.Where(r => r.Changed).ToList();
+        if (changed.Count == 0) { StatusMessage = "لا تغييرات"; return; }
+        if (Role is null) { Dialogs.Error("اختر الدور"); return; }
+        if (changed.FirstOrDefault(r => r.IsMoved && !r.Movable) is { } fixedRow)
+        { Dialogs.Error($"«{fixedRow.Title}» لا يُنقل: ترحيله يتحقق من صلاحية {fixedRow.HomeTitle} داخل قاعدة البيانات"); return; }
+        await using var db = Session.NewDb();
+        var svc = new SectionLayoutService(db);
+        foreach (var r in changed)
+        {
+            if (r.Target != r.OriginalTarget)
+            {
+                var res = await svc.MoveAsync(r.Entry.Key, r.Entry.HomeModule, r.Target, Session.UserId, r.Title);
+                if (!res.Success) { Dialogs.Error(res.ErrorMessage!); return; }
+            }
+            if (r.Visible != r.OriginalVisible)
+            {
+                var res = await svc.SetHiddenAsync(Role.Id, r.Entry.Key, !r.Visible, Session.UserId, r.Title);
+                if (!res.Success) { Dialogs.Error(res.ErrorMessage!); return; }
+            }
+            r.Accept();
+        }
+        OnPropertyChanged(nameof(MovedCount));
+        OnPropertyChanged(nameof(HiddenCount));
+        StatusMessage = $"حُفظ توزيع {changed.Count} قسم — يسري عند الدخول التالي للمستخدمين";
     }
 }

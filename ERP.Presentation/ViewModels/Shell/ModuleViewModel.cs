@@ -36,6 +36,8 @@ public abstract class SectionViewModel : SessionViewModel
     public string Color { get; }
     public string Description { get; }
     public AsyncRelayCommand RefreshCommand { get; }
+    /// <summary>اسم الوحدة الأصلية إن كانت الشاشة منقولة بقرار الإدارة.</summary>
+    public string? MovedFrom { get; internal set; }
 
     private long _loadedVersion = -1;
 
@@ -176,10 +178,31 @@ public abstract class ModuleViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// يضيف القسم إلا إن أخفته الإدارة عن دور المستخدم أو نقلته إلى وحدة أخرى
+    /// (يبقى الكائن متاحًا للروابط الداخلية، ولا يظهر تبويبًا).
+    /// </summary>
     protected T Add<T>(T section) where T : SectionViewModel
     {
-        Tabs.Add(section);
+        var layout = section.SessionRef.Layout;
+        var key = SectionCatalog.KeyOf(section);
+        var movedAway = layout.Moves.TryGetValue(key, out var target) && target != section.HomeModule && SectionCatalog.IsMovable(section.GetType(), section.HomeModule);
+        var hidden = layout.Hidden.Contains(key) && SectionCatalog.IsConfigurable(section.HomeModule);
+        if (!movedAway && !hidden) Tabs.Add(section);
         return section;
+    }
+
+    /// <summary>يُدرج الأقسام التي نقلتها الإدارة إلى هذه الوحدة، وصلاحياتها تُحسب على هذه الوحدة.</summary>
+    internal void AdoptMovedSections(AppSession session, IDialogService dialogs, string moduleCode)
+    {
+        foreach (var (key, target) in session.Layout.Moves)
+        {
+            if (target != moduleCode || session.Layout.Hidden.Contains(key)) continue;
+            if (SectionCatalog.Create(key, session, dialogs) is not { } section || !SectionCatalog.IsMovable(section.GetType(), section.HomeModule)) continue;
+            section.Module = moduleCode;
+            section.MovedFrom = SectionCatalog.ModuleTitle(section.HomeModule);
+            Tabs.Add(section);
+        }
     }
 
     /// <summary>يعيد تفعيل التبويب الظاهر (يُحدَّث فقط إن تغيّرت البيانات منذ آخر تحميل).</summary>

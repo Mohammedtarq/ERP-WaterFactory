@@ -140,6 +140,10 @@ public partial class ProjectDbContext : DbContext
     public DbSet<DailyProductionTemplate> DailyProductionTemplates => Set<DailyProductionTemplate>();
     public DbSet<DailyProductionTemplateLine> DailyProductionTemplateLines => Set<DailyProductionTemplateLine>();
 
+    // ---- توزيع الأقسام (36_section_layout.sql) ----
+    public DbSet<SectionPlacement> SectionPlacements => Set<SectionPlacement>();
+    public DbSet<RoleHiddenSection> RoleHiddenSections => Set<RoleHiddenSection>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Employee>().Property(e => e.SocialSecurityAmount).HasPrecision(18, 2);
@@ -711,6 +715,12 @@ public partial class ProjectDbContext : DbContext
             e.Property(x => x.PeriodFrom).HasColumnType("date");
             e.Property(x => x.PeriodTo).HasColumnType("date");
             e.HasOne(x => x.ImportedByUser).WithMany().HasForeignKey(x => x.ImportedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<SectionPlacement>().HasKey(p => p.SectionKey);
+        modelBuilder.Entity<RoleHiddenSection>(e =>
+        {
+            e.HasKey(h => new { h.RoleId, h.SectionKey });
+            e.HasOne(h => h.Role).WithMany().HasForeignKey(h => h.RoleId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<ProductionOrderLine>().HasOne(l => l.PackagingLevel).WithMany().HasForeignKey(l => l.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionOrderLine>().Property(l => l.Packs).HasPrecision(18, 3);

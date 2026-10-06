@@ -23,7 +23,11 @@ public class AppSession
         Username = info.Username;
         RoleName = info.RoleName;
         Permissions = info.Permissions;
+        Layout = info.Layout ?? SectionLayout.Empty;
     }
+
+    /// <summary>توزيع الأقسام لهذا المستخدم (المنقول والمخفي عن دوره) — يُقرأ عند الدخول.</summary>
+    public SectionLayout Layout { get; }
 
     public string ProjectName { get; }
     /// <summary>قاعدة التحكم (لإدارة حسابات الدخول والمشاريع). null في سياقات لا تحتاجها.</summary>

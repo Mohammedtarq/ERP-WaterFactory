@@ -97,7 +97,10 @@ public class MainShellViewModel : ViewModelBase
             if (!SetProperty(ref _selectedItem, value) || value is null) return;
             value.IsSelected = true;
             if (!_modules.TryGetValue(value.ModuleCode, out var module))
+            {
                 _modules[value.ModuleCode] = module = value.Factory();
+                if (module is ModuleViewModel created) created.AdoptMovedSections(Session, _dialogs, value.ModuleCode);
+            }
             else
             {
                 // العودة لوحدة مفتوحة سابقًا: التبويب الظاهر يُحدَّث إن حُفظت عمليات في شاشات أخرى

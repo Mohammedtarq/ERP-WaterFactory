@@ -52,12 +52,16 @@ public abstract class SessionViewModel : ViewModelBase
     {
         Session = session;
         Dialogs = dialogs;
-        Module = moduleCode;
+        Module = HomeModule = moduleCode;
     }
 
     protected AppSession Session { get; }
     protected IDialogService Dialogs { get; }
-    public string Module { get; }
+    /// <summary>الوحدة التي تُحسب عليها صلاحيات الشاشة: الأصلية، أو التي نقلتها الإدارة إليها.</summary>
+    public string Module { get; internal set; }
+    /// <summary>وحدة الشاشة الأصلية.</summary>
+    public string HomeModule { get; }
+    internal AppSession SessionRef => Session;
 
     public bool CanAdd => Session.Permissions.CanAdd(Module);
     public bool CanEdit => Session.Permissions.CanEdit(Module);

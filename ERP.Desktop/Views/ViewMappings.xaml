@@ -211,6 +211,7 @@
 
     <!-- Settings -->
     <DataTemplate DataType="{x:Type vmSettings:RolesPermissionsSectionViewModel}"><vSettings:RolesPermissionsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSettings:SectionLayoutSectionViewModel}"><vSettings:SectionLayoutSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:UsersSectionViewModel}"><vSettings:UsersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:BranchesSectionViewModel}"><vSettings:BranchesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:ProjectsSectionViewModel}"><vSettings:ProjectsSectionView/></DataTemplate>

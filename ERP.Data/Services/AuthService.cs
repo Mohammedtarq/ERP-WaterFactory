@@ -34,7 +34,8 @@ public class UserPermissions
     public bool Has(string specialCode) => CanView(specialCode);
 }
 
-public record ProjectSessionInfo(string ConnectionString, int LocalUserId, string Username, string RoleName, UserPermissions Permissions);
+public record ProjectSessionInfo(string ConnectionString, int LocalUserId, string Username, string RoleName, UserPermissions Permissions,
+                                 SectionLayout? Layout = null);
 
 /// <summary>
 /// تدفق الدخول الموحّد: التحقق من المستخدم في قاعدة التحكم ← قائمة مشاريعه ←
@@ -147,7 +148,7 @@ public class AuthService
                 return (null, "حسابك موقوف داخل هذا المشروع");
 
             return (new ProjectSessionInfo(cs, user.Id, user.Username, user.Role.Name,
-                                           new UserPermissions(user.Role.Permissions)), null);
+                                           new UserPermissions(user.Role.Permissions), await new SectionLayoutService(db).ForRoleAsync(user.RoleId)), null);
         }
         catch (SqlException ex)
         {
