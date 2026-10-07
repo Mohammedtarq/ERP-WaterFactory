@@ -132,6 +132,8 @@ public partial class ProjectDbContext : DbContext
     // ---- مرتجع الزبون (39_customer_returns.sql) ----
     public DbSet<CustomerReturn> CustomerReturns => Set<CustomerReturn>();
     public DbSet<CustomerReturnLine> CustomerReturnLines => Set<CustomerReturnLine>();
+    // ---- المزامنة السحابية (40_cloud_sync.sql) ----
+    public DbSet<CloudSyncSetting> CloudSyncSettings => Set<CloudSyncSetting>();
 
     // ---- المصروفات والحسابات الختامية (31_expenses_final_accounts.sql) ----
     public DbSet<FinanceCategory> FinanceCategories => Set<FinanceCategory>();
@@ -685,6 +687,7 @@ public partial class ProjectDbContext : DbContext
             e.HasOne(r => r.ReviewedByUser).WithMany().HasForeignKey(r => r.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<RepAppSetting>().Property(s => s.Id).ValueGeneratedNever();
+        modelBuilder.Entity<CloudSyncSetting>().Property(s => s.Id).ValueGeneratedNever();
         modelBuilder.Entity<CustomerReturn>(e =>
         {
             e.HasIndex(r => r.ReturnNumber).IsUnique();

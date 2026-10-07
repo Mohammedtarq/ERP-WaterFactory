@@ -129,9 +129,22 @@ public class RepAppService
 
     // ============================ الاستقبال ============================
 
-    public async Task<RepIntakeResult> ReceiveAsync(string deviceKey, RepRequestEnvelope env)
+    public async Task<RepIntakeResult> ReceiveAsync(string deviceKey, RepRequestEnvelope env) =>
+        await ReceiveCoreAsync(await _db.RepDevices.FirstOrDefaultAsync(d => d.DeviceKey == deviceKey), env);
+
+    /// <summary>
+    /// حركة وصلت عبر الخادم السحابي: الخادم تحقق من بصمة مفتاح الجهاز، ويُعاد التحقق هنا من أنه ما زال مفعّلًا
+    /// (الإيقاف في المعمل يسري حتى على ما وصل الخادم قبل أن يبلغه الإيقاف).
+    /// </summary>
+    public async Task<RepIntakeResult> ReceiveRelayedAsync(int deviceId, RepRequestEnvelope env) =>
+        await ReceiveCoreAsync(await _db.RepDevices.FirstOrDefaultAsync(d => d.Id == deviceId), env);
+
+    /// <summary>النتيجة الحالية لحركات سابقة (للمعلّقة التي اعتُمدت أو رُفضت لاحقًا).</summary>
+    public async Task<Dictionary<Guid, RepIntakeResult>> StatusesAsync(IReadOnlyCollection<Guid> clientIds) =>
+        (await _db.RepRequests.AsNoTracking().Where(r => clientIds.Contains(r.ClientId)).ToListAsync()).ToDictionary(r => r.ClientId, Result);
+
+    private async Task<RepIntakeResult> ReceiveCoreAsync(RepDevice? device, RepRequestEnvelope env)
     {
-        var device = await _db.RepDevices.FirstOrDefaultAsync(d => d.DeviceKey == deviceKey);
         if (device is null || !device.IsActive) return new(false, RepRequestStatus.Failed, null, "الجهاز غير مسجّل أو موقوف — راجع الإدارة");
         device.LastSeenAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
@@ -151,6 +164,12 @@ public class RepAppService
             };
             _db.RepRequests.Add(request);
             await _db.SaveChangesAsync();
+        }
+        else
+        {
+            // إعادة محاولة لحركة متعذّرة: بمحتواها المصحَّح من الهاتف
+            (request.Kind, request.OccurredAt, request.Payload, request.Photo) = (env.Kind, env.OccurredAt, env.Payload, env.Photo);
+            (request.Summary, request.Amount, request.Warning, request.ResultTable, request.ResultId) = ("", 0, null, null, null);
         }
 
         try

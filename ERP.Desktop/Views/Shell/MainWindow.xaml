@@ -39,6 +39,15 @@
                 </DockPanel>
             </Border>
 
+            <!-- مؤشر المزامنة السحابية -->
+            <Border DockPanel.Dock="Bottom" Padding="14,8" Background="#0B1220"
+                    Visibility="{Binding HasCloudStatus, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding CloudStatusText}">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="9" Height="9" Fill="{Binding CloudStatusColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding CloudStatusText}" Foreground="#CBD5E1" FontSize="11" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="200"/>
+                </StackPanel>
+            </Border>
+
             <TextBlock DockPanel.Dock="Top" Text="لا توجد وحدات مسموح لك بعرضها. راجع مدير النظام." Foreground="#FCA5A5"
                        Margin="18" TextWrapping="Wrap" Visibility="{Binding HasNoModules, Converter={StaticResource BoolToVisibility}}"/>
 

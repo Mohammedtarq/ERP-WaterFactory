@@ -25,6 +25,7 @@ public class SettingsModuleViewModel : ModuleViewModel
         Add(new BranchesSectionViewModel(s, d));
         if (s.ControlConnectionString is not null) Add(new ProjectsSectionViewModel(s, d));
         Add(new BackupSectionViewModel(s, d));
+        Add(new CloudSyncSectionViewModel(s, d));
         Add(new BrandingSectionViewModel(s, d));
         Add(new RahmaImportSectionViewModel(s, d));
         if (s.Permissions.Has(SpecialPermission.AuditLog)) Add(new Controls.AuditLogSectionViewModel(s, d));

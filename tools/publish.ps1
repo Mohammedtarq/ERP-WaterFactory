@@ -5,6 +5,10 @@ Set-Location (Join-Path $PSScriptRoot "..")
 $out = "dist\ERP-WaterFactory-win-x64"
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
 dotnet publish ERP.Desktop\ERP.Desktop.csproj -c Release -r win-x64 --self-contained true -p:DebugType=none -o $out
+# خدمة المزامنة السحابية (ملف واحد) لجهاز السيرفر — تُثبَّت يدويًا كمسؤول عند تفعيل تطبيق المندوبين
+dotnet publish ERP.SyncAgent\ERP.SyncAgent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$out\SyncAgent"
+if ($LASTEXITCODE) { throw "تعذّر نشر خدمة المزامنة السحابية" }
 Copy-Item docs\INSTALL.md "$out\اقرأني - التثبيت.md" -ErrorAction SilentlyContinue
 New-Item "$out\الشبكة" -ItemType Directory -Force | Out-Null
 Copy-Item docs\network-setup.md "$out\الشبكة\دليل تجهيز الشبكة.md" -ErrorAction SilentlyContinue

@@ -109,6 +109,19 @@ jobs:
       - name: النشر (self-contained win-x64)
         shell: pwsh
         run: ./tools/publish.ps1
+      - name: تجربة خدمة المزامنة السحابية (ملف واحد يعمل)
+        shell: pwsh
+        run: |
+          & "dist/ERP-WaterFactory-win-x64/SyncAgent/ERP.SyncAgent.exe" --help
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: نشر الخادم السحابي (حزمة جاهزة للرفع على الاستضافة)
+        shell: pwsh
+        run: dotnet publish ERP.Cloud.Api/ERP.Cloud.Api.csproj -c Release -p:DebugType=none -o dist/ERP-Cloud-Api
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ERP-Cloud-Api
+          path: dist/ERP-Cloud-Api
+          retention-days: 30
       - name: تجربة المثبّت (جهاز مستخدم، بلا تشغيل)
         # نص الخطوة بـ PowerShell 7 (يقرأ العربية)، والمثبّت نفسه على Windows PowerShell 5.1 كما في أجهزة المعمل
         shell: pwsh

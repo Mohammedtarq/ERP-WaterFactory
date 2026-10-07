@@ -1,4 +1,5 @@
 using ERP.Data.ProjectDb.Entities;
+using ERP.Data.Services;
 using ERP.Presentation.Mvvm;
 using ERP.Presentation.Services;
 using ERP.Presentation.ViewModels.Finance;
@@ -80,6 +81,30 @@ public class MainShellViewModel : ViewModelBase
         NavigateCommand = new RelayCommand(p => { if (p is NavItem n) SelectedItem = n; });
         LogoutCommand = new RelayCommand(Logout);
         SelectedItem = NavItems.FirstOrDefault();
+        Background(RefreshCloudStatusAsync());
+    }
+
+    private string? _cloudStatusText;
+    private string _cloudStatusColor = "#94A3B8";
+
+    /// <summary>مؤشر المزامنة السحابية في الشريط الجانبي (يظهر فقط إن فُعّلت).</summary>
+    public string? CloudStatusText { get => _cloudStatusText; private set { if (SetProperty(ref _cloudStatusText, value)) OnPropertyChanged(nameof(HasCloudStatus)); } }
+    public string CloudStatusColor { get => _cloudStatusColor; private set => SetProperty(ref _cloudStatusColor, value); }
+    public bool HasCloudStatus => CloudStatusText is not null;
+
+    public async Task RefreshCloudStatusAsync()
+    {
+        try
+        {
+            await using var db = Session.NewDb();
+            var (level, text) = CloudSyncStatus.Describe(await new CloudSyncService(db).SettingsAsync(), DateTime.UtcNow);
+            CloudStatusColor = level switch { CloudSyncLevel.Ok => "#4ADE80", CloudSyncLevel.Warning => "#FBBF24", _ => "#F87171" };
+            CloudStatusText = level == CloudSyncLevel.Off ? null : $"السحابة: {text}";
+        }
+        catch (Exception ex) when (ex is Microsoft.Data.SqlClient.SqlException or InvalidOperationException)
+        {
+            CloudStatusText = null;   // قاعدة غير متاحة الآن: لا مؤشر بدل رسالة خطأ
+        }
     }
 
     public AppSession Session { get; }
@@ -108,6 +133,7 @@ public class MainShellViewModel : ViewModelBase
                 else if (module is DashboardViewModel dash) Background(dash.RefreshIfChangedAsync());
             }
             CurrentModule = module;
+            Background(RefreshCloudStatusAsync());
         }
     }
 

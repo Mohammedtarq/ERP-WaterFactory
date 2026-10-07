@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # يشغّل كل الاختبارات على SQL Server 2022 حقيقي داخل Docker:
 #   1) ملفات Database/00 → 11 على قاعدة نظيفة + اختبارات SQL (tests/test_sales.sql)
-#   2) بناء كل المشاريع (ومنها ERP.Desktop) + اختبارات تكامل C# + اختبارات الشاشات (ViewModels وفحص ربط XAML)
+#   2) بناء كل المشاريع (ومنها ERP.Desktop والخادم السحابي وخدمة المزامنة) + اختبارات تكامل C# + اختبارات الشاشات + المزامنة السحابية من طرف إلى طرف
 # الاستخدام: ./tests/run_tests.sh      (يتطلب Docker فقط)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -65,10 +65,13 @@ docker run --rm --network host "${PROXY_ARGS[@]}" \
     dotnet build ERP.Data/ERP.Data.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
     dotnet build ERP.Presentation/ERP.Presentation.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
     dotnet build ERP.SeedTool/ERP.SeedTool.csproj -nologo -v q -p:NuGetAudit=false
+    dotnet build ERP.Cloud.Api/ERP.Cloud.Api.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
+    dotnet build ERP.SyncAgent/ERP.SyncAgent.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
     dotnet build ERP.Desktop/ERP.Desktop.csproj -nologo -v q -p:EnableWindowsTargeting=true -p:NuGetAudit=false
     dotnet build tests/ERP.Desktop.UiTests -nologo -v q -p:EnableWindowsTargeting=true -p:NuGetAudit=false
     dotnet test tests/ERP.Data.IntegrationTests -nologo -v q --logger "console;verbosity=normal"
     dotnet test tests/ERP.Presentation.Tests -nologo -v q --logger "console;verbosity=normal"
+    dotnet test tests/ERP.Cloud.Tests -nologo -v q --logger "console;verbosity=normal"
   ' || status=1
 sq -Q "DROP DATABASE [$NET_DB]; DROP DATABASE [$UI_DB]" >/dev/null
 
