@@ -99,7 +99,7 @@
                         <TextBlock Text="حد التنبيه الأدنى (قطعة)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.MinStockAlertLevel, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                         <CheckBox Content="فعّال" IsChecked="{Binding Editor.IsActive}"/>
-                        <TextBlock Text="الصنف الجديد يحصل تلقائيًا على وحدة بيع بالقطعة؛ أضف الشرنك والكارتون من هيكلية التعبئة." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>
+                        <TextBlock Text="الصنف الجديد يحصل تلقائيًا على وحدة القطعة. المنتج المصنَّع بعبوة واحدة: الشرنك صنف والكارتون صنف آخر (مثل «الرحمة 330 شرنك» و«الرحمة 330 كارتون»)، وتُضاف عبوته من هيكلية التعبئة." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>
                     </StackPanel>
                 </ScrollViewer>
             </DockPanel>

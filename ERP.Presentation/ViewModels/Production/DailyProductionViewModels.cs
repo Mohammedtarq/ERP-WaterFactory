@@ -330,11 +330,11 @@ public class VariantStockSectionViewModel : SectionViewModel
     private void Print()
     {
         var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"متغيرات المنتج {From:yyyy/MM/dd} — {To:yyyy/MM/dd}", PrintedBy = Session.FullName };
-        r.Columns.AddRange(CanSeeCost ? new[] { "المنتج", "المتغير", "النوع", "المنتج (قطعة)", "المبيع", "الرصيد الآن", "كلفة القطعة" }
-                                      : new[] { "المنتج", "المتغير", "النوع", "المنتج (قطعة)", "المبيع", "الرصيد الآن" });
+        r.Columns.AddRange(CanSeeCost ? new[] { "المنتج", "المتغير", "النوع", "أُنتج", "المبيع", "الرصيد الآن", "كلفة القطعة" }
+                                      : new[] { "المنتج", "المتغير", "النوع", "أُنتج", "المبيع", "الرصيد الآن" });
         foreach (var x in Rows)
         {
-            var cells = new List<string> { x.ItemName, x.Variant, x.Kind, $"{x.Produced:N0}", $"{x.Sold:N0}", x.BalanceText };
+            var cells = new List<string> { x.ItemName, x.Variant, x.Kind, x.ProducedText, x.SoldText, x.BalanceText };
             if (CanSeeCost) cells.Add($"{x.UnitCost:N2}");
             r.Rows.Add(cells);
         }

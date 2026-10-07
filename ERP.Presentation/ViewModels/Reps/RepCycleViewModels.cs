@@ -390,6 +390,9 @@ public class RepSettlementSectionViewModel : SectionViewModel
     public DateTime Date { get => _date; set => SetProperty(ref _date, value); }
     public decimal WalletBalance { get => _walletBalance; private set { if (SetProperty(ref _walletBalance, value)) RaiseTotals(); } }
     public decimal VanPieces => VanStock.Sum(r => r.QuantityBaseUnits);
+    /// <summary>ما في السيارة بعبوات كل منتج: "ماء 330 شرنك: 12 شرنك، …".</summary>
+    public string VanText => VanStock.Count == 0 ? "فارغة"
+        : string.Join("، ", VanStock.GroupBy(r => r.ItemName).Select(g => $"{g.Key}: {string.Join(" + ", g.Select(r => r.Breakdown))}"));
 
     public Item? LineItem { get => _lineItem; set { if (SetProperty(ref _lineItem, value)) Background(LoadLevelsAsync(value, LevelOptions, l => LineLevel = l)); } }
     public ItemPackagingLevel? LineLevel { get => _lineLevel; set => SetProperty(ref _lineLevel, value); }
@@ -487,6 +490,7 @@ public class RepSettlementSectionViewModel : SectionViewModel
         }
         WalletBalance = wallet;
         OnPropertyChanged(nameof(VanPieces));
+        OnPropertyChanged(nameof(VanText));
     }
 
     private async Task LoadHistoryAsync()

@@ -9,10 +9,17 @@ public record VariantSummaryRow(string ItemName, int? RecipeId, string Variant, 
                                 decimal Sold, decimal Balance, string BalanceText)
 {
     public decimal UnitCost => Produced > 0 ? Math.Round(ProducedCost / Produced, 2) : 0;
+    /// <summary>المنتج والمبيع بالعبوات ("300 شرنك").</summary>
+    public string ProducedText { get; init; } = "";
+    public string SoldText { get; init; } = "";
 }
 
 /// <summary>تشغيلة منتج تام برصيدها الحالي ومتغيرها.</summary>
-public record VariantBatchRow(int BatchId, int ItemId, string ItemName, string BatchNumber, DateTime? ManufactureDate, int? RecipeId, string Variant, decimal Balance);
+public record VariantBatchRow(int BatchId, int ItemId, string ItemName, string BatchNumber, DateTime? ManufactureDate, int? RecipeId, string Variant, decimal Balance)
+{
+    /// <summary>الرصيد بالعبوات.</summary>
+    public string BalanceText { get; init; } = "";
+}
 
 /// <summary>
 /// المنتج التام حسب المتغير (الأساسي، محجوز مطعم، مناسبة): ملخص الفترة، والتشغيلات بأرصدتها،
@@ -59,14 +66,19 @@ public class VariantStockService
         return rows.Select(r =>
         {
             var recipe = r.Recipe is int id ? recipes.GetValueOrDefault(id) : null;
+            var lv = levels.GetValueOrDefault(r.ItemId);
             return new VariantSummaryRow(items[r.ItemId], r.Recipe, recipe?.Name ?? "أساسي", KindOf(recipe), r.Produced, Math.Round(r.Cost, 2), r.Sold, r.Balance,
-                                         WarehouseDocumentService.Breakdown(r.Balance, levels.GetValueOrDefault(r.ItemId)));
+                                         WarehouseDocumentService.Breakdown(r.Balance, lv))
+            {
+                ProducedText = WarehouseDocumentService.Breakdown(r.Produced, lv), SoldText = WarehouseDocumentService.Breakdown(r.Sold, lv)
+            };
         }).OrderBy(r => r.ItemName).ThenBy(r => r.RecipeId is null ? 0 : 1).ThenBy(r => r.Variant).ToList();
     }
 
     /// <summary>تشغيلات المنتج التام ذات الرصيد (في كل المخازن والسيارات عدا التالف).</summary>
-    public async Task<List<VariantBatchRow>> BatchesAsync() =>
-        (await _db.StockTransactions.AsNoTracking()
+    public async Task<List<VariantBatchRow>> BatchesAsync()
+    {
+        var rows = (await _db.StockTransactions.AsNoTracking()
             .Where(t => t.BatchId != null && t.Item.SourcingMethod == SourcingMethod.Manufactured && t.Warehouse.WarehouseType != WarehouseType.Damaged)
             .GroupBy(t => new { t.BatchId, t.ItemId, t.Item.ItemName, t.Batch!.BatchNumber, t.Batch.ManufactureDate, t.Batch.CustomRecipeId,
                                 Recipe = t.Batch.CustomRecipe != null ? t.Batch.CustomRecipe.Name : null })
@@ -75,6 +87,11 @@ public class VariantStockService
         .Select(x => new VariantBatchRow(x.Key.BatchId!.Value, x.Key.ItemId, x.Key.ItemName, x.Key.BatchNumber, x.Key.ManufactureDate,
                                          x.Key.CustomRecipeId, x.Key.Recipe ?? "أساسي", x.Qty))
         .OrderByDescending(r => r.ManufactureDate).ThenBy(r => r.ItemName).ToList();
+        var itemIds = rows.Select(r => r.ItemId).Distinct().ToList();
+        var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
+            .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
+        return rows.Select(r => r with { BalanceText = WarehouseDocumentService.Breakdown(r.Balance, levels.GetValueOrDefault(r.ItemId)) }).ToList();
+    }
 
     /// <summary>تصحيح متغير تشغيلة (مثلًا إنتاج مطعم سُجّل أساسيًا): يغيّر من يحق له الصرف منها من الآن.</summary>
     public async Task<FinanceOperationResult> SetBatchVariantAsync(int batchId, int? recipeId, string reason, int userId)

@@ -445,6 +445,16 @@ public class ScreenFlowTests
         await pack.SaveCommand.ExecuteAsync();
         Assert.Equal(6m, pack.Items.Single(p => p.LevelName == "شرنك").EquivalentBaseUnits);
 
+        // عبوة ثانية على المنتج نفسه تُمنع: الكارتون منتج مستقل بقائمة مواده ورصيده
+        await pack.NewCommand.ExecuteAsync();
+        pack.Editor!.LevelName = "كارتون";
+        pack.Editor.ParentLevelId = pack.Items.Single(p => p.EquivalentBaseUnits == 1).Id;
+        pack.Editor.ContainsQuantity = 12;
+        await pack.SaveCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("كل عبوة منتج مستقل") && e.Contains("ماء 1.5 لتر كارتون"));
+        Assert.DoesNotContain(pack.Items, p => p.LevelName == "كارتون");
+        pack.CancelCommand.Execute(null);
+
         // حذف صنف له حركات يُرفض برسالة واضحة
         await items.DeleteCommand.ExecuteAsync(items.Items.Single(i => i.ItemCode == "W500"));
         Assert.Contains(dialogs.Errors, e => e.Contains("مرتبط بحركات"));

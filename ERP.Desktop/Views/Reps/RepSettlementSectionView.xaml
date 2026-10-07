@@ -33,7 +33,7 @@
                     </Grid>
                     <TextBlock Style="{StaticResource Muted}">
                         <Run Text="{Binding RepName, Mode=OneWay}"/>
-                        <Run Text=" — في السيارة "/><Run Text="{Binding VanPieces, Mode=OneWay, StringFormat=N0}"/><Run Text=" قطعة، وفي المحفظة "/>
+                        <Run Text=" — في السيارة: "/><Run Text="{Binding VanText, Mode=OneWay}"/><Run Text="، وفي المحفظة "/>
                         <Run Text="{Binding WalletBalance, Mode=OneWay, StringFormat=N0}"/><Run Text=" د.ع"/>
                     </TextBlock>
 

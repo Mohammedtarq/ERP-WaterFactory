@@ -22,8 +22,8 @@ public record RepVanCard(int VanWarehouseId, string VanName, int RepEmployeeId, 
 }
 
 /// <summary>
-/// لوحة سيارات المندوبين: بطاقة لكل سيارة بدل تبويب لكل سيارة — الرصيد الآن (بالقطعة لكل صنف، فالشرنك والكارتون صنف واحد
-/// بعد البيع)، وحمولة اليوم بوحداتها كما في طلب التحميل، وحالة التسوية، والنقد المتوقع في محفظة المندوب.
+/// لوحة سيارات المندوبين: بطاقة لكل سيارة بدل تبويب لكل سيارة — الرصيد الآن بعبوات كل منتج (الشرنك والكارتون منتجان
+/// مستقلان)، وحمولة اليوم كما في طلب التحميل، وحالة التسوية، والنقد المتوقع في محفظة المندوب.
 /// </summary>
 public class RepVanBoardService
 {
@@ -50,6 +50,8 @@ public class RepVanBoardService
             .ToListAsync();
         var itemIds = balances.Select(b => b.ItemId).Concat(loads.Select(l => l.ItemId)).Distinct().ToList();
         var items = await _db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.ItemName);
+        var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
+            .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
         var settledToday = (await _db.RepSettlements.AsNoTracking().Where(s => s.SettlementDate == day && vanIds.Contains(s.VanWarehouseId))
                                      .Select(s => s.VanWarehouseId).ToListAsync()).ToHashSet();
         var lastSettlement = await _db.RepSettlements.AsNoTracking().Where(s => repIds.Contains(s.RepEmployeeId))
@@ -72,8 +74,10 @@ public class RepVanBoardService
                        : settledToday.Contains(v.Id) ? RepVanStatus.Settled
                        : RepVanStatus.Idle;
             return new RepVanCard(v.Id, v.Name, v.RepId, v.RepName, territories.GetValueOrDefault(v.RepId), pieces,
-                bal.Count == 0 ? "فارغة" : string.Join("، ", bal.OrderBy(b => items.GetValueOrDefault(b.ItemId)).Select(b => $"{items.GetValueOrDefault(b.ItemId, "؟")}: {b.Qty:N0} قطعة")),
-                load.Count == 0 ? "—" : string.Join("، ", load.Select(l => $"{l.Qty:0.##} {l.LevelName} {items.GetValueOrDefault(l.ItemId, "")}".Trim())),
+                bal.Count == 0 ? "فارغة" : string.Join("، ", bal.OrderBy(b => items.GetValueOrDefault(b.ItemId))
+                    .Select(b => $"{items.GetValueOrDefault(b.ItemId, "؟")}: {WarehouseDocumentService.Breakdown(b.Qty, levels.GetValueOrDefault(b.ItemId))}")),
+                load.Count == 0 ? "—" : string.Join("، ", load.GroupBy(l => l.ItemId)
+                    .Select(g => $"{items.GetValueOrDefault(g.Key, "؟")}: {string.Join(" + ", g.Select(l => $"{l.Qty:#,0.##} {l.LevelName}"))}")),
                 loadPieces, status, overdue.GetValueOrDefault(v.RepId), lastSettlement.GetValueOrDefault(v.RepId), wallets.GetValueOrDefault(v.RepId));
         })
         .OrderBy(c => c.Status switch { RepVanStatus.Overdue => 0, RepVanStatus.Pending => 1, RepVanStatus.Settled => 2, _ => 3 })

@@ -255,6 +255,9 @@ public class PackagingSectionViewModel : CrudSectionViewModel<ItemPackagingLevel
         if (e.ParentLevelId is int pid)
             parentUnits = await db.ItemPackagingLevels.Where(p => p.Id == pid).Select(p => p.EquivalentBaseUnits).FirstAsync();
         e.EquivalentBaseUnits = parentUnits * e.ContainsQuantity;
+        // المنتج المصنَّع بعبوة واحدة: الشرنك والكارتون صنفان مستقلان
+        if (await ProductPackRule.CheckAsync(db, e.ItemId, e.Id, e.EquivalentBaseUnits, e.LevelName) is string error)
+            throw new DbUpdateException(error);
     }
 }
 

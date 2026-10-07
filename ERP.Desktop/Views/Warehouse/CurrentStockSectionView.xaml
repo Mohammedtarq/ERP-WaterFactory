@@ -29,7 +29,8 @@
                     <DataGridTextColumn Header="المخزن" Binding="{Binding WarehouseName}" Width="160"/>
                     <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="120"/>
                     <DataGridTextColumn Header="الصلاحية" Binding="{Binding ExpiryDate, StringFormat=yyyy/MM/dd}" Width="100"/>
-                    <DataGridTextColumn Header="الكمية (قطعة)" Binding="{Binding QuantityBaseUnits, StringFormat=N0}" Width="110"/>
+                    <DataGridTextColumn Header="الكمية بالعبوات" Binding="{Binding Breakdown}" Width="150" FontWeight="SemiBold"/>
+                    <DataGridTextColumn Header="بالقطعة" Binding="{Binding QuantityBaseUnits, StringFormat=N0}" Width="90"/>
                     <DataGridTextColumn Header="سعر القطعة" Binding="{Binding UnitPrice, StringFormat=N0}" Width="90"/>
                     <DataGridTextColumn Header="القيمة" Binding="{Binding Value, StringFormat=N0}" Width="120"/>
                 </DataGrid.Columns>

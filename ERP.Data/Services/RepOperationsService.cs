@@ -313,11 +313,12 @@ public class RepOperationsService
                 if (!created.Success) return (created, null);
                 foreach (var x in remaining)
                 {
-                    var pieceLevel = await _db.ItemPackagingLevels.Where(l => l.ItemId == x.ItemId && l.EquivalentBaseUnits == 1)
-                                                                 .Select(l => (int?)l.Id).FirstOrDefaultAsync();
-                    if (pieceLevel is null)
+                    // بعبوة المنتج (شرنك/كارتون) إن كان الباقي عبوات كاملة، وإلا بالقطعة
+                    var level = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == x.ItemId && l.EquivalentBaseUnits > 0).ToListAsync())
+                                .OrderByDescending(l => l.EquivalentBaseUnits).FirstOrDefault(l => x.Qty % l.EquivalentBaseUnits == 0);
+                    if (level is null)
                         return (FinanceOperationResult.Fail("صنف في السيارة بلا وحدة \"قطعة\" — عرّفها من بطاقة الصنف أو فوتره يدويًا"), null);
-                    var added = await sales.AddLineAsync(invoiceId!.Value, new SalesInvoiceLineInput(x.ItemId, pieceLevel.Value, x.Qty, BatchId: x.BatchId), r.UserId);
+                    var added = await sales.AddLineAsync(invoiceId!.Value, new SalesInvoiceLineInput(x.ItemId, level.Id, x.Qty / level.EquivalentBaseUnits, BatchId: x.BatchId), r.UserId);
                     if (!added.Success) return (added, null);
                 }
                 var (posted, _) = await sales.PostInvoiceAsync(invoiceId!.Value, r.UserId);

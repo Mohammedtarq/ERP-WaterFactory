@@ -5,6 +5,7 @@ namespace ERP.Data.Services;
 
 public class CurrentStockRow
 {
+    public int ItemId { get; set; }
     public string ItemCode { get; set; } = string.Empty;
     public string ItemName { get; set; } = string.Empty;
     public string WarehouseName { get; set; } = string.Empty;
@@ -13,6 +14,8 @@ public class CurrentStockRow
     public decimal Value => QuantityBaseUnits * UnitPrice;
     public string? BatchNumber { get; set; }
     public DateTime? ExpiryDate { get; set; }
+    /// <summary>الكمية بالعبوات: "50 شرنك" (المنتج المصنَّع بعبوة واحدة فالعدد دقيق).</summary>
+    public string Breakdown { get; set; } = "";
 }
 
 /// <summary>
@@ -54,6 +57,7 @@ public class StockQueryService
             })
             .Select(g => new CurrentStockRow
             {
+                ItemId = g.Key.ItemId,
                 ItemCode = g.Key.ItemCode,
                 ItemName = g.Key.ItemName,
                 WarehouseName = g.Key.Name,
@@ -65,8 +69,11 @@ public class StockQueryService
             .ToListAsync();
 
         // إخفاء الأسطر التي تصفّرت كميتها تمامًا (وارد بالكامل ثم صادر بالكامل)
-        return grouped.Where(r => r.QuantityBaseUnits != 0)
-                       .OrderBy(r => r.ItemName)
-                       .ToList();
+        var rows = grouped.Where(r => r.QuantityBaseUnits != 0).OrderBy(r => r.ItemName).ToList();
+        var itemIds = rows.Select(r => r.ItemId).Distinct().ToList();
+        var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
+            .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
+        foreach (var r in rows) r.Breakdown = WarehouseDocumentService.Breakdown(r.QuantityBaseUnits, levels.GetValueOrDefault(r.ItemId));
+        return rows;
     }
 }

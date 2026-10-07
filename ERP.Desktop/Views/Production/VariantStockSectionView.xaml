@@ -34,8 +34,8 @@
                         <DataGridTextColumn Header="المنتج" Binding="{Binding ItemName}" Width="1.4*"/>
                         <DataGridTextColumn Header="المتغير" Binding="{Binding Variant}" Width="1.2*"/>
                         <DataGridTextColumn Header="النوع" Binding="{Binding Kind}" Width="1.4*"/>
-                        <DataGridTextColumn Header="أُنتج (قطعة)" Binding="{Binding Produced, StringFormat=N0}" Width="95"/>
-                        <DataGridTextColumn Header="بيع (قطعة)" Binding="{Binding Sold, StringFormat=N0}" Width="90"/>
+                        <DataGridTextColumn Header="أُنتج" Binding="{Binding ProducedText}" Width="1.1*"/>
+                        <DataGridTextColumn Header="بيع" Binding="{Binding SoldText}" Width="1.1*"/>
                         <DataGridTextColumn Header="الرصيد الآن" Binding="{Binding BalanceText}" Width="1.3*"/>
                         <DataGridTextColumn Header="كلفة القطعة" Binding="{Binding UnitCost, StringFormat=N2}" Width="90"
                                             Visibility="{Binding Data.CanSeeCost, Source={StaticResource Proxy}, Converter={StaticResource BoolToVisibility}}"/>
@@ -59,7 +59,7 @@
                         <DataGridTextColumn Header="الإنتاج" Binding="{Binding ManufactureDate, StringFormat=yyyy/MM/dd}" Width="100"/>
                         <DataGridTextColumn Header="المنتج" Binding="{Binding ItemName}" Width="*"/>
                         <DataGridTextColumn Header="المتغير" Binding="{Binding Variant}" Width="*"/>
-                        <DataGridTextColumn Header="الرصيد (قطعة)" Binding="{Binding Balance, StringFormat=N0}" Width="110"/>
+                        <DataGridTextColumn Header="الرصيد" Binding="{Binding BalanceText}" Width="130"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>

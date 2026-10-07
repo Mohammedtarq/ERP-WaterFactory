@@ -38,6 +38,26 @@ public class CountLine : ObservableObject
     public decimal CountedPieces => Cells.Sum(c => c.Count * c.PiecesPerUnit);
     public decimal Variance => Counted ? CountedPieces - Row.SystemQuantity : 0;
     public decimal VarianceValue => Math.Round(Variance * (Row.UnitCost ?? 0), 2);
+    /// <summary>رصيد النظام والمعدود والفرق بوحدات الصنف ("50 شرنك") بدل القطع.</summary>
+    public string SystemText => InUnits(Row.SystemQuantity);
+    public string CountedText => InUnits(CountedPieces);
+    public string VarianceText => Variance == 0 ? "0" : (Variance > 0 ? "+" : "−") + InUnits(Math.Abs(Variance));
+
+    private string InUnits(decimal pieces)
+    {
+        if (pieces == 0) return "0";
+        var parts = new List<string>();
+        var rest = pieces;
+        foreach (var c in Cells.Where(c => c.PiecesPerUnit > 0).OrderByDescending(c => c.PiecesPerUnit))
+        {
+            var n = Math.Floor(rest / c.PiecesPerUnit);
+            if (n <= 0) continue;
+            parts.Add($"{n:#,0} {c.Unit}");
+            rest -= n * c.PiecesPerUnit;
+        }
+        if (rest > 0) parts.Add($"{rest:#,0.###}");
+        return string.Join(" + ", parts);
+    }
 
     private void Changed()
     {
@@ -50,6 +70,8 @@ public class CountLine : ObservableObject
         OnPropertyChanged(nameof(CountedPieces));
         OnPropertyChanged(nameof(Variance));
         OnPropertyChanged(nameof(VarianceValue));
+        OnPropertyChanged(nameof(CountedText));
+        OnPropertyChanged(nameof(VarianceText));
     }
 }
 

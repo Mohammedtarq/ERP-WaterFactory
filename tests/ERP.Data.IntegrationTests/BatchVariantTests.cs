@@ -256,7 +256,37 @@ public class BatchVariantTests
         // لوحة السيارات: سُوّيت اليوم والسيارة فارغة، وحمولة اليوم بوحداتها
         var card = (await new RepVanBoardService(db).CardsAsync(DateTime.Today)).Single(c => c.VanWarehouseId == van.Id);
         Assert.Equal((RepVanStatus.Settled, 0m), (card.Status, card.BalancePieces));
-        Assert.Equal($"6 كارتون {s.Water.ItemName}، 10 شرنك {s.Water.ItemName}", card.TodayLoadText);
+        Assert.Equal($"{s.Water.ItemName}: 6 كارتون + 10 شرنك", card.TodayLoadText);
+
+        // فاتورة ما بقي في السيارة (سطر لكل تشغيلة) بالعبوة لا بالقطعة متى كان الباقي عبوات كاملة
+        var auto = await db.SalesInvoiceLines.AsNoTracking().Include(l => l.PackagingLevel)
+                           .Where(l => l.SalesInvoice.SalesRepEmployeeId == rep.Id).ToListAsync();
+        Assert.Equal(102m, auto.Sum(l => l.QuantityBaseUnits));
+        Assert.All(auto, l => Assert.Equal(l.QuantityBaseUnits, l.QuantityInLevel * l.PackagingLevel.EquivalentBaseUnits));
+        Assert.All(auto, l => Assert.True(l.PackagingLevel.EquivalentBaseUnits > 1 || l.QuantityBaseUnits % 6 != 0, $"{l.QuantityBaseUnits} قطعة كان يمكن فوترتها عبوات"));
+    }
+
+    /// <summary>المنتج المصنَّع بعبوة واحدة (الشرنك والكارتون صنفان)، والمادة المشتراة بأي عدد من الوحدات (رول، صندوق...).</summary>
+    [Fact]
+    public async Task Manufactured_product_has_one_pack_raw_materials_any()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var shrinkItem = new Item { ItemCode = "PK-S20", ItemName = "ماء قاعدة شرنك", SalePrice = 250 };
+        var roll = new Item { ItemCode = "PK-LBL", ItemName = "ليبل قاعدة", SourcingMethod = SourcingMethod.Purchased };
+        db.Items.AddRange(shrinkItem, roll);
+        await db.SaveChangesAsync();
+        var shrink = new ItemPackagingLevel { ItemId = shrinkItem.Id, LevelName = "شرنك", EquivalentBaseUnits = 20 };
+        db.ItemPackagingLevels.AddRange(new ItemPackagingLevel { ItemId = shrinkItem.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 }, shrink,
+                                        new ItemPackagingLevel { ItemId = roll.Id, LevelName = "رول", EquivalentBaseUnits = 1_000 });
+        await db.SaveChangesAsync();
+
+        Assert.Null(await ProductPackRule.CheckAsync(db, shrinkItem.Id, shrink.Id, 20, "شرنك"));          // تعديل العبوة نفسها
+        Assert.Null(await ProductPackRule.CheckAsync(db, shrinkItem.Id, 0, 1, "قطعة"));                   // القطعة ليست عبوة
+        var blocked = await ProductPackRule.CheckAsync(db, shrinkItem.Id, 0, 40, "كارتون");
+        Assert.NotNull(blocked);
+        Assert.Contains("عبوته «شرنك»", blocked);
+        Assert.Null(await ProductPackRule.CheckAsync(db, roll.Id, 0, 10_000, "صندوق"));                    // المادة المشتراة حرة
+        Assert.Equal("شرنك", (await ProductPackRule.PackOfAsync(db, shrinkItem.Id))!.LevelName);
     }
 
     [Fact]

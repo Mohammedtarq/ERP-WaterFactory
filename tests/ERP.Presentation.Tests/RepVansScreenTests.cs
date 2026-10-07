@@ -34,16 +34,20 @@ public class RepVansScreenTests
             var branch = await db.Branches.FirstAsync();
             var admin = await db.Users.FirstAsync(u => u.Username == AppFixture.AdminUser);
             var store = new Warehouse { BranchId = branch.Id, Name = "مخزن لوحة السيارات", WarehouseType = WarehouseType.FinishedGoods };
-            var water = new Item { ItemCode = "BV-W", ItemName = "ماء لوحة السيارات", SalePrice = 250 };
+            // الشرنك والكارتون منتجان مستقلان (كما في النظام القديم: 330*20 و330*40)
+            var shrinkItem = new Item { ItemCode = "BV-S20", ItemName = "ماء لوحة شرنك", SalePrice = 250 };
+            var cartonItem = new Item { ItemCode = "BV-C40", ItemName = "ماء لوحة كارتون", SalePrice = 250 };
             var ali = new Employee { FullName = "مندوب لوحة علي", IsSalesRep = true, BaseSalary = 500_000 };
             var hasan = new Employee { FullName = "مندوب لوحة حسن", IsSalesRep = true, BaseSalary = 500_000 };
-            db.AddRange(store, water, ali, hasan);
+            db.AddRange(store, shrinkItem, cartonItem, ali, hasan);
             await db.SaveChangesAsync();
-            var shrink = new ItemPackagingLevel { ItemId = water.Id, LevelName = "شرنك", EquivalentBaseUnits = 20 };
-            var carton = new ItemPackagingLevel { ItemId = water.Id, LevelName = "كارتون", EquivalentBaseUnits = 40 };
-            db.ItemPackagingLevels.AddRange(new ItemPackagingLevel { ItemId = water.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 }, shrink, carton);
-            db.StockTransactions.Add(new StockTransaction { ItemId = water.Id, WarehouseId = store.Id, QuantityBaseUnits = 2_000, UnitCost = 100,
-                                                            TransactionType = StockTransactionType.Receipt, CreatedByUserId = admin.Id });
+            var shrink = new ItemPackagingLevel { ItemId = shrinkItem.Id, LevelName = "شرنك", EquivalentBaseUnits = 20 };
+            var carton = new ItemPackagingLevel { ItemId = cartonItem.Id, LevelName = "كارتون", EquivalentBaseUnits = 40 };
+            db.ItemPackagingLevels.AddRange(new ItemPackagingLevel { ItemId = shrinkItem.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 }, shrink,
+                                            new ItemPackagingLevel { ItemId = cartonItem.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 }, carton);
+            foreach (var item in new[] { shrinkItem, cartonItem })
+                db.StockTransactions.Add(new StockTransaction { ItemId = item.Id, WarehouseId = store.Id, QuantityBaseUnits = 2_000, UnitCost = 100,
+                                                                TransactionType = StockTransactionType.Receipt, CreatedByUserId = admin.Id });
             var vanA = new Warehouse { BranchId = branch.Id, Name = "سيارة لوحة علي", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = ali.Id };
             var vanH = new Warehouse { BranchId = branch.Id, Name = "سيارة لوحة حسن", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = hasan.Id };
             db.Warehouses.AddRange(vanA, vanH);
@@ -53,8 +57,8 @@ public class RepVansScreenTests
             var ops = new RepOperationsService(db);
             var (created, order) = await ops.CreateLoadOrderAsync(vanA.Id, store.Id, DateTime.Today, new[]
             {
-                new RepLoadLineInput(water.Id, shrink.Id, 10),
-                new RepLoadLineInput(water.Id, carton.Id, 5),
+                new RepLoadLineInput(shrinkItem.Id, shrink.Id, 10),
+                new RepLoadLineInput(cartonItem.Id, carton.Id, 5),
             }, null, admin.Id);
             Assert.True(created.Success, created.ErrorMessage);
             Assert.True((await ops.PrepareLoadOrderAsync(order!.Id, null, admin.Id)).result.Success);
@@ -76,7 +80,11 @@ public class RepVansScreenTests
         var aliCard = board.Cards.Single(c => c.VanWarehouseId == loadedVan);
         var hasanCard = board.Cards.Single(c => c.VanWarehouseId == idleVan);
         Assert.Equal(RepVanStatus.Pending, aliCard.Status);
-        Assert.Equal("5 كارتون ماء لوحة السيارات، 10 شرنك ماء لوحة السيارات", aliCard.TodayLoadText);   // الأكبر أولًا
+        // حمولة اليوم والرصيد الآن بعدد العبوات لكل منتج
+        Assert.Contains("ماء لوحة شرنك: 10 شرنك", aliCard.TodayLoadText);
+        Assert.Contains("ماء لوحة كارتون: 5 كارتون", aliCard.TodayLoadText);
+        Assert.Contains("ماء لوحة شرنك: 10 شرنك", aliCard.BalanceText);
+        Assert.Contains("ماء لوحة كارتون: 5 كارتون", aliCard.BalanceText);
         Assert.Equal(400m, aliCard.BalancePieces);
         Assert.Equal("الزبير", aliCard.Territories);
         Assert.Equal(RepVanStatus.Idle, hasanCard.Status);
@@ -96,7 +104,8 @@ public class RepVansScreenTests
         Assert.NotNull(board.Detail);
         Assert.Equal(loadedVan, board.Detail!.WarehouseId);
         await board.Detail.IdleAsync();
-        Assert.Contains(board.Detail.Balances, b => b.ItemCode == "BV-W" && b.Quantity == 400);
+        Assert.Contains(board.Detail.Balances, b => b.ItemCode == "BV-S20" && b.Breakdown == "10 شرنك");
+        Assert.Contains(board.Detail.Balances, b => b.ItemCode == "BV-C40" && b.Breakdown == "5 كارتون");
 
         board.PrintCommand.Execute(null);
         Assert.StartsWith("سيارات المندوبين", dialogs.Reports.Last().Title);

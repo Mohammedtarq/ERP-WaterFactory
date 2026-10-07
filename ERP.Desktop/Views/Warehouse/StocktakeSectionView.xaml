@@ -56,7 +56,7 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
                                             <TextBlock Text="{Binding Row.ItemName}" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                            <TextBlock Text="{Binding Row.SystemQuantity, StringFormat='النظام: {0:N0} قطعة'}" Style="{StaticResource Muted}" FontSize="11"/>
+                                            <TextBlock Text="{Binding SystemText, StringFormat='النظام: {0}'}" Style="{StaticResource Muted}" FontSize="11"/>
                                         </StackPanel>
                                         <ItemsControl Grid.Column="1" ItemsSource="{Binding Cells}">
                                             <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
@@ -69,8 +69,8 @@
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                        <TextBlock Grid.Column="2" Text="{Binding CountedPieces, StringFormat='المعدود: {0:N0}'}" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="3" Text="{Binding Variance, StringFormat='الفرق: {0:N0}'}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding CountedText, StringFormat='المعدود: {0}'}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding VarianceText, StringFormat='الفرق: {0}'}" VerticalAlignment="Center" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
