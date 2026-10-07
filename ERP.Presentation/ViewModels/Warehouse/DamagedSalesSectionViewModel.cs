@@ -38,6 +38,18 @@ public class DamagedSalesSectionViewModel : SectionViewModel
     }
 
     protected override bool HasPendingInput => Lines.Count > 0;
+
+    protected override void ResetInput()
+    {
+        Lines.Clear();
+        Buyer = "";
+        Date = DateTime.Today;
+        Notes = null;
+        LineItem = null;
+        LineQuantity = 0;
+        LinePrice = 0;
+        OnPropertyChanged(nameof(Total));
+    }
     protected override bool ReloadOnActivate => true;
 
     public ObservableCollection<DamagedStockRow> Available { get; } = new();

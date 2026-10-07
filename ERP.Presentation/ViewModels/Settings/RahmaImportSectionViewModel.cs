@@ -65,6 +65,11 @@ public class RahmaImportSectionViewModel : SectionViewModel
 
     protected override bool HasPendingInput => Plan is not null;
 
+    protected override void ResetInput()
+    {
+        Source = null;
+    }
+
     public ObservableCollection<RahmaDatabaseCandidate> Candidates { get; } = new();
     public ObservableCollection<string> Warnings { get; } = new();
     public ObservableCollection<RahmaRecipeRow> Recipes { get; } = new();

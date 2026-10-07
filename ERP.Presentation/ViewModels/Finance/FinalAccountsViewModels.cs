@@ -45,6 +45,18 @@ public class ExpensesSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
     protected override bool HasPendingInput => Amount > 0;
 
+    protected override void ResetInput()
+    {
+        Amount = 0;
+        Date = DateTime.Today;
+        Vehicle = null;
+        Department = null;
+        PartyName = null;
+        ReceiptNumber = null;
+        Notes = null;
+        VoidReason = null;
+    }
+
     public ObservableCollection<FinanceCategory> Categories { get; } = new();
     public ObservableCollection<Vehicle> Vehicles { get; } = new();
     public ObservableCollection<Department> Departments { get; } = new();

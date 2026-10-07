@@ -41,7 +41,7 @@
                                     <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="19"
                                                Foreground="{Binding Color, Converter={StaticResource HexBrush}}"/>
                                 </Border>
-                                <TextBlock DockPanel.Dock="Top" Text="{Binding Title}" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,2"/>
+                                <TextBlock DockPanel.Dock="Top" Text="{Binding DisplayTitle}" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,2"/>
                                 <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" FontSize="12"/>
                             </DockPanel>
                         </Button>

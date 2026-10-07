@@ -33,7 +33,7 @@
                     <Button DockPanel.Dock="Right" Command="{Binding LogoutCommand}" ToolTip="تسجيل الخروج"
                             Style="{StaticResource RowIconButton}" Tag="#F87171" Content="&#xE7E8;"/>
                     <StackPanel>
-                        <TextBlock Text="{Binding Session.FullName}" Foreground="White" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Session.GlobalUsername}" Foreground="White" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Session.FullName}"/>
                         <TextBlock Text="{Binding Session.RoleName}" Foreground="#94A3B8" FontSize="11"/>
                     </StackPanel>
                 </DockPanel>
@@ -42,14 +42,17 @@
             <!-- جرس التنبيهات -->
             <Border DockPanel.Dock="Bottom" Padding="10,6" Background="#0B1220">
                 <Grid>
-                    <Button x:Name="AlertsButton" Command="{Binding ToggleAlertsCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand"
-                            HorizontalContentAlignment="Stretch" Padding="4" ToolTip="تنبيهات عملك: اضغط لعرضها">
+                    <!-- زر قلب (لا زر عادي): يفتح عند الضغط نفسه، ولا يُعاد قلبه بالضغطة التي أغلقت القائمة -->
+                    <ToggleButton x:Name="AlertsButton" IsChecked="{Binding IsAlertsOpen, Mode=TwoWay}" ClickMode="Press"
+                                  IsHitTestVisible="{Binding IsOpen, ElementName=AlertsPopup, Converter={StaticResource InverseBool}}"
+                                  Background="Transparent" BorderThickness="0" Cursor="Hand" HorizontalContentAlignment="Stretch" Padding="4"
+                                  ToolTip="تنبيهات عملك: اضغط لعرضها">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xEA8F;" Style="{StaticResource Icon}" FontSize="16" Foreground="{Binding AlertsColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding AlertsText}" Foreground="#E2E8F0" FontSize="13" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
-                    </Button>
-                    <Popup IsOpen="{Binding IsAlertsOpen}" PlacementTarget="{Binding ElementName=AlertsButton}" Placement="Top" StaysOpen="False"
+                    </ToggleButton>
+                    <Popup x:Name="AlertsPopup" IsOpen="{Binding IsAlertsOpen, Mode=TwoWay}" PlacementTarget="{Binding ElementName=AlertsButton}" Placement="Top" StaysOpen="False"
                            AllowsTransparency="True" FlowDirection="RightToLeft">
                         <Border Background="White" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="10" Padding="10" Width="420" MaxHeight="520">
                             <DockPanel>

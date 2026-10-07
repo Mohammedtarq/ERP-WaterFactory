@@ -63,6 +63,15 @@ public class DailyProductionSectionViewModel : SectionViewModel
 {
     protected override bool HasPendingInput => Lines.Any(l => l.Product is not null);
 
+    protected override void ResetInput()
+    {
+        Lines.Clear();
+        Lines.Add(new DailyLineDraft(this));
+        Needs.Clear();
+        Date = DateTime.Today;
+        RaiseTotals();
+    }
+
     private DateTime _date = DateTime.Today;
     private List<ItemPackagingLevel> _levels = new();
     private List<CustomRecipe> _recipes = new();

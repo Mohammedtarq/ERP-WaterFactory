@@ -27,6 +27,7 @@ public class ScreenFlowTests
     {
         module.SelectedTab = section;
         await module.IdleAsync();
+        await module.LastActivation;
         await section.IdleAsync();
     }
 
@@ -551,14 +552,28 @@ public class ScreenFlowTests
     [Fact]
     public async Task Purchase_order_and_goods_receipt_increase_stock_and_supplier_balance()
     {
+        // أمر الشراء لمخزن المواد الأولية فقط
+        int rawId;
+        await using (var db = _f.NewDb())
+        {
+            var raw = await db.Warehouses.FirstOrDefaultAsync(w => w.WarehouseType == WarehouseType.RawMaterial && w.IsActive);
+            if (raw is null)
+            {
+                raw = new Warehouse { BranchId = await db.Branches.Select(b => b.Id).FirstAsync(), Name = "مخزن المواد الأولية", WarehouseType = WarehouseType.RawMaterial };
+                db.Warehouses.Add(raw);
+                await db.SaveChangesAsync();
+            }
+            rawId = raw.Id;
+        }
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var sup = shell.Open<SuppliersModuleViewModel>(ModuleCode.Suppliers);
         var po = sup.Section<PurchaseOrdersSectionViewModel>();
         await Open(sup, po);
+        Assert.All(po.Warehouses, w => Assert.Equal(WarehouseType.RawMaterial, w.WarehouseType));
 
         po.NewOrderCommand.Execute(null);
         po.Supplier = po.SuppliersLookup.Single(s => s.Id == _f.SupplierId);
-        po.Warehouse = po.Warehouses.Single(w => w.Id == _f.MainWarehouseId);
+        po.Warehouse = po.Warehouses.Single(w => w.Id == rawId);
         po.Lines[0].LineItem = po.ItemsLookup.Single(i => i.Id == _f.WaterItemId);
         po.Lines[0].Quantity = 240;
         po.Lines[0].UnitCost = 90;
@@ -858,8 +873,11 @@ public class ScreenFlowTests
         Assert.Contains($"تأمين قائم: {before + 150_000:N0}", sales.Statement.CustomerInfo);
         Assert.DoesNotContain(sales.Statement.Rows, r => r.DocNumber.StartsWith("DP-"));
 
-        // إلغاء سند الإرجاع (للأدمن) يعيد الرصيد
+        // إلغاء سند الإرجاع (للأدمن) يعيد الرصيد — الشاشة عادت نظيفة بعد الخروج منها، فيُختار العميل من جديد
         await Open(sales, dep);
+        Assert.Null(dep.Customer);
+        dep.Customer = dep.Customers.Single(c => c.Id == _f.DirectId);
+        await dep.IdleAsync();
         var refundRow = dep.History.First(r => r.Kind == CustomerDepositKind.Refund && !r.IsVoided);
         dep.BeginVoidCommand.Execute(refundRow);
         Assert.True(dep.IsVoiding);

@@ -45,6 +45,19 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
     }
 
     protected override bool HasPendingInput => Amount != 0;
+
+    protected override void ResetInput()
+    {
+        _employee = null;
+        OnPropertyChanged(nameof(Employee));
+        Kind = Kinds[0];
+        Amount = 0;
+        Installment = 0;
+        Date = DateTime.Today;
+        Reason = null;
+        VoidTarget = null;
+        VoidReason = null;
+    }
     protected override bool ReloadOnActivate => true;
 
     public IReadOnlyList<Option<EmployeeDeductionKind>> Kinds { get; } = ArabicLabels.OptionsOf<EmployeeDeductionKind>();

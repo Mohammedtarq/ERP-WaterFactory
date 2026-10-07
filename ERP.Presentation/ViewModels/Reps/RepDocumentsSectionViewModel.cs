@@ -52,6 +52,16 @@ public class RepDocumentsSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
     protected override bool HasPendingInput => Lines.Count > 0;
 
+    protected override void ResetInput()
+    {
+        Lines.Clear();
+        Date = DateTime.Today;
+        LineItem = null;
+        LineQuantity = 1;
+        LineDamaged = false;
+        Notes = null;
+    }
+
     public IReadOnlyList<Option<StockDocumentType>> DocumentTypes { get; } = new[]
     {
         new Option<StockDocumentType>(StockDocumentType.RepLoad, ArabicLabels.Of(StockDocumentType.RepLoad)),

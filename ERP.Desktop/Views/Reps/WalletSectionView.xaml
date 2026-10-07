@@ -27,6 +27,7 @@
                 <StackPanel Visibility="{Binding NeedsCustomer, Converter={StaticResource BoolToVisibility}}">
                     <TextBlock Text="العميل" Style="{StaticResource FieldLabel}"/>
                     <ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding Customer}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
+                    <TextBlock Text="{Binding CustomerDebtText}" FontWeight="SemiBold" Foreground="#B45309" Margin="0,6,0,0"/>
                 </StackPanel>
                 <StackPanel Visibility="{Binding NeedsDescription, Converter={StaticResource BoolToVisibility}}">
                     <TextBlock Text="وصف المصروف" Style="{StaticResource FieldLabel}"/>

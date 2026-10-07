@@ -160,6 +160,18 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
     protected override bool HasPendingInput => Lines.Any(l => l.Product is not null && l.Quantity > 0);
 
+    protected override void ResetInput()
+    {
+        _van = null;
+        OnPropertyChanged(nameof(Van));
+        OnPropertyChanged(nameof(RepName));
+        Lines.Clear();
+        Date = DateTime.Today;
+        Notes = null;
+        CancelReason = null;
+        RaiseTotals();
+    }
+
     public ObservableCollection<Data.ProjectDb.Entities.Warehouse> Vans { get; } = new();
     public ObservableCollection<Data.ProjectDb.Entities.Warehouse> Stores { get; } = new();
     public ObservableCollection<Item> Products { get; } = new();
@@ -445,6 +457,29 @@ public class RepSettlementSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
     protected override bool HasPendingInput => Returns.Count > 0 || FreeGoods.Count > 0 || Expenses.Count > 0;
 
+    protected override void ResetInput()
+    {
+        _van = null;
+        OnPropertyChanged(nameof(Van));
+        VanStock.Clear();
+        Returns.Clear();
+        FreeGoods.Clear();
+        Expenses.Clear();
+        Date = DateTime.Today;
+        LineQuantity = 1;
+        LineDamaged = false;
+        FreeQuantity = 1;
+        FreeCustomer = null;
+        FreeReason = null;
+        ExpenseAmount = 0;
+        ExpenseDescription = null;
+        InvoiceRemaining = false;
+        InvoiceCustomer = null;
+        ReceivedCash = 0;
+        Notes = null;
+        RaiseTotals();
+    }
+
     public ObservableCollection<Data.ProjectDb.Entities.Warehouse> Vans { get; } = new();
     public ObservableCollection<Data.ProjectDb.Entities.Warehouse> Stores { get; } = new();
     public ObservableCollection<Item> ItemsLookup { get; } = new();
@@ -560,12 +595,16 @@ public class RepSettlementSectionViewModel : SectionViewModel
     {
         VanStock.Clear();
         decimal wallet = 0;
-        if (Van is not null)
+        // السيارة تُلتقط مرة واحدة: قد تُغيَّر أو تُفرَّغ الشاشة أثناء التحميل
+        if (Van is { } van)
         {
             await using var db = Session.NewDb();
-            foreach (var r in await new StockQueryService(db).GetCurrentStockAsync(Van.Id)) VanStock.Add(r);
-            if (Van.OwnerEmployeeId is int repId) wallet = await new RepsService(db).GetWalletBalanceAsync(repId);
-            ExpenseVehicle = Vehicles.FirstOrDefault(v => v.AssignedEmployeeId == Van.OwnerEmployeeId);
+            var stock = await new StockQueryService(db).GetCurrentStockAsync(van.Id);
+            if (van.OwnerEmployeeId is int repId) wallet = await new RepsService(db).GetWalletBalanceAsync(repId);
+            if (!ReferenceEquals(Van, van)) return;
+            VanStock.Clear();
+            foreach (var r in stock) VanStock.Add(r);
+            ExpenseVehicle = Vehicles.FirstOrDefault(v => v.AssignedEmployeeId == van.OwnerEmployeeId);
         }
         WalletBalance = wallet;
         OnPropertyChanged(nameof(VanPieces));

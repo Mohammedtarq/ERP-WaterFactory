@@ -68,6 +68,17 @@ public class PurchaseInvoiceSectionViewModel : SectionViewModel
 {
     protected override bool HasPendingInput => Lines.Any(l => l.Material is not null);
 
+    protected override void ResetInput()
+    {
+        Supplier = null;
+        InvoiceDate = DateTime.Today;
+        SupplierInvoiceNumber = null;
+        PaidNow = 0;
+        Lines.Clear();
+        Lines.Add(NewLine());
+        RaiseTotals();
+    }
+
     private Supplier? _supplier;
     private Data.ProjectDb.Entities.Warehouse? _warehouse;
     private DateTime _invoiceDate = DateTime.Today;

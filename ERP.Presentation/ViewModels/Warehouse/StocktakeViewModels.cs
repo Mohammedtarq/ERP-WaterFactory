@@ -83,6 +83,14 @@ public class StocktakeSectionViewModel : SectionViewModel
 {
     protected override bool HasPendingInput => Lines.Any(l => l.Counted);
 
+    protected override void ResetInput()
+    {
+        _warehouse = null;
+        CountDate = DateTime.Today;
+        Notes = null;
+        Filter = "";
+    }
+
     private Data.ProjectDb.Entities.Warehouse? _warehouse;
     private DateTime _countDate = DateTime.Today;
     private string? _notes;
@@ -139,9 +147,12 @@ public class StocktakeSectionViewModel : SectionViewModel
     private async Task LoadSheetAsync()
     {
         Lines.Clear();
-        if (Warehouse is null) { OnPropertyChanged(nameof(VisibleLines)); return; }
+        if (Warehouse is not { } warehouse) { OnPropertyChanged(nameof(VisibleLines)); return; }
         await using var db = Session.NewDb();
-        foreach (var r in await new StocktakeService(db).SheetAsync(Warehouse.Id)) Lines.Add(new CountLine(r));
+        var sheet = await new StocktakeService(db).SheetAsync(warehouse.Id);
+        if (!ReferenceEquals(Warehouse, warehouse)) return;
+        Lines.Clear();
+        foreach (var r in sheet) Lines.Add(new CountLine(r));
         OnPropertyChanged(nameof(VisibleLines));
     }
 

@@ -85,6 +85,12 @@ public class PurchaseOrdersSectionViewModel : SectionViewModel
 {
     protected override bool HasPendingInput => IsComposing;
 
+    protected override void ResetInput()
+    {
+        IsComposing = false;
+        Lines.Clear();
+    }
+
     private bool _isComposing;
     private Supplier? _supplier;
     private Data.ProjectDb.Entities.Warehouse? _warehouse;
@@ -153,7 +159,8 @@ public class PurchaseOrdersSectionViewModel : SectionViewModel
         {
             SuppliersLookup.Clear(); Warehouses.Clear(); ItemsLookup.Clear();
             foreach (var x in await db.Suppliers.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name).ToListAsync()) SuppliersLookup.Add(x);
-            foreach (var x in await db.Warehouses.AsNoTracking().Where(x => x.IsActive && x.WarehouseType != WarehouseType.WorkInProcess).OrderBy(x => x.Name).ToListAsync()) Warehouses.Add(x);
+            // أمر الشراء لمخزن المواد الأولية فقط
+            foreach (var x in await db.Warehouses.AsNoTracking().Where(x => x.IsActive && x.WarehouseType == WarehouseType.RawMaterial).OrderBy(x => x.Name).ToListAsync()) Warehouses.Add(x);
             foreach (var x in await db.Items.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.ItemName).ToListAsync()) ItemsLookup.Add(x);
         }
         var rows = await db.PurchaseOrders.AsNoTracking().OrderByDescending(p => p.OrderDate).ThenByDescending(p => p.Id)

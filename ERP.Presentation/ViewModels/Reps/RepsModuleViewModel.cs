@@ -243,6 +243,15 @@ public class WalletSectionViewModel : SectionViewModel
 
     protected override bool ReloadOnActivate => true;
 
+    protected override void ResetInput()
+    {
+        Action = Actions[0];
+        Amount = 0;
+        ExpenseDescription = "";
+        Customer = null;
+        Date = DateTime.Today;
+    }
+
     public IReadOnlyList<Option<WalletAction>> Actions { get; } = new[]
     {
         new Option<WalletAction>(WalletAction.Handover, "تسليم نقد للخزينة"),
@@ -264,10 +273,29 @@ public class WalletSectionViewModel : SectionViewModel
     public bool NeedsDescription => Action.Value == WalletAction.Expense;
     public decimal Amount { get => _amount; set => SetProperty(ref _amount, value); }
     public string ExpenseDescription { get => _description; set => SetProperty(ref _description, value); }
-    public Customer? Customer { get => _customer; set => SetProperty(ref _customer, value); }
+    public Customer? Customer { get => _customer; set { if (SetProperty(ref _customer, value)) Background(LoadDebtAsync()); } }
+    private decimal? _customerDebt;
+    /// <summary>دين العميل المختار الآن (من كشف حسابه) — يظهر فور اختياره.</summary>
+    public decimal? CustomerDebt { get => _customerDebt; private set { if (SetProperty(ref _customerDebt, value)) OnPropertyChanged(nameof(CustomerDebtText)); } }
+    public string CustomerDebtText => CustomerDebt switch
+    {
+        null => "",
+        > 0 => $"دين العميل الآن: {CustomerDebt:N0} د.ع",
+        < 0 => $"للعميل رصيد دائن: {-CustomerDebt:N0} د.ع (لا دين عليه)",
+        _ => "لا دين على العميل"
+    };
     public DateTime Date { get => _date; set => SetProperty(ref _date, value); }
     public AsyncRelayCommand SubmitCommand { get; }
     public RelayCommand PrintStatementCommand { get; }
+
+    private async Task LoadDebtAsync()
+    {
+        if (Customer is not { } customer) { CustomerDebt = null; return; }
+        await using var db = Session.NewDb();
+        var debt = await db.Database.SqlQueryRaw<decimal>(
+            "SELECT ISNULL((SELECT Balance FROM vw_CustomerBalances WHERE CustomerId = {0}), 0) AS Value", customer.Id).FirstAsync();
+        if (ReferenceEquals(Customer, customer)) CustomerDebt = debt;
+    }
 
     public override async Task LoadAsync()
     {
@@ -297,6 +325,8 @@ public class WalletSectionViewModel : SectionViewModel
         if (!Require(CanAdd, "حركات المحفظة")) return;
         if (Rep is null) { Dialogs.Error("اختر المندوب"); return; }
         if (NeedsCustomer && Customer is null) { Dialogs.Error("اختر العميل"); return; }
+        if (NeedsCustomer && CustomerDebt is decimal debt && Amount > debt
+            && !Dialogs.Confirm($"المبلغ {Amount:N0} أكبر من دين العميل ({Math.Max(debt, 0):N0} د.ع) — الزيادة تبقى رصيدًا له. متابعة؟")) return;
         if (NeedsDescription && string.IsNullOrWhiteSpace(ExpenseDescription)) { Dialogs.Error("اكتب وصف المصروف"); return; }
 
         await using var db = Session.NewDb();
@@ -311,6 +341,7 @@ public class WalletSectionViewModel : SectionViewModel
         Amount = 0;
         ExpenseDescription = "";
         await LoadStatementAsync();
+        await LoadDebtAsync();
     }
 }
 

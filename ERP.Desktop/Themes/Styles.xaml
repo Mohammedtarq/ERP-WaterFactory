@@ -313,7 +313,7 @@
                 <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="12"
                            Foreground="{Binding Color, Converter={StaticResource HexBrush}}"/>
             </Border>
-            <TextBlock Text="{Binding Title}" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding DisplayTitle}" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
         </StackPanel>
     </DataTemplate>
 </ResourceDictionary>

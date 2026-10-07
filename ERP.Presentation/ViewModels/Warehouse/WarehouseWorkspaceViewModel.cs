@@ -84,6 +84,11 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
 
     protected override bool ReloadOnActivate => true;
 
+    protected override void ResetInput()
+    {
+        ClearForm();
+    }
+
     public int WarehouseId { get; }
     public WarehouseType WarehouseType { get; }
     public string WarehouseTypeLabel => ArabicLabels.Of(WarehouseType);

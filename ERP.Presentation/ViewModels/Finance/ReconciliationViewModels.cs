@@ -132,6 +132,13 @@ public class PartnersSectionViewModel : SectionViewModel
     }
 
     protected override bool HasPendingInput => Amount != 0;
+
+    protected override void ResetInput()
+    {
+        Amount = 0;
+        Date = DateTime.Today;
+        WithdrawNotes = null;
+    }
     protected override bool ReloadOnActivate => true;
 
     public ObservableCollection<PartnerBalanceRow> Partners { get; } = new();

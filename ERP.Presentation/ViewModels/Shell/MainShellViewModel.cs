@@ -144,7 +144,8 @@ public class MainShellViewModel : ViewModelBase
         {
             if (nav.ModuleCode != alert.ModuleCode && !_modules.ContainsKey(nav.ModuleCode)) continue;
             SelectedItem = nav;
-            if (CurrentModule is ModuleViewModel m && m.Tabs.OfType<SectionViewModel>().FirstOrDefault(t => t.GetType().Name == alert.Section) is { } section)
+            // نسخة من التبويبات: وحدة المخازن قد تُحدّث تبويبات مخازنها في الخلفية لحظة فتحها
+            if (CurrentModule is ModuleViewModel m && m.Tabs.ToArray().OfType<SectionViewModel>().FirstOrDefault(t => t.GetType().Name == alert.Section) is { } section)
             {
                 m.SelectedTab = section;
                 return section;
@@ -189,7 +190,10 @@ public class MainShellViewModel : ViewModelBase
         set
         {
             if (_selectedItem is not null) _selectedItem.IsSelected = false;
+            var previousModule = CurrentModule;
             if (!SetProperty(ref _selectedItem, value) || value is null) return;
+            // الخروج من وحدة: الشاشة الظاهرة فيها تعود نظيفة عند الرجوع
+            if (previousModule is ModuleViewModel left) left.LeaveCurrent();
             value.IsSelected = true;
             if (!_modules.TryGetValue(value.ModuleCode, out var module))
             {
@@ -224,7 +228,7 @@ public class MainShellViewModel : ViewModelBase
             if (module is ModuleViewModel m)
             {
                 if (m.Dashboard is { } d) await d.IdleAsync();
-                foreach (var s in m.Tabs.OfType<SectionViewModel>().ToList()) await s.IdleAsync();
+                foreach (var s in m.Tabs.ToArray().OfType<SectionViewModel>()) await s.IdleAsync();
             }
         }
     }

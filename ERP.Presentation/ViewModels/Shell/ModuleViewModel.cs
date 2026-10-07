@@ -20,9 +20,35 @@ public abstract class SectionViewModel : SessionViewModel
         Color = color;
         Description = description;
         RefreshCommand = new AsyncRelayCommand(LoadCoalescedAsync);
+        ClearScreenCommand = new AsyncRelayCommand(ClearAsync);
     }
 
     private Task? _inflight;
+
+    /// <summary>«تفريغ»: يعيد الشاشة كما فُتحت أول مرة (يُلغى ما أُدخل ولم يُحفظ).</summary>
+    public AsyncRelayCommand ClearScreenCommand { get; }
+
+    /// <summary>
+    /// ما أُدخل في الشاشة ولم يُحفظ (العميل المختار، السطور، المبلغ…) يُفرَّغ هنا. تُعيده كل شاشة إدخال إلى حالتها الأولى؛
+    /// يُستدعى عند الخروج من الشاشة دون حفظ (قرار المدير: تعود نظيفة تلقائيًا) وعند «تفريغ».
+    /// </summary>
+    protected virtual void ResetInput() { }
+
+    private bool _forceReload;
+
+    /// <summary>الخروج من الشاشة (إلى تبويب أو وحدة أخرى): يُفرَّغ ما لم يُحفظ، وتُحمَّل من جديد عند العودة.</summary>
+    internal void Leave()
+    {
+        ResetInput();
+        _forceReload = _loaded;
+    }
+
+    private async Task ClearAsync()
+    {
+        ResetInput();
+        StatusMessage = null;
+        await LoadCoalescedAsync();
+    }
 
     /// <summary>تحميل واحد في الوقت نفسه للشاشة: الفتح التلقائي وزر التحديث يشتركان فيه بدل تحميلين متداخلين.</summary>
     public Task LoadCoalescedAsync()
@@ -32,6 +58,9 @@ public abstract class SectionViewModel : SessionViewModel
     }
 
     public string Title { get; }
+    /// <summary>رقم الخطوة في تسلسل العمل (مثل الإنتاج ← الفحص ← التعبئة) — يظهر قبل العنوان.</summary>
+    public int? Step { get; internal set; }
+    public string DisplayTitle => Step is int n ? $"{n}. {Title}" : Title;
     public string Glyph { get; }
     public string Color { get; }
     public string Description { get; }
@@ -74,8 +103,12 @@ public abstract class SectionViewModel : SessionViewModel
     private async Task ActivateCoreAsync()
     {
         var changed = _loadedVersion != Session.DataVersion;
-        if (_loaded && !changed && (!ReloadOnActivate || DateTime.UtcNow - _loadedAt < IdleRefreshInterval)) return;
-        if (_loaded && changed && HasPendingInput && !ReloadOnActivate) return;
+        if (_forceReload) _forceReload = false;   // خرج المستخدم وفيها إدخال لم يُحفظ: تُحمَّل نظيفة
+        else
+        {
+            if (_loaded && !changed && (!ReloadOnActivate || DateTime.UtcNow - _loadedAt < IdleRefreshInterval)) return;
+            if (_loaded && changed && HasPendingInput && !ReloadOnActivate) return;
+        }
         _loaded = true;
         _loadedVersion = Session.DataVersion;
         _loadedAt = DateTime.UtcNow;
@@ -125,6 +158,7 @@ public class HomeSectionViewModel : ObservableObject
 
     public ModuleViewModel Owner { get; }
     public string Title => "الرئيسية";
+    public string DisplayTitle => Title;
     public string Glyph => Icons.Home;
     public string Color => Owner.Color;
     public IEnumerable<SectionViewModel> Sections => Owner.Tabs.OfType<SectionViewModel>();
@@ -145,7 +179,12 @@ public abstract class ModuleViewModel : ViewModelBase
         Home = new HomeSectionViewModel(this);
         Tabs.Add(Home);
         _selectedTab = Home;
+        ClearCurrentCommand = new AsyncRelayCommand(() => SelectedTab is SectionViewModel s ? s.ClearScreenCommand.ExecuteAsync() : Task.CompletedTask);
     }
+
+    /// <summary>زر «تفريغ» أعلى الوحدة: يعيد الشاشة الظاهرة نظيفة.</summary>
+    public AsyncRelayCommand ClearCurrentCommand { get; }
+    public bool CanClearCurrent => SelectedTab is SectionViewModel;
 
     public string Title { get; }
     public string Glyph { get; }
@@ -163,7 +202,10 @@ public abstract class ModuleViewModel : ViewModelBase
         get => _selectedTab;
         set
         {
+            var previous = _selectedTab;
             if (!SetProperty(ref _selectedTab, value)) return;
+            if (previous is SectionViewModel left) left.Leave();
+            OnPropertyChanged(nameof(CanClearCurrent));
             if (value is SectionViewModel s)
             {
                 LastActivation = s.ActivateAsync();
@@ -176,6 +218,13 @@ public abstract class ModuleViewModel : ViewModelBase
                 Background(LastActivation);
             }
         }
+    }
+
+    /// <summary>إضافة شاشة برقم خطوتها في تسلسل العمل.</summary>
+    protected T AddStep<T>(int step, T section) where T : SectionViewModel
+    {
+        section.Step = step;
+        return Add(section);
     }
 
     /// <summary>
@@ -203,6 +252,12 @@ public abstract class ModuleViewModel : ViewModelBase
             section.MovedFrom = SectionCatalog.ModuleTitle(section.HomeModule);
             Tabs.Add(section);
         }
+    }
+
+    /// <summary>الخروج من الوحدة كلها (إلى وحدة أخرى): الشاشة الظاهرة تُفرَّغ مما لم يُحفظ.</summary>
+    public void LeaveCurrent()
+    {
+        if (SelectedTab is SectionViewModel s) s.Leave();
     }
 
     /// <summary>يعيد تفعيل التبويب الظاهر (يُحدَّث فقط إن تغيّرت البيانات منذ آخر تحميل).</summary>

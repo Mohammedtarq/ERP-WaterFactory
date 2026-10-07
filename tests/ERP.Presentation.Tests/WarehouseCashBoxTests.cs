@@ -19,6 +19,7 @@ public class WarehouseCashBoxTests
     {
         module.SelectedTab = section;
         await module.IdleAsync();
+        await module.LastActivation;
         await section.IdleAsync();
     }
 
@@ -412,17 +413,16 @@ public class WarehouseCashBoxTests
         Assert.Equal(before + 1, inv.Customers.Count);
         Assert.Contains(inv.Customers, c => c.Name == "عميل جديد للتحديث التلقائي");
 
-        // فاتورة قيد الإدخال لا تُعاد تعبئة قوائمها تحتها
+        // فاتورة لم تُحفظ ثم الخروج منها (قرار المدير): تعود نظيفة، وقوائمها محدَّثة
         inv.Customer = inv.Customers.First(c => c.Name == "عميل جديد للتحديث التلقائي");
-        var sameList = inv.Customers.ToList();
         await Open(sales, customers);
         await customers.NewCommand.ExecuteAsync();
         customers.Editor!.Name = "عميل ثانٍ";
         await customers.SaveCommand.ExecuteAsync();
         await Open(sales, inv);
-        Assert.Equal(sameList, inv.Customers.ToList());
-        Assert.Equal("عميل جديد للتحديث التلقائي", inv.Customer!.Name);
-        inv.ResetForm();
+        Assert.Null(inv.Customer);
+        Assert.Empty(inv.Lines);
+        Assert.Contains(inv.Customers, c => c.Name == "عميل ثانٍ");
 
         // لوحة الوحدة تُحدَّث عند العودة للرئيسية بعد عملية
         var dash = sales.Dashboard!;

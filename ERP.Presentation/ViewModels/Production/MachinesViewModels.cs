@@ -122,6 +122,15 @@ public class MachineWipSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
     protected override bool HasPendingInput => ActionQuantity != 0 || AdjustNewQuantity is not null;
 
+    protected override void ResetInput()
+    {
+        ActionItem = null;
+        ActionQuantity = 0;
+        ActionOrder = null;
+        AdjustNewQuantity = null;
+        AdjustReason = "";
+    }
+
     public ObservableCollection<Machine> Machines { get; } = new();
     public ObservableCollection<MachineWipRow> Rows { get; } = new();
     public ObservableCollection<MachineWipBalance> ActionItems { get; } = new();

@@ -27,6 +27,12 @@ public class PrepareLoadOrdersSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
     protected override bool HasPendingInput => PrepareLines.Any(l => l.Prepared != l.Requested);
 
+    protected override void ResetInput()
+    {
+        _selectedOrder = null;
+        PrepareLines.Clear();
+    }
+
     public ObservableCollection<RepLoadOrderRow> Orders { get; } = new();
     public ObservableCollection<PrepareLineDraft> PrepareLines { get; } = new();
     public int PendingCount => Orders.Count(o => o.Status == RepLoadOrderStatus.Pending);

@@ -63,6 +63,16 @@ public class CustomerReturnSectionViewModel : SectionViewModel
 
     protected override bool HasPendingInput => Lines.Any(l => l.Product is not null && l.Quantity > 0);
 
+    protected override void ResetInput()
+    {
+        Customer = null;
+        Settlement = Settlements[0];
+        Date = DateTime.Today;
+        Reason = "";
+        Lines.Clear();
+        Lines.Add(new ReturnLineDraft(this));
+    }
+
     public IReadOnlyList<Option<CustomerReturnSettlement>> Settlements { get; } = new[]
     {
         new Option<CustomerReturnSettlement>(CustomerReturnSettlement.Debt, "خصم من دين الزبون"),

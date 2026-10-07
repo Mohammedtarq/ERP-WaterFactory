@@ -15,14 +15,15 @@ public class ProductionModuleViewModel : ModuleViewModel
         : base("الإنتاج والمختبر", Icons.Production, ModuleColors.Production)
     {
         UseDashboard(s, d, ModuleCode.Production, ModuleDashboardViewModel.Production);
-        Daily = Add(new DailyProductionSectionViewModel(s, d));
-        Add(new ProductionMonthSectionViewModel(s, d));
+        // تسلسل العمل مرقّم: الإنتاج ← تحت التصنيع ← فحص المختبر ← التعبئة للمخزن، ثم المتابعة والمرجعيات بلا أرقام
+        Orders = AddStep(1, new ProductionOrdersSectionViewModel(s, d));
+        Daily = AddStep(2, new DailyProductionSectionViewModel(s, d));
+        Wip = AddStep(3, new MachineWipSectionViewModel(s, d));
+        Qc = AddStep(4, new QcSectionViewModel(s, d));
+        Packing = AddStep(5, new PackingSectionViewModel(s, d));
+        AddStep(6, new PendingProductionSectionViewModel(s, d));
         Add(new VariantStockSectionViewModel(s, d));
-        Add(new PendingProductionSectionViewModel(s, d));
-        Orders = Add(new ProductionOrdersSectionViewModel(s, d));
-        Qc = Add(new QcSectionViewModel(s, d));
-        Packing = Add(new PackingSectionViewModel(s, d));
-        Wip = Add(new MachineWipSectionViewModel(s, d));
+        Add(new ProductionMonthSectionViewModel(s, d));
         Machines = Add(new MachinesSectionViewModel(s, d));
         Add(new QualityTestsSectionViewModel(s, d));
         Add(new CustomRecipesSectionViewModel(s, d));
@@ -156,6 +157,14 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public string BatchReason { get => _batchReason; set => SetProperty(ref _batchReason, value); }
     public ObservableCollection<string> BatchHistory { get; } = new();
     protected override bool HasPendingInput => IsComposing || IsEditingBatch || IsOverriding;
+
+    protected override void ResetInput()
+    {
+        IsComposing = false;
+        ComposeLines.Clear();
+        BatchOrder = null;
+        OverrideOrder = null;
+    }
 
     // ---------------- استبدال مكوّن في أمر واحد ----------------
     private ProductionOrderRow? _overrideOrder;

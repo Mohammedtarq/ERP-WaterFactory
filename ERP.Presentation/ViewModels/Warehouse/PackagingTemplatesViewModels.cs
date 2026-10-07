@@ -45,6 +45,14 @@ public class PackagingTemplatesSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
     protected override bool HasPendingInput => IsEditing;
 
+    protected override void ResetInput()
+    {
+        IsEditing = false;
+        Lines.Clear();
+        Name = "";
+        TemplateDescription = "";
+    }
+
     public ObservableCollection<PackagingTemplate> Templates { get; } = new();
     public ObservableCollection<Item> RawItems { get; } = new();
     public ObservableCollection<TemplateLineDraft> Lines { get; } = new();

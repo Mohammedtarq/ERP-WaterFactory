@@ -48,6 +48,21 @@ public class CustomerDepositsSectionViewModel : SectionViewModel
     }
 
     protected override bool HasPendingInput => Amount != 0;
+
+    protected override void ResetInput()
+    {
+        _customer = null;
+        Kind = Kinds[0];
+        Amount = 0;
+        Date = DateTime.Today;
+        Currency = "IQD";
+        CurrencyAmount = 0;
+        Purpose = DefaultPurpose;
+        Notes = null;
+        VoidTarget = null;
+        VoidReason = null;
+        OnPropertyChanged(nameof(Customer));
+    }
     protected override bool ReloadOnActivate => true;
 
     /// <summary>من الشاشة: استلام أو إرجاع فقط. الرصيد الافتتاحي يأتي من أداة النقل.</summary>
@@ -128,13 +143,19 @@ public class CustomerDepositsSectionViewModel : SectionViewModel
         Recipes.Clear();
         Recipe = null;
         VoidTarget = null;
-        if (Customer is null) { Balance = 0; OnPropertyChanged(nameof(BalanceText)); return; }
+        // العميل يُلتقط مرة واحدة: قد يُغيَّر أو تُفرَّغ الشاشة أثناء التحميل
+        if (Customer is not { } customer) { Balance = 0; OnPropertyChanged(nameof(BalanceText)); return; }
         await using var db = Session.NewDb();
         var svc = new CustomerDepositService(db);
-        foreach (var r in (await svc.GetHistoryAsync(Customer.Id)).AsEnumerable().Reverse()) History.Add(r);
-        foreach (var r in await db.CustomRecipes.AsNoTracking().Where(r => r.CustomerId == Customer.Id && r.IsActive).OrderBy(r => r.Name).ToListAsync())
-            Recipes.Add(r);
-        Balance = await svc.GetBalanceAsync(Customer.Id);
+        var history = await svc.GetHistoryAsync(customer.Id);
+        var recipes = await db.CustomRecipes.AsNoTracking().Where(r => r.CustomerId == customer.Id && r.IsActive).OrderBy(r => r.Name).ToListAsync();
+        var balance = await svc.GetBalanceAsync(customer.Id);
+        if (!ReferenceEquals(Customer, customer)) return;
+        History.Clear();
+        Recipes.Clear();
+        foreach (var r in history.AsEnumerable().Reverse()) History.Add(r);
+        foreach (var r in recipes) Recipes.Add(r);
+        Balance = balance;
         OnPropertyChanged(nameof(BalanceText));
     }
 

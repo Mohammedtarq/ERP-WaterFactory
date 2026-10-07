@@ -47,6 +47,8 @@ public class SupplierPurchasingService
     {
         if (lines.Count == 0)
             return FinanceOperationResult.Fail("أضف صنفًا واحدًا على الأقل لأمر الشراء");
+        if (!await _db.Warehouses.AnyAsync(w => w.Id == warehouseId && w.IsActive && w.WarehouseType == WarehouseType.RawMaterial))
+            return FinanceOperationResult.Fail("أمر الشراء لمخزن المواد الأولية فقط");
 
         var po = new PurchaseOrder
         {
