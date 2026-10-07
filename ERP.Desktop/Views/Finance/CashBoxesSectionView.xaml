@@ -13,6 +13,21 @@
         </Grid.ColumnDefinitions>
 
         <DockPanel>
+            <!-- ================= الصندوق العام (المجموع) ================= -->
+            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,10" Padding="14,10"
+                    Visibility="{Binding CanSeeTotals, Converter={StaticResource BoolToVisibility}}">
+                <DockPanel>
+                    <CheckBox DockPanel.Dock="Left" Content="إظهار الموقوفة" IsChecked="{Binding ShowInactive}" VerticalAlignment="Center"
+                              ToolTip="الصناديق الموقوفة مخفية؛ أظهرها لإعادة تفعيلها أو حذف ما لا حركات عليه"
+                              Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVisibility}}"/>
+                    <WrapPanel HorizontalAlignment="Right">
+                        <TextBlock Text="الصندوق العام (مجموع المفعّلة عدا البطاقات):" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding GeneralTotal, StringFormat='{}{0:N0} د.ع'}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,24,0"/>
+                        <TextBlock Text="البطاقات الإلكترونية:" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Muted}"/>
+                        <TextBlock Text="{Binding CardsTotal, StringFormat='{}{0:N0} د.ع'}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </WrapPanel>
+                </DockPanel>
+            </Border>
             <!-- ================= بطاقات الصناديق ================= -->
             <ListBox DockPanel.Dock="Top" ItemsSource="{Binding Boxes}" SelectedItem="{Binding SelectedBox}" Margin="0,0,0,10"
                      Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -69,6 +84,9 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </Button>
+                                <Button DockPanel.Dock="Left" Content="&#xE74D;" ToolTip="حذف (للصندوق بلا حركات فقط)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                        Command="{Binding DataContext.DeleteBoxCommand, ElementName=Root}" CommandParameter="{Binding}" Margin="4,0,0,0"
+                                        Visibility="{Binding DataContext.IsAdmin, ElementName=Root, Converter={StaticResource BoolToVisibility}}"/>
                                 <Border CornerRadius="4" Padding="6,1" HorizontalAlignment="Right" VerticalAlignment="Center">
                                     <Border.Style>
                                         <Style TargetType="Border">

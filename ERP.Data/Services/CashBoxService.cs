@@ -63,11 +63,10 @@ public class CashBoxService
     public async Task<decimal> GetBalanceAsync(int boxId) =>
         await _db.CashBoxTransactions.Where(t => t.CashBoxId == boxId && !t.IsVoided).SumAsync(t => (decimal?)t.Amount) ?? 0;
 
-    /// <summary>الأدمن يرى كل الصناديق؛ غيره يرى صناديقه فقط.</summary>
+    /// <summary>الأدمن يرى كل الصناديق؛ غيره يرى صناديقه فقط. الموقوفة مخفية إلا بطلبها (الأدمن ليعيد تفعيلها).</summary>
     public async Task<List<CashBoxRow>> GetBoxesAsync(int userId, bool includeInactive = false)
     {
         var admin = await IsAdminAsync(userId);
-        includeInactive |= admin;   // الأدمن يرى الصناديق غير المفعّلة أيضًا ليعيد تفعيلها
         var seeAll = admin || await SpecialPermission.HasAsync(_db, userId, SpecialPermission.AllCashBoxes);
         var boxes = await _db.CashBoxes.AsNoTracking()
             .Where(b => (includeInactive || b.IsActive) && (seeAll || b.OwnerUserId == userId))
@@ -77,12 +76,26 @@ public class CashBoxService
         var balances = await _db.CashBoxTransactions.Where(t => ids.Contains(t.CashBoxId) && !t.IsVoided)
             .GroupBy(t => t.CashBoxId).Select(g => new { g.Key, Sum = g.Sum(t => t.Amount) }).ToDictionaryAsync(x => x.Key, x => x.Sum);
         // الترتيب في الذاكرة: مقارنة Enum مخزَّن كنص داخل ORDER BY لا تُترجم على SQL Server
-        return boxes.OrderBy(b => b.BoxType switch { CashBoxType.Main => 0, CashBoxType.User => 1, _ => 2 }).ThenBy(b => b.Name).Select(b => new CashBoxRow
+        return boxes.OrderBy(b => b.BoxType switch { CashBoxType.Main => 0, CashBoxType.User => 1, CashBoxType.Cards => 3, _ => 2 }).ThenBy(b => b.Name).Select(b => new CashBoxRow
         {
             Id = b.Id, Name = b.Name, BoxType = b.BoxType, OwnerUsername = b.Owner, IsDefault = b.IsDefault, IsActive = b.IsActive,
             Balance = balances.GetValueOrDefault(b.Id)
         }).ToList();
     }
+
+    /// <summary>
+    /// «الصندوق العام» = مجموع الصناديق المفعّلة عدا صندوق البطاقات الإلكترونية، ومجموع صناديق البطاقات على حدة.
+    /// </summary>
+    public async Task<(decimal general, decimal cards)> GetTotalsAsync()
+    {
+        var sums = await _db.CashBoxTransactions.Where(t => !t.IsVoided && t.CashBox.IsActive)
+            .GroupBy(t => t.CashBox.BoxType).Select(g => new { g.Key, Sum = g.Sum(t => t.Amount) }).ToListAsync();
+        return (sums.Where(x => x.Key != CashBoxType.Cards).Sum(x => x.Sum), sums.Where(x => x.Key == CashBoxType.Cards).Sum(x => x.Sum));
+    }
+
+    /// <summary>صندوق البطاقات الإلكترونية الفعّال (الأول إن تعدّد) — يستقبل مبالغ البيع الإلكتروني.</summary>
+    public Task<int?> CardsBoxIdAsync() =>
+        _db.CashBoxes.Where(b => b.IsActive && b.BoxType == CashBoxType.Cards).OrderBy(b => b.Id).Select(b => (int?)b.Id).FirstOrDefaultAsync();
 
     /// <summary>كل الصناديق الفعّالة كوجهات للمناقلة (حتى لغير الأدمن: يسلّم نقده للصندوق الرئيسي).</summary>
     public Task<List<CashBox>> GetTransferTargetsAsync() =>
@@ -110,6 +123,15 @@ public class CashBoxService
         if (string.IsNullOrWhiteSpace(box.Name)) return FinanceOperationResult.Fail("اكتب اسم الصندوق");
         if (box.BoxType == CashBoxType.User && box.OwnerUserId is null) return FinanceOperationResult.Fail("اختر المستخدم صاحب الصندوق");
         if (box.BoxType == CashBoxType.Main) { box.OwnerUserId = null; box.IsActive = true; }
+        if (box.BoxType == CashBoxType.Cards)
+        {
+            if (box.IsDefault) return FinanceOperationResult.Fail("صندوق البطاقات الإلكترونية لا يكون افتراضيًا: لا يستقبل نقدًا");
+            box.OwnerUserId = null;
+        }
+        // كل مستخدم له صندوق واحد مفعّل تُسجَّل عليه عملياته النقدية
+        if (box.BoxType == CashBoxType.User && box.IsActive
+            && await _db.CashBoxes.AnyAsync(b => b.Id != box.Id && b.IsActive && b.BoxType == CashBoxType.User && b.OwnerUserId == box.OwnerUserId))
+            return FinanceOperationResult.Fail("لهذا المستخدم صندوق مفعّل؛ أوقفه أولًا أو أنشئ هذا غير مفعّل");
         if (box.IsDefault) box.IsActive = true;
         if (await _db.CashBoxes.AnyAsync(b => b.Name == box.Name.Trim() && b.Id != box.Id)) return FinanceOperationResult.Fail("يوجد صندوق بنفس الاسم");
 
@@ -135,8 +157,26 @@ public class CashBoxService
         if (box is null) return FinanceOperationResult.Fail("الصندوق غير موجود");
         if (!active && box.IsDefault)
             return FinanceOperationResult.Fail("الصندوق الافتراضي يستقبل المبيعات النقدية ولا يُوقف — اجعل صندوقًا آخر افتراضيًا أولًا");
+        if (active && box.BoxType == CashBoxType.User
+            && await _db.CashBoxes.AnyAsync(b => b.Id != box.Id && b.IsActive && b.BoxType == CashBoxType.User && b.OwnerUserId == box.OwnerUserId))
+            return FinanceOperationResult.Fail("لصاحب هذا الصندوق صندوق آخر مفعّل؛ أوقفه أولًا (لكل مستخدم صندوق مفعّل واحد)");
         box.IsActive = active;
         await _db.SaveChangesAsync();
+        return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>حذف نهائي لصندوق لم تُسجَّل عليه أي حركة (أدمن فقط)؛ ما عليه حركات يُوقف ويُخفى بدل الحذف.</summary>
+    public async Task<FinanceOperationResult> DeleteBoxAsync(int boxId, int userId)
+    {
+        if (!await IsAdminAsync(userId)) return FinanceOperationResult.Fail("حذف الصناديق للأدمن فقط");
+        var box = await _db.CashBoxes.FindAsync(boxId);
+        if (box is null) return FinanceOperationResult.Fail("الصندوق غير موجود");
+        if (box.IsDefault) return FinanceOperationResult.Fail("الصندوق الافتراضي لا يُحذف");
+        if (await _db.CashBoxTransactions.AnyAsync(t => t.CashBoxId == boxId || t.CounterCashBoxId == boxId))
+            return FinanceOperationResult.Fail("على هذا الصندوق حركات فلا يُحذف — أوقفه ليُخفى من العرض (ويُعاد تفعيله عند الحاجة)");
+        _db.CashBoxes.Remove(box);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Delete", "CashBoxes", boxId, $"حذف صندوق بلا حركات: {box.Name}");
         return FinanceOperationResult.Ok();
     }
 

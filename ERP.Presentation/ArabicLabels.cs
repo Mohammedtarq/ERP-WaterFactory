@@ -72,7 +72,7 @@ public static class ArabicLabels
         [BeneficiaryCategory.Government] = "جهة حكومية", [BeneficiaryCategory.Drivers] = "سائقون",
         [BeneficiaryCategory.Partners] = "شركاء وإدارة", [BeneficiaryCategory.Staff] = "موظفون", [BeneficiaryCategory.Reps] = "مندوبون",
         [BeneficiaryCategory.Other] = "أخرى",
-        [CashBoxType.Main] = "صندوق رئيسي", [CashBoxType.User] = "صندوق مستخدم", [CashBoxType.Bank] = "بنك / دفع إلكتروني", [CashBoxType.Home] = "صندوق المنزل (الفائض)",
+        [CashBoxType.Main] = "صندوق رئيسي", [CashBoxType.User] = "صندوق مستخدم", [CashBoxType.Bank] = "بنك / دفع إلكتروني", [CashBoxType.Home] = "صندوق المنزل (الفائض)", [CashBoxType.Cards] = "بطاقات إلكترونية",
         [CashBoxTxType.Opening] = "رصيد افتتاحي", [CashBoxTxType.Deposit] = "إيداع", [CashBoxTxType.Withdrawal] = "سحب",
         [CashBoxTxType.TransferIn] = "مناقلة واردة", [CashBoxTxType.TransferOut] = "مناقلة صادرة",
         [CashBoxTxType.SalesReceipt] = "مبيعات نقدية", [CashBoxTxType.VoucherReceipt] = "سند قبض",

@@ -59,7 +59,21 @@ public class CashBoxesSectionViewModel : SectionViewModel
         LoadStatementCommand = new AsyncRelayCommand(LoadStatementAsync);
         CreateBoxCommand = new AsyncRelayCommand(CreateBoxAsync);
         ToggleActiveCommand = new AsyncRelayCommand(p => p is CashBoxRow b ? ToggleActiveAsync(b) : Task.CompletedTask);
+        DeleteBoxCommand = new AsyncRelayCommand(p => p is CashBoxRow b ? DeleteBoxAsync(b) : Task.CompletedTask);
     }
+
+    public AsyncRelayCommand DeleteBoxCommand { get; }
+
+    // ---- الصناديق الموقوفة مخفية، و«الصندوق العام» بالمجموع (ملاحظة التجربة 4) ----
+    private bool _showInactive;
+    private decimal _generalTotal, _cardsTotal;
+    /// <summary>إظهار الصناديق الموقوفة (للأدمن ليعيد تفعيلها أو يحذف ما لا حركات عليه).</summary>
+    public bool ShowInactive { get => _showInactive; set { if (SetProperty(ref _showInactive, value)) Background(ReloadBoxesKeepSelectionAsync()); } }
+    /// <summary>الصندوق العام = مجموع الصناديق المفعّلة عدا صندوق البطاقات الإلكترونية (عرض فقط).</summary>
+    public decimal GeneralTotal { get => _generalTotal; private set => SetProperty(ref _generalTotal, value); }
+    public decimal CardsTotal { get => _cardsTotal; private set => SetProperty(ref _cardsTotal, value); }
+    public bool CanSeeTotals { get => _canSeeTotals; private set => SetProperty(ref _canSeeTotals, value); }
+    private bool _canSeeTotals;
 
     protected override bool ReloadOnActivate => true;
 
@@ -163,7 +177,8 @@ public class CashBoxesSectionViewModel : SectionViewModel
         IsAdmin = await svc.IsAdminAsync(Session.UserId);
         var selectedId = SelectedBox?.Id;
         Boxes.Clear();
-        foreach (var b in await svc.GetBoxesAsync(Session.UserId)) Boxes.Add(b);
+        foreach (var b in await svc.GetBoxesAsync(Session.UserId, ShowInactive)) Boxes.Add(b);
+        await LoadTotalsAsync(db);
         TransferTargets.Clear();
         foreach (var t in await svc.GetTransferTargetsAsync()) TransferTargets.Add(t);
         if (IsAdmin && Users.Count == 0)
@@ -177,6 +192,13 @@ public class CashBoxesSectionViewModel : SectionViewModel
         OnPropertyChanged(nameof(InactiveNotice));
         RefreshTargets();
         await LoadStatementAsync();
+    }
+
+    private async Task LoadTotalsAsync(ERP.Data.ProjectDb.ProjectDbContext db)
+    {
+        // المجموع العام لمن يرى كل الصناديق فقط
+        CanSeeTotals = IsAdmin || await SpecialPermission.HasAsync(db, Session.UserId, SpecialPermission.AllCashBoxes);
+        (GeneralTotal, CardsTotal) = CanSeeTotals ? await new CashBoxService(db).GetTotalsAsync() : (0, 0);
     }
 
     private void RefreshTargets()
@@ -206,9 +228,10 @@ public class CashBoxesSectionViewModel : SectionViewModel
     {
         var id = SelectedBox?.Id;
         await using var db = Session.NewDb();
-        var boxes = await new CashBoxService(db).GetBoxesAsync(Session.UserId);
+        var boxes = await new CashBoxService(db).GetBoxesAsync(Session.UserId, ShowInactive);
         Boxes.Clear();
         foreach (var b in boxes) Boxes.Add(b);
+        await LoadTotalsAsync(db);
         _selectedBox = Boxes.FirstOrDefault(b => b.Id == id) ?? Boxes.FirstOrDefault();
         OnPropertyChanged(nameof(SelectedBox));
         OnPropertyChanged(nameof(SelectedIsActive));
@@ -306,6 +329,8 @@ public class CashBoxesSectionViewModel : SectionViewModel
         var r = await new CashBoxService(db).SaveBoxAsync(box, Session.UserId);
         if (!r.Success) { Dialogs.Error(r.ErrorMessage!); return; }
         StatusMessage = $"أُنشئ الصندوق \"{box.Name}\"";
+        if (!box.IsActive) _showInactive = true;                     // يظهر ليُفعَّل لاحقًا
+        OnPropertyChanged(nameof(ShowInactive));
         NewBoxName = "";
         NewBoxOwner = null;
         NewBoxDefault = false;
@@ -327,6 +352,17 @@ public class CashBoxesSectionViewModel : SectionViewModel
         StatusMessage = activate ? $"تم تفعيل \"{box.Name}\"" : $"تم إيقاف \"{box.Name}\"";
         await LoadAsync();
         SelectedBox = Boxes.FirstOrDefault(b => b.Id == box.Id);
+    }
+
+    private async Task DeleteBoxAsync(CashBoxRow box)
+    {
+        if (!Dialogs.Confirm($"حذف \"{box.Name}\" نهائيًا؟ يُسمح فقط إن لم تُسجَّل عليه أي حركة.")) return;
+        await using var db = Session.NewDb();
+        var r = await new CashBoxService(db).DeleteBoxAsync(box.Id, Session.UserId);
+        if (!r.Success) { Dialogs.Error(r.ErrorMessage!); return; }
+        StatusMessage = $"حُذف الصندوق \"{box.Name}\"";
+        Session.MarkDataChanged();
+        await LoadAsync();
     }
 
     // ============================ الطباعة ============================

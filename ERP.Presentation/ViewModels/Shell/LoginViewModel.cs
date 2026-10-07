@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using ERP.Data.Services;
 using ERP.Presentation.Mvvm;
 using ERP.Presentation.Services;
@@ -71,15 +72,62 @@ public class ProjectSelectionViewModel : ViewModelBase
         _navigator = navigator;
         _login = login;
         FullName = login.FullName;
-        Projects = login.Projects;
+        Projects = new ObservableCollection<ProjectOption>(login.Projects);
         _selectedProject = Projects.FirstOrDefault();
         OpenCommand = new AsyncRelayCommand(OpenAsync, _ => SelectedProject is not null);
         BackCommand = new RelayCommand(() => _navigator.ShowLogin());
+        BeginDeleteCommand = new RelayCommand(p => { if (p is ProjectOption o) { DeleteConfirmText = ""; DeleteTarget = o; } });
+        CancelDeleteCommand = new RelayCommand(() => DeleteTarget = null);
+        DeleteCommand = new AsyncRelayCommand(DeleteAsync);
     }
 
     public string FullName { get; }
     public string Greeting => $"أهلًا {FullName}، اختر المشروع";
-    public IReadOnlyList<ProjectOption> Projects { get; }
+    public ObservableCollection<ProjectOption> Projects { get; }
+
+    // ---- حذف مشروع (ملاحظة التجربة 16): للمدير، بكتابة اسمه، وبعد نسخة احتياطية تلقائية ----
+    private ProjectOption? _deleteTarget;
+    private string _deleteConfirmText = "";
+    public ProjectOption? DeleteTarget
+    {
+        get => _deleteTarget;
+        private set { if (SetProperty(ref _deleteTarget, value)) { OnPropertyChanged(nameof(IsDeleting)); OnPropertyChanged(nameof(DeletePrompt)); } }
+    }
+    public bool IsDeleting => DeleteTarget is not null;
+    public string DeletePrompt => DeleteTarget is null ? ""
+        : $"حذف «{DeleteTarget.ProjectName}» نهائيًا: تُؤخذ نسخة احتياطية تلقائيًا ثم تُحذف قاعدته ({DeleteTarget.DatabaseName}). للتأكيد اكتب اسم المشروع:";
+    public string DeleteConfirmText { get => _deleteConfirmText; set => SetProperty(ref _deleteConfirmText, value ?? ""); }
+    public RelayCommand BeginDeleteCommand { get; }
+    public RelayCommand CancelDeleteCommand { get; }
+    public AsyncRelayCommand DeleteCommand { get; }
+
+    private async Task DeleteAsync()
+    {
+        if (DeleteTarget is not { } target) return;
+        if (DeleteConfirmText.Trim() != target.ProjectName.Trim()) { ErrorMessage = $"اكتب اسم المشروع كما هو: «{target.ProjectName}»"; return; }
+        if (!_dialogs.Confirm($"تأكيد أخير: حذف مشروع «{target.ProjectName}» وقاعدة بياناته نهائيًا؟ (تبقى نسخته الاحتياطية على السيرفر)")) return;
+        ErrorMessage = null;
+        IsBusy = true;
+        try
+        {
+            var r = await new ProjectDeletionService(_auth).DeleteAsync(_login.GlobalUserId, target, DeleteConfirmText);
+            if (!r.Success) { ErrorMessage = r.ErrorMessage; return; }
+            Projects.Remove(target);
+            if (ReferenceEquals(SelectedProject, target)) SelectedProject = Projects.FirstOrDefault();
+            DeleteTarget = null;
+            _dialogs.Info(r.DatabaseDropped
+                ? $"حُذف المشروع «{target.ProjectName}» وقاعدته.\nالنسخة الاحتياطية: {r.BackupFile}"
+                : $"أُزيل المشروع «{target.ProjectName}» من القائمة (قاعدته غير موجودة أو مشتركة مع سجل آخر فلم تُحذف).");
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex)
+        {
+            ErrorMessage = $"تعذّر الحذف: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     public ProjectOption? SelectedProject
     {

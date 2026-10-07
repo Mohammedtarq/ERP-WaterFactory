@@ -97,12 +97,15 @@ public abstract class CrudSectionViewModel<T> : SectionViewModel where T : class
         }
     }
 
-    private void ApplyFilter()
+    /// <summary>مرشّح إضافي للشاشة (مثل القسم في الموظفين) فوق البحث النصي.</summary>
+    protected virtual bool Includes(T entity) => true;
+
+    protected void ApplyFilter()
     {
         Items.Clear();
         var text = SearchText.Trim();
         foreach (var e in _all)
-            if (text.Length == 0 || Matches(e, text)) Items.Add(e);
+            if (Includes(e) && (text.Length == 0 || Matches(e, text))) Items.Add(e);
     }
 
     private Task NewAsync()

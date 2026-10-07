@@ -59,6 +59,23 @@ public abstract class PeriodSectionViewModel : SectionViewModel
     public string PeriodText => $"{Month:D2}/{Year}";
 }
 
+/// <summary>اختيار القسم في شاشات الموارد البشرية (الكل، قسم بعينه، أو بلا قسم).</summary>
+public record DepartmentChoice(int? Id, string Name, bool IsAll = false)
+{
+    public const string NoDepartment = "بلا قسم";
+    public static readonly DepartmentChoice All = new(null, "كل الأقسام", true);
+
+    public bool Matches(int? departmentId) => IsAll || departmentId == Id;
+
+    public static async Task<List<DepartmentChoice>> LoadAsync(ProjectDbContext db) =>
+        new[] { All }.Concat((await db.Departments.AsNoTracking().OrderBy(d => d.Name).ToListAsync()).Select(d => new DepartmentChoice(d.Id, d.Name)))
+                     .Append(new DepartmentChoice(null, NoDepartment)).ToList();
+
+    /// <summary>يعيد الاختيار السابق بعد إعادة التحميل.</summary>
+    public static DepartmentChoice Keep(IEnumerable<DepartmentChoice> options, DepartmentChoice? previous) =>
+        options.FirstOrDefault(o => previous is not null && o.IsAll == previous.IsAll && o.Id == previous.Id && o.Name == previous.Name) ?? All;
+}
+
 // ============================ الحضور اليومي ============================
 public class AttendanceRow : ObservableObject
 {
@@ -68,12 +85,19 @@ public class AttendanceRow : ObservableObject
 
     public int EmployeeId { get; init; }
     public string EmployeeName { get; init; } = "";
+    public int? DepartmentId { get; init; }
+    public string DepartmentName { get; init; } = DepartmentChoice.NoDepartment;
     public string ShiftText { get; init; } = "";
-    public Option<AttendanceStatus>? Forced { get => _forced; set => SetProperty(ref _forced, value); }
-    public string CheckIn { get => _checkIn; set => SetProperty(ref _checkIn, value); }
-    public string CheckOut { get => _checkOut; set => SetProperty(ref _checkOut, value); }
+    public Option<AttendanceStatus>? Forced { get => _forced; set { if (SetProperty(ref _forced, value)) OnPropertyChanged(nameof(IsChanged)); } }
+    public string CheckIn { get => _checkIn; set { if (SetProperty(ref _checkIn, value ?? "")) OnPropertyChanged(nameof(IsChanged)); } }
+    public string CheckOut { get => _checkOut; set { if (SetProperty(ref _checkOut, value ?? "")) OnPropertyChanged(nameof(IsChanged)); } }
     public string SavedStatus { get; set; } = "";
     public int SavedLateMinutes { get; set; }
+
+    // ما حُمّل من القاعدة: يُحفظ ما تغيّر فقط، فلا يُسجَّل غياب لموظف لم يُلمس سطره
+    private (AttendanceStatus? Forced, string In, string Out) _original;
+    internal void MarkLoaded() => _original = (Forced?.Value, CheckIn, CheckOut);
+    public bool IsChanged => (Forced?.Value, CheckIn.Trim(), CheckOut.Trim()) != (_original.Forced, _original.In.Trim(), _original.Out.Trim());
 }
 
 public class AttendanceSectionViewModel : SectionViewModel
@@ -89,7 +113,8 @@ public class AttendanceSectionViewModel : SectionViewModel
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         AllPresentCommand = new RelayCommand(() =>
         {
-            foreach (var r in Rows.Where(r => r.CheckIn.Length == 0 && r.Forced is null)) r.CheckIn = r.ShiftText.Split(' ')[0] is { Length: 5 } t ? t : "08:00";
+            // الظاهر فقط (القسم/البحث المختار)
+            foreach (var r in VisibleRows.Where(r => r.CheckIn.Length == 0 && r.Forced is null)) r.CheckIn = r.ShiftText.Split(' ')[0] is { Length: 5 } t ? t : "08:00";
         });
     }
 
@@ -106,19 +131,37 @@ public class AttendanceSectionViewModel : SectionViewModel
     public AsyncRelayCommand SaveCommand { get; }
     public RelayCommand AllPresentCommand { get; }
 
+    // ---- القسم والبحث: إدخال حضور موظف واحد أو قسم واحد دون الباقين ----
+    private DepartmentChoice _department = DepartmentChoice.All;
+    private string _filter = "";
+    public ObservableCollection<DepartmentChoice> Departments { get; } = new();
+    public DepartmentChoice Department { get => _department; set { if (SetProperty(ref _department, value ?? DepartmentChoice.All)) OnPropertyChanged(nameof(VisibleRows)); } }
+    public string Filter { get => _filter; set { if (SetProperty(ref _filter, value ?? "")) OnPropertyChanged(nameof(VisibleRows)); } }
+    /// <summary>قائمة فعلية للجدول القابل للتحرير.</summary>
+    public IList<AttendanceRow> VisibleRows => Rows.Where(r => Department.Matches(r.DepartmentId)
+        && (Filter.Trim().Length == 0 || r.EmployeeName.Contains(Filter.Trim(), StringComparison.OrdinalIgnoreCase))).ToList();
+    public int ChangedCount => Rows.Count(r => r.IsChanged);
+
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        var employees = await db.Employees.AsNoTracking().Include(e => e.Shift).Where(e => e.IsActive && !e.IsTemporary).OrderBy(e => e.FullName).ToListAsync();
+        var departments = await DepartmentChoice.LoadAsync(db);
+        Departments.Clear();
+        foreach (var d in departments) Departments.Add(d);
+        _department = DepartmentChoice.Keep(departments, _department);
+        OnPropertyChanged(nameof(Department));
+        var employees = await db.Employees.AsNoTracking().Include(e => e.Shift).Include(e => e.Department)
+            .Where(e => e.IsActive && !e.IsTemporary).OrderBy(e => e.FullName).ToListAsync();
         var records = await db.AttendanceRecords.AsNoTracking().Where(a => a.AttendanceDate == Date).ToDictionaryAsync(a => a.EmployeeId);
         Rows.Clear();
         foreach (var e in employees)
         {
             records.TryGetValue(e.Id, out var rec);
-            Rows.Add(new AttendanceRow
+            var row = new AttendanceRow
             {
                 EmployeeId = e.Id,
                 EmployeeName = e.FullName,
+                DepartmentId = e.DepartmentId, DepartmentName = e.Department?.Name ?? DepartmentChoice.NoDepartment,
                 ShiftText = e.Shift is null ? "بلا شفت" : $"{e.Shift.CheckInTime:hh\\:mm} (سماح {e.Shift.CheckInGraceMinutes} د)",
                 Forced = rec?.Status is AttendanceStatus.Absent or AttendanceStatus.ApprovedLeave
                     ? ForcedOptions.First(o => o?.Value == rec.Status) : null,
@@ -126,8 +169,13 @@ public class AttendanceSectionViewModel : SectionViewModel
                 CheckOut = rec?.CheckOutTime?.ToString(@"hh\:mm") ?? "",
                 SavedStatus = rec is null ? "غير مسجّل" : ArabicLabels.Of(rec.Status),
                 SavedLateMinutes = rec?.LateMinutes ?? 0
-            });
+            };
+            row.MarkLoaded();
+            row.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AttendanceRow.IsChanged)) OnPropertyChanged(nameof(ChangedCount)); };
+            Rows.Add(row);
         }
+        OnPropertyChanged(nameof(VisibleRows));
+        OnPropertyChanged(nameof(ChangedCount));
     }
 
     private static bool TryTime(string text, out TimeSpan? value)
@@ -142,7 +190,8 @@ public class AttendanceSectionViewModel : SectionViewModel
     {
         if (!Require(CanAdd || CanEdit, "تسجيل الحضور")) return;
         var inputs = new List<AttendanceInput>();
-        foreach (var r in Rows)
+        // ما عُدّل فقط: الموظف الذي لم يُلمس سطره لا يُسجَّل له شيء (لا غياب تلقائي)
+        foreach (var r in Rows.Where(r => r.IsChanged))
         {
             if (!TryTime(r.CheckIn, out var inT) || !TryTime(r.CheckOut, out var outT))
             {
@@ -151,9 +200,14 @@ public class AttendanceSectionViewModel : SectionViewModel
             }
             inputs.Add(new AttendanceInput(r.EmployeeId, r.Forced?.Value, inT, outT));
         }
+        if (inputs.Count == 0) { StatusMessage = "لا تعديلات للحفظ — اكتب وقت الدخول أو اختر حالة لموظف"; return; }
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(() => new HrService(db).SaveAttendanceAsync(Date, inputs), $"تم حفظ حضور {Date:yyyy/MM/dd} لـ {inputs.Count} موظف"))
+        var message = $"تم حفظ حضور {Date:yyyy/MM/dd} لـ {inputs.Count} موظف";
+        if (await RunOperationAsync(() => new HrService(db).SaveAttendanceAsync(Date, inputs), message))
+        {
             await LoadAsync();
+            StatusMessage = message;
+        }
     }
 }
 
@@ -167,6 +221,8 @@ public class IncentiveRow : ObservableObject
 
     public int EmployeeId { get; init; }
     public string EmployeeName { get; init; } = "";
+    public int? DepartmentId { get; init; }
+    public string DepartmentName { get; init; } = DepartmentChoice.NoDepartment;
     public decimal AttendanceScore { get; set; }
     public decimal Performance { get => _performance; set => SetProperty(ref _performance, value); }
     public decimal Skills { get => _skills; set => SetProperty(ref _skills, value); }
@@ -188,7 +244,17 @@ public class MonthlyIncentiveSectionViewModel : PeriodSectionViewModel
     protected override bool ReloadOnActivate => true;
     public ObservableCollection<IncentiveRow> Rows { get; } = new();
     public string WeightsText { get => _weightsText; private set => SetProperty(ref _weightsText, value); }
-    public decimal TotalAmount => Rows.Sum(r => r.Amount);
+    public decimal TotalAmount => VisibleRows.Sum(r => r.Amount);
+
+    private DepartmentChoice _department = DepartmentChoice.All;
+    public ObservableCollection<DepartmentChoice> Departments { get; } = new();
+    public DepartmentChoice Department
+    {
+        get => _department;
+        set { if (SetProperty(ref _department, value ?? DepartmentChoice.All)) { OnPropertyChanged(nameof(VisibleRows)); OnPropertyChanged(nameof(TotalAmount)); } }
+    }
+    /// <summary>قائمة فعلية للجدول القابل للتحرير.</summary>
+    public IList<IncentiveRow> VisibleRows => Rows.Where(r => Department.Matches(r.DepartmentId)).ToList();
     public AsyncRelayCommand SaveAllCommand { get; }
 
     public override async Task LoadAsync()
@@ -198,7 +264,12 @@ public class MonthlyIncentiveSectionViewModel : PeriodSectionViewModel
         var w = await hr.GetWeightsAsync();
         WeightsText = $"المعادلة: (الانضباط × {w.AttendanceWeight:0.##} + الأداء × {w.PerformanceWeight:0.##} + المهارات × {w.SkillsWeight:0.##}) ÷ 100 ← مبلغ حسب شريحة المقياس";
 
-        var employees = await db.Employees.AsNoTracking().Where(e => e.IsActive && !e.IsTemporary).OrderBy(e => e.FullName).ToListAsync();
+        var departments = await DepartmentChoice.LoadAsync(db);
+        Departments.Clear();
+        foreach (var d in departments) Departments.Add(d);
+        _department = DepartmentChoice.Keep(departments, _department);
+        OnPropertyChanged(nameof(Department));
+        var employees = await db.Employees.AsNoTracking().Include(e => e.Department).Where(e => e.IsActive && !e.IsTemporary).OrderBy(e => e.FullName).ToListAsync();
         var saved = await db.MonthlyIncentiveEvaluations.AsNoTracking()
             .Where(e => e.PeriodMonth == Month && e.PeriodYear == Year).ToDictionaryAsync(e => e.EmployeeId);
         Rows.Clear();
@@ -208,11 +279,13 @@ public class MonthlyIncentiveSectionViewModel : PeriodSectionViewModel
             Rows.Add(new IncentiveRow
             {
                 EmployeeId = e.Id, EmployeeName = e.FullName,
+                DepartmentId = e.DepartmentId, DepartmentName = e.Department?.Name ?? DepartmentChoice.NoDepartment,
                 AttendanceScore = ev?.AttendanceScoreAuto ?? await hr.ComputeAttendanceScoreAsync(e.Id, Month, Year),
                 Performance = ev?.PerformanceScoreManual ?? 0, Skills = ev?.SkillsScoreManual ?? 0,
                 TotalScore = ev?.TotalScore ?? 0, Amount = ev?.IncentiveAmount ?? 0, IsSaved = ev is not null
             });
         }
+        OnPropertyChanged(nameof(VisibleRows));
         OnPropertyChanged(nameof(TotalAmount));
     }
 
@@ -221,7 +294,9 @@ public class MonthlyIncentiveSectionViewModel : PeriodSectionViewModel
         if (!Require(CanEdit || CanAdd, "تقييم الحوافز")) return;
         await using var db = Session.NewDb();
         var hr = new HrService(db);
-        foreach (var r in Rows)
+        // الظاهر فقط (القسم المختار)
+        var rows = VisibleRows;
+        foreach (var r in rows)
         {
             var (result, b) = await hr.SaveEvaluationAsync(r.EmployeeId, Month, Year, r.Performance, r.Skills);
             if (!result.Success) { Dialogs.Error($"{r.EmployeeName}: {result.ErrorMessage}"); return; }
@@ -229,8 +304,9 @@ public class MonthlyIncentiveSectionViewModel : PeriodSectionViewModel
             r.TotalScore = b.TotalScore;
             r.Amount = b.Amount;
         }
-        StatusMessage = $"تم حفظ تقييم {Rows.Count} موظف لشهر {PeriodText}";
+        var message = $"تم حفظ تقييم {rows.Count} موظف لشهر {PeriodText}" + (Department.IsAll ? "" : $" — قسم {Department.Name}");
         await LoadAsync();
+        StatusMessage = message;
     }
 }
 
@@ -238,6 +314,8 @@ public class MonthlyIncentiveSectionViewModel : PeriodSectionViewModel
 public class PayrollRow
 {
     public string EmployeeName { get; init; } = "";
+    public int? DepartmentId { get; init; }
+    public string DepartmentName { get; init; } = DepartmentChoice.NoDepartment;
     public string Currency { get; init; } = "";
     public decimal BaseSalary { get; init; }
     public decimal Allowances { get; init; }
@@ -269,6 +347,18 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
 
     protected override bool ReloadOnActivate => true;
     public ObservableCollection<PayrollRow> Rows { get; } = new();
+
+    private DepartmentChoice _department = DepartmentChoice.All;
+    public ObservableCollection<DepartmentChoice> Departments { get; } = new();
+    public DepartmentChoice Department
+    {
+        get => _department;
+        set { if (SetProperty(ref _department, value ?? DepartmentChoice.All)) { OnPropertyChanged(nameof(VisibleRows)); OnPropertyChanged(nameof(DepartmentTotalText)); } }
+    }
+    public IList<PayrollRow> VisibleRows => Rows.Where(r => Department.Matches(r.DepartmentId)).ToList();
+    /// <summary>صافي رواتب القسم المختار (بعملته).</summary>
+    public string DepartmentTotalText => Department.IsAll || Rows.Count == 0 ? ""
+        : string.Join(" + ", VisibleRows.GroupBy(r => r.Currency).Select(g => $"{g.Sum(r => r.NetSalary):N0} {g.Key}")) is { Length: > 0 } t ? $"صافي قسم {Department.Name}: {t}" : $"لا موظفين في قسم {Department.Name}";
     public int? RunId { get => _runId; private set { if (SetProperty(ref _runId, value)) OnPropertyChanged(nameof(StatusText)); } }
     public bool IsApproved { get => _isApproved; private set { if (SetProperty(ref _isApproved, value)) OnPropertyChanged(nameof(StatusText)); } }
     public PayrollSummary? Summary { get => _summary; private set => SetProperty(ref _summary, value); }
@@ -282,25 +372,35 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
+        var departments = await DepartmentChoice.LoadAsync(db);
+        Departments.Clear();
+        foreach (var d in departments) Departments.Add(d);
+        _department = DepartmentChoice.Keep(departments, _department);
+        OnPropertyChanged(nameof(Department));
         var run = await db.PayrollRuns.AsNoTracking().FirstOrDefaultAsync(r => r.PeriodMonth == Month && r.PeriodYear == Year);
         RunId = run?.Id;
         IsApproved = run?.Status == PayrollRunStatus.Approved;
         Rows.Clear();
         Summary = null;
+        OnPropertyChanged(nameof(VisibleRows));
+        OnPropertyChanged(nameof(DepartmentTotalText));
         if (run is null) return;
 
-        var lines = await db.PayrollLines.AsNoTracking().Where(l => l.PayrollRunId == run.Id).Include(l => l.Employee)
+        var lines = await db.PayrollLines.AsNoTracking().Where(l => l.PayrollRunId == run.Id).Include(l => l.Employee).ThenInclude(e => e.Department)
                             .OrderBy(l => l.Employee.FullName).ToListAsync();
         foreach (var l in lines)
             Rows.Add(new PayrollRow
             {
-                EmployeeName = l.Employee.FullName, Currency = l.Currency, BaseSalary = l.BaseSalary, Allowances = l.Allowances,
+                EmployeeName = l.Employee.FullName, Currency = l.Currency,
+                DepartmentId = l.Employee.DepartmentId, DepartmentName = l.Employee.Department?.Name ?? DepartmentChoice.NoDepartment, BaseSalary = l.BaseSalary, Allowances = l.Allowances,
                 AbsenceDeduction = l.AbsenceDeduction, RepIncentive = l.RepIncentiveAmount, ManagerIncentive = l.SalesManagerIncentiveAmount,
                 MonthlyIncentive = l.MonthlyIncentiveAmount, LoanDeduction = l.LoanDeduction, WithdrawalDeduction = l.WithdrawalDeduction,
                 PenaltyDeduction = l.PenaltyDeduction, SocialSecurity = l.SocialSecurityDeduction, SocialSolidarity = l.SocialSolidarityDeduction,
                 NetSalary = l.NetSalary
             });
         Summary = await new HrService(db).SummarizeAsync(run.Id);
+        OnPropertyChanged(nameof(VisibleRows));
+        OnPropertyChanged(nameof(DepartmentTotalText));
     }
 
     private async Task GenerateAsync()
@@ -387,10 +487,21 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
 
     protected override int GetId(Employee e) => e.Id;
     protected override string Describe(Employee e) => e.FullName;
-    protected override bool Matches(Employee e, string t) => base.Matches(e, t) || (e.JobTitle?.Contains(t) ?? false);
+    protected override bool Matches(Employee e, string t) => base.Matches(e, t) || (e.JobTitle?.Contains(t) ?? false) || (e.Department?.Name.Contains(t) ?? false);
+
+    // ---- عرض واختيار القسم (ملاحظة التجربة 9) ----
+    private DepartmentChoice _department = DepartmentChoice.All;
+    public ObservableCollection<DepartmentChoice> DepartmentFilters { get; } = new();
+    public DepartmentChoice DepartmentFilter { get => _department; set { if (SetProperty(ref _department, value ?? DepartmentChoice.All)) ApplyFilter(); } }
+    protected override bool Includes(Employee e) => DepartmentFilter.Matches(e.DepartmentId);
 
     protected override async Task LoadLookupsAsync(ProjectDbContext db)
     {
+        var filters = await DepartmentChoice.LoadAsync(db);
+        DepartmentFilters.Clear();
+        foreach (var f in filters) DepartmentFilters.Add(f);
+        _department = DepartmentChoice.Keep(filters, _department);
+        OnPropertyChanged(nameof(DepartmentFilter));
         Branches.Clear();
         foreach (var b in await db.Branches.AsNoTracking().OrderBy(b => b.Name).ToListAsync()) Branches.Add(b);
         Departments.Clear();

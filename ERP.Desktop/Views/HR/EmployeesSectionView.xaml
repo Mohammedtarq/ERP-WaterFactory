@@ -27,7 +27,9 @@
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,8,0"/>
-                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="260" ToolTip="بحث"/>
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="260" ToolTip="بحث بالاسم أو الوظيفة أو القسم"/>
+                        <TextBlock Text="القسم:" VerticalAlignment="Center" FontWeight="SemiBold" Margin="16,0,6,0"/>
+                        <ComboBox ItemsSource="{Binding DepartmentFilters}" SelectedItem="{Binding DepartmentFilter}" DisplayMemberPath="Name" Width="170"/>
                     </StackPanel>
                 </DockPanel>
 
@@ -37,7 +39,7 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الموظف" Binding="{Binding FullName}" Width="*"/>
                         <DataGridTextColumn Header="الوظيفة" Binding="{Binding JobTitle}" Width="130"/>
-                        <DataGridTextColumn Header="القسم" Binding="{Binding Department.Name}" Width="110"/>
+                        <DataGridTextColumn Header="القسم" Binding="{Binding Department.Name, TargetNullValue='بلا قسم', FallbackValue='بلا قسم'}" Width="130" FontWeight="SemiBold"/>
                         <DataGridTextColumn Header="الشفت" Binding="{Binding Shift.Name}" Width="100"/>
                         <DataGridTextColumn Header="الراتب" Binding="{Binding BaseSalary, StringFormat=N0}" Width="100"/>
                         <DataGridTextColumn Header="العملة" Binding="{Binding SalaryCurrency, Converter={StaticResource EnumArabicConverter}}" Width="60"/>

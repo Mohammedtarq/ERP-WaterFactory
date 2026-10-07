@@ -35,6 +35,8 @@
                     <ComboBox ItemsSource="{Binding Months}" SelectedItem="{Binding Month}" Width="70" Margin="0,0,12,0"/>
                     <TextBlock Text="السنة:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <ComboBox ItemsSource="{Binding Years}" SelectedItem="{Binding Year}" Width="90" Margin="0,0,16,0"/>
+                    <TextBlock Text="القسم:" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Departments}" SelectedItem="{Binding Department}" DisplayMemberPath="Name" Width="160" Margin="0,0,16,0"/>
                     <Border Background="#F1F5F9" CornerRadius="6" Padding="10,5">
                         <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold"/>
                     </Border>
@@ -51,9 +53,11 @@
                 </WrapPanel>
             </Border>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
-            <DataGrid ItemsSource="{Binding Rows}">
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding DepartmentTotalText}" FontWeight="SemiBold" Margin="0,6,0,0"/>
+            <DataGrid ItemsSource="{Binding VisibleRows}">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*" MinWidth="140"/>
+                    <DataGridTextColumn Header="القسم" Binding="{Binding DepartmentName}" Width="110"/>
                     <DataGridTextColumn Header="العملة" Binding="{Binding Currency}" Width="60"/>
                     <DataGridTextColumn Header="الأساسي" Binding="{Binding BaseSalary, StringFormat=N0}" Width="100"/>
                     <DataGridTextColumn Header="البدلات" Binding="{Binding Allowances, StringFormat=N0}" Width="90"/>

@@ -211,6 +211,18 @@ public class SalesService
             var customerId = await _db.SalesInvoices.Where(i => i.Id == invoiceId).Select(i => i.CustomerId).FirstAsync();
             await new CustomerAccountService(_db).SyncAsync(customerId);
 
+            // البيع الإلكتروني يدخل صندوق البطاقات الإلكترونية (إن وُجد) — مرجعه الفاتورة فيُلغى بإلغائها
+            if (summary is not null)
+            {
+                var sale = await _db.SalesInvoices.AsNoTracking().Where(i => i.Id == invoiceId)
+                    .Select(i => new { i.PaymentMethod, i.InvoiceDate, i.IsFreeSale, Customer = i.Customer.Name }).FirstAsync();
+                var cash = new CashBoxService(_db);
+                if (sale.PaymentMethod == InvoicePaymentMethod.Electronic && !sale.IsFreeSale && summary.TotalAmount > 0
+                    && await cash.CardsBoxIdAsync() is int cardsId)
+                    await cash.RecordAutoAsync(userId, CashBoxTxType.SalesReceipt, summary.TotalAmount, sale.InvoiceDate, "SalesInvoices", invoiceId,
+                                               sale.Customer, $"بيع إلكتروني {summary.InvoiceNumber}", summary.JournalEntryId, cardsId);
+            }
+
             if (handOverRepCashNow && summary is not null)
             {
                 var inv = await _db.SalesInvoices.AsNoTracking().Where(i => i.Id == invoiceId)

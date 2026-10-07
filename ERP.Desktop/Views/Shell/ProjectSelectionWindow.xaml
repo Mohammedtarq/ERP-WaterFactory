@@ -8,13 +8,26 @@
         x:Name="Root"
         Title="اختيار المشروع — نظام إدارة الأعمال المتكامل"
         FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
-        Width="640" Height="520" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize"
+        Width="660" Height="580" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize"
         Background="{StaticResource BackgroundBrush}">
     <DockPanel Margin="32">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,18">
             <TextBlock Text="{Binding Greeting}" Style="{StaticResource PageTitle}"/>
             <TextBlock Text="كل مشروع قاعدة بيانات مستقلة تمامًا. اختر المشروع الذي تريد العمل عليه." Style="{StaticResource Muted}" Margin="0,6,0,0"/>
         </StackPanel>
+
+        <!-- حذف مشروع: كتابة اسمه للتأكيد -->
+        <Border DockPanel.Dock="Bottom" Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,12,0,0"
+                Visibility="{Binding IsDeleting, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+                <TextBlock Text="{Binding DeletePrompt}" TextWrapping="Wrap" Foreground="#991B1B" FontWeight="SemiBold"/>
+                <DockPanel Margin="0,8,0,0">
+                    <Button DockPanel.Dock="Left" Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CancelDeleteCommand}"/>
+                    <Button DockPanel.Dock="Left" Content="حذف نهائي" Style="{StaticResource DangerButton}" Command="{Binding DeleteCommand}" Margin="8,0"/>
+                    <TextBox Text="{Binding DeleteConfirmText, UpdateSourceTrigger=PropertyChanged}"/>
+                </DockPanel>
+            </StackPanel>
+        </Border>
 
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,16,0,0">
             <Button Content="فتح المشروع" Style="{StaticResource PrimaryButton}" Command="{Binding OpenCommand}" IsDefault="True"/>
@@ -31,6 +44,9 @@
                             <MouseBinding MouseAction="LeftDoubleClick"
                                           Command="{Binding DataContext.OpenCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                         </Border.InputBindings>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Left" Content="&#xE74D;" ToolTip="حذف المشروع وقاعدته (للمدير، بعد نسخة احتياطية)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                    Command="{Binding DataContext.BeginDeleteCommand, ElementName=Root}" CommandParameter="{Binding}" VerticalAlignment="Center"/>
                         <StackPanel Orientation="Horizontal">
                             <Border Width="44" Height="44" CornerRadius="10" Background="#CCFBF1">
                                 <TextBlock Text="&#xE7B8;" Style="{StaticResource Icon}" FontSize="20" Foreground="{StaticResource PrimaryBrush}"/>
@@ -40,6 +56,7 @@
                                 <TextBlock Text="{Binding DatabaseName}" Style="{StaticResource Muted}" FlowDirection="LeftToRight" HorizontalAlignment="Right"/>
                             </StackPanel>
                         </StackPanel>
+                        </DockPanel>
                     </Border>
                 </DataTemplate>
             </ListBox.ItemTemplate>

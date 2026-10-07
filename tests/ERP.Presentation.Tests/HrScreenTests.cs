@@ -128,6 +128,7 @@ public class HrScreenTests
         // الشهر مقفل: الحضور والتوليد يُرفضان
         att.Date = day;
         await att.IdleAsync();
+        att.Rows.First().CheckOut = "17:00";                                  // يُحفظ المعدَّل فقط — وهنا يُرفض
         await att.SaveCommand.ExecuteAsync();
         Assert.Contains(dialogs.Errors, e => e.Contains("معتمدة"));
         Assert.Empty(_f.Unhandled);

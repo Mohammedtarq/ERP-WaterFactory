@@ -1,7 +1,10 @@
 namespace ERP.Data.ProjectDb.Entities;
 
-/// <summary>Home = «صندوق المنزل»: يستقبل الفائض المتحقق خارج الصندوق الرئيسي.</summary>
-public enum CashBoxType { Main, User, Bank, Home }
+/// <summary>
+/// Home = «صندوق المنزل»: يستقبل الفائض المتحقق خارج الصندوق الرئيسي.
+/// Cards = صندوق البطاقات الإلكترونية: تدخله تلقائيًا مبالغ الفواتير المدفوعة إلكترونيًا (43_cash_box_cards.sql).
+/// </summary>
+public enum CashBoxType { Main, User, Bank, Home, Cards }
 
 public enum CashBoxTxType
 {
