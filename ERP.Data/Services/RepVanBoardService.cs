@@ -44,19 +44,32 @@ public class RepVanBoardService
         var vanIds = vans.Select(v => v.Id).ToList();
         var repIds = vans.Select(v => v.RepId).ToList();
 
+        // الرصيد وحمولة اليوم حسب (الصنف + المتغير): الطلبات الخاصة (ليبل مطعم/مناسبة) تظهر مستقلة عن الأساسي
         var balances = await _db.StockTransactions.AsNoTracking().Where(t => vanIds.Contains(t.WarehouseId))
-            .GroupBy(t => new { t.WarehouseId, t.ItemId }).Select(g => new { g.Key.WarehouseId, g.Key.ItemId, Qty = g.Sum(t => t.QuantityBaseUnits) })
+            .GroupBy(t => new { t.WarehouseId, t.ItemId, RecipeId = t.Batch != null ? t.Batch.CustomRecipeId : null })
+            .Select(g => new { g.Key.WarehouseId, g.Key.ItemId, g.Key.RecipeId, Qty = g.Sum(t => t.QuantityBaseUnits) })
             .Where(x => x.Qty != 0).ToListAsync();
-        var loads = await _db.StockDocumentLines.AsNoTracking()
+        var (from, to) = (day.ToUniversalTime(), day.AddDays(1).ToUniversalTime());
+        var loads = await _db.StockTransactions.AsNoTracking()
+            .Where(t => vanIds.Contains(t.WarehouseId) && t.TransactionType == StockTransactionType.RepLoad && t.QuantityBaseUnits > 0
+                        && t.TransactionDate >= from && t.TransactionDate < to)
+            .GroupBy(t => new { Van = t.WarehouseId, t.ItemId, RecipeId = t.Batch != null ? t.Batch.CustomRecipeId : null })
+            .Select(g => new { g.Key.Van, g.Key.ItemId, g.Key.RecipeId, Pieces = g.Sum(t => t.QuantityBaseUnits) })
+            .ToListAsync();
+        // حمولة اليوم بوحداتها كما في المستند (شرنك/كارتون) — تُستعمل متى لم يكن في الصنف متغير
+        var loadLines = await _db.StockDocumentLines.AsNoTracking()
             .Where(l => l.StockDocument.DocumentType == StockDocumentType.RepLoad && l.StockDocument.DocumentDate == day
                         && l.StockDocument.CounterWarehouseId != null && vanIds.Contains(l.StockDocument.CounterWarehouseId.Value))
-            .GroupBy(l => new { Van = l.StockDocument.CounterWarehouseId!.Value, l.ItemId, l.PackagingLevelId, l.PackagingLevel.LevelName, l.PackagingLevel.EquivalentBaseUnits })
+            .GroupBy(l => new { Van = l.StockDocument.CounterWarehouseId!.Value, l.ItemId, l.PackagingLevel.LevelName, l.PackagingLevel.EquivalentBaseUnits })
             .Select(g => new { g.Key.Van, g.Key.ItemId, g.Key.LevelName, g.Key.EquivalentBaseUnits, Qty = g.Sum(l => l.QuantityInLevel), Pieces = g.Sum(l => l.QuantityBaseUnits) })
             .ToListAsync();
-        var itemIds = balances.Select(b => b.ItemId).Concat(loads.Select(l => l.ItemId)).Distinct().ToList();
+        var itemIds = balances.Select(b => b.ItemId).Concat(loads.Select(l => l.ItemId)).Concat(loadLines.Select(l => l.ItemId)).Distinct().ToList();
         var items = await _db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.ItemName);
-        var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
-            .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
+        var recipeIds = balances.Select(b => b.RecipeId).Concat(loads.Select(l => l.RecipeId)).OfType<int>().Distinct().ToList();
+        var recipes = await _db.CustomRecipes.AsNoTracking().Where(r => recipeIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Name);
+        var packs = await PackFormatter.LoadAsync(_db, itemIds);
+        string Name(int itemId, int? recipeId) =>
+            items.GetValueOrDefault(itemId, "؟") + (recipeId is int r ? $" — {recipes.GetValueOrDefault(r, "طلب خاص")}" : "");
         var settledToday = (await _db.RepSettlements.AsNoTracking().Where(s => s.SettlementDate == day && vanIds.Contains(s.VanWarehouseId))
                                      .Select(s => s.VanWarehouseId).ToListAsync()).ToHashSet();
         var lastSettlement = await _db.RepSettlements.AsNoTracking().Where(s => repIds.Contains(s.RepEmployeeId))
@@ -74,8 +87,17 @@ public class RepVanBoardService
         return vans.Select(v =>
         {
             var bal = balances.Where(b => b.WarehouseId == v.Id).ToList();
-            var load = loads.Where(l => l.Van == v.Id).OrderBy(l => items.GetValueOrDefault(l.ItemId)).ThenByDescending(l => l.EquivalentBaseUnits).ToList();
-            var loadPieces = load.Sum(l => l.Pieces);
+            var load = loads.Where(l => l.Van == v.Id).ToList();
+            var lines = loadLines.Where(l => l.Van == v.Id).ToList();
+            var loadPieces = lines.Sum(l => l.Pieces);
+            // صنف بلا متغير: بوحداته كما طُلب؛ صنف فيه متغير: الأساسي وكل متغير مستقل بعبوته
+            var withVariant = load.Where(l => l.RecipeId is not null).Select(l => l.ItemId).ToHashSet();
+            var loadParts = lines.Where(l => !withVariant.Contains(l.ItemId)).GroupBy(l => l.ItemId)
+                .Select(g => (Item: items.GetValueOrDefault(g.Key, "؟"), Order: 0,
+                              Text: $"{items.GetValueOrDefault(g.Key, "؟")}: {string.Join(" + ", g.OrderByDescending(l => l.EquivalentBaseUnits).Select(l => $"{l.Qty:#,0.##} {l.LevelName}"))}"))
+                .Concat(load.Where(l => withVariant.Contains(l.ItemId))
+                    .Select(l => (Item: items.GetValueOrDefault(l.ItemId, "؟"), Order: l.RecipeId is null ? 0 : 1, Text: $"{Name(l.ItemId, l.RecipeId)}: {packs.Of(l.ItemId, l.Pieces)}")))
+                .OrderBy(x => x.Item).ThenBy(x => x.Order).Select(x => x.Text).ToList();
             var pieces = bal.Sum(b => b.Qty);
             var status = overdue.ContainsKey(v.RepId) ? RepVanStatus.Overdue
                        : settledToday.Contains(v.Id) && pieces <= 0 ? RepVanStatus.Settled
@@ -83,10 +105,9 @@ public class RepVanBoardService
                        : settledToday.Contains(v.Id) ? RepVanStatus.Settled
                        : RepVanStatus.Idle;
             return new RepVanCard(v.Id, v.Name, v.RepId, v.RepName, territories.GetValueOrDefault(v.RepId), pieces,
-                bal.Count == 0 ? "فارغة" : string.Join("، ", bal.OrderBy(b => items.GetValueOrDefault(b.ItemId))
-                    .Select(b => $"{items.GetValueOrDefault(b.ItemId, "؟")}: {WarehouseDocumentService.Breakdown(b.Qty, levels.GetValueOrDefault(b.ItemId))}")),
-                load.Count == 0 ? "—" : string.Join("، ", load.GroupBy(l => l.ItemId)
-                    .Select(g => $"{items.GetValueOrDefault(g.Key, "؟")}: {string.Join(" + ", g.Select(l => $"{l.Qty:#,0.##} {l.LevelName}"))}")),
+                bal.Count == 0 ? "فارغة" : string.Join("، ", bal.OrderBy(b => items.GetValueOrDefault(b.ItemId)).ThenBy(b => b.RecipeId is not null)
+                    .Select(b => $"{Name(b.ItemId, b.RecipeId)}: {packs.Of(b.ItemId, b.Qty)}")),
+                loadParts.Count == 0 ? "—" : string.Join("، ", loadParts),
                 loadPieces, status, overdue.GetValueOrDefault(v.RepId), lastSettlement.GetValueOrDefault(v.RepId), wallets.GetValueOrDefault(v.RepId))
             {
                 LastSeenAt = lastSeen.GetValueOrDefault(v.RepId), PendingRequests = pendingRequests.GetValueOrDefault(v.RepId)

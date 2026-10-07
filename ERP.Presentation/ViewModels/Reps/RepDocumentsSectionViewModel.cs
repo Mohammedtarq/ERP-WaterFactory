@@ -35,6 +35,7 @@ public class RepDocumentsSectionViewModel : SectionViewModel
     private string? _notes;
     private DateTime _from = DateTime.Today.AddDays(-30);
     private DateTime _to = DateTime.Today;
+    private PackFormatter _packs = new(Array.Empty<ItemPackagingLevel>());
 
     public RepDocumentsSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Reps, "مستندات المندوبين", Icons.Truck, "#F97316",
@@ -83,20 +84,33 @@ public class RepDocumentsSectionViewModel : SectionViewModel
             if (!SetProperty(ref _documentType, value)) return;
             OnPropertyChanged(nameof(IsReturn));
             OnPropertyChanged(nameof(StoreLabel));
+            OnPropertyChanged(nameof(TypeHint));
+            OnPropertyChanged(nameof(DirectionText));
+            OnPropertyChanged(nameof(LineVanText));
             if (!IsReturn) LineDamaged = false;
         }
     }
     public bool IsReturn => DocumentType.Value == StockDocumentType.RepReturn;
     public string StoreLabel => IsReturn ? "إلى مخزن (السليم يعود إليه)" : "من مخزن المنتج التام";
+    /// <summary>شرح مختصر لنوع المستند المختار.</summary>
+    public string TypeHint => IsReturn
+        ? "إرجاع من المندوب: ما بقي في السيارة يعود إلى المخزن. علّم «تلف ميداني» للعبوات التالفة فتُسجَّل تالفًا ولا تعود رصيدًا سليمًا."
+        : "إسناد حمولة: تُنقل البضاعة من المخزن إلى سيارة المندوب وتصبح في عهدته. (طلبات التحميل المجهَّزة تُنشئ هذا المستند تلقائيًا.)";
+    /// <summary>اتجاه الحركة بوضوح: من ← إلى.</summary>
+    public string DirectionText => Van is null || Store is null ? "" :
+        IsReturn ? $"من: {Van.Name}  ←  إلى: {Store.Name}" : $"من: {Store.Name}  ←  إلى: {Van.Name}";
     public Data.ProjectDb.Entities.Warehouse? Van
     {
         get => _van;
-        set { if (SetProperty(ref _van, value)) { OnPropertyChanged(nameof(RepName)); Background(LoadVanStockAsync()); } }
+        set { if (SetProperty(ref _van, value)) { OnPropertyChanged(nameof(RepName)); OnPropertyChanged(nameof(DirectionText)); Background(LoadVanStockAsync()); } }
     }
     public string RepName => Van?.OwnerEmployee?.FullName is { } n ? $"المندوب: {n}" : "السيارة بلا مندوب — حدّده من تعريف المخازن";
-    public Data.ProjectDb.Entities.Warehouse? Store { get => _store; set => SetProperty(ref _store, value); }
+    public Data.ProjectDb.Entities.Warehouse? Store { get => _store; set { if (SetProperty(ref _store, value)) OnPropertyChanged(nameof(DirectionText)); } }
     public DateTime Date { get => _date; set => SetProperty(ref _date, value); }
-    public Item? LineItem { get => _lineItem; set { if (SetProperty(ref _lineItem, value)) Background(LoadLevelsAsync()); } }
+    public Item? LineItem { get => _lineItem; set { if (SetProperty(ref _lineItem, value)) { OnPropertyChanged(nameof(LineVanText)); Background(LoadLevelsAsync()); } } }
+    /// <summary>رصيد الصنف المختار في السيارة الآن (بالعبوات).</summary>
+    public string LineVanText => LineItem is null || Van is null ? "" :
+        $"في السيارة الآن: {_packs.Of(LineItem.Id, VanStock.Where(r => r.ItemId == LineItem.Id).Sum(r => r.QuantityBaseUnits))}";
     public ItemPackagingLevel? LineLevel { get => _lineLevel; set => SetProperty(ref _lineLevel, value); }
     public decimal LineQuantity { get => _lineQuantity; set => SetProperty(ref _lineQuantity, value); }
     /// <summary>في الإرجاع: السطر تالف ميدانيًا (يُسجَّل بسبب "تلف ميداني" ولا يعود رصيدًا سليمًا).</summary>
@@ -105,8 +119,11 @@ public class RepDocumentsSectionViewModel : SectionViewModel
     public DateTime From { get => _from; set => SetProperty(ref _from, value); }
     public DateTime To { get => _to; set => SetProperty(ref _to, value); }
     public decimal VanTotalPieces => VanStock.Sum(r => r.QuantityBaseUnits);
+    /// <summary>رصيد السيارة بالعبوات: «12 شرنك + 5 كارتون».</summary>
+    public string VanTotalText => VanStock.Count == 0 ? "رصيد السيارة الحالي: فارغة" : $"رصيد السيارة الحالي: {_packs.Total(VanStock.Select(r => (r.ItemId, r.QuantityBaseUnits)))}";
     public string LinesTotalText => Lines.Count == 0 ? "" :
-        $"{Lines.Count} سطر — {Lines.Sum(l => l.BaseUnits):N0} قطعة" + (Lines.Any(l => l.IsDamaged) ? $" (منها تلف ميداني {Lines.Where(l => l.IsDamaged).Sum(l => l.BaseUnits):N0})" : "");
+        $"{Lines.Count} سطر — {_packs.Total(Lines.Select(l => (l.ItemId, l.BaseUnits)))}"
+        + (Lines.Any(l => l.IsDamaged) ? $" (منها تلف ميداني {_packs.Total(Lines.Where(l => l.IsDamaged).Select(l => (l.ItemId, l.BaseUnits)))})" : "");
 
     public RelayCommand AddLineCommand { get; }
     public RelayCommand RemoveLineCommand { get; }
@@ -128,6 +145,7 @@ public class RepDocumentsSectionViewModel : SectionViewModel
         foreach (var w in (await db.Warehouses.AsNoTracking()
                      .Where(w => w.IsActive && w.IsSellableStock && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.WorkInProcess).ToListAsync())
                      .OrderBy(w => w.WarehouseType != WarehouseType.FinishedGoods).ThenBy(w => w.Name)) Stores.Add(w);
+        _packs = await PackFormatter.LoadAsync(db);
         if (ItemsLookup.Count == 0)
             foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync())
                 ItemsLookup.Add(i);
@@ -136,6 +154,7 @@ public class RepDocumentsSectionViewModel : SectionViewModel
         OnPropertyChanged(nameof(RepName));
         _store = Stores.FirstOrDefault(w => w.Id == storeId) ?? Stores.FirstOrDefault();
         OnPropertyChanged(nameof(Store));
+        OnPropertyChanged(nameof(DirectionText));
         await LoadVanStockAsync();
         await LoadDocumentsAsync();
     }
@@ -143,12 +162,17 @@ public class RepDocumentsSectionViewModel : SectionViewModel
     private async Task LoadVanStockAsync()
     {
         VanStock.Clear();
-        if (Van is not null)
+        if (Van is { } van)
         {
             await using var db = Session.NewDb();
-            foreach (var r in await new StockQueryService(db).GetCurrentStockAsync(Van.Id)) VanStock.Add(r);
+            var stock = await new StockQueryService(db).GetCurrentStockAsync(van.Id);
+            if (!ReferenceEquals(Van, van)) return;
+            VanStock.Clear();
+            foreach (var r in stock) VanStock.Add(r);
         }
         OnPropertyChanged(nameof(VanTotalPieces));
+        OnPropertyChanged(nameof(VanTotalText));
+        OnPropertyChanged(nameof(LineVanText));
     }
 
     private async Task LoadDocumentsAsync()
@@ -222,10 +246,10 @@ public class RepDocumentsSectionViewModel : SectionViewModel
         if (Van is null) { Dialogs.Error("اختر السيارة"); return; }
         var r = new ReportDocument { Key = "van-stock", CompanyName = Session.ProjectName, Title = $"جرد سيارة — {Van.Name}", PrintedBy = Session.FullName };
         r.Field("السيارة", Van.Name).Field("المندوب", Van.OwnerEmployee?.FullName).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
-        r.Columns.AddRange(new[] { "الكود", "الصنف", "التشغيلة", "الصلاحية", "الكمية (قطعة)" });
+        r.Columns.AddRange(new[] { "الكود", "الصنف", "التشغيلة", "الصلاحية", "الكمية", "بالقطعة" });
         foreach (var x in VanStock)
-            r.Rows.Add(new[] { x.ItemCode, x.ItemName, x.BatchNumber ?? "", x.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", $"{x.QuantityBaseUnits:N0}" });
-        r.Total("إجمالي القطع", $"{VanTotalPieces:N0}", true);
+            r.Rows.Add(new[] { x.ItemCode, x.ItemName, x.BatchNumber ?? "", x.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", x.Breakdown, $"{x.QuantityBaseUnits:N0}" });
+        r.Total("رصيد السيارة", _packs.Total(VanStock.Select(x => (x.ItemId, x.QuantityBaseUnits))), true);
         r.Signatures.AddRange(new[] { "المندوب", "أمين المخزن" });
         Dialogs.ShowReport(r);
     }

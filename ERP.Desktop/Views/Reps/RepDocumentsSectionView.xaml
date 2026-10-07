@@ -19,17 +19,22 @@
                 <StackPanel DockPanel.Dock="Top">
                     <TextBlock Text="نوع المستند" Style="{StaticResource FieldLabel}"/>
                     <ComboBox ItemsSource="{Binding DocumentTypes}" SelectedItem="{Binding DocumentType}" DisplayMemberPath="Label"/>
+                    <Border Background="#EFF6FF" CornerRadius="8" Padding="10,8" Margin="0,6,0,0">
+                        <TextBlock Text="{Binding TypeHint}" TextWrapping="Wrap" Foreground="#1E3A8A"/>
+                    </Border>
                     <TextBlock Text="سيارة المندوب (كاش فان)" Style="{StaticResource FieldLabel}"/>
                     <ComboBox ItemsSource="{Binding Vans}" SelectedItem="{Binding Van}" DisplayMemberPath="Name"/>
                     <TextBlock Text="{Binding RepName}" Style="{StaticResource Muted}"/>
                     <TextBlock Text="{Binding StoreLabel}" Style="{StaticResource FieldLabel}"/>
                     <ComboBox ItemsSource="{Binding Stores}" SelectedItem="{Binding Store}" DisplayMemberPath="Name"/>
+                    <TextBlock Text="{Binding DirectionText}" FontWeight="SemiBold" Foreground="#0F766E" Margin="0,8,0,0" TextWrapping="Wrap"/>
                     <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
                     <DatePicker SelectedDate="{Binding Date}"/>
                     <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,10,0,0">
                         <StackPanel>
                             <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}" Margin="0"/>
                             <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" DisplayMemberPath="ItemName"/>
+                            <TextBlock Text="{Binding LineVanText}" Style="{StaticResource Muted}" Margin="0,4,0,0"/>
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                 <ComboBox ItemsSource="{Binding LevelOptions}" SelectedItem="{Binding LineLevel}" DisplayMemberPath="LevelName" Width="120"/>
                                 <TextBox Text="{Binding LineQuantity}" Width="80" Margin="6,0" FlowDirection="LeftToRight" ToolTip="الكمية"/>
@@ -86,8 +91,9 @@
                             <DataGridTextColumn Header="النوع" Binding="{Binding DocumentType, Converter={StaticResource EnumArabicConverter}}" Width="120"/>
                             <DataGridTextColumn Header="التاريخ" Binding="{Binding DocumentDate, StringFormat=yyyy/MM/dd}" Width="90"/>
                             <DataGridTextColumn Header="المندوب" Binding="{Binding PartyName}" Width="*"/>
-                            <DataGridTextColumn Header="القطع" Binding="{Binding TotalPieces, StringFormat=N0}" Width="70"/>
-                            <DataGridTextColumn Header="تلف ميداني" Binding="{Binding DamagedPieces, StringFormat=N0}" Width="75"/>
+                            <DataGridTextColumn Header="المخزن المقابل" Binding="{Binding CounterWarehouse}" Width="110"/>
+                            <DataGridTextColumn Header="الكمية" Binding="{Binding TotalText}" Width="130"/>
+                            <DataGridTextColumn Header="تلف ميداني" Binding="{Binding DamagedText}" Width="95"/>
                             <DataGridTemplateColumn Header="" Width="40">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -104,14 +110,15 @@
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <Button DockPanel.Dock="Left" Content="طباعة جرد السيارة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintStockCommand}"/>
-                        <TextBlock Text="{Binding VanTotalPieces, StringFormat='رصيد السيارة الحالي: {0:N0} قطعة'}" Style="{StaticResource SectionTitle}" Margin="0"/>
+                        <TextBlock Text="{Binding VanTotalText}" Style="{StaticResource SectionTitle}" Margin="0" TextWrapping="Wrap"/>
                     </DockPanel>
                     <DataGrid ItemsSource="{Binding VanStock}" IsReadOnly="True">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
                             <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="110"/>
                             <DataGridTextColumn Header="الصلاحية" Binding="{Binding ExpiryDate, StringFormat=yyyy/MM/dd}" Width="90"/>
-                            <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityBaseUnits, StringFormat=N0}" Width="80"/>
+                            <DataGridTextColumn Header="الكمية" Binding="{Binding Breakdown}" Width="110" FontWeight="SemiBold"/>
+                            <DataGridTextColumn Header="بالقطعة" Binding="{Binding QuantityBaseUnits, StringFormat=N0}" Width="70"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

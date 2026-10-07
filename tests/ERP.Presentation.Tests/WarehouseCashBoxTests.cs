@@ -62,7 +62,7 @@ public class WarehouseCashBoxTests
         fg.LineNewBatch = "WS-R1";
         fg.LineExpiry = DateTime.Today.AddMonths(12);
         await fg.AddLineCommand.ExecuteAsync();
-        Assert.Equal("1 سطر — 120 قطعة", fg.LinesTotalText);
+        Assert.Equal("1 سطر — 10 كارتون", fg.LinesTotalText);          // بالعبوات لا بالقطع (ملاحظة التجربة 1)
         await fg.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.StartsWith("SR-", fg.LastDocument!.DocumentNumber);
@@ -80,6 +80,10 @@ public class WarehouseCashBoxTests
         fg.LineItem = fg.ItemsLookup.Single(i => i.ItemCode == "W500");
         await fg.IdleAsync();
         fg.LineBatch = fg.BatchOptions.Single(b => b.Label.StartsWith("WS-R1"));
+        Assert.EndsWith("— 10 كارتون", fg.LineBatch.Label);             // رصيد التشغيلة بالعبوات
+        Assert.Equal("المتاح: 10 كارتون", fg.LineAvailableText);
+        Assert.Contains("كارتون", fg.TotalText);                          // بطاقة «إجمالي الرصيد»
+        Assert.Contains("كارتون", fg.TodayInText);
         fg.LineQuantity = 2;
         await fg.AddLineCommand.ExecuteAsync();
         await fg.SaveCommand.ExecuteAsync();
@@ -98,6 +102,8 @@ public class WarehouseCashBoxTests
         fg.LineItem = fg.ItemsLookup.Single(i => i.ItemCode == "W500");
         await fg.IdleAsync();
         fg.LineLevel = fg.LevelOptions.Single(l => l.LevelName == "قطعة");
+        fg.LineQuantity = 15;
+        Assert.Equal("= 1 كارتون + 3 قطعة", fg.LinePiecesText);         // القطع تُحوَّل للعبوة الكبرى
         fg.LineQuantity = 5;
         await fg.AddLineCommand.ExecuteAsync();
         await fg.SaveCommand.ExecuteAsync();
@@ -151,13 +157,17 @@ public class WarehouseCashBoxTests
         Assert.Equal(5m, fg.Ledger.Where(l => l.Reference == damageDoc).Sum(l => l.Out));
         Assert.All(fg.Ledger.Where(l => l.Reference == damageDoc), l => Assert.StartsWith("تالف", l.TypeLabel));
         fg.PrintLedgerCommand.Execute(null);
-        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الرصيد آخر المدة" && t.Value == $"{finalBalance:N0} قطعة");
+        // الرصيد بالعبوات: كراتين كاملة + ما تبقّى بالقطعة
+        var packsText = finalBalance % 12 == 0 ? $"{finalBalance / 12:N0} كارتون" : $"{Math.Floor(finalBalance / 12):N0} كارتون + {finalBalance % 12:N0} قطعة";
+        Assert.Equal(packsText, fg.Ledger.Last().BalanceText);
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الرصيد آخر المدة" && t.Value == packsText);
 
         fg.PrintBalancesCommand.Execute(null);
         Assert.Equal("أرصدة مخزن المنتج التام", dialogs.Reports.Last().Title);
 
         // المستندات قابلة لإعادة الطباعة؛ مستند المناقلة يظهر في المخزنين
         Assert.Equal(4, fg.Documents.Count(d => d.DocumentNumber.StartsWith("S")));
+        Assert.Equal("2 كارتون", fg.Documents.Single(d => d.DocumentType == StockDocumentType.Transfer).TotalText);
         await fg.PrintDocumentCommand.ExecuteAsync(fg.Documents.Single(d => d.DocumentType == StockDocumentType.Transfer));
         Assert.Equal("مستند مناقلة إلى مخزن آخر", dialogs.Reports.Last().Title);
         Assert.Contains(dialogs.Reports.Last().HeaderFields, f => f.Label == "إلى مخزن" && f.Value == "مخزن الأغطية والملصقات");

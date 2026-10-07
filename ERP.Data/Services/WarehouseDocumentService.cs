@@ -26,12 +26,20 @@ public class StockSummaryRow
     public decimal Damaged { get; set; }
     public decimal Free { get; set; }
     public decimal Closing => Opening + In - Out - Damaged - Free;
+    // نفس الأرقام بعبوات الصنف (كارتون/شرنك) للعرض
+    public string OpeningText { get; set; } = "";
+    public string InText { get; set; } = "";
+    public string OutText { get; set; } = "";
+    public string DamagedText { get; set; } = "";
+    public string FreeText { get; set; } = "";
+    public string ClosingText { get; set; } = "";
 }
 
 /// <summary>سطر في كشف حركة المخزن مع الرصيد التراكمي.</summary>
 public class StockLedgerRow
 {
     public DateTime Date { get; init; }
+    public int? ItemId { get; init; }
     public string ItemName { get; init; } = "";
     public string TypeLabel { get; init; } = "";
     public string Reference { get; init; } = "";
@@ -40,6 +48,10 @@ public class StockLedgerRow
     public decimal In { get; init; }
     public decimal Out { get; init; }
     public decimal Balance { get; set; }
+    // بعبوات الصنف؛ الرصيد التراكمي بالعبوات لكشف صنف واحد فقط (أصناف مختلفة لا تُجمع بعبوة واحدة)
+    public string InText { get; set; } = "";
+    public string OutText { get; set; } = "";
+    public string BalanceText { get; set; } = "";
 }
 
 public class StockBalanceRow
@@ -67,8 +79,12 @@ public class StockDocumentRow
     public string? PartyName { get; init; }
     public int LinesCount { get; init; }
     public decimal TotalPieces { get; init; }
+    /// <summary>الكمية بعبوات الأصناف: «10 كارتون + 4 شرنك».</summary>
+    public string TotalText { get; set; } = "";
     /// <summary>القطع التالفة ميدانيًا (في مستند الإرجاع من المندوب).</summary>
     public decimal DamagedPieces { get; init; }
+    /// <summary>التالف الميداني بعبوات الأصناف (فارغ إن لم يوجد).</summary>
+    public string DamagedText { get; set; } = "";
     public string CreatedBy { get; init; } = "";
 }
 
@@ -294,8 +310,19 @@ public class WarehouseDocumentService
                 default: row.Out += p.Out; break;
             }
         }
-        return rows.Values.Where(r => r.Opening != 0 || r.In != 0 || r.Out != 0 || r.Damaged != 0 || r.Free != 0)
+        var packs = await PackFormatter.LoadAsync(_db, ids);
+        var result = rows.Values.Where(r => r.Opening != 0 || r.In != 0 || r.Out != 0 || r.Damaged != 0 || r.Free != 0)
                           .OrderBy(r => r.ItemName).ToList();
+        foreach (var r in result)
+        {
+            r.OpeningText = packs.Of(r.ItemId, r.Opening);
+            r.InText = packs.Of(r.ItemId, r.In);
+            r.OutText = packs.Of(r.ItemId, r.Out);
+            r.DamagedText = packs.Of(r.ItemId, r.Damaged);
+            r.FreeText = packs.Of(r.ItemId, r.Free);
+            r.ClosingText = packs.Of(r.ItemId, r.Closing);
+        }
+        return result;
     }
 
     /// <summary>كشف حركة مفصّل بالترتيب الزمني مع رصيد تراكمي (لصنف واحد أو لكل الأصناف).</summary>
@@ -307,26 +334,31 @@ public class WarehouseDocumentService
         var tx = await _db.StockTransactions.AsNoTracking()
             .Where(x => x.WarehouseId == warehouseId && x.TransactionDate >= f && x.TransactionDate < t && (itemId == null || x.ItemId == itemId))
             .OrderBy(x => x.TransactionDate).ThenBy(x => x.Id)
-            .Select(x => new { x.TransactionDate, x.Item.ItemName, x.TransactionType, x.DamageReason, x.ReferenceTable, x.ReferenceId,
+            .Select(x => new { x.TransactionDate, x.ItemId, x.Item.ItemName, x.TransactionType, x.DamageReason, x.ReferenceTable, x.ReferenceId,
                                BatchNumber = x.Batch != null ? x.Batch.BatchNumber : null, x.FreeIssueRecipient, x.QuantityBaseUnits })
             .ToListAsync();
 
         var refs = await ResolveReferencesAsync(tx.Where(x => x.ReferenceId != null).Select(x => (x.ReferenceTable!, x.ReferenceId!.Value)));
+        var packs = await PackFormatter.LoadAsync(_db, tx.Select(x => x.ItemId).Append(itemId ?? 0));
+        string BalanceText(decimal b) => itemId is int one ? packs.Of(one, b) : "";
         var rows = new List<StockLedgerRow>();
         var balance = opening;
         if (itemId is not null || tx.Count > 0)
-            rows.Add(new StockLedgerRow { Date = from.Date, ItemName = "", TypeLabel = "رصيد أول المدة", Reference = "", Balance = opening });
+            rows.Add(new StockLedgerRow { Date = from.Date, ItemId = itemId, ItemName = "", TypeLabel = "رصيد أول المدة", Reference = "", Balance = opening,
+                                          BalanceText = BalanceText(opening) });
         foreach (var x in tx)
         {
             balance += x.QuantityBaseUnits;
             rows.Add(new StockLedgerRow
             {
-                Date = x.TransactionDate.ToLocalTime(), ItemName = x.ItemName,
+                Date = x.TransactionDate.ToLocalTime(), ItemId = x.ItemId, ItemName = x.ItemName,
                 TypeLabel = TypeLabel(x.TransactionType, x.QuantityBaseUnits) + (x.DamageReason is null ? "" : $" ({DamageLabel(x.DamageReason.Value)})"),
                 Reference = x.ReferenceId is null ? "" : refs.GetValueOrDefault((x.ReferenceTable!, x.ReferenceId.Value), $"{x.ReferenceTable} #{x.ReferenceId}"),
                 BatchNumber = x.BatchNumber, Party = x.FreeIssueRecipient,
                 In = x.QuantityBaseUnits > 0 ? x.QuantityBaseUnits : 0, Out = x.QuantityBaseUnits < 0 ? -x.QuantityBaseUnits : 0,
-                Balance = balance
+                InText = x.QuantityBaseUnits > 0 ? packs.Of(x.ItemId, x.QuantityBaseUnits) : "",
+                OutText = x.QuantityBaseUnits < 0 ? packs.Of(x.ItemId, -x.QuantityBaseUnits) : "",
+                Balance = balance, BalanceText = BalanceText(balance)
             });
         }
         return rows;
@@ -378,6 +410,25 @@ public class WarehouseDocumentService
     }
 
     /// <summary>مستندات المندوبين (إسناد حمولة وإرجاع) لكل السيارات أو لمندوب واحد.</summary>
+    /// <summary>كمية كل مستند بعبوات أصنافه (القطع تبقى في TotalPieces).</summary>
+    private async Task<List<StockDocumentRow>> WithPackTotalsAsync(List<StockDocumentRow> docs)
+    {
+        if (docs.Count == 0) return docs;
+        var ids = docs.Select(d => d.Id).ToList();
+        var lines = await _db.StockDocumentLines.AsNoTracking().Where(l => ids.Contains(l.StockDocumentId))
+            .GroupBy(l => new { l.StockDocumentId, l.ItemId, l.IsDamaged })
+            .Select(g => new { g.Key.StockDocumentId, g.Key.ItemId, g.Key.IsDamaged, Qty = g.Sum(l => l.QuantityBaseUnits) }).ToListAsync();
+        var packs = await PackFormatter.LoadAsync(_db, lines.Select(l => l.ItemId));
+        var byDoc = lines.ToLookup(l => l.StockDocumentId);
+        foreach (var d in docs)
+        {
+            d.TotalText = packs.Total(byDoc[d.Id].Select(l => (l.ItemId, l.Qty)));
+            var damaged = byDoc[d.Id].Where(l => l.IsDamaged).ToList();
+            d.DamagedText = damaged.Count == 0 ? "" : packs.Total(damaged.Select(l => (l.ItemId, l.Qty)));
+        }
+        return docs;
+    }
+
     public async Task<List<StockDocumentRow>> GetRepDocumentsAsync(DateTime from, DateTime to, int? repEmployeeId = null)
     {
         var rows = await _db.StockDocuments.AsNoTracking()
@@ -390,11 +441,11 @@ public class WarehouseDocumentService
                 d.PartyName, Lines = d.Lines.Count, Pieces = d.Lines.Sum(l => (decimal?)l.QuantityBaseUnits) ?? 0,
                 Damaged = d.Lines.Where(l => l.IsDamaged).Sum(l => (decimal?)l.QuantityBaseUnits) ?? 0, User = d.CreatedByUser.Username
             }).ToListAsync();
-        return rows.Select(d => new StockDocumentRow
+        return await WithPackTotalsAsync(rows.Select(d => new StockDocumentRow
         {
             Id = d.Id, DocumentNumber = d.DocumentNumber, DocumentType = d.DocumentType, DocumentDate = d.DocumentDate,
             CounterWarehouse = d.Counter, PartyName = d.PartyName, LinesCount = d.Lines, TotalPieces = d.Pieces, DamagedPieces = d.Damaged, CreatedBy = d.User
-        }).ToList();
+        }).ToList());
     }
 
     public async Task<List<StockDocumentRow>> GetDocumentsAsync(int warehouseId, DateTime from, DateTime to, StockDocumentType? type = null)
@@ -408,11 +459,11 @@ public class WarehouseDocumentService
                 d.Id, d.DocumentNumber, d.DocumentType, d.DocumentDate, Counter = d.CounterWarehouse != null ? d.CounterWarehouse.Name : null,
                 d.PartyName, Lines = d.Lines.Count, Pieces = d.Lines.Sum(l => (decimal?)l.QuantityBaseUnits) ?? 0, User = d.CreatedByUser.Username
             }).ToListAsync();
-        return rows.Select(d => new StockDocumentRow
+        return await WithPackTotalsAsync(rows.Select(d => new StockDocumentRow
         {
             Id = d.Id, DocumentNumber = d.DocumentNumber, DocumentType = d.DocumentType, DocumentDate = d.DocumentDate,
             CounterWarehouse = d.Counter, PartyName = d.PartyName, LinesCount = d.Lines, TotalPieces = d.Pieces, CreatedBy = d.User
-        }).ToList();
+        }).ToList());
     }
 
     public Task<StockDocument?> GetDocumentAsync(int id) =>

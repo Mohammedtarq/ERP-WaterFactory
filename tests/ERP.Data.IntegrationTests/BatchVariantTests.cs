@@ -331,6 +331,12 @@ public class BatchVariantTests
         var (p2, _) = await svc.PrepareLoadOrderAsync(o2.Id, null, _f.AdminId);
         Assert.True(p2.Success, p2.ErrorMessage);
         Assert.Equal((24m, 36m), (await Van(null), await Van(s.HassounRecipe.Id)));
+
+        // لوحة سيارات المندوبين (ملاحظة التجربة 17): الطلب الخاص يظهر مستقلًا عن الأساسي في الرصيد وحمولة اليوم
+        var card = (await new RepVanBoardService(db).CardsAsync(DateTime.Today)).Single(c => c.VanWarehouseId == van.Id);
+        Assert.Equal($"{s.Water.ItemName}: 2 كارتون، {s.Water.ItemName} — {s.HassounRecipe.Name}: 3 كارتون", card.BalanceText);
+        Assert.Equal(card.BalanceText, card.TodayLoadText);
+        Assert.Equal(60m, card.BalancePieces);
     }
     [Fact]
     public async Task Templates_repeat_last_day_preview_wizard_report_and_batch_correction()

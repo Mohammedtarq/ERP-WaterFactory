@@ -448,7 +448,7 @@ public class WizardJourneyTests : IAsyncLifetime
         wallet.PrintStatementCommand.Execute(null);
         Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "رصيد المحفظة" && t.Value == "5,000 د.ع");
         van.PrintStockCommand.Execute(null);
-        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Value == "120");
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "رصيد السيارة" && t.Value == "10 كارتون");   // 120 قطعة بالعبوات
 
         // ---------------- 7) إرجاع من المندوب: كارتون سليم يعود للمخزن، و6 قطع تلف ميداني لا تعود رصيدًا سليمًا ----------------
         await Open(reps, van);
@@ -463,12 +463,19 @@ public class WizardJourneyTests : IAsyncLifetime
         van.LineDamaged = true;
         van.AddLineCommand.Execute(null);
         Assert.Contains("تلف ميداني 6", van.LinesTotalText);
+        // وضوح الشاشة (ملاحظة التجربة 12): شرح النوع، واتجاه الحركة، والكميات بالعبوات
+        Assert.StartsWith("إرجاع من المندوب", van.TypeHint);
+        Assert.StartsWith($"من: {van.Van!.Name}", van.DirectionText);
+        Assert.Equal("2 سطر — 1 كارتون + 6 قطعة (منها تلف ميداني 6 قطعة)", van.LinesTotalText);
+        Assert.StartsWith("في السيارة الآن: ", van.LineVanText);
         await van.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.Equal(102m, van.VanTotalPieces);
         var returnDoc = van.Documents.First();
         Assert.StartsWith("RR-", returnDoc.DocumentNumber);
         Assert.Equal((18m, 6m), (returnDoc.TotalPieces, returnDoc.DamagedPieces));
+        Assert.Equal(("1 كارتون + 6 قطعة", "6 قطعة"), (returnDoc.TotalText, returnDoc.DamagedText));
+        Assert.StartsWith("رصيد السيارة الحالي: ", van.VanTotalText);
         await van.PrintCommand.ExecuteAsync(returnDoc);
         var rr = dialogs.Reports.Last();
         Assert.Equal("مستند إرجاع من مندوب", rr.Title);

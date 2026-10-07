@@ -57,6 +57,8 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     private Item? _ledgerItem;
     private Option<StockDocumentType>? _documentFilter;
     private List<Item> _allItems = new();
+    /// <summary>عبوات الأصناف: كل الكميات تُعرض بالكارتون/الشرنك، والقطع للحساب فقط.</summary>
+    private PackFormatter _packs = new(Array.Empty<ItemPackagingLevel>());
 
     public WarehouseWorkspaceSectionViewModel(AppSession s, IDialogService d, WarehouseEntity warehouse)
         : base(s, d, ModuleCode.Warehouse, warehouse.Name, GlyphOf(warehouse.WarehouseType), ColorOf(warehouse.WarehouseType),
@@ -120,6 +122,11 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public decimal TotalPieces { get => _totalPieces; private set => SetProperty(ref _totalPieces, value); }
     public decimal TodayIn { get => _todayIn; private set => SetProperty(ref _todayIn, value); }
     public decimal TodayOut { get => _todayOut; private set => SetProperty(ref _todayOut, value); }
+    private string _totalText = "0", _todayInText = "0", _todayOutText = "0";
+    /// <summary>إجمالي الرصيد بالعبوات: «6,196 كارتون + 4,380 شرنك».</summary>
+    public string TotalText { get => _totalText; private set => SetProperty(ref _totalText, value); }
+    public string TodayInText { get => _todayInText; private set => SetProperty(ref _todayInText, value); }
+    public string TodayOutText { get => _todayOutText; private set => SetProperty(ref _todayOutText, value); }
     public int LowCount { get => _lowCount; private set => SetProperty(ref _lowCount, value); }
 
     // ---------------- عملية جديدة ----------------
@@ -199,7 +206,16 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public string? LineNewBatch { get => _lineNewBatch; set => SetProperty(ref _lineNewBatch, value); }
     public DateTime? LineExpiry { get => _lineExpiry; set => SetProperty(ref _lineExpiry, value); }
     public decimal LineQuantity { get => _lineQuantity; set { if (SetProperty(ref _lineQuantity, value)) OnPropertyChanged(nameof(LinePiecesText)); } }
-    public string LinePiecesText => LineLevel is null ? "" : $"= {LineQuantity * LineLevel.EquivalentBaseUnits:N0} قطعة";
+    /// <summary>تحويل الكمية المدخلة بوحدة صغرى (قطعة/شرنك) إلى العبوة الكبرى: «= 2 كارتون + 5 قطعة».</summary>
+    public string LinePiecesText
+    {
+        get
+        {
+            if (LineLevel is null || LineItem is null || LineQuantity <= 0) return "";
+            var top = _packs.LevelsOf(LineItem.Id).FirstOrDefault();
+            return top is null || top.Id == LineLevel.Id ? "" : $"= {_packs.Of(LineItem.Id, LineQuantity * LineLevel.EquivalentBaseUnits)}";
+        }
+    }
     public string LineAvailableText
     {
         get
@@ -207,10 +223,11 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
             if (LineItem is null || IsReceipt) return "";
             var total = BatchOptions.FirstOrDefault(b => b.BatchId == null)?.Available ?? 0;
             var chosen = LineBatch?.BatchId is null ? total : LineBatch.Available ?? 0;
-            return $"المتاح: {chosen:N0} قطعة";
+            return $"المتاح: {_packs.Of(LineItem.Id, chosen)}";
         }
     }
-    public string LinesTotalText => Lines.Count == 0 ? "" : $"{Lines.Count} سطر — {Lines.Sum(l => l.Pieces):N0} قطعة";
+    public string LinesTotalText => Lines.Count == 0 ? "" : $"{Lines.Count} سطر — {LinesPacks}";
+    private string LinesPacks => _packs.Total(Lines.Select(l => (l.ItemId, l.Pieces)));
 
     public AsyncRelayCommand AddLineCommand { get; }
     public RelayCommand RemoveLineCommand { get; }
@@ -283,14 +300,21 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         Balances.Clear();
         foreach (var b in balances) Balances.Add(b);
         ItemsCount = balances.Select(b => b.ItemId).Distinct().Count();
+        _packs = await PackFormatter.LoadAsync(db);
         TotalPieces = balances.Sum(b => b.Quantity);
+        TotalText = _packs.Total(balances.Select(b => (b.ItemId, b.Quantity)));
         LowCount = balances.Where(b => b.BelowAlert).Select(b => b.ItemId).Distinct().Count();
 
         var today = DateTime.Today.ToUniversalTime();
         var tomorrow = DateTime.Today.AddDays(1).ToUniversalTime();
         var todayTx = db.StockTransactions.Where(t => t.WarehouseId == WarehouseId && t.TransactionDate >= today && t.TransactionDate < tomorrow);
-        TodayIn = await todayTx.Where(t => t.QuantityBaseUnits > 0).SumAsync(t => (decimal?)t.QuantityBaseUnits) ?? 0;
-        TodayOut = -(await todayTx.Where(t => t.QuantityBaseUnits < 0).SumAsync(t => (decimal?)t.QuantityBaseUnits) ?? 0);
+        var todayByItem = await todayTx.GroupBy(t => t.ItemId)
+            .Select(g => new { ItemId = g.Key, In = g.Sum(t => t.QuantityBaseUnits > 0 ? t.QuantityBaseUnits : 0), Out = g.Sum(t => t.QuantityBaseUnits < 0 ? -t.QuantityBaseUnits : 0) })
+            .ToListAsync();
+        TodayIn = todayByItem.Sum(t => t.In);
+        TodayOut = todayByItem.Sum(t => t.Out);
+        TodayInText = _packs.Total(todayByItem.Select(t => (t.ItemId, t.In)));
+        TodayOutText = _packs.Total(todayByItem.Select(t => (t.ItemId, t.Out)));
 
         var ledgerId = LedgerItem?.Id;
         LedgerItems.Clear();
@@ -367,7 +391,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
                 BatchOptions.Add(new BatchChoice
                 {
                     BatchId = b.Id, Available = r.Qty,
-                    Label = $"{b.BatchNumber}" + (b.ExpiryDate is { } e ? $" — ينتهي {e:yyyy/MM/dd}" : "") + $" — {r.Qty:N0} قطعة"
+                    Label = $"{b.BatchNumber}" + (b.ExpiryDate is { } e ? $" — ينتهي {e:yyyy/MM/dd}" : "") + $" — {_packs.Of(itemId, r.Qty)}"
                 });
             }
         }
@@ -385,7 +409,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
             // فحص مبدئي يشمل السطور المضافة لنفس الصنف/التشغيلة (والخدمة تتحقق نهائيًا عند الحفظ)
             var available = LineBatch?.BatchId is null ? BatchOptions.FirstOrDefault()?.Available ?? 0 : LineBatch.Available ?? 0;
             var already = Lines.Where(l => l.ItemId == LineItem.Id && (LineBatch?.BatchId is null || l.BatchId == LineBatch.BatchId)).Sum(l => l.Pieces);
-            if (pieces + already > available) { Dialogs.Error($"الكمية أكبر من المتاح ({available - already:N0} قطعة)"); return; }
+            if (pieces + already > available) { Dialogs.Error($"الكمية أكبر من المتاح ({_packs.Of(LineItem.Id, available - already)})"); return; }
         }
         var newBatch = IsReceipt && LineBatch?.BatchId is null && !string.IsNullOrWhiteSpace(LineNewBatch) ? LineNewBatch.Trim() : null;
         Lines.Add(new DocumentLineDraft
@@ -407,7 +431,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         if (!Require(CanAdd, "تسجيل مستندات المخزن")) return;
         if (Lines.Count == 0) { Dialogs.Error("أضف صنفًا واحدًا على الأقل"); return; }
-        var confirm = $"حفظ مستند {Operation.Label} ({Lines.Count} سطر، {Lines.Sum(l => l.Pieces):N0} قطعة)" +
+        var confirm = $"حفظ مستند {Operation.Label} ({Lines.Count} سطر، {LinesPacks})" +
                       (IsTransfer && CounterWarehouse is not null ? $" إلى \"{CounterWarehouse.Name}\"" : "") + "؟";
         if (!Dialogs.Confirm(confirm)) return;
 
@@ -464,12 +488,12 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         var r = NewReport($"أرصدة {Title}");
         r.Field("المخزن", Title).Field("النوع", WarehouseTypeLabel).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
-        r.Columns.AddRange(new[] { "#", "الكود", "الصنف", "التشغيلة", "الصلاحية", "الرصيد (قطعة)", "بوحدات التعبئة" });
+        r.Columns.AddRange(new[] { "#", "الكود", "الصنف", "التشغيلة", "الصلاحية", "الرصيد", "بالقطعة" });
         var i = 0;
         foreach (var b in Balances)
             r.Rows.Add(new[] { (++i).ToString(), b.ItemCode, b.ItemName + (b.BelowAlert ? " ⚠" : ""), b.BatchNumber ?? "—",
-                               b.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", $"{b.Quantity:N0}", b.Breakdown });
-        r.Total("عدد الأصناف", ItemsCount.ToString()).Total("إجمالي القطع", $"{TotalPieces:N0}", true);
+                               b.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", b.Breakdown, $"{b.Quantity:N0}" });
+        r.Total("عدد الأصناف", ItemsCount.ToString()).Total("إجمالي الرصيد", TotalText, true);
         if (LowCount > 0) r.Total("أصناف عند حد التنبيه", LowCount.ToString());
         r.Signatures.AddRange(new[] { "أمين المخزن", "المدقق" });
         return r;
@@ -481,12 +505,13 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         r.Field("المخزن", Title).Field("الفترة", $"{ReportFrom:yyyy/MM/dd} — {ReportTo:yyyy/MM/dd}");
         r.Columns.AddRange(new[] { "الكود", "الصنف", "أول المدة", "وارد", "صادر", "تالف", "مجاني", "المتبقي" });
         foreach (var s in Summary)
-            r.Rows.Add(new[] { s.ItemCode, s.ItemName, $"{s.Opening:N0}", $"{s.In:N0}", $"{s.Out:N0}", $"{s.Damaged:N0}", $"{s.Free:N0}", $"{s.Closing:N0}" });
-        r.Total("إجمالي الوارد", $"{Summary.Sum(s => s.In):N0} قطعة")
-         .Total("إجمالي الصادر", $"{Summary.Sum(s => s.Out):N0} قطعة")
-         .Total("إجمالي التالف", $"{Summary.Sum(s => s.Damaged):N0} قطعة")
-         .Total("إجمالي المجاني", $"{Summary.Sum(s => s.Free):N0} قطعة")
-         .Total("المتبقي آخر المدة", $"{Summary.Sum(s => s.Closing):N0} قطعة", true);
+            r.Rows.Add(new[] { s.ItemCode, s.ItemName, s.OpeningText, s.InText, s.OutText, s.DamagedText, s.FreeText, s.ClosingText });
+        string Sum(Func<StockSummaryRow, decimal> f) => _packs.Total(Summary.Select(s => (s.ItemId, f(s))));
+        r.Total("إجمالي الوارد", Sum(s => s.In))
+         .Total("إجمالي الصادر", Sum(s => s.Out))
+         .Total("إجمالي التالف", Sum(s => s.Damaged))
+         .Total("إجمالي المجاني", Sum(s => s.Free))
+         .Total("المتبقي آخر المدة", Sum(s => s.Closing), true);
         r.Signatures.AddRange(new[] { "أمين المخزن", "المدقق", "المدير" });
         return r;
     }
@@ -500,12 +525,11 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
             : new[] { "التاريخ", "الحركة", "المستند", "التشغيلة", "الجهة", "وارد", "صادر", "الرصيد" });
         foreach (var x in Ledger)
             r.Rows.Add(LedgerItem is null
-                ? new[] { x.Date.ToString("yyyy/MM/dd HH:mm"), x.ItemName, x.TypeLabel, x.Reference, x.BatchNumber ?? "", Num(x.In), Num(x.Out) }
-                : new[] { x.Date.ToString("yyyy/MM/dd HH:mm"), x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.Party ?? "", Num(x.In), Num(x.Out), $"{x.Balance:N0}" });
-        r.Total("إجمالي الوارد", $"{Ledger.Sum(x => x.In):N0}").Total("إجمالي الصادر", $"{Ledger.Sum(x => x.Out):N0}");
-        if (LedgerItem is not null) r.Total("الرصيد آخر المدة", $"{Ledger.LastOrDefault()?.Balance ?? 0:N0} قطعة", true);
+                ? new[] { x.Date.ToString("yyyy/MM/dd HH:mm"), x.ItemName, x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.InText, x.OutText }
+                : new[] { x.Date.ToString("yyyy/MM/dd HH:mm"), x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.Party ?? "", x.InText, x.OutText, x.BalanceText });
+        r.Total("إجمالي الوارد", _packs.Total(Ledger.Where(x => x.ItemId is not null).Select(x => (x.ItemId!.Value, x.In))))
+         .Total("إجمالي الصادر", _packs.Total(Ledger.Where(x => x.ItemId is not null).Select(x => (x.ItemId!.Value, x.Out))));
+        if (LedgerItem is not null) r.Total("الرصيد آخر المدة", Ledger.LastOrDefault()?.BalanceText ?? "0", true);
         return r;
-
-        static string Num(decimal v) => v == 0 ? "" : $"{v:N0}";
     }
 }
