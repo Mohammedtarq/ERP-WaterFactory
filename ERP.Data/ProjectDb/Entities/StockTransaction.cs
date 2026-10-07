@@ -13,7 +13,9 @@ public enum StockTransactionType
     /// <summary>تعديل مشرف لرصيد تحت التصنيع بعد الجرد (19_wip_adjustments.sql)</summary>
     WipAdjust,
     /// <summary>عكس حركة فاتورة مبيعات ملغاة، وفرق الجرد الفعلي (27_controls.sql)</summary>
-    SalesVoid, StocktakeVariance
+    SalesVoid, StocktakeVariance,
+    /// <summary>زبون أعاد بضاعة اشتراها: السليم للمخزن/السيارة، والتالف لمخزن التالف (39_customer_returns.sql)</summary>
+    CustomerReturn
 }
 
 /// <summary>Field = تلف ميداني (عند المندوب) — 21_rep_documents.sql</summary>

@@ -27,6 +27,8 @@ public static class RuleNames
         ["RepFieldExpense"] = "مصروف ميداني للمندوب",
         ["RepCashHandover"] = "تسليم نقد المندوب للصندوق",
         ["RepDebtCollection"] = "تحصيل المندوب لدين عميل",
+        ["CustomerReturnDebt"] = "مرتجع زبون (خصم من دينه)",
+        ["CustomerReturnRepCash"] = "مرتجع زبون (رد نقدي من المندوب)",
         ["CashBoxDeposit"] = "إيداع في الصندوق",
         ["CashBoxWithdrawal"] = "سحب من الصندوق",
         ["CashBoxOpening"] = "رصيد افتتاحي للصندوق",

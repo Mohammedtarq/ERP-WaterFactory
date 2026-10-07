@@ -179,6 +179,8 @@ public class FinanceService
         var v = await _db.Vouchers.FirstOrDefaultAsync(x => x.Id == voucherId);
         if (v is null) return FinanceOperationResult.Fail("السند غير موجود");
         if (v.IsVoided) return FinanceOperationResult.Fail("السند ملغى مسبقًا");
+        // سند المرتجع مرتبط ببضاعة عادت للمخزن: إلغاؤه وحده يترك المخزون مختلًّا
+        if (v.PaymentMethod == PaymentMethod.Return) return FinanceOperationResult.Fail("سند مرتجع بضاعة — لا يُلغى من السندات لأنه مرتبط بمخزون عاد للمخزن");
 
         var ownTx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
         try

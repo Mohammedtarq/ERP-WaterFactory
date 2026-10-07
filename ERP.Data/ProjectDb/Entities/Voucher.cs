@@ -2,7 +2,8 @@ namespace ERP.Data.ProjectDb.Entities;
 
 public enum VoucherType { Receipt, Payment }
 public enum VoucherPartyType { Customer, Supplier, Employee, Other }
-public enum PaymentMethod { Cash, Bank, Cheque }
+/// <summary>Return = مرتجع بضاعة يخفض دين العميل (اشعار دائن، بلا حركة صندوق) — 39_customer_returns.sql</summary>
+public enum PaymentMethod { Cash, Bank, Cheque, Return }
 
 public class Voucher
 {

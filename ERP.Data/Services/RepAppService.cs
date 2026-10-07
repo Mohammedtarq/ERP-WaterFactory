@@ -25,6 +25,11 @@ public record NewCustomerPayload(string Name, string? Phone = null, string? Addr
 
 public record ExpensePayload(decimal Amount, string Category, string? Notes = null, int? VehicleId = null);
 
+public record ReturnLinePayload(int ItemId, int PackagingLevelId, decimal Quantity, decimal Damaged = 0);
+
+/// <summary>مرتجع زبون: الافتراضي خصم قيمته من دينه، والرد النقدي باختيار المندوب (Cash = true).</summary>
+public record ReturnPayload(CustomerRef Customer, List<ReturnLinePayload> Lines, string Reason, bool Cash = false);
+
 /// <summary>نتيجة الطلب كما تعود للهاتف.</summary>
 public record RepIntakeResult(bool Accepted, RepRequestStatus Status, int? RequestId, string Message, int? ResultId = null, string? Warning = null);
 
@@ -196,15 +201,34 @@ public class RepAppService
                 }
                 break;
             default:
-                Fail(r, "مرتجع الزبون يُفعَّل في المرحلة التالية (0-ب)");
+                await ReturnIntakeAsync(r, Parse<ReturnPayload>(r));
                 break;
         }
     }
 
     private static void Fail(RepRequest r, string message) { r.Status = RepRequestStatus.Failed; r.ErrorMessage = message; }
 
-    private async Task<Customer?> ResolveCustomerAsync(RepRequest r, CustomerRef c)
+    /// <summary>مرتجع الزبون ينتظر الاعتماد: يُتحقق من محتواه الآن، ويُرحَّل عند الموافقة.</summary>
+    private async Task ReturnIntakeAsync(RepRequest r, ReturnPayload p)
     {
+        var customer = await ResolveCustomerAsync(r, p.Customer);
+        if (customer is null) { Fail(r, "الزبون غير موجود"); return; }
+        if (string.IsNullOrWhiteSpace(p.Reason)) { Fail(r, "اكتب سبب المرتجع"); return; }
+        if (p.Lines is null || p.Lines.Count == 0 || p.Lines.Any(l => l.Quantity <= 0 || l.Damaged < 0 || l.Damaged > l.Quantity))
+        { Fail(r, "أضف صنفًا بكمية أكبر من صفر، والتالف جزء منها"); return; }
+        var levelIds = p.Lines.Select(l => l.PackagingLevelId).ToList();
+        var names = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => levelIds.Contains(l.Id))
+                              .Select(l => new { l.Id, l.LevelName, l.Item.ItemName }).ToListAsync())
+                    .ToDictionary(l => l.Id);
+        r.Status = RepRequestStatus.Pending;
+        r.Summary = $"{customer.Name}: {string.Join("، ", p.Lines.Select(l => $"{l.Quantity:#,0.##} {names.GetValueOrDefault(l.PackagingLevelId)?.LevelName} {names.GetValueOrDefault(l.PackagingLevelId)?.ItemName}{(l.Damaged > 0 ? $" (تالف {l.Damaged:#,0.##})" : "")}"))}"
+                    + $" — {(p.Cash ? "رد نقدي" : "خصم من الدين")} — {p.Reason.Trim()}";
+        if (r.Summary.Length > 300) r.Summary = r.Summary[..300];
+    }
+
+    private async Task<Customer?> ResolveCustomerAsync(RepRequest r, CustomerRef? c)
+    {
+        if (c is null) return null;
         if (c.CustomerId is int id) return await _db.Customers.FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
         if (c.NewCustomerClientId is Guid g)
         {
@@ -324,6 +348,7 @@ public class RepAppService
             return FinanceOperationResult.Fail($"الاعتماد يحتاج صلاحية «{SpecialPermission.NameOf(SpecialPermission.RepApproval)}»");
         var r = await _db.RepRequests.FirstOrDefaultAsync(x => x.Id == requestId);
         if (r is null || r.Status != RepRequestStatus.Pending) return FinanceOperationResult.Fail("الطلب ليس بانتظار الاعتماد");
+        if (r.Kind == RepRequestKind.Return) return await ApproveReturnAsync(r, userId);
         if (r.Kind != RepRequestKind.Expense) return FinanceOperationResult.Fail("هذا النوع لا يُعتمد من هنا");
 
         var e = Parse<ExpensePayload>(r);
@@ -342,6 +367,31 @@ public class RepAppService
         r.ResultId = await _db.RepWalletTransactions.Where(w => w.EmployeeId == r.RepEmployeeId).MaxAsync(w => (int?)w.Id);
         await _db.SaveChangesAsync();
         await new AuditService(_db).LogAsync(userId, "Post", "RepRequests", r.Id, $"اعتماد {KindText(r.Kind)}: {r.Summary} — {r.Amount:N0}");
+        return FinanceOperationResult.Ok();
+    }
+
+    private async Task<FinanceOperationResult> ApproveReturnAsync(RepRequest r, int userId)
+    {
+        var p = Parse<ReturnPayload>(r);
+        var van = await _db.Warehouses.AsNoTracking().FirstOrDefaultAsync(w => w.IsActive && w.WarehouseType == WarehouseType.RepVan && w.OwnerEmployeeId == r.RepEmployeeId);
+        var customer = await ResolveCustomerAsync(r, p.Customer);
+        if (van is null || customer is null) return FinanceOperationResult.Fail(van is null ? "لا توجد سيارة لهذا المندوب" : "الزبون غير موجود");
+        var (done, created) = await new CustomerReturnService(_db).CreateAsync(new CustomerReturnRequest(
+            customer.Id, van.Id, r.OccurredAt, p.Cash ? CustomerReturnSettlement.Cash : CustomerReturnSettlement.Debt, p.Reason,
+            p.Lines.Select(l => new CustomerReturnLineInput(l.ItemId, l.PackagingLevelId, l.Quantity, l.Damaged)).ToList(), userId, r.Id));
+        if (!done.Success)
+        {
+            r.ErrorMessage = done.ErrorMessage;
+            await _db.SaveChangesAsync();
+            return done;
+        }
+        r.Status = RepRequestStatus.Posted;
+        r.ErrorMessage = null;
+        r.Amount = created!.TotalAmount;
+        (r.ReviewedByUserId, r.ReviewedAt) = (userId, DateTime.UtcNow);
+        (r.ResultTable, r.ResultId) = ("CustomerReturns", created.Id);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Post", "RepRequests", r.Id, $"اعتماد مرتجع زبون: {created.ReturnNumber} — {created.TotalAmount:N0}");
         return FinanceOperationResult.Ok();
     }
 

@@ -18,6 +18,7 @@ public class SalesModuleViewModel : ModuleViewModel
         Invoice = Add(new SalesInvoiceSectionViewModel(s, d));
         InvoiceList = Add(new SalesInvoiceListSectionViewModel(s, d, OpenInvoiceAsync));
         Statement = Add(new CustomerStatementSectionViewModel(s, d));
+        Returns = Add(new CustomerReturnSectionViewModel(s, d));
         Deposits = Add(new CustomerDepositsSectionViewModel(s, d));
         Add(new CustomersSectionViewModel(s, d));
         Add(new AgentPricesSectionViewModel(s, d));
@@ -31,6 +32,7 @@ public class SalesModuleViewModel : ModuleViewModel
     public SalesInvoiceSectionViewModel Invoice { get; }
     public SalesInvoiceListSectionViewModel InvoiceList { get; }
     public CustomerStatementSectionViewModel Statement { get; }
+    public CustomerReturnSectionViewModel Returns { get; }
     public CustomerDepositsSectionViewModel Deposits { get; }
 
     /// <summary>فتح فاتورة من القائمة داخل تبويب الفاتورة (مسودة للتعديل، مرحّلة للعرض فقط).</summary>

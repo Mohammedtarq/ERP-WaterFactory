@@ -464,6 +464,7 @@ public class WarehouseDocumentService
         StockTransactionType.RepDamaged => "تالف مندوب",
         StockTransactionType.RepReturn => qty > 0 ? "إرجاع من سيارة" : "إرجاع للمخزن",
         StockTransactionType.SyncConflictAdjustment => "تسوية تعارض",
+        StockTransactionType.CustomerReturn => "مرتجع زبون",
         _ => t.ToString()
     };
 

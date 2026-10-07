@@ -222,6 +222,8 @@ public static class DefaultConfiguration
         (RepsService.FieldExpenseRule, "5103", "1103"),
         (RepsService.CashHandoverRule, "1101", "1103"),
         (RepsService.DebtCollectionRule, "1103", "1201"),
+        (CustomerReturnService.DebtRule, "4101", "1201"),
+        (CustomerReturnService.RepCashRule, "4101", "1103"),
         (CashBoxService.DepositRule, "1101", "3102"),
         (CashBoxService.WithdrawalRule, "5101", "1101"),
         (CustomerDepositService.ReceiptRule, "1101", "2104"),

@@ -132,7 +132,28 @@ public class FinalAccountsService
                 ListValue = Math.Round(g.Sum(l => l.List * l.QuantityInLevel), 2),
                 Cost = Math.Round((costed?.Cost ?? 0) + uncosted * (g.Key.CostPrice ?? 0), 2)
             };
-        }).OrderByDescending(p => p.Revenue).ToList();
+        }).ToList();
+
+        // ---- مرتجعات الزبائن: تُطرح من الإيراد والكمية، والسليم العائد للمخزن يُطرح من الكلفة (التالف يبقى كلفة) ----
+        var returns = await _db.CustomerReturnLines.AsNoTracking()
+            .Where(l => l.CustomerReturn.ReturnDate >= from && l.CustomerReturn.ReturnDate < to)
+            .GroupBy(l => new { l.ItemId, l.Item.ItemName })
+            .Select(g => new { g.Key.ItemId, g.Key.ItemName, Pieces = g.Sum(l => l.QuantityBaseUnits), Value = g.Sum(l => l.LineTotal) }).ToListAsync();
+        var returnedCost = await _db.StockTransactions.AsNoTracking()
+            .Where(t => t.TransactionType == StockTransactionType.CustomerReturn && t.Warehouse.WarehouseType != WarehouseType.Damaged
+                        && _db.CustomerReturns.Any(cr => cr.Id == t.ReferenceId && cr.ReturnDate >= from && cr.ReturnDate < to))
+            .GroupBy(t => t.ItemId).Select(g => new { ItemId = g.Key, Cost = g.Sum(t => t.QuantityBaseUnits * (t.UnitCost ?? 0)) })
+            .ToDictionaryAsync(x => x.ItemId, x => x.Cost);
+        foreach (var ret in returns)
+        {
+            var row = products.FirstOrDefault(p => p.ItemId == ret.ItemId);
+            if (row is null) products.Add(row = new ProductMarginRow { ItemId = ret.ItemId, ItemName = ret.ItemName });
+            row.PiecesSold -= ret.Pieces;
+            row.Revenue -= ret.Value;
+            row.ListValue -= ret.Value;
+            row.Cost = Math.Round(row.Cost - returnedCost.GetValueOrDefault(ret.ItemId), 2);
+        }
+        products = products.OrderByDescending(p => p.Revenue).ToList();
 
         // ---- المصروفات من شاشة المصروف ----
         var entries = await _db.FinanceEntries.AsNoTracking().Where(e => !e.IsVoided && e.EntryDate >= from && e.EntryDate < to)

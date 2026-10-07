@@ -129,6 +129,9 @@ public partial class ProjectDbContext : DbContext
     public DbSet<RepDevice> RepDevices => Set<RepDevice>();
     public DbSet<RepRequest> RepRequests => Set<RepRequest>();
     public DbSet<RepAppSetting> RepAppSettings => Set<RepAppSetting>();
+    // ---- مرتجع الزبون (39_customer_returns.sql) ----
+    public DbSet<CustomerReturn> CustomerReturns => Set<CustomerReturn>();
+    public DbSet<CustomerReturnLine> CustomerReturnLines => Set<CustomerReturnLine>();
 
     // ---- المصروفات والحسابات الختامية (31_expenses_final_accounts.sql) ----
     public DbSet<FinanceCategory> FinanceCategories => Set<FinanceCategory>();
@@ -682,6 +685,29 @@ public partial class ProjectDbContext : DbContext
             e.HasOne(r => r.ReviewedByUser).WithMany().HasForeignKey(r => r.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<RepAppSetting>().Property(s => s.Id).ValueGeneratedNever();
+        modelBuilder.Entity<CustomerReturn>(e =>
+        {
+            e.HasIndex(r => r.ReturnNumber).IsUnique();
+            e.Property(r => r.Settlement).HasConversion<string>().HasMaxLength(10);
+            e.Property(r => r.TotalAmount).HasPrecision(18, 2);
+            e.HasOne(r => r.Customer).WithMany().HasForeignKey(r => r.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.Warehouse).WithMany().HasForeignKey(r => r.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.RepEmployee).WithMany().HasForeignKey(r => r.RepEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.JournalEntry).WithMany().HasForeignKey(r => r.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.Voucher).WithMany().HasForeignKey(r => r.VoucherId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.CreatedByUser).WithMany().HasForeignKey(r => r.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(r => r.Lines).WithOne(l => l.CustomerReturn).HasForeignKey(l => l.CustomerReturnId);
+        });
+        modelBuilder.Entity<CustomerReturnLine>(e =>
+        {
+            foreach (var p in new[] { nameof(CustomerReturnLine.QuantityInLevel), nameof(CustomerReturnLine.DamagedInLevel), nameof(CustomerReturnLine.QuantityBaseUnits) })
+                e.Property(p).HasPrecision(18, 3);
+            e.Property(l => l.UnitPrice).HasPrecision(18, 2);
+            e.Property(l => l.LineTotal).HasPrecision(18, 2);
+            e.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.PackagingLevel).WithMany().HasForeignKey(l => l.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.Batch).WithMany().HasForeignKey(l => l.BatchId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<RepFreeGood>(e =>
         {
             e.Property(f => f.QuantityBaseUnits).HasPrecision(18, 3);

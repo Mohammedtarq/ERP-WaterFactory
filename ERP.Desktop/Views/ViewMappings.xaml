@@ -251,6 +251,7 @@
     <DataTemplate DataType="{x:Type vmReps:RepVansSectionViewModel}"><vReps:RepVansSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:RepRequestsSectionViewModel}"><vReps:RepRequestsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:RepDevicesSectionViewModel}"><vReps:RepDevicesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSales:CustomerReturnSectionViewModel}"><vSales:CustomerReturnSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:WarehouseRepVansSectionViewModel}"><vReps:RepVansSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:LoadOrdersSectionViewModel}"><vReps:LoadOrdersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:RepSettlementSectionViewModel}"><vReps:RepSettlementSectionView/></DataTemplate>

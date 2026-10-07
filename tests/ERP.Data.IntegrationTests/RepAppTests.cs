@@ -109,8 +109,10 @@ public class RepAppTests
         Assert.Empty(await app.ListAsync(RepRequestFilter.ToReview, DateTime.Today, DateTime.Today, rep.Id));
         Assert.Empty(await app.ListAsync(RepRequestFilter.Pending, DateTime.Today, DateTime.Today, rep.Id));
 
-        // 8) مرتجع الزبون في المرحلة التالية، والجهاز الموقوف لا يرسل
-        Assert.Contains("0-ب", (await app.ReceiveAsync(key, Env(RepRequestKind.Return, new { }))).Message);
+        // 8) حركة ناقصة من الهاتف تُرفض برسالة (لا تعطل الخدمة)، والجهاز الموقوف لا يرسل
+        var broken = await app.ReceiveAsync(key, Env(RepRequestKind.Return, new { }));
+        Assert.False(broken.Accepted);
+        Assert.Contains("الزبون غير موجود", broken.Message);
         var device = await db.RepDevices.SingleAsync(d => d.DeviceKey == key);
         Assert.NotNull(device.LastSeenAt);
         Assert.True((await app.SetDeviceActiveAsync(device.Id, false, _f.AdminId)).Success);
