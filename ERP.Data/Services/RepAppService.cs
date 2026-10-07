@@ -252,7 +252,7 @@ public class RepAppService
             var current = await BalanceAsync(customer.Id);
             if (current + draftTotal > cap)
             {
-                await sales.DeleteDraftInvoiceAsync(invoiceId.Value, device.RegisteredByUserId);
+                await sales.DeleteDraftInvoiceAsync(invoiceId!.Value, device.RegisteredByUserId);
                 Fail(r, $"الزبون تجاوز حد دينه ({cap:N0} د.ع): رصيده {current:N0} والفاتورة تضيف {draftTotal:N0}. اقبض نقدًا أو راجع الإدارة.");
                 return;
             }
