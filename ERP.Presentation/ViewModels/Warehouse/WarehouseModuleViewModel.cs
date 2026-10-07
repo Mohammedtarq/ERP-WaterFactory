@@ -31,6 +31,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
         Add(new ItemsSectionViewModel(s, d));
         // سيارات المندوبين في شاشة واحدة (بعد تبويبات المخازن) بدل تبويب لكل سيارة
         Vans = Add(new WarehouseRepVansSectionViewModel(s, d));
+        PrepareLoads = Add(new PrepareLoadOrdersSectionViewModel(s, d));
         Add(new WarehousesSectionViewModel(s, d, RefreshWorkspacesAsync));
         Add(new PackagingSectionViewModel(s, d));
         Add(new LocationsSectionViewModel(s, d));
@@ -50,6 +51,8 @@ public class WarehouseModuleViewModel : ModuleViewModel
     }
 
     public DamagedSalesSectionViewModel DamagedSales { get; }
+    /// <summary>طلبات تحميل سيارات المندوبين بانتظار تجهيز أمين المخزن.</summary>
+    public PrepareLoadOrdersSectionViewModel PrepareLoads { get; }
     public WarehouseRepVansSectionViewModel Vans { get; }
 
     /// <summary>واجهة مستقلة لكل مخزن فعّال (مواد أولية، منتج تام، كاش فان، تالف، وأي مخزن جديد).</summary>

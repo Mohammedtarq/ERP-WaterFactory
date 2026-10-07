@@ -112,6 +112,6 @@ public class RepAppScreenTests
             Assert.Equal(3, (await check.RepAppSettings.SingleAsync()).CashAlertDays);
         devices.CashAlertDays = 2;
         await devices.SaveSettingsCommand.ExecuteAsync();
-        Assert.Empty(dialogs.Errors.Where(e => !e.Contains("سبب الرفض")));
+        Assert.DoesNotContain(dialogs.Errors, e => !e.Contains("سبب الرفض"));
     }
 }

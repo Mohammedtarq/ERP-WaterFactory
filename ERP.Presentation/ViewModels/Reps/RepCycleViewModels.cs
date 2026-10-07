@@ -37,6 +37,7 @@ public class LoadLineDraft : ObservableObject
             }
             Level = Levels.FirstOrDefault();
             Recipe = Recipes.FirstOrDefault();
+            _owner.RaiseTotals();
         }
     }
     /// <summary>الأساسي = حمولة عامة؛ اسم مطعم = تحميل تشغيلاته المحجوزة لتوصيلها له.</summary>
@@ -45,6 +46,16 @@ public class LoadLineDraft : ObservableObject
     public ItemPackagingLevel? Level { get => _level; set { if (SetProperty(ref _level, value)) Raise(); } }
     public decimal Quantity { get => _quantity; set { if (SetProperty(ref _quantity, value)) Raise(); } }
     public decimal Pieces => Level is null ? 0 : Quantity * Level.EquivalentBaseUnits;
+    /// <summary>المتاح من الصنف في المخزن المختار (بالعبوات).</summary>
+    public string AvailableText => Product is null ? "" : _owner.PacksText(Product.Id, _owner.AvailableOf(Product.Id));
+    /// <summary>مجموع المطلوب من الصنف في كل السطور أكبر من المتاح.</summary>
+    public bool IsShort => Product is not null && _owner.RequestedOf(Product.Id) > _owner.AvailableOf(Product.Id);
+
+    internal void RefreshAvailability()
+    {
+        OnPropertyChanged(nameof(AvailableText));
+        OnPropertyChanged(nameof(IsShort));
+    }
 
     private void Raise()
     {
@@ -62,7 +73,57 @@ public class PrepareLineDraft : ObservableObject
     public string LevelName { get; init; } = "";
     public string VariantName { get; init; } = "أساسي";
     public decimal Requested { get; init; }
-    public decimal Prepared { get => _prepared; set => SetProperty(ref _prepared, value); }
+    public decimal Units { get; init; } = 1;
+    /// <summary>المتاح من الصنف في مخزن الطلب الآن (بالقطع، ونصه بالعبوات).</summary>
+    public decimal AvailablePieces { get; init; }
+    public string AvailableText { get; init; } = "";
+    public decimal Prepared { get => _prepared; set { if (SetProperty(ref _prepared, value)) OnPropertyChanged(nameof(IsShort)); } }
+    public bool IsShort => Prepared * Units > AvailablePieces;
+}
+
+/// <summary>ما يشترك فيه «طلبات التحميل» (المندوبون) و«طلبات التجهيز» (المخازن): المتاح، وسطور التجهيز، والطباعة.</summary>
+public static class LoadOrderTools
+{
+    /// <summary>رصيد كل صنف في المخزن بالقطعة.</summary>
+    public static async Task<Dictionary<int, decimal>> StockAsync(Data.ProjectDb.ProjectDbContext db, int warehouseId) =>
+        await db.StockTransactions.AsNoTracking().Where(t => t.WarehouseId == warehouseId)
+            .GroupBy(t => t.ItemId).Select(g => new { g.Key, Qty = g.Sum(t => t.QuantityBaseUnits) })
+            .ToDictionaryAsync(x => x.Key, x => x.Qty);
+
+    public static async Task<List<PrepareLineDraft>> PrepareLinesAsync(Data.ProjectDb.ProjectDbContext db, int orderId)
+    {
+        var order = await new RepOperationsService(db).GetLoadOrderAsync(orderId);
+        if (order is null) return new();
+        var stock = await StockAsync(db, order.FromWarehouseId);
+        var ids = order.Lines.Select(l => l.ItemId).ToList();
+        var levels = (await db.ItemPackagingLevels.AsNoTracking().Where(l => ids.Contains(l.ItemId)).ToListAsync())
+                     .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => (IReadOnlyList<ItemPackagingLevel>)g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
+        return order.Lines.OrderBy(l => l.Item.ItemName).Select(l =>
+        {
+            var have = stock.GetValueOrDefault(l.ItemId);
+            return new PrepareLineDraft
+            {
+                LineId = l.Id, ItemName = l.Item.ItemName, LevelName = l.PackagingLevel.LevelName, VariantName = l.CustomRecipe?.Name ?? "أساسي",
+                Requested = l.QuantityInLevel, Prepared = l.PreparedQuantity ?? l.QuantityInLevel, Units = l.PackagingLevel.EquivalentBaseUnits,
+                AvailablePieces = have, AvailableText = WarehouseDocumentService.Breakdown(have, levels.GetValueOrDefault(l.ItemId))
+            };
+        }).ToList();
+    }
+
+    public static async Task<ReportDocument?> ReportAsync(AppSession session, Data.ProjectDb.ProjectDbContext db, int orderId)
+    {
+        var o = await new RepOperationsService(db).GetLoadOrderAsync(orderId);
+        if (o is null) return null;
+        var r = new ReportDocument { Key = "load-order", CompanyName = session.ProjectName, Title = $"طلب تحميل {o.OrderNumber}", PrintedBy = session.FullName };
+        r.Field("المندوب", o.RepEmployee.FullName).Field("السيارة", o.VanWarehouse.Name).Field("من مخزن", o.FromWarehouse.Name)
+         .Field("التاريخ", o.LoadDate.ToString("yyyy/MM/dd")).Field("مستند الإسناد", o.StockDocument?.DocumentNumber ?? "لم يُجهَّز بعد");
+        r.Columns.AddRange(new[] { "الصنف", "الوحدة", "المطلوب", "المجهَّز", "القطع" });
+        foreach (var l in o.Lines.OrderBy(l => l.Item.ItemName))
+            r.Rows.Add(new[] { l.Item.ItemName, l.PackagingLevel.LevelName, $"{l.QuantityInLevel:N0}", l.PreparedQuantity is { } p ? $"{p:N0}" : "",
+                               $"{(l.PreparedQuantity ?? l.QuantityInLevel) * l.PackagingLevel.EquivalentBaseUnits:N0}" });
+        r.Signatures.AddRange(new[] { "مدير المبيعات", "أمين المخزن", "المندوب" });
+        return r;
+    }
 }
 
 // ============================ طلبات التحميل ============================
@@ -80,6 +141,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     private string? _cancelReason;
     private List<ItemPackagingLevel> _levels = new();
     private List<CustomRecipe> _recipes = new();
+    private Dictionary<int, decimal> _available = new();
 
     public LoadOrdersSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Reps, "طلبات التحميل", Icons.Order, "#2563EB",
@@ -111,7 +173,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         set { if (SetProperty(ref _van, value)) { OnPropertyChanged(nameof(RepName)); if (value is not null && Lines.All(l => l.Product is null)) Background(UseDefaultAsync()); } }
     }
     public string RepName => Van?.OwnerEmployee?.FullName is { } n ? $"المندوب: {n}" : "السيارة بلا مندوب — حدّده من تعريف المخازن";
-    public Data.ProjectDb.Entities.Warehouse? Store { get => _store; set => SetProperty(ref _store, value); }
+    public Data.ProjectDb.Entities.Warehouse? Store { get => _store; set { if (SetProperty(ref _store, value)) Background(LoadAvailableAsync()); } }
     public DateTime Date { get => _date; set => SetProperty(ref _date, value); }
     public string? Notes { get => _notes; set => SetProperty(ref _notes, value); }
     public decimal TotalPieces => Lines.Sum(l => l.Pieces);
@@ -136,7 +198,36 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     internal IEnumerable<ItemPackagingLevel> LevelsOf(int itemId) =>
         _levels.Where(l => l.ItemId == itemId).OrderByDescending(l => l.EquivalentBaseUnits);
     internal IEnumerable<CustomRecipe> RecipesOf(int itemId) => _recipes.Where(r => r.FinishedItemId == itemId).OrderBy(r => r.Name);
-    internal void RaiseTotals() => OnPropertyChanged(nameof(TotalPieces));
+    internal void RaiseTotals()
+    {
+        OnPropertyChanged(nameof(TotalPieces));
+        foreach (var l in Lines) l.RefreshAvailability();
+        OnPropertyChanged(nameof(ShortageText));
+    }
+
+    internal decimal AvailableOf(int itemId) => _available.GetValueOrDefault(itemId);
+    internal decimal RequestedOf(int itemId) => Lines.Where(l => l.Product?.Id == itemId).Sum(l => l.Pieces);
+    internal string PacksText(int itemId, decimal pieces) => WarehouseDocumentService.Breakdown(pieces, LevelsOf(itemId).ToList());
+
+    /// <summary>الأصناف التي يزيد مطلوبها على المتاح في المخزن المختار.</summary>
+    public string ShortageText
+    {
+        get
+        {
+            var shorts = Lines.Where(l => l.Product is not null).GroupBy(l => l.Product!.Id)
+                .Where(g => RequestedOf(g.Key) > AvailableOf(g.Key))
+                .Select(g => $"{g.First().Product!.ItemName} (المتاح {PacksText(g.Key, AvailableOf(g.Key))})").ToList();
+            return shorts.Count == 0 ? "" : $"⚠ لا يكفي في {Store?.Name}: {string.Join("، ", shorts)}";
+        }
+    }
+
+    private async Task LoadAvailableAsync()
+    {
+        if (Store is null) { _available = new(); RaiseTotals(); return; }
+        await using var db = Session.NewDb();
+        _available = await LoadOrderTools.StockAsync(db, Store.Id);
+        RaiseTotals();
+    }
 
     public override async Task LoadAsync()
     {
@@ -165,6 +256,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         OnPropertyChanged(nameof(Van));
         OnPropertyChanged(nameof(RepName));
         if (Lines.All(l => l.Product is null)) await UseDefaultAsync();
+        await LoadAvailableAsync();
         await LoadOrdersAsync();
     }
 
@@ -183,12 +275,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         PrepareLines.Clear();
         if (SelectedOrder is null) return;
         await using var db = Session.NewDb();
-        var order = await new RepOperationsService(db).GetLoadOrderAsync(SelectedOrder.Id);
-        if (order is null) return;
-        foreach (var l in order.Lines.OrderBy(l => l.Item.ItemName))
-            PrepareLines.Add(new PrepareLineDraft { LineId = l.Id, ItemName = l.Item.ItemName, LevelName = l.PackagingLevel.LevelName,
-                                                    VariantName = l.CustomRecipe?.Name ?? "أساسي",
-                                                    Requested = l.QuantityInLevel, Prepared = l.PreparedQuantity ?? l.QuantityInLevel });
+        foreach (var l in await LoadOrderTools.PrepareLinesAsync(db, SelectedOrder.Id)) PrepareLines.Add(l);
     }
 
     /// <summary>يملأ السطور من الحمولة الافتراضية لمندوب السيارة.</summary>
@@ -229,6 +316,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         if (Van is null || Store is null) { Dialogs.Error("اختر السيارة والمخزن"); return; }
         var lines = ValidLines();
         if (lines.Count == 0) { Dialogs.Error("أضف صنفًا واحدًا على الأقل بكمية"); return; }
+        if (ShortageText.Length > 0 && !Dialogs.Confirm($"{ShortageText}\nإرسال الطلب على أي حال؟ (يجهَّز بما يتوفر، أو بعد تسجيل الإنتاج)")) return;
         await using var db = Session.NewDb();
         RepLoadOrder? order = null;
         if (await RunOperationAsync(async () =>
@@ -284,17 +372,8 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     public async Task PrintOrderAsync(int orderId)
     {
         await using var db = Session.NewDb();
-        var o = await new RepOperationsService(db).GetLoadOrderAsync(orderId);
-        if (o is null) { Dialogs.Error("الطلب غير موجود"); return; }
-        var r = new ReportDocument { Key = "load-order", CompanyName = Session.ProjectName, Title = $"طلب تحميل {o.OrderNumber}", PrintedBy = Session.FullName };
-        r.Field("المندوب", o.RepEmployee.FullName).Field("السيارة", o.VanWarehouse.Name).Field("من مخزن", o.FromWarehouse.Name)
-         .Field("التاريخ", o.LoadDate.ToString("yyyy/MM/dd")).Field("مستند الإسناد", o.StockDocument?.DocumentNumber ?? "لم يُجهَّز بعد");
-        r.Columns.AddRange(new[] { "الصنف", "الوحدة", "المطلوب", "المجهَّز", "القطع" });
-        foreach (var l in o.Lines.OrderBy(l => l.Item.ItemName))
-            r.Rows.Add(new[] { l.Item.ItemName, l.PackagingLevel.LevelName, $"{l.QuantityInLevel:N0}", l.PreparedQuantity is { } p ? $"{p:N0}" : "",
-                               $"{(l.PreparedQuantity ?? l.QuantityInLevel) * l.PackagingLevel.EquivalentBaseUnits:N0}" });
-        r.Signatures.AddRange(new[] { "مدير المبيعات", "أمين المخزن", "المندوب" });
-        Dialogs.ShowReport(r);
+        if (await LoadOrderTools.ReportAsync(Session, db, orderId) is { } r) Dialogs.ShowReport(r);
+        else Dialogs.Error("الطلب غير موجود");
     }
 }
 

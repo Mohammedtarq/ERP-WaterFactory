@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
 using ERP.Presentation.Mvvm;
@@ -80,8 +81,77 @@ public class MainShellViewModel : ViewModelBase
         NavItems = all.Where(n => session.Permissions.CanView(n.ModuleCode)).ToList();
         NavigateCommand = new RelayCommand(p => { if (p is NavItem n) SelectedItem = n; });
         LogoutCommand = new RelayCommand(Logout);
+        ToggleAlertsCommand = new RelayCommand(() => IsAlertsOpen = !IsAlertsOpen);
+        OpenAlertCommand = new RelayCommand(p => { if (p is AlertItem a) OpenAlert(a); });
         SelectedItem = NavItems.FirstOrDefault();
         Background(RefreshCloudStatusAsync());
+        Background(RefreshAlertsAsync());
+    }
+
+    // ============================ التنبيهات ============================
+
+    private bool _isAlertsOpen;
+    /// <summary>تنبيهات المستخدم حسب صلاحياته (طلبات التجهيز، المرتجع، الاستلام، نقص المواد...).</summary>
+    public ObservableCollection<AlertItem> Alerts { get; } = new();
+    public int AlertsCount => Alerts.Sum(a => a.Count);
+    public bool HasAlerts => Alerts.Count > 0;
+    public string AlertsText => Alerts.Count == 0 ? "لا تنبيهات" : $"التنبيهات ({Alerts.Count})";
+    public string AlertsColor => Alerts.Any(a => a.Level == AlertLevel.Danger) ? "#F87171" : Alerts.Count > 0 ? "#FBBF24" : "#94A3B8";
+    public bool IsAlertsOpen { get => _isAlertsOpen; set => SetProperty(ref _isAlertsOpen, value); }
+    public RelayCommand ToggleAlertsCommand { get; }
+    public RelayCommand OpenAlertCommand { get; }
+
+    private readonly SemaphoreSlim _alertsGate = new(1, 1);
+
+    public async Task RefreshAlertsAsync()
+    {
+        // تحديث واحد في كل مرة (من التنقل والمؤقّت معًا): لا تتكرر التنبيهات
+        await _alertsGate.WaitAsync();
+        try
+        {
+            List<AlertItem> list;
+            try
+            {
+                await using var db = Session.NewDb();
+                list = await new AlertsService(db).ForAsync(Session.Permissions);
+            }
+            catch (Exception ex) when (ex is Microsoft.Data.SqlClient.SqlException or InvalidOperationException)
+            {
+                return;   // قاعدة غير متاحة الآن: يبقى آخر ما عُرض
+            }
+            Alerts.Clear();
+            foreach (var a in list) Alerts.Add(a);
+            OnPropertyChanged(nameof(AlertsCount));
+            OnPropertyChanged(nameof(HasAlerts));
+            OnPropertyChanged(nameof(AlertsText));
+            OnPropertyChanged(nameof(AlertsColor));
+        }
+        finally { _alertsGate.Release(); }
+    }
+
+    /// <summary>تحديث المؤشرات (الجرس والسحابة): من النافذة كل دقيقة.</summary>
+    public void RefreshIndicators()
+    {
+        Background(RefreshAlertsAsync());
+        Background(RefreshCloudStatusAsync());
+    }
+
+    /// <summary>فتح الشاشة المعنية بالتنبيه (وإن نُقلت لوحدة أخرى فمن هناك).</summary>
+    public SectionViewModel? OpenAlert(AlertItem alert)
+    {
+        IsAlertsOpen = false;
+        foreach (var nav in NavItems.OrderBy(n => n.ModuleCode == alert.ModuleCode ? 0 : 1))
+        {
+            if (nav.ModuleCode != alert.ModuleCode && !_modules.ContainsKey(nav.ModuleCode)) continue;
+            SelectedItem = nav;
+            if (CurrentModule is ModuleViewModel m && m.Tabs.OfType<SectionViewModel>().FirstOrDefault(t => t.GetType().Name == alert.Section) is { } section)
+            {
+                m.SelectedTab = section;
+                return section;
+            }
+        }
+        _dialogs.Info($"{alert.Title}\n{alert.Detail}");
+        return null;
     }
 
     private string? _cloudStatusText;
@@ -134,6 +204,7 @@ public class MainShellViewModel : ViewModelBase
             }
             CurrentModule = module;
             Background(RefreshCloudStatusAsync());
+            Background(RefreshAlertsAsync());
         }
     }
 

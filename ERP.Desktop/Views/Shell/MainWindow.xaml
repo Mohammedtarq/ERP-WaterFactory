@@ -39,6 +39,48 @@
                 </DockPanel>
             </Border>
 
+            <!-- جرس التنبيهات -->
+            <Border DockPanel.Dock="Bottom" Padding="10,6" Background="#0B1220">
+                <Grid>
+                    <Button x:Name="AlertsButton" Command="{Binding ToggleAlertsCommand}" Background="Transparent" BorderThickness="0" Cursor="Hand"
+                            HorizontalContentAlignment="Stretch" Padding="4" ToolTip="تنبيهات عملك: اضغط لعرضها">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xEA8F;" Style="{StaticResource Icon}" FontSize="16" Foreground="{Binding AlertsColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding AlertsText}" Foreground="#E2E8F0" FontSize="13" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Popup IsOpen="{Binding IsAlertsOpen}" PlacementTarget="{Binding ElementName=AlertsButton}" Placement="Top" StaysOpen="False"
+                           AllowsTransparency="True" FlowDirection="RightToLeft">
+                        <Border Background="White" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="10" Padding="10" Width="420" MaxHeight="520">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="التنبيهات" FontSize="15" FontWeight="Bold" Margin="2,0,0,8"/>
+                                <TextBlock DockPanel.Dock="Top" Text="لا تنبيهات الآن ✔" Foreground="#16A34A" Margin="2,0,0,4"
+                                           Visibility="{Binding HasAlerts, Converter={StaticResource InverseBoolToVisibility}}"/>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding Alerts}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Command="{Binding DataContext.OpenAlertCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                                        Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" Margin="0,0,0,6" Padding="10,8"
+                                                        HorizontalContentAlignment="Stretch" Cursor="Hand">
+                                                    <DockPanel>
+                                                        <Border DockPanel.Dock="Left" Width="6" CornerRadius="3" Background="{Binding Color, Converter={StaticResource HexBrush}}" Margin="0,0,10,0"/>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" TextWrapping="Wrap"/>
+                                                            <TextBlock Text="{Binding Detail}" Foreground="#64748B" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Popup>
+                </Grid>
+            </Border>
+
             <!-- مؤشر المزامنة السحابية -->
             <Border DockPanel.Dock="Bottom" Padding="14,8" Background="#0B1220"
                     Visibility="{Binding HasCloudStatus, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding CloudStatusText}">

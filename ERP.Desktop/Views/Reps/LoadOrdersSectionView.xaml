@@ -8,7 +8,7 @@
              x:Name="Root">
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="470"/>
+            <ColumnDefinition Width="560"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -37,13 +37,14 @@
                     </WrapPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
                         <TextBlock Grid.Column="1" Text="المتغير" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
                         <TextBlock Grid.Column="2" Text="الوحدة" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
                         <TextBlock Grid.Column="3" Text="الكمية" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
                         <TextBlock Grid.Column="4" Text="القطع" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                        <TextBlock Grid.Column="5" Text="المتاح في المخزن" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
                     </Grid>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom">
@@ -51,6 +52,7 @@
                         <Button DockPanel.Dock="Left" Content="إضافة صنف" Style="{StaticResource SecondaryButton}" Command="{Binding AddLineCommand}"/>
                         <TextBlock Text="{Binding TotalPieces, StringFormat='مجموع القطع: {0:N0}'}" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right"/>
                     </DockPanel>
+                    <TextBlock Text="{Binding ShortageText}" Foreground="#DC2626" TextWrapping="Wrap" Margin="0,4,0,0"/>
                     <TextBlock Text="ملاحظات" Style="{StaticResource FieldLabel}"/>
                     <TextBox Text="{Binding Notes}"/>
                     <Button Content="إرسال الطلب لأمين المخزن" Style="{StaticResource SuccessButton}" Command="{Binding CreateCommand}" Margin="0,10,0,0" HorizontalAlignment="Stretch"/>
@@ -62,7 +64,7 @@
                             <DataTemplate>
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="36"/>
+                                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
                                     </Grid.ColumnDefinitions>
                                     <ComboBox ItemsSource="{Binding DataContext.Products, ElementName=Root}" SelectedItem="{Binding Product}" DisplayMemberPath="ItemName" IsTextSearchEnabled="True"/>
                                     <ComboBox Grid.Column="1" ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name" Margin="6,0,0,0"
@@ -70,7 +72,20 @@
                                     <ComboBox Grid.Column="2" ItemsSource="{Binding Levels}" SelectedItem="{Binding Level}" DisplayMemberPath="LevelName" Margin="6,0,0,0"/>
                                     <TextBox Grid.Column="3" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                                     <TextBlock Grid.Column="4" Text="{Binding Pieces, StringFormat=N0}" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                                    <Button Grid.Column="5" Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626" ToolTip="حذف"
+                                    <TextBlock Grid.Column="5" Text="{Binding AvailableText}" Margin="6,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#16A34A"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsShort}" Value="True">
+                                                        <Setter Property="Foreground" Value="#DC2626"/>
+                                                        <Setter Property="FontWeight" Value="Bold"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <Button Grid.Column="6" Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626" ToolTip="حذف"
                                             Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                 </Grid>
                             </DataTemplate>
@@ -128,7 +143,9 @@
                             <DataGridTextColumn Header="المتغير" Binding="{Binding VariantName}" Width="*" IsReadOnly="True"/>
                             <DataGridTextColumn Header="الوحدة" Binding="{Binding LevelName}" Width="80" IsReadOnly="True"/>
                             <DataGridTextColumn Header="المطلوب" Binding="{Binding Requested, StringFormat=N0}" Width="80" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="المتاح" Binding="{Binding AvailableText}" Width="120" IsReadOnly="True"/>
                             <DataGridTextColumn Header="المجهَّز" Binding="{Binding Prepared, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
+                            <DataGridCheckBoxColumn Header="لا يكفي" Binding="{Binding IsShort, Mode=OneWay}" Width="70" IsReadOnly="True"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

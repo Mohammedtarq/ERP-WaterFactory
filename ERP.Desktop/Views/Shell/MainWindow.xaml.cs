@@ -14,7 +14,13 @@ public partial class MainWindow : Window
         InitializeComponent();
         // الخروج التلقائي بعد مدة خمول: أي ضغطة مفتاح أو حركة فأرة تعدّ نشاطًا
         InputManager.Current.PreProcessInput += OnInput;
-        _idleTimer.Tick += (_, _) => { if (DataContext is MainShellViewModel vm) vm.CheckIdle(DateTime.UtcNow); };
+        var ticks = 0;
+        _idleTimer.Tick += (_, _) =>
+        {
+            if (DataContext is not MainShellViewModel vm) return;
+            if (vm.CheckIdle(DateTime.UtcNow)) return;
+            if (++ticks % 2 == 0) vm.RefreshIndicators();   // الجرس ومؤشر السحابة كل دقيقة
+        };
         _idleTimer.Start();
         Closed += (_, _) =>
         {
