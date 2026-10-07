@@ -648,8 +648,8 @@ public class TutorialTests
     }
 
     /// <summary>
-    /// دليل «أمر يومي واحد بكل الأصناف»: متغير مطعم ومناسبة من المعالج، ثم أمر اليوم بخمسة سطور للمنتج نفسه
-    /// (شرنك وكارتون، أساسي ومطاعم ومناسبة)، وفحص المواد والقالب والتكرار، ثم المتغير في البيع والتحميل والأرصدة.
+    /// دليل «أمر يومي واحد بكل الأصناف»: متغير مطعم ومناسبة من المعالج، ثم أمر اليوم بخمسة سطور لمنتجين مستقلين
+    /// (ماء 500 كارتون وماء 500 شرنك، أساسي ومطاعم ومناسبة)، وفحص المواد والقالب والتكرار، ثم المتغير في البيع والتحميل والأرصدة بالعبوات.
     /// </summary>
     [Fact]
     public async Task Illustrated_guide_production_variants()
@@ -667,13 +667,23 @@ public class TutorialTests
                          .UseSqlServer(install.ProjectConnectionString).Options))
         {
             db.Customers.AddRange(new Customer { Name = "مطعم الحسون", Province = "البصرة" }, new Customer { Name = "مطعم الياس", Province = "البصرة" });
-            // أدوار قائمة مواد ماء 500 مل (كما يضعها قالب التعبئة)، ووحدة شرنك إلى جانب الكارتون
+            // أدوار قائمة مواد ماء 500 مل (كما يضعها قالب التعبئة). الكارتون والشرنك منتجان مستقلان، لكل منهما قائمة مواده ورصيده
             var w500 = await db.Items.SingleAsync(i => i.ItemCode == "W-500");
+            w500.ItemName = "ماء 500 مل كارتون";
             foreach (var (code, role) in new[] { ("RM-PRE", "امبولة"), ("RM-CAP", "غطاء"), ("RM-LBL", "لاصق") })
                 await db.BOMLines.Where(l => l.BOM.FinishedItemId == w500.Id && l.RawMaterialItem.ItemCode == code)
                         .ExecuteUpdateAsync(u => u.SetProperty(l => l.ComponentRole, role));
-            var piece = await db.ItemPackagingLevels.SingleAsync(l => l.ItemId == w500.Id && l.EquivalentBaseUnits == 1);
-            db.ItemPackagingLevels.Add(new ItemPackagingLevel { ItemId = w500.Id, LevelName = "شرنك", ParentLevelId = piece.Id, ContainsQuantity = 6, EquivalentBaseUnits = 6 });
+            var shrinkItem = new Item { ItemCode = "W-500S", ItemName = "ماء 500 مل شرنك", SalePrice = 250, SourcingMethod = SourcingMethod.Manufactured, MinStockAlertLevel = 120 };
+            db.Items.Add(shrinkItem);
+            await db.SaveChangesAsync();
+            var shrinkPiece = new ItemPackagingLevel { ItemId = shrinkItem.Id, LevelName = "قطعة", ContainsQuantity = 1, EquivalentBaseUnits = 1 };
+            db.ItemPackagingLevels.Add(shrinkPiece);
+            await db.SaveChangesAsync();
+            db.ItemPackagingLevels.Add(new ItemPackagingLevel { ItemId = shrinkItem.Id, LevelName = "شرنك", ParentLevelId = shrinkPiece.Id, ContainsQuantity = 6, EquivalentBaseUnits = 6 });
+            var shrinkBom = new BillOfMaterials { FinishedItemId = shrinkItem.Id };
+            foreach (var l in await db.BOMLines.AsNoTracking().Where(l => l.BOM.FinishedItemId == w500.Id && l.BOM.IsActive).ToListAsync())
+                shrinkBom.Lines.Add(new BOMLine { RawMaterialItemId = l.RawMaterialItemId, QuantityPerUnit = l.QuantityPerUnit, ComponentRole = l.ComponentRole });
+            db.BillOfMaterials.Add(shrinkBom);
             await db.SaveChangesAsync();
         }
 
@@ -716,10 +726,10 @@ public class TutorialTests
             await prod.IdleAsync();
             var recipes = prod.Section<CustomRecipesSectionViewModel>();
             await Open(prod, recipes);
-            async Task Variant(string? customer, string name, string? shot)
+            async Task Variant(string product, string? customer, string name, string? shot)
             {
                 recipes.OpenWizardCommand.Execute(null);
-                recipes.WizardProduct = recipes.FinishedItems.Single(i => i.ItemCode == "W-500");
+                recipes.WizardProduct = recipes.FinishedItems.Single(i => i.ItemCode == product);
                 await recipes.IdleAsync();
                 recipes.WizardCustomer = customer is null ? CustomRecipesSectionViewModel.NoCustomer : recipes.WizardCustomers.Single(c => c.Name == customer);
                 recipes.WizardName = name;
@@ -734,10 +744,11 @@ public class TutorialTests
                 Assert.Contains(recipes.Items, r => r.Name == name);
                 step = $"بعد إنشاء {name}";
             }
-            await Variant("مطعم الحسون", "مطعم الحسون", "01-متغير-جديد-لمطعم");
+            // المطعمان على الكارتون، والمناسبة على الشرنك
+            await Variant("W-500", "مطعم الحسون", "مطعم الحسون", "01-متغير-جديد-لمطعم");
             await Shot("02-المتغير-جاهز-غطاء-وليبل-خاص", recipes);
-            await Variant("مطعم الياس", "مطعم الياس", null);
-            await Variant(null, "زواج سعيد", "03-متغير-مناسبة-بلا-عميل");
+            await Variant("W-500", "مطعم الياس", "مطعم الياس", null);
+            await Variant("W-500S", null, "زواج سعيد", "03-متغير-مناسبة-بلا-عميل");
 
             step = "استلام المواد";
             // المواد الخاصة الجديدة تُستلم كأي مادة أولية
@@ -760,18 +771,19 @@ public class TutorialTests
             await raw.SaveCommand.ExecuteAsync();
 
             step = "أمر اليوم";
-            // ---------- 2) أمر اليوم: المنتج نفسه خمس مرات ----------
+            // ---------- 2) أمر اليوم: الكارتون والشرنك بكل متغيراتهما في أمر واحد ----------
             shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
             var daily = prod.Daily;
             await Open(prod, daily);
             await daily.LoadAsync();
-            var lines = new[] { ("شرنك", (string?)null, 40m), ("كارتون", null, 30m), ("كارتون", "مطعم الحسون", 15m), ("كارتون", "مطعم الياس", 10m), ("شرنك", "زواج سعيد", 20m) };
+            var lines = new[] { ("W-500S", "شرنك", (string?)null, 40m), ("W-500", "كارتون", null, 30m), ("W-500", "كارتون", "مطعم الحسون", 15m),
+                                ("W-500", "كارتون", "مطعم الياس", 10m), ("W-500S", "شرنك", "زواج سعيد", 20m) };
             daily.Lines.Clear();
-            foreach (var (level, variant, packs) in lines)
+            foreach (var (product, level, variant, packs) in lines)
             {
                 daily.AddLineCommand.Execute(null);
                 var l = daily.Lines[^1];
-                l.Product = daily.Products.Single(i => i.ItemCode == "W-500");
+                l.Product = daily.Products.Single(i => i.ItemCode == product);
                 l.Level = l.Levels.Single(x => x.LevelName == level);
                 l.Recipe = variant is null ? DailyProductionSectionViewModel.Basic : l.Recipes.Single(r => r.Name == variant);
                 l.Packs = packs;
@@ -807,7 +819,7 @@ public class TutorialTests
             await Open(sales, inv);
             inv.Customer = inv.Customers.First(c => c.CustomerType == CustomerType.Direct && !c.Name.StartsWith("مطعم"));
             inv.Warehouse = inv.Warehouses.First(w => w.WarehouseType == WarehouseType.FinishedGoods);
-            inv.LineItem = inv.ItemsLookup.Single(i => i.ItemCode == "W-500");
+            inv.LineItem = inv.ItemsLookup.Single(i => i.ItemCode == "W-500S");
             await inv.IdleAsync();
             inv.LineBatch = inv.BatchOptions.Single(b => b.RecipeId != null && b.Label.Contains("زواج سعيد"));
             await inv.IdleAsync();
@@ -844,8 +856,10 @@ public class TutorialTests
             await Open(wh, fg);
             SelectInnerTab(main, "الأرصدة الحالية");
             await Shot("12-أرصدة-المنتج-التام-بالمتغير", fg);
-            Assert.Contains(fg.Balances, b => b.ItemCode == "W-500" && b.Variant == "مطعم الحسون" && b.Quantity == 180);
-            Assert.Contains(fg.Balances, b => b.ItemCode == "W-500" && b.Variant == "زواج سعيد" && b.Quantity == 120);   // الفاتورة مسودة لم تُرحَّل
+            // الأرصدة بعدد العبوات لكل منتج
+            Assert.Contains(fg.Balances, b => b.ItemCode == "W-500" && b.Variant == "مطعم الحسون" && b.Breakdown == "15 كارتون");
+            Assert.Contains(fg.Balances, b => b.ItemCode == "W-500S" && b.Variant == "زواج سعيد" && b.Breakdown == "20 شرنك");   // الفاتورة مسودة لم تُرحَّل
+            Assert.Contains(fg.Balances, b => b.ItemCode == "W-500S" && b.Variant == null && b.Breakdown == "40 شرنك");
 
             main.Close();
         });
