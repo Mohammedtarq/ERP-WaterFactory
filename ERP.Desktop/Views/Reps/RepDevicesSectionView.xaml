@@ -45,6 +45,9 @@
                     <Button Content="تسجيل" Style="{StaticResource PrimaryButton}" Command="{Binding RegisterCommand}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
                     <TextBlock Text="المفتاح السري للجهاز (انسخه إلى الهاتف — لا يُعرض مرة أخرى)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
                     <TextBox Text="{Binding LastKey, Mode=OneWay}" IsReadOnly="True" FlowDirection="LeftToRight" FontFamily="Consolas" TextWrapping="Wrap"/>
+                    <Image Source="{Binding LinkQr}" Width="220" Height="220" Margin="0,10,0,0" HorizontalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="NearestNeighbor" Visibility="{Binding HasLinkQr, Converter={StaticResource BoolToVisibility}}"/>
+                    <TextBlock Text="{Binding LinkHint}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource Card}" Margin="0,12,0,0">

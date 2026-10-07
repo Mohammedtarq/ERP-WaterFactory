@@ -1,3 +1,4 @@
+using ERP.Cloud.Contracts;
 using System.Text.Json;
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
@@ -94,8 +95,14 @@ public class RepAppScreenTests
         await Open(reps, devices);
         devices.NewRep = devices.Reps.Single(o => o.Value == repId);
         devices.NewName = "هاتف احتياطي";
+        await using (var cfg = _f.NewDb())
+            Assert.True((await new CloudSyncService(cfg).SaveSettingsAsync("http://192.168.1.10:5080", false, 20,
+                await cfg.Users.Where(u => u.Username == AppFixture.AdminUser).Select(u => u.Id).SingleAsync())).Success);
         await devices.RegisterCommand.ExecuteAsync();
         Assert.Equal(64, devices.LastKey!.Length);
+        // رمز الربط: صورة PNG فيها العنوان والمفتاح
+        Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, devices.LinkQr![..4]);
+        Assert.Contains("http://192.168.1.10:5080", devices.LinkHint);
         devices.Selected = devices.Devices.Single(d => d.DeviceName == "هاتف احتياطي");
         await devices.ToggleCommand.ExecuteAsync();
         Assert.False(devices.Devices.Single(d => d.DeviceName == "هاتف احتياطي").IsActive);

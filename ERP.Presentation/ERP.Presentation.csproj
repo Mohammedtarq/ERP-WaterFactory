@@ -15,4 +15,9 @@
     <ProjectReference Include="..\ERP.Data\ERP.Data.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- رمز QR لربط هاتف المندوب (PNG بلا مكتبات رسم النظام) -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+
 </Project>

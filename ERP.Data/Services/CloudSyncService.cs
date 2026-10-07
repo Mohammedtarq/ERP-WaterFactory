@@ -60,15 +60,8 @@ public class CloudSyncService
     public async Task<CloudSyncSetting> SettingsAsync() =>
         await _db.CloudSyncSettings.AsNoTracking().FirstOrDefaultAsync() ?? new CloudSyncSetting();
 
-    /// <summary>عنوان https، أو http لجهاز محلي فقط (للتجربة).</summary>
-    public static string? ValidateUrl(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return "اكتب عنوان الخادم السحابي (مثل https://api.alrahma-water.com)";
-        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) || (u.Scheme != Uri.UriSchemeHttps && u.Scheme != Uri.UriSchemeHttp))
-            return "عنوان الخادم غير صحيح";
-        if (u.Scheme == Uri.UriSchemeHttp && !u.IsLoopback) return "الاتصال يجب أن يكون مشفّرًا (https://)";
-        return null;
-    }
+    /// <summary>عنوان https، أو http داخل شبكة المعمل للتجربة (القاعدة نفسها في الهاتف).</summary>
+    public static string? ValidateUrl(string? url) => CloudUrl.Validate(url);
 
     public async Task<FinanceOperationResult> SaveSettingsAsync(string? serverUrl, bool enabled, int intervalSeconds, int userId)
     {
@@ -276,8 +269,13 @@ public class CloudSyncService
                     .GroupBy(t => t.ItemId).Select(g => new { ItemId = g.Key, Pieces = g.Sum(t => t.QuantityBaseUnits) }).ToListAsync())
               .Where(x => x.Pieces != 0).OrderBy(x => x.ItemId).Select(x => new SnapshotStock(x.ItemId, x.Pieces)).ToList();
 
+        var since = DateTime.UtcNow.AddDays(-7);
+        var posted = await _db.RepRequests.AsNoTracking()
+            .Where(r => r.RepEmployeeId == rep.Id && r.Status == RepRequestStatus.Posted && r.ReceivedAt >= since)
+            .OrderBy(r => r.Id).Select(r => r.ClientId).ToListAsync();
+
         return new RepSnapshot(rep.Id, rep.FullName, DateTime.UtcNow, settings.AllowCreditOverLimit, settings.CashAlertDays, wallet,
-                               products, snapCustomers, agentPrices, stock);
+                               products, snapCustomers, agentPrices, stock, posted);
     }
 
     // ============================ الاتصال ============================

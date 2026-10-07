@@ -67,6 +67,7 @@ docker run --rm --network host "${PROXY_ARGS[@]}" \
     dotnet build ERP.SeedTool/ERP.SeedTool.csproj -nologo -v q -p:NuGetAudit=false
     dotnet build ERP.Cloud.Api/ERP.Cloud.Api.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
     dotnet build ERP.SyncAgent/ERP.SyncAgent.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
+    dotnet build ERP.RepApp.Core/ERP.RepApp.Core.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
     dotnet build ERP.Desktop/ERP.Desktop.csproj -nologo -v q -p:EnableWindowsTargeting=true -p:NuGetAudit=false
     dotnet build tests/ERP.Desktop.UiTests -nologo -v q -p:EnableWindowsTargeting=true -p:NuGetAudit=false
     dotnet test tests/ERP.Data.IntegrationTests -nologo -v q --logger "console;verbosity=normal"

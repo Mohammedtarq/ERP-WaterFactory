@@ -158,6 +158,12 @@ public class RepDevicesSectionViewModel : SectionViewModel
     public string NewName { get => _newName; set => SetProperty(ref _newName, value); }
     /// <summary>المفتاح السري للجهاز الأخير (يُنسخ إلى الهاتف ولا يُعرض مرة أخرى).</summary>
     public string? LastKey { get => _lastKey; private set => SetProperty(ref _lastKey, value); }
+    private byte[]? _linkQr;
+    private string? _linkHint;
+    /// <summary>رمز ربط الجهاز الأخير (عنوان الخادم + المفتاح): يصوّره المندوب من التطبيق. يُعرض مرة واحدة.</summary>
+    public byte[]? LinkQr { get => _linkQr; private set { if (SetProperty(ref _linkQr, value)) OnPropertyChanged(nameof(HasLinkQr)); } }
+    public bool HasLinkQr => LinkQr is not null;
+    public string? LinkHint { get => _linkHint; private set => SetProperty(ref _linkHint, value); }
     public RepDeviceRow? Selected { get => _selected; set => SetProperty(ref _selected, value); }
     public bool AllowOverLimit { get => _allowOverLimit; set => SetProperty(ref _allowOverLimit, value); }
     public int CashAlertDays { get => _cashAlertDays; set => SetProperty(ref _cashAlertDays, value); }
@@ -193,6 +199,20 @@ public class RepDevicesSectionViewModel : SectionViewModel
             }, $"سُجّل الجهاز «{NewName.Trim()}» — انسخ المفتاح إلى الهاتف الآن، لن يُعرض مرة أخرى"))
         {
             LastKey = key;
+            await using var db2 = Session.NewDb();
+            var url = (await new CloudSyncService(db2).SettingsAsync()).ServerUrl;
+            if (url is null)
+            {
+                LinkQr = null;
+                LinkHint = "لعرض رمز الربط: اضبط عنوان الخادم في «الإعدادات ← المزامنة السحابية» ثم سجّل الجهاز";
+            }
+            else
+            {
+                using var qr = new QRCoder.QRCodeGenerator();
+                using var data = qr.CreateQrCode(new Cloud.Contracts.LinkCode(url, key!).Encode(), QRCoder.QRCodeGenerator.ECCLevel.M);
+                LinkQr = new QRCoder.PngByteQRCode(data).GetGraphic(8);
+                LinkHint = $"افتح تطبيق المندوب ← «ربط الجهاز» ← صوّر الرمز. الخادم: {url}";
+            }
             NewName = "";
             await LoadAsync();
         }

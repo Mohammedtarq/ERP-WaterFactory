@@ -1,3 +1,4 @@
+using ERP.Cloud.Contracts;
 using System.Text.Json;
 using ERP.Data.ProjectDb;
 using ERP.Data.ProjectDb.Entities;

@@ -9,6 +9,13 @@ dotnet publish ERP.Desktop\ERP.Desktop.csproj -c Release -r win-x64 --self-conta
 dotnet publish ERP.SyncAgent\ERP.SyncAgent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$out\SyncAgent"
 if ($LASTEXITCODE) { throw "تعذّر نشر خدمة المزامنة السحابية" }
+# تجربة تطبيق المندوب عبر واي فاي المعمل: الخادم الوسيط مؤقتًا على جهاز السيرفر
+$trial = "$out\تجربة المندوبين"
+dotnet publish ERP.Cloud.Api\ERP.Cloud.Api.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$trial\CloudServer"
+if ($LASTEXITCODE) { throw "تعذّر نشر الخادم التجريبي" }
+Copy-Item tools\rep-trial\* $trial
+Copy-Item docs\rep-app.md "$trial\اقرأني - تطبيق المندوب.md" -ErrorAction SilentlyContinue
 Copy-Item docs\INSTALL.md "$out\اقرأني - التثبيت.md" -ErrorAction SilentlyContinue
 New-Item "$out\الشبكة" -ItemType Directory -Force | Out-Null
 Copy-Item docs\network-setup.md "$out\الشبكة\دليل تجهيز الشبكة.md" -ErrorAction SilentlyContinue

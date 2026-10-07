@@ -10,6 +10,8 @@ public record AgentConfig(string ControlDbConnectionString)
 {
     public static string MachinePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ERP-WaterFactory", "sync-agent.json");
     private static string BesideExe => Path.Combine(AppContext.BaseDirectory, "sync-agent.json");
+    /// <summary>إعداد البرنامج المكتبي لهذا المستخدم: للتشغيل في نافذة أثناء التجربة دون تثبيت الخدمة.</summary>
+    private static string DesktopSettings => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ERP-WaterFactory", "appsettings.json");
 
     public static AgentConfig? Load()
     {
@@ -18,6 +20,12 @@ public record AgentConfig(string ControlDbConnectionString)
             if (!File.Exists(path)) continue;
             var c = JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(path));
             if (!string.IsNullOrWhiteSpace(c?.ControlDbConnectionString)) return c;
+        }
+        if (File.Exists(DesktopSettings))
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(DesktopSettings));
+            if (doc.RootElement.TryGetProperty("ControlDbConnectionString", out var cs) && !string.IsNullOrWhiteSpace(cs.GetString()))
+                return new AgentConfig(cs.GetString()!);
         }
         return null;
     }

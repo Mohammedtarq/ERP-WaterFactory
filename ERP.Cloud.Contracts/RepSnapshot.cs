@@ -4,6 +4,7 @@ namespace ERP.Cloud.Contracts;
 /// «نسخة عمل» المندوب: كل ما يحتاجه الهاتف ليعمل بلا إنترنت — زبائنه وأرصدتهم وحدود دينهم، والأصناف بعبواتها وأسعارها،
 /// ورصيد سيارته ومحفظته، وإعدادات التطبيق. لا حسابات ولا قيود ولا بيانات مندوب آخر.
 /// السعر هنا للعرض فقط؛ المعمل يسعّر الحركة بنفسه عند ترحيلها.
+/// PostedClientIds: حركات الهاتف المرحّلة (آخر 7 أيام) الداخلة في هذه الأرصدة — الهاتف لا يطرحها مرة ثانية.
 /// </summary>
 public record RepSnapshot(
     int RepEmployeeId,
@@ -15,7 +16,8 @@ public record RepSnapshot(
     List<SnapshotProduct> Products,
     List<SnapshotCustomer> Customers,
     List<SnapshotAgentPrice> AgentPrices,
-    List<SnapshotStock> VanStock);
+    List<SnapshotStock> VanStock,
+    List<Guid>? PostedClientIds = null);
 
 /// <summary>صنف قابل للبيع: سعر القطعة العادي، وعبواته (الأكبر أولًا).</summary>
 public record SnapshotProduct(int ItemId, string Code, string Name, decimal PiecePrice, List<SnapshotLevel> Levels);

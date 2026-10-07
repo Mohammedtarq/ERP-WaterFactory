@@ -84,6 +84,48 @@ jobs:
           path: ui-screenshots
           retention-days: 30
 
+  android:
+    name: تطبيق المندوب (أندرويد)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # توقيع المعمل الثابت (اختياري): أسرار المستودع ERP_REPAPP_KEYSTORE_B64 و ERP_REPAPP_STORE_PASS و ERP_REPAPP_KEY_ALIAS
+      ERP_REPAPP_KEYSTORE_B64: ${{ secrets.ERP_REPAPP_KEYSTORE_B64 }}
+      ERP_REPAPP_STORE_PASS: ${{ secrets.ERP_REPAPP_STORE_PASS }}
+      ERP_REPAPP_KEY_ALIAS: ${{ secrets.ERP_REPAPP_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '17'
+      - name: أدوات أندرويد لـ .NET
+        run: dotnet workload install maui-android
+      - name: مكوّنات Android SDK المطلوبة
+        run: dotnet build ERP.RepApp/ERP.RepApp.csproj -t:InstallAndroidDependencies -f net10.0-android -p:AndroidSdkDirectory="$ANDROID_HOME" -p:AcceptAndroidSDKLicenses=True -p:NuGetAudit=false
+      - name: بناء ملف APK
+        run: |
+          if [ -n "$ERP_REPAPP_KEYSTORE_B64" ]; then
+            echo "$ERP_REPAPP_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/rep-app.keystore"
+            export ERP_REPAPP_KEYSTORE="$RUNNER_TEMP/rep-app.keystore"
+            echo "توقيع المعمل الثابت"
+          else
+            echo "::notice::لا مفتاح توقيع في أسرار المستودع — ملف تجربة بمفتاح مؤقت (احذف النسخة القديمة من الهاتف قبل التثبيت)"
+          fi
+          dotnet publish ERP.RepApp/ERP.RepApp.csproj -f net10.0-android -c Release -p:AndroidSdkDirectory="$ANDROID_HOME" -p:NuGetAudit=false -o dist/rep-app
+          ls -la dist/rep-app
+          mkdir -p dist/apk && cp dist/rep-app/*-Signed.apk "dist/apk/مندوب-الرحمة.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ERP-RepApp-apk
+          path: dist/apk
+          retention-days: 30
+
   package:
     name: حزمة Windows
     needs: test

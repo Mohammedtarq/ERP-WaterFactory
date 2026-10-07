@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\ERP.Cloud.Api\ERP.Cloud.Api.csproj" />
     <ProjectReference Include="..\..\ERP.Data\ERP.Data.csproj" />
+    <ProjectReference Include="..\..\ERP.RepApp.Core\ERP.RepApp.Core.csproj" />
   </ItemGroup>
 
 </Project>

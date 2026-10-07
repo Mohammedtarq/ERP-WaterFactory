@@ -17,48 +17,10 @@ namespace ERP.Cloud.Tests;
 /// المرحلة 1 من طرف إلى طرف: خادم سحابي حقيقي (في الذاكرة) بقاعدة وسيطة على SQL Server، وقاعدة معمل حقيقية،
 /// و«هاتف» يرسل بمفتاح جهازه. خدمة المزامنة ترحّل بقواعد المعمل وتعيد النتائج ونسخة العمل.
 /// </summary>
-public class CloudSyncTests : IAsyncLifetime
+[Collection("cloud")]
+public class CloudSyncTests : CloudTestBase
 {
-    private static string Master => Environment.GetEnvironmentVariable("ERP_TEST_MASTER_CONNECTION")
-        ?? throw new InvalidOperationException("ERP_TEST_MASTER_CONNECTION غير معيّن");
-
-    private readonly string _suffix = Guid.NewGuid().ToString("N")[..8];
-    private string ControlCs => new SqlConnectionStringBuilder(Master) { InitialCatalog = $"ERP_Ctl_Cloud{_suffix}" }.ConnectionString;
-    private string RelayCs => new SqlConnectionStringBuilder(Master) { InitialCatalog = $"ERP_Relay_{_suffix}" }.ConnectionString;
-    private string _projectCs = "";
-    private int _adminId;
     private const string AgentKeyForTests = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
-
-    private ProjectDbContext NewDb() => new(new DbContextOptionsBuilder<ProjectDbContext>().UseSqlServer(_projectCs).Options) { AuditUserId = _adminId };
-
-    public async Task InitializeAsync()
-    {
-        var install = await new ProvisioningService().InstallAsync(new InstallRequest(ControlCs, "سحابة", $"ERP_Cloud_{_suffix}", "المدير", "boss", "Boss@2026", DemoData: true));
-        Assert.True(install.Success, install.ErrorMessage);
-        _projectCs = install.ProjectConnectionString;
-        await using var db = NewDb();
-        _adminId = await db.Users.Where(u => u.Username == "boss").Select(u => u.Id).SingleAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        SqlConnection.ClearAllPools();
-        await using var conn = new SqlConnection(Master);
-        await conn.OpenAsync();
-        foreach (var name in new[] { $"ERP_Cloud_{_suffix}", $"ERP_Ctl_Cloud{_suffix}", $"ERP_Relay_{_suffix}" })
-        {
-            await using var cmd = new SqlCommand($"IF DB_ID('{name}') IS NOT NULL BEGIN ALTER DATABASE [{name}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{name}]; END", conn);
-            await cmd.ExecuteNonQueryAsync();
-        }
-    }
-
-    private WebApplicationFactory<Program> Cloud(string agentKey)
-    {
-        // تُقرأ قبل بناء الخادم: متغيرات بيئة كما في إعدادات Azure
-        Environment.SetEnvironmentVariable("ConnectionStrings__Relay", RelayCs);
-        Environment.SetEnvironmentVariable("Relay__AgentKey", agentKey);
-        return new WebApplicationFactory<Program>();
-    }
 
     private static HttpClient Phone(WebApplicationFactory<Program> cloud, string deviceKey)
     {
@@ -102,15 +64,15 @@ public class CloudSyncTests : IAsyncLifetime
             var shrink = new ItemPackagingLevel { ItemId = water.Id, LevelName = "شرنك", EquivalentBaseUnits = 20 };
             db.ItemPackagingLevels.AddRange(new ItemPackagingLevel { ItemId = water.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 }, shrink);
             db.StockTransactions.Add(new StockTransaction { ItemId = water.Id, WarehouseId = fg.Id, QuantityBaseUnits = 1_000, UnitCost = 100,
-                                                            TransactionType = StockTransactionType.Receipt, CreatedByUserId = _adminId });
+                                                            TransactionType = StockTransactionType.Receipt, CreatedByUserId = AdminId });
             var van = new Warehouse { BranchId = fg.BranchId, Name = "سيارة السحابة", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id };
             db.Warehouses.Add(van);
             await db.SaveChangesAsync();
             db.RepCustomerAssignments.Add(new RepCustomerAssignment { EmployeeId = rep.Id, CustomerId = customer.Id });
             await db.SaveChangesAsync();
             var ops = new RepOperationsService(db);
-            var (_, order) = await ops.CreateLoadOrderAsync(van.Id, fg.Id, DateTime.Today, new[] { new RepLoadLineInput(water.Id, shrink.Id, 10) }, null, _adminId);
-            Assert.True((await ops.PrepareLoadOrderAsync(order!.Id, null, _adminId)).result.Success);
+            var (_, order) = await ops.CreateLoadOrderAsync(van.Id, fg.Id, DateTime.Today, new[] { new RepLoadLineInput(water.Id, shrink.Id, 10) }, null, AdminId);
+            Assert.True((await ops.PrepareLoadOrderAsync(order!.Id, null, AdminId)).result.Success);
             (repId, customerId, waterId, shrinkId, vanId, fgId) = (rep.Id, customer.Id, water.Id, shrink.Id, van.Id, fg.Id);
         }
 
@@ -118,16 +80,16 @@ public class CloudSyncTests : IAsyncLifetime
         await using (var db = NewDb())
         {
             var sync = new CloudSyncService(db);
-            Assert.Contains("مشفّرًا", (await sync.SaveSettingsAsync("http://api.example.com", true, 20, _adminId)).ErrorMessage);
-            Assert.Contains("ولّد مفتاح المعمل", (await sync.SaveSettingsAsync("https://api.example.com", true, 20, _adminId)).ErrorMessage);
+            Assert.Contains("مشفّرًا", (await sync.SaveSettingsAsync("http://api.example.com", true, 20, AdminId)).ErrorMessage);
+            Assert.Contains("ولّد مفتاح المعمل", (await sync.SaveSettingsAsync("https://api.example.com", true, 20, AdminId)).ErrorMessage);
         }
         string agentKey;
-        await using (var db = NewDb()) agentKey = await new CloudSyncService(db).GenerateKeyAsync(_adminId);
+        await using (var db = NewDb()) agentKey = await new CloudSyncService(db).GenerateKeyAsync(AdminId);
         Assert.Equal(64, agentKey.Length);
 
         await using var cloud = Cloud(agentKey);
         var baseUrl = cloud.Server.BaseAddress.ToString();
-        await using (var db = NewDb()) Assert.True((await new CloudSyncService(db).SaveSettingsAsync(baseUrl, true, 20, _adminId)).Success);
+        await using (var db = NewDb()) Assert.True((await new CloudSyncService(db).SaveSettingsAsync(baseUrl, true, 20, AdminId)).Success);
         using var agent = CloudSyncService.CreateClient(baseUrl, agentKey, cloud.Server.CreateHandler());
         using var wrongAgent = CloudSyncService.CreateClient(baseUrl, AgentKeyForTests, cloud.Server.CreateHandler());
         Assert.Equal((false, "مفتاح المعمل غير صحيح"), await CloudSyncService.TestAsync(wrongAgent));
@@ -143,7 +105,7 @@ public class CloudSyncTests : IAsyncLifetime
 
         // ---- الجهاز: مرفوض في الخادم حتى تصله قائمة الأجهزة ----
         string deviceKey;
-        await using (var db = NewDb()) deviceKey = (await new RepAppService(db).RegisterDeviceAsync(repId, "هاتف السحابة", _adminId)).deviceKey!;
+        await using (var db = NewDb()) deviceKey = (await new RepAppService(db).RegisterDeviceAsync(repId, "هاتف السحابة", AdminId)).deviceKey!;
         using var phone = Phone(cloud, deviceKey);
         Assert.Equal(HttpStatusCode.Unauthorized, (await phone.GetAsync(CloudRoutes.RepPing)).StatusCode);
         var first = await Run();
@@ -203,14 +165,14 @@ public class CloudSyncTests : IAsyncLifetime
         await using (var db = NewDb())
         {
             var requestId = await db.RepRequests.Where(r => r.ClientId == returnId).Select(r => r.Id).SingleAsync();
-            Assert.True((await new RepAppService(db).ApproveAsync(requestId, _adminId)).Success);
+            Assert.True((await new RepAppService(db).ApproveAsync(requestId, AdminId)).Success);
         }
         Assert.Equal(1, (await Run()).Updated);
         Assert.Equal("Posted", (await StatusOf(phone, returnId)).Status);
 
         // ---- رقم حركة جهاز آخر مرفوض، وحدود الحجم ----
         string otherKey;
-        await using (var db = NewDb()) otherKey = (await new RepAppService(db).RegisterDeviceAsync(repId, "هاتف ثان", _adminId)).deviceKey!;
+        await using (var db = NewDb()) otherKey = (await new RepAppService(db).RegisterDeviceAsync(repId, "هاتف ثان", AdminId)).deviceKey!;
         await Run();
         using var other = Phone(cloud, otherKey);
         Assert.Equal(HttpStatusCode.Conflict, (await other.PostAsJsonAsync(CloudRoutes.RepRequests, sale)).StatusCode);
@@ -229,7 +191,7 @@ public class CloudSyncTests : IAsyncLifetime
         await using (var db = NewDb())
         {
             var deviceId = await db.RepDevices.Where(d => d.DeviceKey == deviceKey).Select(d => d.Id).SingleAsync();
-            Assert.True((await new RepAppService(db).SetDeviceActiveAsync(deviceId, false, _adminId)).Success);
+            Assert.True((await new RepAppService(db).SetDeviceActiveAsync(deviceId, false, AdminId)).Success);
         }
         await Run();
         Assert.Equal(HttpStatusCode.Unauthorized, (await phone.GetAsync(CloudRoutes.RepPing)).StatusCode);
