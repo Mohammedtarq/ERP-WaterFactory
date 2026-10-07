@@ -173,7 +173,9 @@ public class SalesService
     /// كلها معًا، أو لا يحدث أي شيء وتبقى الفاتورة مسودة مع رسالة سبب واضحة.
     /// </summary>
     /// <param name="handOverRepCashNow">فاتورة من سيارة مندوب: يُسلَّم النقد المقبوض للصندوق فورًا بدل بقائه في محفظة المندوب.</param>
-    public async Task<(FinanceOperationResult result, SalesPostingSummary? summary)> PostInvoiceAsync(int invoiceId, int userId, bool handOverRepCashNow = false)
+    /// <param name="allowOverLimit">بيع تطبيق المندوب: يتجاوز حد دين العميل بقرار الإدارة (إعدادات التطبيق).</param>
+    public async Task<(FinanceOperationResult result, SalesPostingSummary? summary)> PostInvoiceAsync(int invoiceId, int userId, bool handOverRepCashNow = false,
+                                                                                                    bool allowOverLimit = false)
     {
         SalesPostingSummary? summary = null;
         var result = await RunAsync(async cmd =>
@@ -182,6 +184,7 @@ public class SalesService
             cmd.CommandType = CommandType.StoredProcedure;
             cmd.Parameters.Add(P("@InvoiceId", invoiceId));
             cmd.Parameters.Add(P("@UserId", userId));
+            if (allowOverLimit) cmd.Parameters.Add(P("@AllowOverLimit", true));
             await using var r = await cmd.ExecuteReaderAsync();
             if (await r.ReadAsync())
             {

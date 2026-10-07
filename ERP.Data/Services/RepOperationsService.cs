@@ -76,7 +76,8 @@ public class OverdueRepRow
 public class RepOperationsService
 {
     /// <summary>بعد كم يوم بلا تسوية يظهر المندوب في قائمة المتأخرين.</summary>
-    public const int OverdueAfterDays = 1;
+    /// <summary>الافتراضي إن لم تُحفظ إعدادات تطبيق المندوبين: النقد قد يبقى مع المندوب يومين.</summary>
+    public const int OverdueAfterDays = 2;
 
     private readonly ProjectDbContext _db;
     public RepOperationsService(ProjectDbContext db) => _db = db;
@@ -243,6 +244,11 @@ public class RepOperationsService
         if (r.Expenses.Any(e => e.Amount <= 0 || string.IsNullOrWhiteSpace(e.Description)))
             return (FinanceOperationResult.Fail("كل مصروف ميداني يحتاج مبلغًا أكبر من صفر ووصفًا"), null);
 
+        // طلبات التطبيق المعلّقة (مصروف، مرتجع زبون) تُعتمد أو تُرفض قبل التسوية حتى يصح النقد والرصيد
+        var pending = await new RepAppService(_db).PendingCountAsync(repId);
+        if (pending > 0)
+            return (FinanceOperationResult.Fail($"للمندوب {pending} طلب من التطبيق بانتظار الاعتماد — اعتمدها أو ارفضها من «طلبات المندوبين» قبل التسوية"), null);
+
         var reps = new RepsService(_db);
         await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
 
@@ -378,6 +384,7 @@ public class RepOperationsService
     {
         var vans = await _db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.WarehouseType == WarehouseType.RepVan && w.OwnerEmployeeId != null)
             .Select(w => new { w.Id, w.Name, RepId = w.OwnerEmployeeId!.Value, RepName = w.OwnerEmployee!.FullName }).ToListAsync();
+        var allowedDays = await _db.RepAppSettings.AsNoTracking().Select(s => (int?)s.CashAlertDays).FirstOrDefaultAsync() ?? OverdueAfterDays;
         var rows = new List<OverdueRepRow>();
         foreach (var v in vans)
         {
@@ -390,7 +397,7 @@ public class RepOperationsService
                              ?? (await _db.RepWalletTransactions.Where(w => w.EmployeeId == v.RepId).MinAsync(w => (DateTime?)w.TransactionDate))?.Date
                              ?? today.Date;
             var days = (today.Date - since.Date).Days;
-            if (days <= OverdueAfterDays) continue;
+            if (days <= allowedDays) continue;
             rows.Add(new OverdueRepRow { RepEmployeeId = v.RepId, RepName = v.RepName, VanName = v.Name, LastSettlement = last, DaysOverdue = days, VanPieces = pieces, WalletBalance = wallet });
         }
         return rows.OrderByDescending(r => r.DaysOverdue).ToList();

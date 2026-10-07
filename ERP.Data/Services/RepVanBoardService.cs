@@ -19,6 +19,11 @@ public record RepVanCard(int VanWarehouseId, string VanName, int RepEmployeeId, 
         _ => "لا حمولة اليوم"
     };
     public bool NeedsSettlement => Status is RepVanStatus.Pending or RepVanStatus.Overdue;
+    /// <summary>تطبيق المندوب: آخر اتصال للهاتف، والطلبات بانتظار الاعتماد.</summary>
+    public DateTime? LastSeenAt { get; init; }
+    public int PendingRequests { get; init; }
+    public string AppText => LastSeenAt is null ? "التطبيق: لا جهاز متصل"
+        : $"آخر اتصال: {LastSeenAt.Value.ToLocalTime():dd/MM HH:mm}{(PendingRequests > 0 ? $" — {PendingRequests} بانتظار الاعتماد" : "")}";
 }
 
 /// <summary>
@@ -61,6 +66,10 @@ public class RepVanBoardService
         var territories = (await _db.RepTerritories.AsNoTracking().Where(t => repIds.Contains(t.EmployeeId)).ToListAsync())
             .GroupBy(t => t.EmployeeId).ToDictionary(g => g.Key, g => string.Join("، ", g.Select(t => t.TerritoryName).OrderBy(n => n)));
         var overdue = (await new RepOperationsService(_db).GetOverdueAsync(day)).ToDictionary(o => o.RepEmployeeId, o => o.DaysOverdue);
+        var lastSeen = await _db.RepDevices.AsNoTracking().Where(d => repIds.Contains(d.RepEmployeeId) && d.LastSeenAt != null)
+            .GroupBy(d => d.RepEmployeeId).Select(g => new { g.Key, Last = g.Max(d => d.LastSeenAt) }).ToDictionaryAsync(x => x.Key, x => x.Last);
+        var pendingRequests = await _db.RepRequests.AsNoTracking().Where(r => repIds.Contains(r.RepEmployeeId) && r.Status == RepRequestStatus.Pending)
+            .GroupBy(r => r.RepEmployeeId).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count);
 
         return vans.Select(v =>
         {
@@ -78,7 +87,10 @@ public class RepVanBoardService
                     .Select(b => $"{items.GetValueOrDefault(b.ItemId, "؟")}: {WarehouseDocumentService.Breakdown(b.Qty, levels.GetValueOrDefault(b.ItemId))}")),
                 load.Count == 0 ? "—" : string.Join("، ", load.GroupBy(l => l.ItemId)
                     .Select(g => $"{items.GetValueOrDefault(g.Key, "؟")}: {string.Join(" + ", g.Select(l => $"{l.Qty:#,0.##} {l.LevelName}"))}")),
-                loadPieces, status, overdue.GetValueOrDefault(v.RepId), lastSettlement.GetValueOrDefault(v.RepId), wallets.GetValueOrDefault(v.RepId));
+                loadPieces, status, overdue.GetValueOrDefault(v.RepId), lastSettlement.GetValueOrDefault(v.RepId), wallets.GetValueOrDefault(v.RepId))
+            {
+                LastSeenAt = lastSeen.GetValueOrDefault(v.RepId), PendingRequests = pendingRequests.GetValueOrDefault(v.RepId)
+            };
         })
         .OrderBy(c => c.Status switch { RepVanStatus.Overdue => 0, RepVanStatus.Pending => 1, RepVanStatus.Settled => 2, _ => 3 })
         .ThenBy(c => c.RepName).ToList();

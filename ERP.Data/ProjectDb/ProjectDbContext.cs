@@ -125,6 +125,10 @@ public partial class ProjectDbContext : DbContext
     public DbSet<RepLoadOrderLine> RepLoadOrderLines => Set<RepLoadOrderLine>();
     public DbSet<RepSettlement> RepSettlements => Set<RepSettlement>();
     public DbSet<RepFreeGood> RepFreeGoods => Set<RepFreeGood>();
+    // ---- تطبيق المندوبين (38_rep_app.sql) ----
+    public DbSet<RepDevice> RepDevices => Set<RepDevice>();
+    public DbSet<RepRequest> RepRequests => Set<RepRequest>();
+    public DbSet<RepAppSetting> RepAppSettings => Set<RepAppSetting>();
 
     // ---- المصروفات والحسابات الختامية (31_expenses_final_accounts.sql) ----
     public DbSet<FinanceCategory> FinanceCategories => Set<FinanceCategory>();
@@ -661,6 +665,23 @@ public partial class ProjectDbContext : DbContext
             e.HasMany(x => x.FreeGoods).WithOne(f => f.RepSettlement).HasForeignKey(f => f.RepSettlementId);
             e.ToTable(tb => tb.HasTrigger("trg_RepSettlements_PeriodLock"));
         });
+        modelBuilder.Entity<RepDevice>(e =>
+        {
+            e.HasIndex(d => d.DeviceKey).IsUnique();
+            e.HasOne(d => d.RepEmployee).WithMany().HasForeignKey(d => d.RepEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(d => d.RegisteredByUser).WithMany().HasForeignKey(d => d.RegisteredByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<RepRequest>(e =>
+        {
+            e.HasIndex(r => r.ClientId).IsUnique();
+            e.Property(r => r.Kind).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.Amount).HasPrecision(18, 2);
+            e.HasOne(r => r.Device).WithMany().HasForeignKey(r => r.DeviceId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.RepEmployee).WithMany().HasForeignKey(r => r.RepEmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.ReviewedByUser).WithMany().HasForeignKey(r => r.ReviewedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<RepAppSetting>().Property(s => s.Id).ValueGeneratedNever();
         modelBuilder.Entity<RepFreeGood>(e =>
         {
             e.Property(f => f.QuantityBaseUnits).HasPrecision(18, 3);

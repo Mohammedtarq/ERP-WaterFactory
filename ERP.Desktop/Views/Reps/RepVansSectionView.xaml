@@ -56,6 +56,7 @@
                                         <TextBlock TextWrapping="Wrap" FontSize="12"><Run Text="حمولة اليوم:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding TodayLoadText, Mode=OneWay}"/></TextBlock>
                                         <TextBlock TextWrapping="Wrap" FontSize="12"><Run Text="الرصيد الآن:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding BalanceText, Mode=OneWay}"/></TextBlock>
                                         <TextBlock FontSize="12"><Run Text="النقد المتوقع:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding ExpectedCash, Mode=OneWay, StringFormat=N0}" FontWeight="SemiBold"/> <Run Text="د.ع"/></TextBlock>
+                                        <TextBlock Text="{Binding AppText}" FontSize="11" Foreground="{StaticResource MutedTextBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                                     </StackPanel>
                                 </DockPanel>
                             </Border>

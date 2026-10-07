@@ -1,0 +1,59 @@
+<UserControl x:Class="ERP.Desktop.Views.Reps.RepRequestsSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Reps;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:RepRequestsSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <ComboBox ItemsSource="{Binding Filters}" SelectedItem="{Binding Filter}" DisplayMemberPath="Label" Width="190"/>
+                    <ComboBox ItemsSource="{Binding RepOptions}" SelectedItem="{Binding Rep}" DisplayMemberPath="Label" Width="160" Margin="8,0,0,0"/>
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding IsHistory, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="من" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="8,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding From}" Width="120"/>
+                        <TextBlock Text="إلى" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="8,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding To}" Width="120"/>
+                    </StackPanel>
+                    <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                </StackPanel>
+                <TextBlock Text="طلبات المندوبين" Style="{StaticResource SectionTitle}" Margin="0"/>
+            </DockPanel>
+
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+
+            <!-- القرار: الاعتماد والرفض للمعلّق، والمراجعة للآجل والمجاني -->
+            <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" IsEnabled="{Binding CanApprove}">
+                <Button Style="{StaticResource SuccessButton}" Command="{Binding ApproveCommand}" IsEnabled="{Binding CanDecideSelected}" Margin="0,0,8,4">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                        <TextBlock Text="اعتماد المختار"/>
+                    </StackPanel>
+                </Button>
+                <TextBlock Text="سبب الرفض" VerticalAlignment="Center" Margin="8,0,6,4"/>
+                <TextBox Text="{Binding RejectReason, UpdateSourceTrigger=PropertyChanged}" Width="240" Margin="0,0,8,4"/>
+                <Button Content="رفض" Style="{StaticResource SecondaryButton}" Command="{Binding RejectCommand}" IsEnabled="{Binding CanDecideSelected}" Margin="0,0,16,4"/>
+                <Button Content="تمت المراجعة (الآجل والمجاني)" Style="{StaticResource PrimaryButton}" Command="{Binding ReviewCommand}" IsEnabled="{Binding CanReview}" Margin="0,0,8,4"/>
+                <Button Content="عرض صورة الوصل" Style="{StaticResource SecondaryButton}" Command="{Binding PhotoCommand}" Margin="0,0,0,4"/>
+            </WrapPanel>
+            <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                       Text="البيع النقدي والتحصيل والزبون الجديد تُرحَّل تلقائيًا. الآجل والمجاني يُرحَّلان تلقائيًا ويظهران للاطلاع (بلا رفض). المصروف ومرتجع الزبون ينتظران الاعتماد، وتسوية المندوب لا تُغلق قبل حسمهما."/>
+
+            <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الوقت" Binding="{Binding OccurredAt, StringFormat='yyyy/MM/dd HH:mm'}" Width="125"/>
+                    <DataGridTextColumn Header="المندوب" Binding="{Binding RepName}" Width="120"/>
+                    <DataGridTextColumn Header="النوع" Binding="{Binding KindText}" Width="90"/>
+                    <DataGridTextColumn Header="التفاصيل" Binding="{Binding Summary}" Width="*"/>
+                    <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="90"/>
+                    <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="120"/>
+                    <DataGridTextColumn Header="تنبيه / سبب" Binding="{Binding Warning}" Width="170"/>
+                    <DataGridTextColumn Header="صورة" Binding="{Binding HasPhoto}" Width="50"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

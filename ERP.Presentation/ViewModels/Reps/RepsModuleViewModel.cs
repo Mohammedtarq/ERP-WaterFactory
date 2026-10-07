@@ -21,6 +21,9 @@ public class RepsModuleViewModel : ModuleViewModel
         Documents = Add(new RepDocumentsSectionViewModel(s, d));
         Settlement = Add(new RepSettlementSectionViewModel(s, d));
         Incentives = Add(new RepIncentivesSectionViewModel(s, d));
+        // تطبيق المندوبين: ما وصل من الهواتف، والأجهزة والإعدادات
+        Requests = Add(new RepRequestsSectionViewModel(s, d));
+        Devices = Add(new RepDevicesSectionViewModel(s, d));
         // شاشة "عمليات الكاش فان" القديمة مخفية (حلّت محلها مستندات المندوبين المرقمة) — لا تُحذف
         Van = new VanOperationsSectionViewModel(s, d);
         if (ShowLegacyVanOperations) Add(Van);
@@ -38,6 +41,8 @@ public class RepsModuleViewModel : ModuleViewModel
     public RepDocumentsSectionViewModel Documents { get; }
     public RepSettlementSectionViewModel Settlement { get; }
     public RepIncentivesSectionViewModel Incentives { get; }
+    public RepRequestsSectionViewModel Requests { get; }
+    public RepDevicesSectionViewModel Devices { get; }
     public RepVansSectionViewModel Vans { get; }
     /// <summary>الشاشة القديمة ما زالت تعمل، لكنها خارج التبويبات.</summary>
     public VanOperationsSectionViewModel Van { get; }

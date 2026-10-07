@@ -22,6 +22,7 @@ public static class SpecialPermission
     public const string SellRawMaterials = "Special:SellRaw";
     public const string CreditLimitOverride = "Special:CreditOverride";
     public const string ReservedStock = "Special:ReservedStock";
+    public const string RepApproval = "Special:RepApproval";
 
     public static readonly (string Code, string Name, string Hint)[] All =
     {
@@ -36,6 +37,7 @@ public static class SpecialPermission
         (SellRawMaterials, "بيع المواد الأولية", "اختيار مخزن المواد الأولية في فاتورة البيع"),
         (CreditLimitOverride, "تجاوز حد دين العميل", "الموافقة على بيع آجل لعميل تجاوز حد دينه"),
         (ReservedStock, "البيع من رصيد محجوز لعميل آخر", "صرف تشغيلات متغير مطعم (ليبله الخاص) لعميل غيره عند نفاد الأساسي، وتصحيح متغير تشغيلة"),
+        (RepApproval, "اعتماد طلبات المندوبين", "الموافقة على مصروف المندوب ومرتجع الزبون أو رفضهما، ومراجعة الآجل والمجاني"),
     };
 
     public static string NameOf(string code) => All.FirstOrDefault(p => p.Code == code).Name ?? code;

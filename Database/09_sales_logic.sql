@@ -475,7 +475,9 @@ GO
    ============================================================ */
 CREATE OR ALTER PROCEDURE sp_Sales_PostInvoice
     @InvoiceId  INT,
-    @UserId     INT
+    @UserId     INT,
+    -- بيع تطبيق المندوب: يتجاوز حد الدين بقرار الإدارة (إعدادات التطبيق)، ويُسجَّل تنبيهًا للمراجعة
+    @AllowOverLimit BIT = 0
 AS
 BEGIN
     SET NOCOUNT ON; SET XACT_ABORT ON;
@@ -533,7 +535,7 @@ BEGIN
     IF @free = 0 AND @total > @paid AND @limit IS NOT NULL
     BEGIN
         DECLARE @balance DECIMAL(18,2) = ISNULL((SELECT Balance FROM vw_CustomerBalances WHERE CustomerId = @custId), 0);
-        IF @balance + (@total - @paid) > @limit
+        IF @balance + (@total - @paid) > @limit AND @AllowOverLimit = 0
            AND NOT EXISTS (SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
                            WHERE u.Id = @UserId AND rp.ModuleCode = N'Special:CreditOverride' AND rp.CanView = 1)
         BEGIN

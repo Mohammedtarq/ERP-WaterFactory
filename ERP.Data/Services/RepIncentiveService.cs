@@ -14,7 +14,7 @@ public record RepIncentiveRow(int RepEmployeeId, string RepName, int ItemId, str
 }
 
 /// <summary>
-/// حافز المندوب بالعبوة: المحمّل (مستندات التحميل) − الراجع (مستندات الإرجاع والتسوية) − المجاني، بكل وحدة تعبئة،
+/// حافز المندوب بالعبوة: المحمّل (مستندات التحميل) − الراجع (مستندات الإرجاع والتسوية) − المجاني (التسوية وتطبيق المندوب)، بكل وحدة تعبئة،
 /// × مبلغ الإدارة لتلك الوحدة. يتجمع على الشهر ويُصرف مرة واحدة مع الراتب (لا قيد يومي).
 /// </summary>
 public class RepIncentiveService
@@ -39,6 +39,15 @@ public class RepIncentiveService
             .GroupBy(x => new { Rep = x.RepSettlement.RepEmployeeId, x.ItemId, Level = x.PackagingLevelId!.Value })
             .Select(g => new { g.Key.Rep, g.Key.ItemId, g.Key.Level, Qty = g.Sum(x => x.QuantityInLevel ?? 0) })
             .ToListAsync();
+        // مجاني تطبيق المندوب: فاتورة مجانية مرحّلة من سيارته
+        free.AddRange(await _db.SalesInvoiceLines.AsNoTracking()
+            .Where(l => l.SalesInvoice.IsFreeSale && l.SalesInvoice.Status == DocumentStatus.Posted && l.SalesInvoice.SalesRepEmployeeId != null
+                        && l.SalesInvoice.Warehouse.WarehouseType == WarehouseType.RepVan
+                        && l.SalesInvoice.InvoiceDate >= f && l.SalesInvoice.InvoiceDate <= t
+                        && (repEmployeeId == null || l.SalesInvoice.SalesRepEmployeeId == repEmployeeId))
+            .GroupBy(l => new { Rep = l.SalesInvoice.SalesRepEmployeeId!.Value, l.ItemId, Level = l.PackagingLevelId })
+            .Select(g => new { g.Key.Rep, g.Key.ItemId, g.Key.Level, Qty = g.Sum(l => l.QuantityInLevel) })
+            .ToListAsync());
 
         var keys = docs.Select(d => (d.Rep, d.ItemId, Level: d.PackagingLevelId)).Concat(free.Select(x => (x.Rep, x.ItemId, x.Level))).Distinct().ToList();
         if (keys.Count == 0) return new();

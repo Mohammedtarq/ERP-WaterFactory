@@ -120,7 +120,9 @@ public class RepOperationsTests
         // عنده نقد في المحفظة لكنه سُوّي اليوم: ليس متأخرًا؛ بعد يومين يصبح متأخرًا
         var svc = new RepOperationsService(db);
         Assert.DoesNotContain(await svc.GetOverdueAsync(DateTime.Today), o => o.RepEmployeeId == repId);
-        Assert.Contains(await svc.GetOverdueAsync(DateTime.Today.AddDays(2)), o => o.RepEmployeeId == repId && o.WalletBalance == 500m);
+        // النقد قد يبقى مع المندوب يومين (إعدادات تطبيق المندوبين)، والتنبيه من اليوم الثالث
+        Assert.DoesNotContain(await svc.GetOverdueAsync(DateTime.Today.AddDays(2)), o => o.RepEmployeeId == repId);
+        Assert.Contains(await svc.GetOverdueAsync(DateTime.Today.AddDays(3)), o => o.RepEmployeeId == repId && o.WalletBalance == 500m);
 
         // تسليم الباقي يصفّر المحفظة
         Assert.True((await reps.RecordCashHandoverAsync(repId, 500, DateTime.Today, _f.AdminId)).Success);
