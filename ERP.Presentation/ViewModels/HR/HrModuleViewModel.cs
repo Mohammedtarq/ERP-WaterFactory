@@ -505,31 +505,111 @@ public class IncentiveSettingsSectionViewModel : CrudSectionViewModel<IncentiveS
 
 // ============================ حوافز المبيعات ============================
 /// <summary>مبلغ حافز المندوب لكل عبوة: الإدارة تحدد مبلغ الشرنك ومبلغ الكارتون لكل منتج.</summary>
+/// <summary>سطر حافز قابل للتعديل: يُعلَّم «معدَّل» حتى يُحفظ.</summary>
+public class RepIncentiveRateEditRow : ObservableObject
+{
+    private decimal _rate;
+
+    public RepIncentiveRateEditRow(RepIncentiveRateRow row, bool isNew = false)
+    {
+        Row = row;
+        _rate = row.Rate;
+        Original = isNew ? -1 : row.Rate;
+    }
+
+    public RepIncentiveRateRow Row { get; }
+    public string ItemName => Row.ItemName;
+    public string LevelName => Row.LevelName;
+    public decimal Pieces => Row.Pieces;
+    public decimal Rate { get => _rate; set { if (SetProperty(ref _rate, value)) { OnPropertyChanged(nameof(IsChanged)); OnPropertyChanged(nameof(StateText)); } } }
+    private decimal Original { get; }
+    public bool IsChanged => Rate != Original;
+    public string StateText => Original < 0 ? "جديد — لم يُحفظ" : IsChanged ? "معدَّل — لم يُحفظ" : Rate > 0 ? "مفعّل" : "بلا حافز";
+}
+
 public class RepIncentiveRatesSectionViewModel : SectionViewModel
 {
+    private string _filter = "";
+    private Item? _newItem;
+    private ItemPackagingLevel? _newLevel;
+    private decimal _newRate;
+
     public RepIncentiveRatesSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.HR, "حافز المندوب", Icons.Reps, "#F97316", "مبلغ لكل شرنك ولكل كارتون — يُحسب على المباع (المحمّل − الراجع) ويُصرف مع الراتب")
     {
         SaveCommand = new AsyncRelayCommand(SaveAsync);
+        AddCommand = new RelayCommand(AddRow);
     }
 
-    public ObservableCollection<RepIncentiveRateRow> Rows { get; } = new();
+    protected override bool HasPendingInput => Rows.Any(r => r.IsChanged);
+
+    public ObservableCollection<RepIncentiveRateEditRow> Rows { get; } = new();
+    public string Filter { get => _filter; set { if (SetProperty(ref _filter, value ?? "")) OnPropertyChanged(nameof(VisibleRows)); } }
+    /// <summary>قائمة فعلية للجدول القابل للتحرير.</summary>
+    public IList<RepIncentiveRateEditRow> VisibleRows => Filter.Trim().Length == 0 ? Rows
+        : Rows.Where(r => r.ItemName.Contains(Filter.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
     public AsyncRelayCommand SaveCommand { get; }
+
+    // ---- إضافة منتج/عبوة غير ظاهرة في الجدول ----
+    public ObservableCollection<Item> Products { get; } = new();
+    public ObservableCollection<ItemPackagingLevel> NewLevels { get; } = new();
+    public Item? NewItem { get => _newItem; set { if (SetProperty(ref _newItem, value)) Background(LoadLevelsAsync()); } }
+    public ItemPackagingLevel? NewLevel { get => _newLevel; set => SetProperty(ref _newLevel, value); }
+    public decimal NewRate { get => _newRate; set => SetProperty(ref _newRate, value); }
+    public RelayCommand AddCommand { get; }
 
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
         Rows.Clear();
-        foreach (var r in await new RepIncentiveService(db).RatesAsync()) Rows.Add(r);
-        StatusMessage = Rows.Count == 0 ? "لا توجد منتجات بوحدات شرنك أو كارتون" : $"{Rows.Count(r => r.Rate > 0)} من {Rows.Count} وحدة لها حافز";
+        foreach (var r in await new RepIncentiveService(db).RatesAsync()) Rows.Add(new RepIncentiveRateEditRow(r));
+        Products.Clear();
+        foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync())
+            Products.Add(i);
+        OnPropertyChanged(nameof(VisibleRows));
+        StatusMessage = Rows.Count == 0 ? "لا توجد منتجات بعبوات — أضف منتجًا من الأعلى" : $"{Rows.Count(r => r.Rate > 0)} من {Rows.Count} عبوة لها حافز";
+    }
+
+    private async Task LoadLevelsAsync()
+    {
+        NewLevels.Clear();
+        if (NewItem is not { } item) return;
+        await using var db = Session.NewDb();
+        foreach (var l in await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == item.Id).OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync())
+            NewLevels.Add(l);
+        NewLevel = NewLevels.FirstOrDefault();
+    }
+
+    private void AddRow()
+    {
+        if (NewItem is null || NewLevel is null) { Dialogs.Error("اختر المنتج والعبوة"); return; }
+        if (NewRate < 0) { Dialogs.Error("الحافز لا يكون سالبًا"); return; }
+        if (Rows.FirstOrDefault(r => r.Row.PackagingLevelId == NewLevel.Id) is { } existing)
+        {
+            existing.Rate = NewRate;
+            StatusMessage = $"{existing.ItemName} — {existing.LevelName} موجود في الجدول: عُدّل مبلغه، اضغط «حفظ المبالغ»";
+        }
+        else
+        {
+            Rows.Add(new RepIncentiveRateEditRow(new RepIncentiveRateRow(NewItem.Id, NewItem.ItemName, NewLevel.Id, NewLevel.LevelName, NewLevel.EquivalentBaseUnits) { Rate = NewRate }, isNew: true));
+            StatusMessage = $"أُضيف {NewItem.ItemName} — {NewLevel.LevelName}: اضغط «حفظ المبالغ» لاعتماده";
+        }
+        NewRate = 0;
+        OnPropertyChanged(nameof(VisibleRows));
     }
 
     private async Task SaveAsync()
     {
         if (!Require(CanEdit || CanAdd, "تعديل حافز المندوب")) return;
+        if (Rows.Any(r => r.Rate < 0)) { Dialogs.Error("الحافز لا يكون سالبًا"); return; }
+        foreach (var r in Rows) r.Row.Rate = r.Rate;
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(() => new RepIncentiveService(db).SaveRatesAsync(Rows.ToList(), Session.UserId), "تم حفظ مبالغ الحافز — تسري على حساب الشهر"))
+        if (await RunOperationAsync(() => new RepIncentiveService(db).SaveRatesAsync(Rows.Select(r => r.Row).ToList(), Session.UserId), "تم حفظ مبالغ الحافز — تسري على حساب الشهر"))
+        {
+            var message = StatusMessage;
             await LoadAsync();
+            StatusMessage = message;
+        }
     }
 }
 

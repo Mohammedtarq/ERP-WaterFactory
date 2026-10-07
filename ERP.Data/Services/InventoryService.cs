@@ -63,21 +63,4 @@ public class InventoryService
         await _db.SaveChangesAsync();
         return FinanceOperationResult.Ok();
     }
-
-    /// <summary>الأصناف التي وصل رصيدها الإجمالي إلى حد التنبيه أو أقل.</summary>
-    public async Task<List<(Item item, decimal balance)>> GetLowStockAsync()
-    {
-        var items = await _db.Items.AsNoTracking()
-            .Where(i => i.IsActive && i.MinStockAlertLevel != null).ToListAsync();
-        var balances = await _db.StockTransactions
-            .GroupBy(t => t.ItemId)
-            .Select(g => new { g.Key, Qty = g.Sum(t => t.QuantityBaseUnits) })
-            .ToDictionaryAsync(x => x.Key, x => x.Qty);
-
-        return items
-            .Select(i => (item: i, balance: balances.GetValueOrDefault(i.Id)))
-            .Where(x => x.balance <= x.item.MinStockAlertLevel!.Value)
-            .OrderBy(x => x.balance - x.item.MinStockAlertLevel!.Value)
-            .ToList();
-    }
 }

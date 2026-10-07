@@ -259,7 +259,8 @@ public class CloudSyncService
         var productIds = products.Select(p => p.ItemId).ToList();
 
         var agentIds = snapCustomers.Where(c => c.PriceAgentId is not null).Select(c => c.PriceAgentId!.Value).Distinct().ToList();
-        var agentPrices = await _db.AgentItemPrices.AsNoTracking().Where(p => agentIds.Contains(p.CustomerId) && productIds.Contains(p.ItemId))
+        // أسعار الوكلاء للمنتج الأساسي (الطلب الخاص يسعّره المعمل عند الترحيل)
+        var agentPrices = await _db.AgentItemPrices.AsNoTracking().Where(p => agentIds.Contains(p.CustomerId) && productIds.Contains(p.ItemId) && p.CustomRecipeId == null)
             .OrderBy(p => p.CustomerId).ThenBy(p => p.ItemId)
             .Select(p => new SnapshotAgentPrice(p.CustomerId, p.ItemId, p.AgentPrice)).ToListAsync();
 

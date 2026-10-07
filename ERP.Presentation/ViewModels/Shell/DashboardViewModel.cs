@@ -8,7 +8,8 @@ using Microsoft.EntityFrameworkCore;
 namespace ERP.Presentation.ViewModels.Shell;
 
 public record KpiTile(string Title, string Value, string Glyph, string Color, string Hint);
-public record LowStockRow(string ItemCode, string ItemName, decimal Balance, decimal MinLevel);
+/// <summary>صنف عند حد التنبيه في مخزن بعينه — الرصيد والحد بعبوة الصنف.</summary>
+public record LowStockRow(string ItemCode, string ItemName, string Warehouse, string Balance, string MinLevel);
 
 public class DashboardViewModel : SessionViewModel
 {
@@ -55,7 +56,7 @@ public class DashboardViewModel : SessionViewModel
                 .Where(i => i.Status == DocumentStatus.Posted && i.InvoiceDate == today && !i.IsFreeSale && !i.IsOpeningBalance)
                 .Select(i => new { i.TotalAmount, i.AmountPaidNow }).ToListAsync();
             var receivables = (await sales.GetCustomerBalancesAsync()).Where(b => b.Balance > 0).Sum(b => b.Balance);
-            var low = await new InventoryService(db).GetLowStockAsync();
+            var low = await new StockAlertService(db).LowAsync();
             var drafts = await db.SalesInvoices.CountAsync(i => i.Status == DocumentStatus.Draft);
 
             Tiles.Clear();
@@ -83,8 +84,8 @@ public class DashboardViewModel : SessionViewModel
             }
 
             LowStock.Clear();
-            foreach (var (item, balance) in low.Take(10))
-                LowStock.Add(new LowStockRow(item.ItemCode, item.ItemName, balance, item.MinStockAlertLevel ?? 0));
+            foreach (var x in low.Take(10))
+                LowStock.Add(new LowStockRow(x.ItemCode, x.ItemName, x.WarehouseName, x.BalanceText, x.MinText));
 
             RecentInvoices.Clear();
             foreach (var r in (await sales.GetInvoiceListAsync()).Take(10)) RecentInvoices.Add(r);

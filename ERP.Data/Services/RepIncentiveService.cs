@@ -79,7 +79,8 @@ public class RepIncentiveService
     public async Task<List<RepIncentiveRateRow>> RatesAsync()
     {
         var levels = await _db.ItemPackagingLevels.AsNoTracking()
-            .Where(l => (l.EquivalentBaseUnits > 1 && l.Item.IsActive && l.Item.SourcingMethod == SourcingMethod.Manufactured)
+            // كل منتج يُباع (مصنّع أو مصنّع ومشترى) بعبوته، وما أُضيف له حافز يدويًا بأي وحدة
+            .Where(l => (l.EquivalentBaseUnits > 1 && l.Item.IsActive && l.Item.SourcingMethod != SourcingMethod.Purchased)
                         || _db.RepItemIncentiveRates.Any(r => r.PackagingLevelId == l.Id))
             .Select(l => new { l.Id, l.ItemId, l.Item.ItemName, l.LevelName, l.EquivalentBaseUnits }).ToListAsync();
         var rates = await _db.RepItemIncentiveRates.AsNoTracking().ToDictionaryAsync(r => r.PackagingLevelId, r => r.IncentiveRatePerUnit);

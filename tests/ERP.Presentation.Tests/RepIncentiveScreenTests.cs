@@ -71,6 +71,24 @@ public class RepIncentiveScreenTests
         await ratesScreen.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.Contains(ratesScreen.Rows, r => r.ItemName == "ماء حافز شاشة" && r.LevelName == "كارتون" && r.Rate == 300);
+        Assert.All(ratesScreen.Rows, r => Assert.False(r.IsChanged));
+
+        // إضافة عبوة غير ظاهرة (القطعة) من أعلى الشاشة، والبحث، ثم إلغاؤها بصفر (ملاحظة التجربة 8)
+        ratesScreen.NewItem = ratesScreen.Products.Single(p => p.ItemName == "ماء حافز شاشة");
+        await ratesScreen.IdleAsync();
+        ratesScreen.NewLevel = ratesScreen.NewLevels.Single(l => l.LevelName == "قطعة");
+        ratesScreen.NewRate = 10;
+        ratesScreen.AddCommand.Execute(null);
+        var piece = ratesScreen.Rows.Single(r => r.ItemName == "ماء حافز شاشة" && r.LevelName == "قطعة");
+        Assert.Equal("جديد — لم يُحفظ", piece.StateText);
+        ratesScreen.Filter = "حافز شاشة";
+        Assert.All(ratesScreen.VisibleRows, r => Assert.Contains("حافز شاشة", r.ItemName));
+        await ratesScreen.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Contains(ratesScreen.Rows, r => r.LevelName == "قطعة" && r.ItemName == "ماء حافز شاشة" && r.Rate == 10 && r.StateText == "مفعّل");
+        ratesScreen.Rows.Single(r => r.LevelName == "قطعة" && r.ItemName == "ماء حافز شاشة").Rate = 0;
+        await ratesScreen.SaveCommand.ExecuteAsync();
+        Assert.DoesNotContain(ratesScreen.Rows, r => r.LevelName == "قطعة" && r.ItemName == "ماء حافز شاشة");
 
         // 2) المندوبون ← حوافز المندوبين: المحمّل والراجع والمباع بالعدد، والمبلغ المتجمع
         var reps = shell.Open<RepsModuleViewModel>(ModuleCode.Reps);

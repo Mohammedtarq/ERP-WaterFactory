@@ -378,6 +378,8 @@ public class WarehouseDocumentService
         var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
             .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
         var totals = raw.GroupBy(r => r.ItemId).ToDictionary(g => g.Key, g => g.Sum(x => x.Qty));
+        // حد التنبيه لهذا المخزن وحده (المضبوط من داخله، أو حد بطاقة الصنف إن كان مخزنه الرئيسي)
+        var mins = await new StockAlertService(_db).TotalsAsync(new[] { warehouseId }, items.Values.ToList());
 
         return raw.Select(r =>
         {
@@ -388,7 +390,7 @@ public class WarehouseDocumentService
                 ItemId = r.ItemId, ItemCode = item.ItemCode, ItemName = item.ItemName, BatchNumber = b?.BatchNumber, ExpiryDate = b?.ExpiryDate,
                 Variant = b?.CustomRecipe?.Name,
                 Quantity = r.Qty, Breakdown = Breakdown(r.Qty, levels.GetValueOrDefault(r.ItemId)),
-                BelowAlert = item.MinStockAlertLevel is { } min && totals[r.ItemId] <= min
+                BelowAlert = mins.TryGetValue(r.ItemId, out var min) && totals[r.ItemId] <= min
             };
         }).OrderBy(r => r.ItemName).ThenBy(r => r.ExpiryDate ?? DateTime.MaxValue).ToList();
     }

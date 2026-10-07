@@ -41,7 +41,7 @@
                         <DataGridTextColumn Header="الوحدة" Binding="{Binding BaseUnitName}" Width="55"/>
                         <DataGridTextColumn Header="المصدر" Binding="{Binding SourcingMethod, Converter={StaticResource EnumArabicConverter}}" Width="65"/>
                         <DataGridTextColumn Header="سعر البيع" Binding="{Binding SalePrice, StringFormat=N0}" Width="75"/>
-                        <DataGridTextColumn Header="حد التنبيه" Binding="{Binding MinStockAlertLevel, StringFormat=N0}" Width="70"/>
+                        <DataGridTextColumn Header="الحد الافتراضي" Binding="{Binding MinStockAlertLevel, StringFormat=N0}" Width="90"/>
                         <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="45"/>
                         <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
@@ -96,7 +96,8 @@
                         <TextBox Text="{Binding Editor.UnitWeightGrams, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                         <TextBlock Text="مدة تجهيز المورد (يوم)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.LeadTimeDays, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
-                        <TextBlock Text="حد التنبيه الأدنى (قطعة)" Style="{StaticResource FieldLabel}"/>
+                        <TextBlock Text="حد التنبيه الافتراضي (قطعة)" Style="{StaticResource FieldLabel}"
+                                   ToolTip="يسري في المخزن الرئيسي للصنف ما لم يُضبط حد خاص من تبويب «حدود التنبيه» داخل المخزن"/>
                         <TextBox Text="{Binding Editor.MinStockAlertLevel, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                         <CheckBox Content="فعّال" IsChecked="{Binding Editor.IsActive}"/>
                         <TextBlock Text="الصنف الجديد يحصل تلقائيًا على وحدة القطعة. المنتج المصنَّع بعبوة واحدة: الشرنك صنف والكارتون صنف آخر (مثل «الرحمة 330 شرنك» و«الرحمة 330 كارتون»)، وتُضاف عبوته من هيكلية التعبئة." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>

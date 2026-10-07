@@ -14,25 +14,41 @@
                     <TextBox Text="{Binding HistoryDays, UpdateSourceTrigger=LostFocus}" Width="60" FlowDirection="LeftToRight"/>
                     <TextBlock Text="الطلب يكفي (يوم)" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="12,0,6,0"/>
                     <TextBox Text="{Binding CoverDays, UpdateSourceTrigger=LostFocus}" Width="60" FlowDirection="LeftToRight"/>
-                    <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="12,0,0,0"/>
+                    <TextBlock Text="أيام الأمان" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                    <TextBox Text="{Binding SafetyDays, UpdateSourceTrigger=LostFocus}" Width="50" FlowDirection="LeftToRight"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}" Margin="12,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="حفظ التعديلات"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="8,0,0,0"/>
                     <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                 </StackPanel>
                 <TextBlock Text="مقترح الشراء" Style="{StaticResource SectionTitle}" Margin="0"/>
             </DockPanel>
             <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
-                       Text="نقطة الطلب = الاستهلاك اليومي × (مدة تجهيز المورد + 7 أيام أمان)، أو حد التنبيه إن كان أكبر. أدخل مدة التجهيز لكل مادة من بطاقة الصنف."/>
+                       Text="{Binding FormulaText}"/>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
-            <DataGrid ItemsSource="{Binding Rows}">
+            <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="False" CanUserAddRows="False">
+                <DataGrid.Resources>
+                    <Style x:Key="EditableCell" TargetType="DataGridCell">
+                        <Setter Property="Background" Value="#FFFBEB"/>
+                        <Setter Property="ToolTip" Value="قابل للتعديل — ثم «حفظ التعديلات»"/>
+                    </Style>
+                </DataGrid.Resources>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="الحالة" Binding="{Binding Status}" Width="90"/>
-                    <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="100"/>
-                    <DataGridTextColumn Header="المادة" Binding="{Binding ItemName}" Width="*"/>
-                    <DataGridTextColumn Header="الرصيد" Binding="{Binding OnHand, StringFormat=N0}" Width="100"/>
-                    <DataGridTextColumn Header="الاستهلاك اليومي" Binding="{Binding DailyUse, StringFormat=N0}" Width="110"/>
-                    <DataGridTextColumn Header="يكفي (يوم)" Binding="{Binding CoverDays, StringFormat=N1, TargetNullValue='—'}" Width="90"/>
-                    <DataGridTextColumn Header="مدة التجهيز" Binding="{Binding LeadTimeDays}" Width="90"/>
-                    <DataGridTextColumn Header="نقطة الطلب" Binding="{Binding ReorderPoint, StringFormat=N0}" Width="100"/>
-                    <DataGridTextColumn Header="الكمية المقترحة" Binding="{Binding SuggestedQuantity, StringFormat=N0}" Width="120"/>
+                    <DataGridTextColumn Header="الحالة" Binding="{Binding Row.Status}" Width="90" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الرمز" Binding="{Binding Row.ItemCode}" Width="100" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="المادة" Binding="{Binding Row.ItemName}" Width="*" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الرصيد" Binding="{Binding Row.OnHand, StringFormat=N0}" Width="100" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الاستهلاك اليومي" Binding="{Binding Row.DailyUse, StringFormat=N0}" Width="110" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="يكفي (يوم)" Binding="{Binding Row.CoverDays, StringFormat=N1, TargetNullValue='—'}" Width="90" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="مدة التجهيز ✎" Binding="{Binding LeadTimeDays, UpdateSourceTrigger=LostFocus}" Width="100" CellStyle="{StaticResource EditableCell}"/>
+                    <DataGridTextColumn Header="حد التنبيه ✎" Binding="{Binding AlertLevel, TargetNullValue='', UpdateSourceTrigger=LostFocus}" Width="100" CellStyle="{StaticResource EditableCell}"/>
+                    <DataGridTextColumn Header="نقطة الطلب" Binding="{Binding Row.ReorderPoint, StringFormat=N0}" Width="100" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الكمية المقترحة" Binding="{Binding Row.SuggestedQuantity, StringFormat=N0}" Width="120" IsReadOnly="True"/>
+                    <DataGridCheckBoxColumn Header="معدَّل" Binding="{Binding IsChanged, Mode=OneWay}" Width="60" IsReadOnly="True"/>
                 </DataGrid.Columns>
             </DataGrid>
         </DockPanel>

@@ -12,6 +12,8 @@ public class CustomRecipe
 
     public string Name { get; set; } = string.Empty;   // مثال: وصفة مطعم الحسون
     public bool IsActive { get; set; } = true;
+    /// <summary>السعر العام للطلب الخاص بالقطعة؛ NULL = سعر المنتج الأساسي (42_selling_prices_variants.sql).</summary>
+    public decimal? SalePrice { get; set; }
 
     public ICollection<CustomRecipeLine> Lines { get; set; } = new List<CustomRecipeLine>();
 }

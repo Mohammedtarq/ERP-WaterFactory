@@ -12,6 +12,10 @@ public class AgentItemPrice
     public Item Item { get; set; } = null!;
 
     public decimal AgentPrice { get; set; }
+
+    /// <summary>سعر الوكيل لطلب خاص بعينه؛ NULL = سعره للمنتج الأساسي (42_selling_prices_variants.sql).</summary>
+    public int? CustomRecipeId { get; set; }
+    public CustomRecipe? CustomRecipe { get; set; }
 }
 
 /// <summary>إعداد عام لسعر القطعة الواحدة لمستلزمات التحميل، بتاريخ سريان.</summary>

@@ -101,7 +101,8 @@ public class SalesService
     // ====================== التسعير ======================
 
     /// <summary>السعر المقترح لوحدة البيع المختارة (كارتون/شرنك/قطعة) — للعرض الفوري في السطر.</summary>
-    public async Task<decimal> GetSuggestedUnitPriceAsync(int customerId, int itemId, int packagingLevelId, bool useAgentPricing)
+    /// <param name="recipeId">الطلب الخاص (المتغير) للسطر: سعره الخاص إن حُدّد، وإلا سعر المنتج الأساسي.</param>
+    public async Task<decimal> GetSuggestedUnitPriceAsync(int customerId, int itemId, int packagingLevelId, bool useAgentPricing, int? recipeId = null)
     {
         var baseUnits = await _db.ItemPackagingLevels
             .Where(p => p.Id == packagingLevelId && p.ItemId == itemId)
@@ -109,8 +110,8 @@ public class SalesService
             .FirstOrDefaultAsync() ?? 0;
 
         var piecePrice = await ScalarAsync<decimal?>(
-            "SELECT dbo.fn_Sales_BaseUnitPrice(@c, @i, @a)",
-            P("@c", customerId), P("@i", itemId), P("@a", useAgentPricing)) ?? 0;
+            "SELECT dbo.fn_Sales_UnitPrice(@c, @i, @r, @a)",
+            P("@c", customerId), P("@i", itemId), P("@r", (object?)recipeId ?? DBNull.Value), P("@a", useAgentPricing)) ?? 0;
 
         return Math.Round(piecePrice * baseUnits, 2);
     }

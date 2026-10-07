@@ -19,8 +19,9 @@ public class ReorderRow
     /// <summary>نقطة إعادة الطلب = الاستهلاك اليومي × (مدة التجهيز + أيام الأمان)، وحد التنبيه إن كان أكبر.</summary>
     public decimal ReorderPoint { get; init; }
     public decimal SuggestedQuantity { get; init; }
+    public int Safety { get; init; } = ReorderService.SafetyDays;
     public bool NeedsOrder => OnHand <= ReorderPoint && (DailyUse > 0 || AlertLevel > 0);
-    public string Status => OnHand <= 0 ? "نفد" : NeedsOrder ? "اطلب الآن" : CoverDays is decimal d && d < LeadTimeDays + ReorderService.SafetyDays * 2 ? "قريبًا" : "كافٍ";
+    public string Status => OnHand <= 0 ? "نفد" : NeedsOrder ? "اطلب الآن" : CoverDays is decimal d && d < LeadTimeDays + Safety * 2 ? "قريبًا" : "كافٍ";
 }
 
 /// <summary>
@@ -35,7 +36,8 @@ public class ReorderService
 
     /// <param name="historyDays">فترة احتساب معدل الاستهلاك.</param>
     /// <param name="coverDays">بعد الوصول، يكفي الطلب المقترح هذا العدد من الأيام.</param>
-    public async Task<List<ReorderRow>> SuggestAsync(int historyDays = 30, int coverDays = 30, int defaultLeadTime = 7)
+    /// <param name="safetyDays">أيام أمان فوق مدة التجهيز (قابلة للتعديل من الشاشة).</param>
+    public async Task<List<ReorderRow>> SuggestAsync(int historyDays = 30, int coverDays = 30, int defaultLeadTime = 7, int safetyDays = SafetyDays)
     {
         var since = DateTime.UtcNow.Date.AddDays(-historyDays);
         var items = await _db.Items.AsNoTracking()
@@ -43,6 +45,8 @@ public class ReorderService
         var ids = items.Select(i => i.Id).ToList();
         var stockWh = await _db.Warehouses.AsNoTracking()
             .Where(w => w.WarehouseType == WarehouseType.RawMaterial || w.WarehouseType == WarehouseType.WorkInProcess).Select(w => w.Id).ToListAsync();
+        // حد التنبيه: مجموع حدود مخازن المواد الأولية (المضبوطة من داخل كل مخزن، أو حد بطاقة الصنف في المخزن الرئيسي)
+        var alerts = await new StockAlertService(_db).TotalsAsync(stockWh, items);
         var onHand = await _db.StockTransactions.Where(t => ids.Contains(t.ItemId) && stockWh.Contains(t.WarehouseId))
             .GroupBy(t => t.ItemId).Select(g => new { g.Key, Qty = g.Sum(t => t.QuantityBaseUnits) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
         // الاستهلاك = ما خرج من مخزن المواد إلى الإنتاج أو للصرف (لا المناقلات الداخلية بين مخازن المواد)
@@ -61,13 +65,14 @@ public class ReorderService
             var qty = onHand.GetValueOrDefault(i.Id);
             var daily = Math.Max(0, used.GetValueOrDefault(i.Id) - returned.GetValueOrDefault(i.Id)) / historyDays;
             var lead = i.LeadTimeDays ?? defaultLeadTime;
-            var point = Math.Max(Math.Round(daily * (lead + SafetyDays), 0), i.MinStockAlertLevel ?? 0);
+            var alert = alerts.TryGetValue(i.Id, out var a) ? a : (decimal?)null;
+            var point = Math.Max(Math.Round(daily * (lead + safetyDays), 0), alert ?? 0);
             var target = daily * (lead + coverDays);
             var suggested = Math.Max(0, Math.Ceiling(Math.Max(target, point) - qty));
             return new ReorderRow
             {
                 ItemId = i.Id, ItemCode = i.ItemCode, ItemName = i.ItemName, OnHand = qty, DailyUse = Math.Round(daily, 2),
-                LeadTimeDays = lead, AlertLevel = i.MinStockAlertLevel, ReorderPoint = point,
+                LeadTimeDays = lead, AlertLevel = alert, ReorderPoint = point, Safety = safetyDays,
                 SuggestedQuantity = qty <= point ? suggested : 0
             };
         }).OrderBy(r => r.Status switch { "نفد" => 0, "اطلب الآن" => 1, "قريبًا" => 2, _ => 3 }).ThenBy(r => r.ItemCode).ToList();

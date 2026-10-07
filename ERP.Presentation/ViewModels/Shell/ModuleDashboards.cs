@@ -126,7 +126,7 @@ public class ModuleDashboardViewModel : SessionViewModel
             .Select(x => new { x.TransactionDate, x.QuantityBaseUnits, x.TransactionType, x.ItemId }).ToListAsync();
         var byWarehouse = await db.StockTransactions.GroupBy(x => x.Warehouse.Name)
             .Select(g => new { g.Key, Qty = g.Sum(x => x.QuantityBaseUnits) }).ToListAsync();
-        var low = await new InventoryService(db).GetLowStockAsync();
+        var low = await new StockAlertService(db).LowAsync();
         var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).ToUniversalTime();
         var damagedMonth = -(await db.StockTransactions.Where(x => x.TransactionDate >= monthStart && x.QuantityBaseUnits < 0 &&
                                                                (x.TransactionType == StockTransactionType.Damaged || x.TransactionType == StockTransactionType.RepDamaged))
@@ -147,7 +147,7 @@ public class ModuleDashboardViewModel : SessionViewModel
             ("وارد", ChartPalette.Series1, day => inDay.GetValueOrDefault(day)),
             ("صادر", ChartPalette.Series2, day => outDay.GetValueOrDefault(day))));
         d.Ranks.Add(RankChart.Of("المخزون حسب المخزن", byWarehouse.Select(x => (x.Key, x.Qty)), "قطعة"));
-        d.Ranks.Add(RankChart.Of("النقص عن حد التنبيه", low.Select(x => (x.item.ItemName, x.item.MinStockAlertLevel!.Value - x.balance)), "قطعة", color: ChartPalette.Series2));
+        d.Ranks.Add(RankChart.Of("النقص عن حد التنبيه", low.Select(x => ($"{x.ItemName} ({x.WarehouseName})", x.MinQuantity!.Value - x.Balance)), "قطعة", color: ChartPalette.Series2));
 
         var damagedDay = moves.Where(m => m.QuantityBaseUnits < 0 && (m.TransactionType == StockTransactionType.Damaged || m.TransactionType == StockTransactionType.RepDamaged))
             .GroupBy(m => m.TransactionDate.ToLocalTime().Date).ToDictionary(g => g.Key, g => -g.Sum(m => m.QuantityBaseUnits));

@@ -627,57 +627,152 @@ public class BomSectionViewModel : SectionViewModel
 }
 
 // ============================ إعدادات التنبيهات ============================
+/// <summary>سطر حد تنبيه صنف في مخزن: الحد يُكتب بعبوة الصنف (كارتون/شرنك أو وحدة المادة) ويُحفظ بالقطعة.</summary>
 public class StockAlertRow : ObservableObject
 {
-    private decimal? _minLevel;
+    private decimal? _threshold;
 
     public int ItemId { get; init; }
     public string ItemCode { get; init; } = "";
     public string ItemName { get; init; } = "";
     public decimal Balance { get; init; }
-    public decimal? MinLevel { get => _minLevel; set { if (SetProperty(ref _minLevel, value)) OnPropertyChanged(nameof(IsLow)); } }
-    public bool IsLow => MinLevel is not null && Balance <= MinLevel;
-    internal decimal? Original { get; set; }
+    public string BalanceText { get; init; } = "";
+    /// <summary>العبوة التي يُكتب بها الحد وعدد قطعها.</summary>
+    public string UnitName { get; init; } = "قطعة";
+    public decimal UnitPieces { get; init; } = 1;
+    /// <summary>الحد بالعبوة (فارغ = لا تنبيه في هذا المخزن).</summary>
+    public decimal? Threshold
+    {
+        get => _threshold;
+        set { if (SetProperty(ref _threshold, value)) { OnPropertyChanged(nameof(IsLow)); OnPropertyChanged(nameof(IsChanged)); OnPropertyChanged(nameof(SourceText)); } }
+    }
+    public decimal? MinPieces => Threshold is { } t ? t * UnitPieces : null;
+    public bool IsLow => MinPieces is { } min && Balance <= min;
+    /// <summary>الحد الحالي مأخوذ من بطاقة الصنف (لم يُضبط لهذا المخزن بعد).</summary>
+    public bool IsDefault { get; init; }
+    public string SourceText => IsChanged ? "معدَّل — لم يُحفظ" : IsDefault ? "من بطاقة الصنف" : Threshold is null ? "" : "خاص بالمخزن";
+    internal decimal? Original { get; init; }
+    public bool IsChanged => Threshold != Original;
 }
 
-public class StockAlertsSectionViewModel : SectionViewModel
+/// <summary>
+/// حدود التنبيه لمخزن واحد (قرار المدير في التجربة: من داخل المخزن): بحث بالاسم أو الكود، والحد بعبوة الصنف، وحفظ.
+/// يُستعمل في تبويب «الأرصدة الحالية» لكل مخزن وفي شاشة «إعدادات التنبيهات».
+/// </summary>
+public class WarehouseAlertsEditor : ObservableObject
 {
-    public StockAlertsSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.Warehouse, "إعدادات التنبيهات", Icons.Alert, "#F97316", "حد التنبيه الأدنى لكل صنف والأصناف المنخفضة")
+    private readonly AppSession _session;
+    private readonly IDialogService _dialogs;
+    private readonly Func<bool> _canEdit;
+    private string _filter = "";
+    private string? _status;
+    private int? _warehouseId;
+
+    public WarehouseAlertsEditor(AppSession session, IDialogService dialogs, Func<bool> canEdit)
     {
+        (_session, _dialogs, _canEdit) = (session, dialogs, canEdit);
         SaveCommand = new AsyncRelayCommand(SaveAsync);
     }
 
     public ObservableCollection<StockAlertRow> Rows { get; } = new();
-    protected override bool ReloadOnActivate => true;
+    public string Filter { get => _filter; set { if (SetProperty(ref _filter, value ?? "")) OnPropertyChanged(nameof(VisibleRows)); } }
+    /// <summary>قائمة فعلية (لا استعلامًا كسولًا): جدول قابل للتحرير يحتاج IList.</summary>
+    public IList<StockAlertRow> VisibleRows => Filter.Trim().Length == 0 ? Rows
+        : Rows.Where(r => r.ItemName.Contains(Filter.Trim(), StringComparison.OrdinalIgnoreCase) || r.ItemCode.Contains(Filter.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
     public int LowCount => Rows.Count(r => r.IsLow);
+    public string? StatusMessage { get => _status; private set => SetProperty(ref _status, value); }
     public AsyncRelayCommand SaveCommand { get; }
+    /// <summary>بعد الحفظ: الشاشة المالكة تحدّث مؤشراتها (عدد ما عند الحد، وعمود «عند الحد» في الأرصدة).</summary>
+    public event Action? Saved;
 
-    public override async Task LoadAsync()
+    public async Task LoadAsync(int? warehouseId)
     {
-        await using var db = Session.NewDb();
-        var balances = await db.StockTransactions.GroupBy(t => t.ItemId)
-            .Select(g => new { g.Key, Qty = g.Sum(t => t.QuantityBaseUnits) }).ToDictionaryAsync(x => x.Key, x => x.Qty);
+        _warehouseId = warehouseId;
         Rows.Clear();
-        foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemCode).ToListAsync())
-            Rows.Add(new StockAlertRow
+        if (warehouseId is int id)
+        {
+            await using var db = _session.NewDb();
+            var rows = await new StockAlertService(db).ForWarehouseAsync(id);
+            var packs = await PackFormatter.LoadAsync(db, rows.Select(r => r.ItemId));
+            foreach (var r in rows)
             {
-                ItemId = i.Id, ItemCode = i.ItemCode, ItemName = i.ItemName,
-                Balance = balances.GetValueOrDefault(i.Id), MinLevel = i.MinStockAlertLevel, Original = i.MinStockAlertLevel
-            });
+                var unit = packs.LevelsOf(r.ItemId).FirstOrDefault();
+                var per = unit?.EquivalentBaseUnits ?? 1;
+                var threshold = r.MinQuantity is { } m ? Math.Round(m / per, 3) : (decimal?)null;
+                Rows.Add(new StockAlertRow
+                {
+                    ItemId = r.ItemId, ItemCode = r.ItemCode, ItemName = r.ItemName, Balance = r.Balance, BalanceText = r.BalanceText,
+                    UnitName = unit?.LevelName ?? "قطعة", UnitPieces = per, Threshold = threshold, Original = threshold, IsDefault = r.IsDefault
+                });
+            }
+        }
+        OnPropertyChanged(nameof(VisibleRows));
         OnPropertyChanged(nameof(LowCount));
     }
 
     private async Task SaveAsync()
     {
-        if (!Require(CanEdit, "التعديل")) return;
-        var changed = Rows.Where(r => r.MinLevel != r.Original).ToList();
-        if (changed.Any(r => r.MinLevel < 0)) { Dialogs.Error("حد التنبيه لا يمكن أن يكون سالبًا"); return; }
+        if (!_canEdit()) { _dialogs.Error("لا تملك صلاحية تعديل حدود التنبيه"); return; }
+        if (_warehouseId is not int id) return;
+        var changed = Rows.Where(r => r.IsChanged).ToList();
+        if (changed.Count == 0) { StatusMessage = "لا توجد تغييرات"; return; }
+        if (changed.Any(r => r.Threshold < 0)) { _dialogs.Error("حد التنبيه لا يمكن أن يكون سالبًا"); return; }
+        await using var db = _session.NewDb();
+        var result = await new StockAlertService(db).SaveAsync(id, changed.Select(r => (r.ItemId, r.MinPieces)).ToList(), _session.UserId);
+        if (!result.Success) { _dialogs.Error(result.ErrorMessage ?? "تعذّر الحفظ"); return; }
+        _session.MarkDataChanged();
+        await LoadAsync(id);
+        StatusMessage = $"حُفظت حدود التنبيه لـ {changed.Count} صنف";
+        Saved?.Invoke();
+    }
+}
 
+/// <summary>«إعدادات التنبيهات»: حدود كل مخزن من مكان واحد (نفس محرر تبويب الأرصدة داخل المخزن).</summary>
+public class StockAlertsSectionViewModel : SectionViewModel
+{
+    private Data.ProjectDb.Entities.Warehouse? _warehouse;
+
+    public StockAlertsSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.Warehouse, "إعدادات التنبيهات", Icons.Alert, "#F97316", "حد التنبيه لكل صنف في كل مخزن، والأصناف المنخفضة")
+    {
+        Editor = new WarehouseAlertsEditor(s, d, () => CanEdit);
+        Editor.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(WarehouseAlertsEditor.StatusMessage)) StatusMessage = Editor.StatusMessage; };
+        Editor.Saved += () => Background(LoadLowAsync());
+    }
+
+    public WarehouseAlertsEditor Editor { get; }
+    public ObservableCollection<Data.ProjectDb.Entities.Warehouse> Warehouses { get; } = new();
+    public ObservableCollection<WarehouseAlertRow> Low { get; } = new();
+    public Data.ProjectDb.Entities.Warehouse? Warehouse
+    {
+        get => _warehouse;
+        set { if (SetProperty(ref _warehouse, value)) Background(Editor.LoadAsync(value?.Id)); }
+    }
+    protected override bool ReloadOnActivate => true;
+    public int LowCount => Low.Count;
+
+    public override async Task LoadAsync()
+    {
         await using var db = Session.NewDb();
-        foreach (var r in changed)
-            await db.Items.Where(i => i.Id == r.ItemId).ExecuteUpdateAsync(u => u.SetProperty(i => i.MinStockAlertLevel, r.MinLevel));
-        StatusMessage = changed.Count == 0 ? "لا توجد تغييرات" : $"تم حفظ حدود التنبيه لـ {changed.Count} صنف";
-        await LoadAsync();
+        var keep = Warehouse?.Id;
+        Warehouses.Clear();
+        foreach (var w in (await db.Warehouses.AsNoTracking()
+                     .Where(w => w.IsActive && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.Damaged)
+                     .ToListAsync())
+                     .OrderBy(w => w.WarehouseType == WarehouseType.FinishedGoods ? 0 : w.WarehouseType == WarehouseType.RawMaterial ? 1 : 2).ThenBy(w => w.Name))
+            Warehouses.Add(w);
+        await LoadLowAsync();
+        _warehouse = Warehouses.FirstOrDefault(w => w.Id == keep) ?? Warehouses.FirstOrDefault();
+        OnPropertyChanged(nameof(Warehouse));
+        await Editor.LoadAsync(Warehouse?.Id);
+    }
+
+    private async Task LoadLowAsync()
+    {
+        await using var db = Session.NewDb();
+        var low = await new StockAlertService(db).LowAsync();
+        Low.Clear();
+        foreach (var r in low) Low.Add(r);
+        OnPropertyChanged(nameof(LowCount));
     }
 }

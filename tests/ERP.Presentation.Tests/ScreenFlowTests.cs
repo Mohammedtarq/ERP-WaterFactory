@@ -242,7 +242,7 @@ public class ScreenFlowTests
             Assert.Equal(1000m, await db.StockTransactions.Where(t => t.ItemId == capId).SumAsync(t => t.QuantityBaseUnits));
         }
         await Open(sup, sup.Reorder);
-        Assert.Contains(sup.Reorder.Rows, r => r.ItemId == capId && r.LeadTimeDays == 10);
+        Assert.Contains(sup.Reorder.Rows, r => r.ItemId == capId && r.Row.LeadTimeDays == 10);
     }
 
     [Fact]

@@ -204,10 +204,17 @@
                                 <DataGridTextColumn Header="الصلاحية" Binding="{Binding ExpiryDate, StringFormat=yyyy/MM/dd}" Width="100"/>
                                 <DataGridTextColumn Header="الرصيد" Binding="{Binding Breakdown}" Width="*" MinWidth="130" FontWeight="SemiBold"/>
                                 <DataGridTextColumn Header="بالقطعة" Binding="{Binding Quantity, StringFormat=N0}" Width="90"/>
-                                <DataGridCheckBoxColumn Header="حد التنبيه" Binding="{Binding BelowAlert, Mode=OneWay}" Width="80"/>
+                                <DataGridCheckBoxColumn Header="عند الحد" Binding="{Binding BelowAlert, Mode=OneWay}" Width="80"/>
                             </DataGrid.Columns>
                         </DataGrid>
                     </DockPanel>
+                </Border>
+            </TabItem>
+
+            <!-- ================= حدود التنبيه (من داخل المخزن) ================= -->
+            <TabItem Header="حدود التنبيه" Visibility="{Binding HasAlerts, Converter={StaticResource BoolToVisibility}}">
+                <Border Style="{StaticResource Card}">
+                    <ContentControl Content="{Binding Alerts}"/>
                 </Border>
             </TabItem>
 

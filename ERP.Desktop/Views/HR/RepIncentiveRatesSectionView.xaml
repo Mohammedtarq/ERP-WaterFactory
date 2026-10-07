@@ -18,17 +18,50 @@
                     </Button>
                     <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                 </StackPanel>
-                <TextBlock Text="مبلغ حافز المندوب لكل عبوة" Style="{StaticResource SectionTitle}" Margin="0"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="مبلغ حافز المندوب لكل عبوة" Style="{StaticResource SectionTitle}" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" Width="200" ToolTip="بحث باسم المنتج"/>
+                </StackPanel>
             </DockPanel>
+            <!-- إضافة منتج أو عبوة غير ظاهرة -->
+            <Border DockPanel.Dock="Top" Background="#F0FDF4" CornerRadius="8" Padding="10" Margin="0,0,0,10">
+                <WrapPanel>
+                    <TextBlock Text="إضافة منتج/عبوة:" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox ItemsSource="{Binding Products}" SelectedItem="{Binding NewItem}" DisplayMemberPath="ItemName" Width="220"/>
+                    <ComboBox ItemsSource="{Binding NewLevels}" SelectedItem="{Binding NewLevel}" DisplayMemberPath="LevelName" Width="110" Margin="6,0"/>
+                    <TextBlock Text="الحافز (د.ع)" VerticalAlignment="Center" Margin="6,0"/>
+                    <TextBox Text="{Binding NewRate, UpdateSourceTrigger=PropertyChanged}" Width="90" FlowDirection="LeftToRight"/>
+                    <Button Content="إضافة إلى الجدول" Style="{StaticResource SecondaryButton}" Command="{Binding AddCommand}" Margin="8,0,0,0"/>
+                </WrapPanel>
+            </Border>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
             <TextBlock DockPanel.Dock="Bottom" TextWrapping="Wrap" Style="{StaticResource Muted}" Margin="0,10,0,0"
-                       Text="حافز المندوب الشهري = (المحمّل − الراجع − المجاني) بكل عبوة × مبلغها. يتجمع على الشهر ويُصرف مرة واحدة مع الراتب، والتفصيل في «حوافز المندوبين» بقسم المندوبين."/>
-            <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="False" CanUserAddRows="False">
+                       Text="عدّل المبلغ مباشرة في العمود المظلّل (✎) أو أضف منتجًا من الأعلى، ثم «حفظ المبالغ». المبلغ صفر يلغي الحافز. حافز المندوب الشهري = (المحمّل − الراجع − المجاني) بكل عبوة × مبلغها، ويُصرف مع الراتب."/>
+            <DataGrid ItemsSource="{Binding VisibleRows}" IsReadOnly="False" CanUserAddRows="False">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChanged}" Value="True">
+                                <Setter Property="Background" Value="#FEF9C3"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="المنتج" Binding="{Binding ItemName}" Width="*" IsReadOnly="True"/>
                     <DataGridTextColumn Header="العبوة" Binding="{Binding LevelName}" Width="110" IsReadOnly="True"/>
                     <DataGridTextColumn Header="قطعة في العبوة" Binding="{Binding Pieces, StringFormat=N0}" Width="110" IsReadOnly="True"/>
-                    <DataGridTextColumn Header="الحافز لكل عبوة (د.ع) ✎" Binding="{Binding Rate, StringFormat=N0, UpdateSourceTrigger=LostFocus}" Width="170"/>
+                    <DataGridTextColumn Header="الحافز لكل عبوة (د.ع) ✎" Binding="{Binding Rate, StringFormat=N0, UpdateSourceTrigger=LostFocus}" Width="170">
+                        <DataGridTextColumn.CellStyle>
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="Background" Value="#FFFBEB"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="ToolTip" Value="اضغط مرتين للتعديل"/>
+                            </Style>
+                        </DataGridTextColumn.CellStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="الحالة" Binding="{Binding StateText}" Width="130" IsReadOnly="True"/>
                 </DataGrid.Columns>
             </DataGrid>
         </DockPanel>

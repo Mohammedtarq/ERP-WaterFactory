@@ -108,11 +108,12 @@ public class AlertsService
         // 5) نقص المواد: أصناف عند حد التنبيه أو تحته
         if (warehouse)
         {
-            var low = await new InventoryService(_db).GetLowStockAsync();
+            // كل مخزن برصيده وحدّه (حد التنبيه يُضبط من داخل المخزن)
+            var low = await new StockAlertService(_db).LowAsync();
             if (low.Count > 0)
                 alerts.Add(new("low-stock", $"نقص مواد: {low.Count} صنف عند حد التنبيه أو تحته",
-                    Names(low.Select(x => $"{x.item.ItemName} ({x.balance:#,0.##} من {x.item.MinStockAlertLevel:#,0.##})"), low.Count),
-                    low.Count, low.Any(x => x.balance <= 0) ? AlertLevel.Danger : AlertLevel.Warning, ModuleCode.Warehouse, "StockAlertsSectionViewModel"));
+                    Names(low.Select(x => $"{x.ItemName} في {x.WarehouseName} ({x.BalanceText} من {x.MinText})"), low.Count),
+                    low.Count, low.Any(x => x.Balance <= 0) ? AlertLevel.Danger : AlertLevel.Warning, ModuleCode.Warehouse, "StockAlertsSectionViewModel"));
         }
 
         // 6) ما بيع قبل تسجيل إنتاجه (نقص في المنتج التام)

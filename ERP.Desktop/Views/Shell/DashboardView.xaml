@@ -69,8 +69,9 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="80"/>
                             <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
-                            <DataGridTextColumn Header="الرصيد" Binding="{Binding Balance, StringFormat=N0}" Width="80"/>
-                            <DataGridTextColumn Header="الحد" Binding="{Binding MinLevel, StringFormat=N0}" Width="70"/>
+                            <DataGridTextColumn Header="المخزن" Binding="{Binding Warehouse}" Width="90"/>
+                            <DataGridTextColumn Header="الرصيد" Binding="{Binding Balance}" Width="90"/>
+                            <DataGridTextColumn Header="الحد" Binding="{Binding MinLevel}" Width="80"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

@@ -177,43 +177,108 @@ public class PurchaseInvoiceSectionViewModel : SectionViewModel
 
 // ============================ مقترح الشراء ============================
 /// <summary>ما يجب طلبه الآن من المواد الأولية حتى لا يتوقف الإنتاج قبل وصول البضاعة (حسب مدة تجهيز كل مادة).</summary>
+/// <summary>سطر في مقترح الشراء: مدة التجهيز وحد التنبيه قابلان للتعديل من الجدول نفسه (ملاحظة التجربة 7).</summary>
+public class ReorderEditRow : ObservableObject
+{
+    private int _leadTime;
+    private decimal? _alert;
+
+    public ReorderEditRow(ReorderRow row)
+    {
+        Row = row;
+        _leadTime = row.LeadTimeDays;
+        _alert = row.AlertLevel;
+    }
+
+    public ReorderRow Row { get; }
+    public int ItemId => Row.ItemId;
+    public int LeadTimeDays
+    {
+        get => _leadTime;
+        set { if (SetProperty(ref _leadTime, Math.Max(0, value))) OnPropertyChanged(nameof(IsChanged)); }
+    }
+    /// <summary>حد التنبيه بالقطعة في مخزن المواد الأولية الرئيسي.</summary>
+    public decimal? AlertLevel
+    {
+        get => _alert;
+        set { if (SetProperty(ref _alert, value)) OnPropertyChanged(nameof(IsChanged)); }
+    }
+    public bool LeadChanged => LeadTimeDays != Row.LeadTimeDays;
+    public bool AlertChanged => AlertLevel != Row.AlertLevel;
+    public bool IsChanged => LeadChanged || AlertChanged;
+}
+
 public class ReorderSectionViewModel : SectionViewModel
 {
     private int _historyDays = 30;
     private int _coverDays = 30;
+    private int _safetyDays = ReorderService.SafetyDays;
 
     public ReorderSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Suppliers, "مقترح الشراء", Icons.Alert, "#DC2626", "الاستهلاك اليومي ومدة التجهيز: ما يجب طلبه الآن وبأي كمية")
     {
         PrintCommand = new RelayCommand(Print);
+        SaveCommand = new AsyncRelayCommand(SaveAsync);
     }
 
     protected override bool ReloadOnActivate => true;
+    protected override bool HasPendingInput => Rows.Any(r => r.IsChanged);
 
     public int HistoryDays { get => _historyDays; set { if (SetProperty(ref _historyDays, Math.Max(7, value))) Background(LoadAsync()); } }
     public int CoverDays { get => _coverDays; set { if (SetProperty(ref _coverDays, Math.Max(7, value))) Background(LoadAsync()); } }
-    public ObservableCollection<ReorderRow> Rows { get; } = new();
-    public int NeedsOrderCount => Rows.Count(r => r.NeedsOrder);
+    /// <summary>أيام الأمان فوق مدة تجهيز المورد.</summary>
+    public int SafetyDays { get => _safetyDays; set { if (SetProperty(ref _safetyDays, Math.Clamp(value, 0, 90))) { OnPropertyChanged(nameof(FormulaText)); Background(LoadAsync()); } } }
+    public string FormulaText => $"نقطة الطلب = الاستهلاك اليومي × (مدة تجهيز المورد + {SafetyDays} أيام أمان)، أو حد التنبيه إن كان أكبر. "
+                                 + "عدّل «مدة التجهيز» و«حد التنبيه» من الجدول مباشرة ثم اضغط «حفظ التعديلات».";
+    public ObservableCollection<ReorderEditRow> Rows { get; } = new();
+    public int NeedsOrderCount => Rows.Count(r => r.Row.NeedsOrder);
     public RelayCommand PrintCommand { get; }
+    public AsyncRelayCommand SaveCommand { get; }
 
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        var rows = await new ReorderService(db).SuggestAsync(HistoryDays, CoverDays);
+        var rows = await new ReorderService(db).SuggestAsync(HistoryDays, CoverDays, safetyDays: SafetyDays);
         Rows.Clear();
-        foreach (var r in rows) Rows.Add(r);
+        foreach (var r in rows) Rows.Add(new ReorderEditRow(r));
         OnPropertyChanged(nameof(NeedsOrderCount));
         StatusMessage = NeedsOrderCount == 0 ? "كل المواد تكفي حتى وصول طلب جديد" : $"{NeedsOrderCount} مادة يجب طلبها الآن";
+    }
+
+    /// <summary>مدة التجهيز تُحفظ في بطاقة المادة، وحد التنبيه في مخزن المواد الأولية الرئيسي؛ ثم يُعاد الحساب.</summary>
+    private async Task SaveAsync()
+    {
+        if (!Require(CanEdit, "تعديل متغيرات مقترح الشراء")) return;
+        var changed = Rows.Where(r => r.IsChanged).ToList();
+        if (changed.Count == 0) { StatusMessage = "لا توجد تغييرات"; return; }
+        if (changed.Any(r => r.AlertLevel < 0)) { Dialogs.Error("حد التنبيه لا يمكن أن يكون سالبًا"); return; }
+        await using var db = Session.NewDb();
+        foreach (var r in changed.Where(r => r.LeadChanged))
+        {
+            var lead = r.LeadTimeDays;
+            await db.Items.Where(i => i.Id == r.ItemId).ExecuteUpdateAsync(u => u.SetProperty(i => i.LeadTimeDays, lead));
+        }
+        var alerts = changed.Where(r => r.AlertChanged).ToList();
+        if (alerts.Count > 0)
+        {
+            var svc = new StockAlertService(db);
+            if (await svc.HomeWarehouseIdAsync(SourcingMethod.Purchased) is not int rawId) { Dialogs.Error("لا يوجد مخزن مواد أولية فعّال لضبط حد التنبيه فيه"); return; }
+            var r = await svc.SaveAsync(rawId, alerts.Select(a => (a.ItemId, a.AlertLevel)).ToList(), Session.UserId);
+            if (!r.Success) { Dialogs.Error(r.ErrorMessage ?? "تعذّر الحفظ"); return; }
+        }
+        Session.MarkDataChanged();
+        await LoadAsync();
+        StatusMessage = $"حُفظت تعديلات {changed.Count} مادة وأُعيد حساب المقترح — {StatusMessage}";
     }
 
     private void Print()
     {
         var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "مقترح الشراء", PrintedBy = Session.FullName,
-                                     Notes = $"الاستهلاك محسوب على آخر {HistoryDays} يومًا، والكمية المقترحة تكفي {CoverDays} يومًا بعد الوصول، مع {ReorderService.SafetyDays} أيام أمان." };
-        r.Columns.AddRange(new[] { "الرمز", "المادة", "الرصيد", "الاستهلاك اليومي", "يكفي (يوم)", "مدة التجهيز", "نقطة الطلب", "الكمية المقترحة", "الحالة" });
-        foreach (var x in Rows)
+                                     Notes = $"الاستهلاك محسوب على آخر {HistoryDays} يومًا، والكمية المقترحة تكفي {CoverDays} يومًا بعد الوصول، مع {SafetyDays} أيام أمان." };
+        r.Columns.AddRange(new[] { "الرمز", "المادة", "الرصيد", "الاستهلاك اليومي", "يكفي (يوم)", "مدة التجهيز", "حد التنبيه", "نقطة الطلب", "الكمية المقترحة", "الحالة" });
+        foreach (var x in Rows.Select(e => e.Row))
             r.Rows.Add(new[] { x.ItemCode, x.ItemName, $"{x.OnHand:N0}", $"{x.DailyUse:N0}", x.CoverDays?.ToString("N1") ?? "—", x.LeadTimeDays.ToString(),
-                               $"{x.ReorderPoint:N0}", $"{x.SuggestedQuantity:N0}", x.Status });
+                               x.AlertLevel?.ToString("N0") ?? "—", $"{x.ReorderPoint:N0}", $"{x.SuggestedQuantity:N0}", x.Status });
         Dialogs.ShowReport(r);
     }
 }

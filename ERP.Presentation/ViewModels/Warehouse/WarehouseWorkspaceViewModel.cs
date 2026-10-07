@@ -66,6 +66,8 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         WarehouseId = warehouse.Id;
         WarehouseType = warehouse.WarehouseType;
+        Alerts = new WarehouseAlertsEditor(s, d, () => CanEdit);
+        Alerts.Saved += () => Background(LoadKpisAndBalancesAsync());
         OperationOptions = OperationsFor(warehouse.WarehouseType);
         _operation = OperationOptions[0];
         _damageReason = ReasonOptions[1];
@@ -128,6 +130,9 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public string TodayInText { get => _todayInText; private set => SetProperty(ref _todayInText, value); }
     public string TodayOutText { get => _todayOutText; private set => SetProperty(ref _todayOutText, value); }
     public int LowCount { get => _lowCount; private set => SetProperty(ref _lowCount, value); }
+    /// <summary>حدود التنبيه لهذا المخزن تُضبط من داخله (تبويب الأرصدة) — لا للسيارات ولا للتالف.</summary>
+    public WarehouseAlertsEditor Alerts { get; }
+    public bool HasAlerts => WarehouseType is not (WarehouseType.RepVan or WarehouseType.WorkInProcess or WarehouseType.Damaged);
 
     // ---------------- عملية جديدة ----------------
     public IReadOnlyList<Option<StockDocumentType>> OperationOptions { get; }
@@ -304,6 +309,11 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         TotalPieces = balances.Sum(b => b.Quantity);
         TotalText = _packs.Total(balances.Select(b => (b.ItemId, b.Quantity)));
         LowCount = balances.Where(b => b.BelowAlert).Select(b => b.ItemId).Distinct().Count();
+        if (HasAlerts)
+        {
+            await Alerts.LoadAsync(WarehouseId);
+            LowCount = Alerts.LowCount;          // يشمل ما نفد رصيده كليًا
+        }
 
         var today = DateTime.Today.ToUniversalTime();
         var tomorrow = DateTime.Today.AddDays(1).ToUniversalTime();

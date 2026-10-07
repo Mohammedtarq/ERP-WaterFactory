@@ -6,42 +6,41 @@
              xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Warehouse;assembly=ERP.Presentation"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:StockAlertsSectionViewModel}"
              x:Name="Root">
-    <Border Style="{StaticResource Card}">
-        <DockPanel>
-            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
-                            <TextBlock Text="حفظ حدود التنبيه"/>
-                        </StackPanel>
-                    </Button>
-                    <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource DangerBrush}" Margin="0,0,8,0"/>
-                    <TextBlock Text="{Binding LowCount, StringFormat='أصناف عند حد التنبيه أو أقل: {0}'}" FontWeight="SemiBold" Foreground="{StaticResource DangerBrush}"/>
-                </StackPanel>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="2*"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Left" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="المخزن" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,8,0"/>
+                        <ComboBox ItemsSource="{Binding Warehouses}" SelectedItem="{Binding Warehouse}" DisplayMemberPath="Name" Width="240"/>
+                        <TextBlock Text="الحدود تُضبط أيضًا من تبويب «حدود التنبيه» داخل كل مخزن" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </StackPanel>
+                </DockPanel>
+                <ContentControl Content="{Binding Editor}"/>
             </DockPanel>
-            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
-            <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="False">
-                <DataGrid.RowStyle>
-                    <Style TargetType="DataGridRow">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsLow}" Value="True">
-                                <Setter Property="Background" Value="#FEF2F2"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </DataGrid.RowStyle>
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="100" IsReadOnly="True"/>
-                    <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*" IsReadOnly="True"/>
-                    <DataGridTextColumn Header="الرصيد الإجمالي" Binding="{Binding Balance, StringFormat=N0}" Width="130" IsReadOnly="True"/>
-                    <DataGridTextColumn Header="حد التنبيه ✎" Binding="{Binding MinLevel, TargetNullValue=''}" Width="130"/>
-                    <DataGridCheckBoxColumn Header="منخفض" Binding="{Binding IsLow, Mode=OneWay}" Width="70" IsReadOnly="True"/>
-                </DataGrid.Columns>
-            </DataGrid>
-        </DockPanel>
-    </Border>
+        </Border>
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,12,0,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="&#xE7BA;" Style="{StaticResource Icon}" Foreground="{StaticResource DangerBrush}" Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding LowCount, StringFormat='عند حد التنبيه أو أقل في كل المخازن: {0}'}" FontWeight="SemiBold" Foreground="{StaticResource DangerBrush}"/>
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <DataGrid ItemsSource="{Binding Low}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="المخزن" Binding="{Binding WarehouseName}" Width="160"/>
+                        <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="100"/>
+                        <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
+                        <DataGridTextColumn Header="الرصيد" Binding="{Binding BalanceText}" Width="140"/>
+                        <DataGridTextColumn Header="الحد" Binding="{Binding MinText}" Width="120"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
 </UserControl>

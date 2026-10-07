@@ -134,6 +134,8 @@ public partial class ProjectDbContext : DbContext
     public DbSet<CustomerReturnLine> CustomerReturnLines => Set<CustomerReturnLine>();
     // ---- المزامنة السحابية (40_cloud_sync.sql) ----
     public DbSet<CloudSyncSetting> CloudSyncSettings => Set<CloudSyncSetting>();
+    // ---- حد التنبيه لكل مخزن (41_warehouse_item_alerts.sql) ----
+    public DbSet<WarehouseItemAlert> WarehouseItemAlerts => Set<WarehouseItemAlert>();
 
     // ---- المصروفات والحسابات الختامية (31_expenses_final_accounts.sql) ----
     public DbSet<FinanceCategory> FinanceCategories => Set<FinanceCategory>();
@@ -358,7 +360,9 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<SalesInvoiceLine>().Property(l => l.ListUnitPrice).HasPrecision(18, 2);
         modelBuilder.Entity<Customer>().HasOne(c => c.ParentAgent).WithMany().HasForeignKey(c => c.ParentAgentId).OnDelete(DeleteBehavior.Restrict);
 
-        modelBuilder.Entity<AgentItemPrice>().HasIndex(a => new { a.CustomerId, a.ItemId }).IsUnique();
+        modelBuilder.Entity<AgentItemPrice>().HasIndex(a => new { a.CustomerId, a.ItemId, a.CustomRecipeId }).IsUnique();
+        modelBuilder.Entity<AgentItemPrice>().HasOne(a => a.CustomRecipe).WithMany().HasForeignKey(a => a.CustomRecipeId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<CustomRecipe>().Property(r => r.SalePrice).HasPrecision(18, 2);
         modelBuilder.Entity<AgentItemPrice>().HasOne(a => a.Customer).WithMany().HasForeignKey(a => a.CustomerId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<AgentItemPrice>().HasOne(a => a.Item).WithMany().HasForeignKey(a => a.ItemId).OnDelete(DeleteBehavior.Restrict);
 
@@ -688,6 +692,13 @@ public partial class ProjectDbContext : DbContext
         });
         modelBuilder.Entity<RepAppSetting>().Property(s => s.Id).ValueGeneratedNever();
         modelBuilder.Entity<CloudSyncSetting>().Property(s => s.Id).ValueGeneratedNever();
+        modelBuilder.Entity<WarehouseItemAlert>(e =>
+        {
+            e.HasIndex(a => new { a.WarehouseId, a.ItemId }).IsUnique();
+            e.Property(a => a.MinQuantity).HasPrecision(18, 3);
+            e.HasOne(a => a.Warehouse).WithMany().HasForeignKey(a => a.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(a => a.Item).WithMany().HasForeignKey(a => a.ItemId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<CustomerReturn>(e =>
         {
             e.HasIndex(r => r.ReturnNumber).IsUnique();
