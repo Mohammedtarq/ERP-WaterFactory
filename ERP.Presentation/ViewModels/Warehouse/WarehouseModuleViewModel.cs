@@ -4,6 +4,7 @@ using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
 using ERP.Presentation.Mvvm;
 using ERP.Presentation.Services;
+using ERP.Presentation.ViewModels.Reps;
 using ERP.Presentation.ViewModels.Shell;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,6 +29,8 @@ public class WarehouseModuleViewModel : ModuleViewModel
         _session = s;
         _dialogs = d;
         Add(new ItemsSectionViewModel(s, d));
+        // سيارات المندوبين في شاشة واحدة (بعد تبويبات المخازن) بدل تبويب لكل سيارة
+        Vans = Add(new WarehouseRepVansSectionViewModel(s, d));
         Add(new WarehousesSectionViewModel(s, d, RefreshWorkspacesAsync));
         Add(new PackagingSectionViewModel(s, d));
         Add(new LocationsSectionViewModel(s, d));
@@ -47,6 +50,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
     }
 
     public DamagedSalesSectionViewModel DamagedSales { get; }
+    public WarehouseRepVansSectionViewModel Vans { get; }
 
     /// <summary>واجهة مستقلة لكل مخزن فعّال (مواد أولية، منتج تام، كاش فان، تالف، وأي مخزن جديد).</summary>
     public IReadOnlyList<WarehouseWorkspaceSectionViewModel> Workspaces => Tabs.OfType<WarehouseWorkspaceSectionViewModel>().ToList();
@@ -56,10 +60,22 @@ public class WarehouseModuleViewModel : ModuleViewModel
     /// <summary>يضيف تبويبًا لكل مخزن جديد ويزيل تبويب المخزن الموقوف أو المحذوف (وتغيير الاسم/النوع يعيد بناء تبويبه).</summary>
     public async Task RefreshWorkspacesAsync()
     {
+        // تحديثان متزامنان (فتح الوحدة + حفظ في شاشة المخازن) لا يعدّلان قائمة التبويبات معًا
+        await _refreshLock.WaitAsync();
+        try { await RefreshWorkspacesCoreAsync(); }
+        finally { _refreshLock.Release(); }
+    }
+
+    private readonly SemaphoreSlim _refreshLock = new(1, 1);
+
+    private async Task RefreshWorkspacesCoreAsync()
+    {
         await using var db = _session.NewDb();
-        var warehouses = (await db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.WarehouseType != WarehouseType.WorkInProcess).OrderBy(w => w.Name).ToListAsync())
-            // ترتيب ثابت: المنتج التام، المواد الأولية، ثم بقية المخازن، والكاش فان أخيرًا
-            .OrderBy(w => w.WarehouseType switch { WarehouseType.FinishedGoods => 0, WarehouseType.RawMaterial => 1, WarehouseType.RepVan => 3, _ => 2 })
+        // سيارات المندوبين لا تأخذ تبويبًا لكل سيارة: كلها في شاشة «سيارات المندوبين»
+        var warehouses = (await db.Warehouses.AsNoTracking()
+                .Where(w => w.IsActive && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.RepVan).OrderBy(w => w.Name).ToListAsync())
+            // ترتيب ثابت: المنتج التام، المواد الأولية، ثم بقية المخازن
+            .OrderBy(w => w.WarehouseType switch { WarehouseType.FinishedGoods => 0, WarehouseType.RawMaterial => 1, _ => 2 })
             .ThenBy(w => w.Name).ToList();
 
         foreach (var ws in Workspaces)

@@ -252,6 +252,11 @@ public class BatchVariantTests
         var month = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
         Assert.Equal(1_950m, await incentive.AmountAsync(rep.Id, month, month.AddMonths(1).AddDays(-1)));
         Assert.Equal(1_950m, await new HrService(db).ComputeRepIncentiveAsync(rep.Id, DateTime.Today.Month, DateTime.Today.Year));
+
+        // لوحة السيارات: سُوّيت اليوم والسيارة فارغة، وحمولة اليوم بوحداتها
+        var card = (await new RepVanBoardService(db).CardsAsync(DateTime.Today)).Single(c => c.VanWarehouseId == van.Id);
+        Assert.Equal((RepVanStatus.Settled, 0m), (card.Status, card.BalancePieces));
+        Assert.Equal($"6 كارتون {s.Water.ItemName}، 10 شرنك {s.Water.ItemName}", card.TodayLoadText);
     }
 
     [Fact]

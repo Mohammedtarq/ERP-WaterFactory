@@ -15,6 +15,8 @@ public class RepsModuleViewModel : ModuleViewModel
         : base("المندوبون", Icons.Reps, ModuleColors.Reps)
     {
         UseDashboard(s, d, ModuleCode.Reps, ModuleDashboardViewModel.Reps);
+        // نظرة واحدة على كل المندوبين أولًا
+        Vans = Add(new RepVansSectionViewModel(s, d));
         LoadOrders = Add(new LoadOrdersSectionViewModel(s, d));
         Documents = Add(new RepDocumentsSectionViewModel(s, d));
         Settlement = Add(new RepSettlementSectionViewModel(s, d));
@@ -36,6 +38,7 @@ public class RepsModuleViewModel : ModuleViewModel
     public RepDocumentsSectionViewModel Documents { get; }
     public RepSettlementSectionViewModel Settlement { get; }
     public RepIncentivesSectionViewModel Incentives { get; }
+    public RepVansSectionViewModel Vans { get; }
     /// <summary>الشاشة القديمة ما زالت تعمل، لكنها خارج التبويبات.</summary>
     public VanOperationsSectionViewModel Van { get; }
     public WalletSectionViewModel Wallet { get; }

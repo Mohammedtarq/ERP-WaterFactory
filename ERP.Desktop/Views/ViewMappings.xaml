@@ -248,6 +248,8 @@
     <DataTemplate DataType="{x:Type vmReps:VanOperationsSectionViewModel}"><vReps:VanOperationsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:RepDocumentsSectionViewModel}"><vReps:RepDocumentsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:RepIncentivesSectionViewModel}"><vReps:RepIncentivesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:RepVansSectionViewModel}"><vReps:RepVansSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:WarehouseRepVansSectionViewModel}"><vReps:RepVansSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:LoadOrdersSectionViewModel}"><vReps:LoadOrdersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:RepSettlementSectionViewModel}"><vReps:RepSettlementSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:WalletSectionViewModel}"><vReps:WalletSectionView/></DataTemplate>

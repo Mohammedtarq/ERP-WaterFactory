@@ -1,0 +1,101 @@
+<UserControl x:Class="ERP.Desktop.Views.Reps.RepVansSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Reps;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:RepVansSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- اللوحة: البحث والفلتر والمجاميع، ثم بطاقة لكل مندوب -->
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" Width="180" ToolTip="بحث بالمندوب أو السيارة أو المنطقة"/>
+                        <ComboBox ItemsSource="{Binding Filters}" SelectedItem="{Binding Filter}" DisplayMemberPath="Label" Width="140" Margin="8,0,0,0"/>
+                        <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="8,0,0,0"/>
+                        <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="سيارات المندوبين" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock Margin="0,0,18,0"><Run Text="السيارات:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding VanCount, Mode=OneWay}" FontWeight="Bold"/></TextBlock>
+                    <TextBlock Margin="0,0,18,0"><Run Text="بانتظار التسوية:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding PendingCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource WarningBrush}"/></TextBlock>
+                    <TextBlock Margin="0,0,18,0"><Run Text="متأخر:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding OverdueCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource DangerBrush}"/></TextBlock>
+                    <TextBlock Margin="0,0,18,0"><Run Text="في السيارات:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding TotalPieces, Mode=OneWay, StringFormat=N0}" FontWeight="Bold"/> <Run Text="قطعة"/></TextBlock>
+                    <TextBlock><Run Text="النقد المتوقع:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding TotalCash, Mode=OneWay, StringFormat=N0}" FontWeight="Bold"/> <Run Text="د.ع"/></TextBlock>
+                </WrapPanel>
+
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+
+                <ListBox ItemsSource="{Binding Cards}" SelectedItem="{Binding SelectedCard}" MaxHeight="300" BorderThickness="0" Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="250" Margin="0,0,10,10" CornerRadius="10" BorderThickness="1" BorderBrush="{StaticResource BorderBrush}"
+                                    Background="{StaticResource SurfaceBrush}" Padding="0">
+                                <DockPanel>
+                                    <Border x:Name="Strip" DockPanel.Dock="Top" Height="5" CornerRadius="10,10,0,0" Background="{StaticResource MutedTextBrush}"/>
+                                    <StackPanel Margin="12,8,12,10">
+                                        <TextBlock Text="{Binding RepName}" FontWeight="Bold" FontSize="14" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="11" TextTrimming="CharacterEllipsis">
+                                            <Run Text="{Binding VanName, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Territories, Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <TextBlock x:Name="Status" Text="{Binding StatusText}" FontWeight="SemiBold" Margin="0,6,0,4" Foreground="{StaticResource MutedTextBrush}"/>
+                                        <TextBlock TextWrapping="Wrap" FontSize="12"><Run Text="حمولة اليوم:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding TodayLoadText, Mode=OneWay}"/></TextBlock>
+                                        <TextBlock TextWrapping="Wrap" FontSize="12"><Run Text="الرصيد الآن:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding BalanceText, Mode=OneWay}"/></TextBlock>
+                                        <TextBlock FontSize="12"><Run Text="النقد المتوقع:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding ExpectedCash, Mode=OneWay, StringFormat=N0}" FontWeight="SemiBold"/> <Run Text="د.ع"/></TextBlock>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding Status}" Value="Settled">
+                                    <Setter TargetName="Strip" Property="Background" Value="{StaticResource SuccessBrush}"/>
+                                    <Setter TargetName="Status" Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="Pending">
+                                    <Setter TargetName="Strip" Property="Background" Value="{StaticResource WarningBrush}"/>
+                                    <Setter TargetName="Status" Property="Foreground" Value="{StaticResource WarningBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="Overdue">
+                                    <Setter TargetName="Strip" Property="Background" Value="{StaticResource DangerBrush}"/>
+                                    <Setter TargetName="Status" Property="Foreground" Value="{StaticResource DangerBrush}"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <!-- شاشة السيارة المختارة: نفس شاشة المخزن (الأرصدة، الحركات، المستندات، الطباعة) -->
+        <Grid Grid.Row="1" Margin="0,12,0,0">
+            <Border>
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Detail}" Value="{x:Null}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock Text="اختر بطاقة مندوب لعرض تفاصيل سيارته: الأرصدة بالتشغيلة والمتغير، الحركات، والمستندات" Style="{StaticResource Muted}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </Border>
+            <ContentControl Content="{Binding Detail}"/>
+        </Grid>
+    </Grid>
+</UserControl>
