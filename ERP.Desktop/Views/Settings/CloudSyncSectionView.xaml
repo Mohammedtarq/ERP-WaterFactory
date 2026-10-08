@@ -1,0 +1,59 @@
+<UserControl x:Class="ERP.Desktop.Views.Settings.CloudSyncSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:CloudSyncSectionViewModel}">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="380"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- الحالة -->
+        <StackPanel>
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,10">
+                        <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0369A1" Command="{Binding RefreshCommand}"/>
+                        <TextBlock Text="حالة المزامنة" Style="{StaticResource SectionTitle}" Margin="0"/>
+                    </DockPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="14" Height="14" Fill="{Binding LevelColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding StateText}" FontSize="15" FontWeight="SemiBold" Margin="10,0,0,0" TextWrapping="Wrap" MaxWidth="560"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Details}" Margin="0,12,0,0" TextWrapping="Wrap" LineHeight="22"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="اختبار الاتصال" Style="{StaticResource SecondaryButton}" Command="{Binding TestCommand}"/>
+                        <Button Content="مزامنة الآن" Style="{StaticResource PrimaryButton}" Command="{Binding SyncNowCommand}" Margin="8,0,0,0"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="كيف تعمل" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="22"
+                               Text="الهاتف يرسل الحركة إلى الخادم السحابي، وخدمة المزامنة على جهاز السيرفر تسحبها وترحّلها هنا بنفس قواعد النظام (الصلاحيات، قفل الشهر، حد الدين)، ثم تعيد نتيجتها للهاتف مع «نسخة عمل» المندوب: زبائنه وأسعاره ورصيد سيارته. لا يُفتح أي منفذ في المعمل، وإذا انقطع الإنترنت تنتظر الحركات في الخادم بلا ضياع ولا تكرار. «مزامنة الآن» تجري دورة واحدة من هذا الجهاز للتجربة."/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- الإعداد -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="الإعداد" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="عنوان الخادم السحابي" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding ServerUrl, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                <TextBlock Text="مفتاح المعمل (يُلصق في إعداد الخادم Relay__AgentKey)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                <TextBox Text="{Binding KeyText, Mode=OneWay}" IsReadOnly="True" FlowDirection="LeftToRight" FontFamily="Consolas" TextWrapping="Wrap"/>
+                <Button Content="توليد مفتاح جديد" Style="{StaticResource SecondaryButton}" Command="{Binding GenerateKeyCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                <TextBlock Text="المزامنة كل (ثانية)" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Width="80" HorizontalAlignment="Left" FlowDirection="LeftToRight"/>
+                <CheckBox Content="تفعيل المزامنة السحابية" IsChecked="{Binding IsEnabled}" Margin="0,12,0,0"/>
+                <Button Content="حفظ" Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

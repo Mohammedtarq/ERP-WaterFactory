@@ -1,0 +1,180 @@
+# يبني ويختبر النظام، ثم يُنتج حزمة Windows جاهزة للتنزيل من تبويب Actions
+# (Artifacts ← ERP-WaterFactory-win-x64). لا حاجة لـ Visual Studio على جهازك.
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: الاختبارات (SQL Server حقيقي)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: كل الاختبارات
+        run: ./tests/run_tests.sh
+
+  ui:
+    name: رسم الشاشات فعليًا على Windows
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 40
+    # الكتابة مطلوبة فقط لخطوة "صور دليل الاستخدام" (تعمل عند وجود [guide] في رسالة الدفعة)
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: SQL Server LocalDB
+        uses: potatoqualitee/mssqlsuite@v2
+        with:
+          install: localdb
+      - name: طابعة اختبار (طابور Windows حقيقي منفذه ملف)
+        shell: pwsh
+        run: |
+          Start-Service Spooler -ErrorAction SilentlyContinue
+          Get-PrinterDriver | Format-Table Name -AutoSize
+          $driver = (Get-PrinterDriver | Where-Object Name -match 'Print To PDF' | Select-Object -First 1).Name
+          $ext = '.pdf'
+          if (-not $driver) { $driver = (Get-PrinterDriver | Where-Object Name -match 'XPS Document Writer' | Select-Object -First 1).Name; $ext = '.xps' }
+          if (-not $driver) { Write-Host 'No PDF/XPS printer driver on this runner'; exit 0 }
+          $out = Join-Path $env:RUNNER_TEMP ("erp-print" + $ext)
+          Add-PrinterPort -Name $out
+          Add-Printer -Name 'ERP Test Printer' -DriverName $driver -PortName $out
+          "ERP_TEST_PRINTER=ERP Test Printer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "ERP_TEST_PRINTER_OUTPUT=$out" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Printer: $driver -> $out"
+      - name: رسم كل الشاشات (بدون بيانات ثم ببيانات تجريبية حقيقية)
+        shell: pwsh
+        env:
+          ERP_UI_SQL_CONNECTION: Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True;
+          ERP_UI_SCREENSHOTS: ${{ github.workspace }}\ui-screenshots
+        run: dotnet test tests/ERP.Desktop.UiTests -p:NuGetAudit=false --logger "console;verbosity=normal"
+      # دليل الاستخدام المصوَّر: تُحفظ صور الدرس في المستودع (docs/user-guide/images) على نفس الفرع،
+      # فقط عند طلبها صراحةً بـ [guide] في رسالة الدفعة، وبـ [skip ci] حتى لا تبدأ دفعة جديدة.
+      - name: صور دليل الاستخدام
+        if: success() && github.event_name == 'push' && contains(github.event.head_commit.message, '[guide]')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force docs/user-guide/images | Out-Null
+          Copy-Item ui-screenshots/tutorial/*.png docs/user-guide/images/ -Force
+          New-Item -ItemType Directory -Force docs/user-guide/images/hr | Out-Null
+          Copy-Item ui-screenshots/tutorial-hr/*.png docs/user-guide/images/hr/ -Force
+          New-Item -ItemType Directory -Force docs/user-guide/images/recipes | Out-Null
+          Copy-Item ui-screenshots/tutorial-recipes/*.png docs/user-guide/images/recipes/ -Force
+          New-Item -ItemType Directory -Force docs/user-guide/images/variants | Out-Null
+          Copy-Item ui-screenshots/tutorial-variants/*.png docs/user-guide/images/variants/ -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/user-guide/images
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "صور دليل الاستخدام من الشاشات الفعلية [skip ci]"
+            git push origin "HEAD:${{ github.ref_name }}"
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ERP-WaterFactory-screenshots
+          path: ui-screenshots
+          retention-days: 30
+
+  android:
+    name: تطبيق المندوب (أندرويد)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # توقيع المعمل الثابت (اختياري): أسرار المستودع ERP_REPAPP_KEYSTORE_B64 و ERP_REPAPP_STORE_PASS و ERP_REPAPP_KEY_ALIAS
+      ERP_REPAPP_KEYSTORE_B64: ${{ secrets.ERP_REPAPP_KEYSTORE_B64 }}
+      ERP_REPAPP_STORE_PASS: ${{ secrets.ERP_REPAPP_STORE_PASS }}
+      ERP_REPAPP_KEY_ALIAS: ${{ secrets.ERP_REPAPP_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '17'
+      - name: أدوات أندرويد لـ .NET
+        run: dotnet workload install maui-android
+      - name: مكوّنات Android SDK المطلوبة
+        run: dotnet build ERP.RepApp/ERP.RepApp.csproj -t:InstallAndroidDependencies -f net10.0-android -p:AndroidSdkDirectory="$ANDROID_HOME" -p:AcceptAndroidSDKLicenses=True -p:NuGetAudit=false
+      - name: بناء ملف APK
+        run: |
+          if [ -n "$ERP_REPAPP_KEYSTORE_B64" ]; then
+            echo "$ERP_REPAPP_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/rep-app.keystore"
+            export ERP_REPAPP_KEYSTORE="$RUNNER_TEMP/rep-app.keystore"
+            echo "توقيع المعمل الثابت"
+          else
+            echo "::notice::لا مفتاح توقيع في أسرار المستودع — ملف تجربة بمفتاح مؤقت (احذف النسخة القديمة من الهاتف قبل التثبيت)"
+          fi
+          dotnet publish ERP.RepApp/ERP.RepApp.csproj -f net10.0-android -c Release -p:AndroidSdkDirectory="$ANDROID_HOME" -p:NuGetAudit=false -o dist/rep-app
+          ls -la dist/rep-app
+          mkdir -p dist/apk && cp dist/rep-app/*-Signed.apk "dist/apk/مندوب-الرحمة.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ERP-RepApp-apk
+          path: dist/apk
+          retention-days: 30
+
+  package:
+    name: حزمة Windows
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: فحص صياغة سكربتات PowerShell على Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $bad = 0
+          Get-ChildItem tools -Recurse -Filter *.ps1 | ForEach-Object {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
+            if ($errs) { $bad++; $errs | ForEach-Object { Write-Host "$($_.Extent.File):$($_.Extent.StartLineNumber) $($_.Message)" } }
+            $bytes = [IO.File]::ReadAllBytes($_.FullName)
+            if (-not ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)) { $bad++; Write-Host "$($_.Name): missing UTF-8 BOM" }
+          }
+          if ($bad) { exit 1 }
+      - name: النشر (self-contained win-x64)
+        shell: pwsh
+        run: ./tools/publish.ps1
+      - name: تجربة خدمة المزامنة السحابية (ملف واحد يعمل)
+        shell: pwsh
+        run: |
+          & "dist/ERP-WaterFactory-win-x64/SyncAgent/ERP.SyncAgent.exe" --help
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: نشر الخادم السحابي (حزمة جاهزة للرفع على الاستضافة)
+        shell: pwsh
+        run: dotnet publish ERP.Cloud.Api/ERP.Cloud.Api.csproj -c Release -p:DebugType=none -o dist/ERP-Cloud-Api
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ERP-Cloud-Api
+          path: dist/ERP-Cloud-Api
+          retention-days: 30
+      - name: تجربة المثبّت (جهاز مستخدم، بلا تشغيل)
+        # نص الخطوة بـ PowerShell 7 (يقرأ العربية)، والمثبّت نفسه على Windows PowerShell 5.1 كما في أجهزة المعمل
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File "dist/ERP-WaterFactory-win-x64/Install-ERP.ps1" -Mode Workstation -NoLaunch -InstallDir "$env:RUNNER_TEMP\erp-install"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$env:RUNNER_TEMP\erp-install\ERP.Desktop.exe")) { throw "المثبّت لم ينسخ البرنامج" }
+          if (Test-Path "$env:RUNNER_TEMP\erp-install\Install-ERP.ps1") { throw "المثبّت نسخ نفسه مع البرنامج" }
+          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'نظام معمل المياه.lnk'))) { throw "لا اختصار على سطح المكتب" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ERP-WaterFactory-win-x64
+          path: dist/ERP-WaterFactory-win-x64
+          retention-days: 30

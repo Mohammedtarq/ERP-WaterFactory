@@ -1,0 +1,28 @@
+<UserControl x:Class="ERP.Desktop.Views.Shell.ModuleView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Shell;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ModuleViewModel}"
+             x:Name="Root">
+    <DockPanel>
+        <!-- عنوان الوحدة -->
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+            <Button DockPanel.Dock="Right" Content="تفريغ الشاشة" Style="{StaticResource SecondaryButton}" Command="{Binding ClearCurrentCommand}"
+                    ToolTip="يلغي ما أُدخل ولم يُحفظ ويعيد الشاشة كما فُتحت (تعود نظيفة تلقائيًا أيضًا عند الخروج منها)"
+                    Visibility="{Binding CanClearCurrent, Converter={StaticResource BoolToVisibility}}" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal">
+                <Border Width="40" Height="40" CornerRadius="10" Background="{Binding Color, Converter={StaticResource HexBrush}}">
+                    <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="19" Foreground="White"/>
+                </Border>
+                <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- تبويب "الرئيسية" أولًا ثم الأقسام الفرعية — المحتوى يُختار تلقائيًا حسب نوع كل قسم (ViewMappings.xaml) -->
+        <TabControl ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
+                    ItemTemplate="{StaticResource TabHeaderTemplate}" ItemContainerStyle="{StaticResource ModuleTabItem}"
+                    Background="Transparent" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}" Padding="0,14,0,0"/>
+    </DockPanel>
+</UserControl>

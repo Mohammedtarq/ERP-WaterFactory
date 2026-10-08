@@ -1,0 +1,64 @@
+<UserControl x:Class="ERP.Desktop.Views.Reps.RepDevicesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Reps;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:RepDevicesSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="340"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Content="إيقاف / تفعيل المختار" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleCommand}"/>
+                        <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="هواتف المندوبين" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <DataGrid ItemsSource="{Binding Devices}" SelectedItem="{Binding Selected}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="المندوب" Binding="{Binding RepName}" Width="*"/>
+                        <DataGridTextColumn Header="الجهاز" Binding="{Binding DeviceName}" Width="*"/>
+                        <DataGridCheckBoxColumn Header="مفعّل" Binding="{Binding IsActive, Mode=OneWay}" Width="60"/>
+                        <DataGridTextColumn Header="آخر اتصال" Binding="{Binding LastSeenAt, StringFormat='yyyy/MM/dd HH:mm'}" Width="130"/>
+                        <DataGridTextColumn Header="سُجّل في" Binding="{Binding RegisteredAt, StringFormat='yyyy/MM/dd'}" Width="95"/>
+                        <DataGridTextColumn Header="بواسطة" Binding="{Binding RegisteredBy}" Width="90"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <StackPanel Grid.Column="1" Margin="12,0,0,0">
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="تسجيل هاتف جديد" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="المندوب" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding Reps}" SelectedItem="{Binding NewRep}" DisplayMemberPath="Label"/>
+                    <TextBlock Text="اسم الجهاز" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Content="تسجيل" Style="{StaticResource PrimaryButton}" Command="{Binding RegisterCommand}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                    <TextBlock Text="المفتاح السري للجهاز (انسخه إلى الهاتف — لا يُعرض مرة أخرى)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                    <TextBox Text="{Binding LastKey, Mode=OneWay}" IsReadOnly="True" FlowDirection="LeftToRight" FontFamily="Consolas" TextWrapping="Wrap"/>
+                    <Image Source="{Binding LinkQr, Converter={StaticResource BytesToImage}}" Width="220" Height="220" Margin="0,10,0,0" HorizontalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="NearestNeighbor" Visibility="{Binding HasLinkQr, Converter={StaticResource BoolToVisibility}}"/>
+                    <TextBlock Text="{Binding LinkHint}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="إعدادات تطبيق المندوبين" Style="{StaticResource SectionTitle}"/>
+                    <CheckBox Content="السماح بتجاوز حد دين الزبون (مع تنبيه)" IsChecked="{Binding AllowOverLimit}"/>
+                    <TextBlock Text="تنبيه بقاء النقد مع المندوب بعد (يوم)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding CashAlertDays, UpdateSourceTrigger=PropertyChanged}" Width="80" HorizontalAlignment="Left" FlowDirection="LeftToRight"/>
+                    <Button Content="حفظ الإعدادات" Style="{StaticResource SuccessButton}" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Grid>
+</UserControl>

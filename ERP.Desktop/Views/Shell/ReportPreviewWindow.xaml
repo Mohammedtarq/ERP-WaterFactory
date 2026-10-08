@@ -1,0 +1,65 @@
+<Window x:Class="ERP.Desktop.Views.Shell.ReportPreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="معاينة الطباعة"
+        FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
+        Width="1180" Height="860" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource BackgroundBrush}">
+    <DockPanel>
+        <!-- ================= لوحة الخيارات ================= -->
+        <Border DockPanel.Dock="Left" Width="270" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+            <DockPanel Margin="16">
+                <StackPanel DockPanel.Dock="Bottom">
+                    <Button x:Name="PrintButton" Style="{StaticResource PrimaryButton}" Click="OnPrint" IsDefault="True" Margin="0,0,0,8" HorizontalAlignment="Stretch">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock Text="&#xE749;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                            <TextBlock Text="طباعة"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Click="OnSavePdf" Margin="0,0,0,8" HorizontalAlignment="Stretch">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock Text="&#xEA90;" Style="{StaticResource Icon}" Margin="0,0,8,0"/>
+                            <TextBlock Text="حفظ PDF"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Click="OnClose" IsCancel="True" Content="إغلاق" HorizontalAlignment="Stretch" Margin="0"/>
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock x:Name="DocTitle" Style="{StaticResource SectionTitle}" TextWrapping="Wrap"/>
+                        <TextBlock Text="نوع الطابعة" Style="{StaticResource FieldLabel}" Margin="0,4,0,4"/>
+                        <RadioButton x:Name="A4Radio" x:FieldModifier="public" Content="طابعة عادية — A4" GroupName="Printer" Margin="0,2" Checked="OnOptionChanged"/>
+                        <RadioButton x:Name="ReceiptRadio" x:FieldModifier="public" Content="طابعة كاشير حرارية — 80mm" GroupName="Printer" Margin="0,2" Checked="OnOptionChanged"/>
+                        <TextBlock x:Name="ReceiptHint" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
+                                   Text="الكاشير متاح للفواتير وإيصالات الصندوق والسندات."/>
+
+                        <StackPanel x:Name="ColumnsPanel">
+                            <TextBlock Text="الأعمدة الظاهرة" Style="{StaticResource FieldLabel}" Margin="0,14,0,4"/>
+                            <ItemsControl x:Name="ColumnsList" x:FieldModifier="public">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding Name}" IsChecked="{Binding IsVisible}" Margin="0,2" Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <CheckBox x:Name="HideZeroBox" x:FieldModifier="public" Content="إخفاء الصفوف الصفرية أو الفارغة" Margin="0,10,0,0"
+                                      Checked="OnOptionChanged" Unchecked="OnOptionChanged"/>
+                        </StackPanel>
+                        <Button Style="{StaticResource SecondaryButton}" Click="OnSaveDefault" Content="حفظ هذا الإعداد كافتراضي لهذا التقرير"
+                                Margin="0,14,0,0" HorizontalAlignment="Stretch" Padding="8,7"/>
+                        <TextBlock x:Name="StatusText" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="PagesText" Style="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- ================= المعاينة (نفس ناتج الطباعة) ================= -->
+        <Grid Background="#CBD5E1">
+            <DocumentViewer x:Name="Viewer" x:FieldModifier="public" FlowDirection="LeftToRight" Background="#CBD5E1"/>
+            <ScrollViewer x:Name="ReceiptHost" x:FieldModifier="public" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Padding="24">
+                <Border x:Name="ReceiptFrame" HorizontalAlignment="Center" VerticalAlignment="Top" Background="White" BorderBrush="#94A3B8" BorderThickness="1"/>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>

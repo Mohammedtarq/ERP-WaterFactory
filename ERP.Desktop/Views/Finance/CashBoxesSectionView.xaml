@@ -1,0 +1,273 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.CashBoxesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:CashBoxesSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="340"/>
+        </Grid.ColumnDefinitions>
+
+        <DockPanel>
+            <!-- ================= الصندوق العام (المجموع) ================= -->
+            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,10" Padding="14,10"
+                    Visibility="{Binding CanSeeTotals, Converter={StaticResource BoolToVisibility}}">
+                <DockPanel>
+                    <CheckBox DockPanel.Dock="Left" Content="إظهار الموقوفة" IsChecked="{Binding ShowInactive}" VerticalAlignment="Center"
+                              ToolTip="الصناديق الموقوفة مخفية؛ أظهرها لإعادة تفعيلها أو حذف ما لا حركات عليه"
+                              Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVisibility}}"/>
+                    <WrapPanel HorizontalAlignment="Right">
+                        <TextBlock Text="الصندوق العام (مجموع المفعّلة عدا البطاقات):" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding GeneralTotal, StringFormat='{}{0:N0} د.ع'}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,24,0"/>
+                        <TextBlock Text="البطاقات الإلكترونية:" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Muted}"/>
+                        <TextBlock Text="{Binding CardsTotal, StringFormat='{}{0:N0} د.ع'}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </WrapPanel>
+                </DockPanel>
+            </Border>
+            <!-- ================= بطاقات الصناديق ================= -->
+            <ListBox DockPanel.Dock="Top" ItemsSource="{Binding Boxes}" SelectedItem="{Binding SelectedBox}" Margin="0,0,0,10"
+                     Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Setter Property="Margin" Value="0,0,8,8"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="Bd" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14,10" MinWidth="190">
+                                        <ContentPresenter/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="#0EA5E9"/>
+                                            <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
+                                            <Setter TargetName="Bd" Property="Background" Value="#F0F9FF"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE8C7;" Style="{StaticResource Icon}" Foreground="#0EA5E9" Margin="0,0,6,0"/>
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                <TextBlock Text=" ★" Foreground="#F59E0B" ToolTip="الصندوق الافتراضي"
+                                           Visibility="{Binding IsDefault, Converter={StaticResource BoolToVisibility}}"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding Balance, StringFormat='{}{0:N0} د.ع'}" FontSize="20" FontWeight="Bold" Margin="0,4,0,0"
+                                       Foreground="{StaticResource SuccessBrush}"/>
+                            <TextBlock Text="{Binding OwnerUsername, StringFormat='صاحبه: {0}'}" Style="{StaticResource Muted}" FontSize="11"
+                                       Visibility="{Binding OwnerUsername, Converter={StaticResource NullToCollapsed}}"/>
+                            <DockPanel Margin="0,6,0,0">
+                                <Button DockPanel.Dock="Left" Style="{StaticResource SecondaryButton}" Padding="8,3" FontSize="11" Margin="0"
+                                        Command="{Binding DataContext.ToggleActiveCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                        Visibility="{Binding DataContext.IsAdmin, ElementName=Root, Converter={StaticResource BoolToVisibility}}">
+                                    <TextBlock>
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="إيقاف"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="False"><Setter Property="Text" Value="تفعيل"/></DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Button>
+                                <Button DockPanel.Dock="Left" Content="&#xE74D;" ToolTip="حذف (للصندوق بلا حركات فقط)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                        Command="{Binding DataContext.DeleteBoxCommand, ElementName=Root}" CommandParameter="{Binding}" Margin="4,0,0,0"
+                                        Visibility="{Binding DataContext.IsAdmin, ElementName=Root, Converter={StaticResource BoolToVisibility}}"/>
+                                <Border CornerRadius="4" Padding="6,1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#ECFDF5"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsActive}" Value="False"><Setter Property="Background" Value="#F1F5F9"/></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock FontSize="11">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="مفعّل"/>
+                                                <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                        <Setter Property="Text" Value="غير مفعّل"/>
+                                                        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Border>
+                            </DockPanel>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock DockPanel.Dock="Top" Text="{Binding NoBoxText}" Style="{StaticResource Muted}" Margin="0,0,0,10"
+                       Visibility="{Binding HasBoxes, Converter={StaticResource InverseBoolToVisibility}}"/>
+            <Border DockPanel.Dock="Top" Background="#FFFBEB" CornerRadius="6" Padding="10,6" Margin="0,0,0,10"
+                    Visibility="{Binding InactiveNotice, Converter={StaticResource NullToCollapsed}}">
+                <TextBlock Text="{Binding InactiveNotice}" TextWrapping="Wrap" Foreground="{StaticResource WarningBrush}"/>
+            </Border>
+
+            <!-- ================= الكشف ================= -->
+            <Border Style="{StaticResource Card}">
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                            <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                            <Button Style="{StaticResource SecondaryButton}" Command="{Binding PrintStatementCommand}" Margin="8,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE749;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="طباعة الكشف"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding SelectedBox.Name}" Style="{StaticResource SectionTitle}" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="من" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <DatePicker SelectedDate="{Binding From}" Width="125"/>
+                            <TextBlock Text="إلى" VerticalAlignment="Center" Margin="10,0,6,0"/>
+                            <DatePicker SelectedDate="{Binding To}" Width="125"/>
+                            <Button Style="{StaticResource PrimaryButton}" Command="{Binding LoadStatementCommand}" Content="عرض" Margin="10,0,0,0"/>
+                        </StackPanel>
+                    </DockPanel>
+                    <UniformGrid DockPanel.Dock="Bottom" Columns="4" Margin="0,10,0,0">
+                        <TextBlock Text="{Binding Opening, StringFormat='أول المدة: {0:N0}'}" Style="{StaticResource Muted}"/>
+                        <TextBlock Text="{Binding TotalIn, StringFormat='الداخل: {0:N0}'}" Foreground="{StaticResource SuccessBrush}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding TotalOut, StringFormat='الخارج: {0:N0}'}" Foreground="{StaticResource DangerBrush}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Closing, StringFormat='الرصيد: {0:N0} د.ع'}" FontWeight="Bold"/>
+                    </UniformGrid>
+                    <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsVoided}" Value="True">
+                                        <Setter Property="Foreground" Value="#94A3B8"/>
+                                        <Setter Property="ToolTip" Value="{Binding VoidReason}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="التاريخ" Binding="{Binding TxDate, StringFormat=yyyy/MM/dd}" Width="95"/>
+                            <DataGridTextColumn Header="الرقم" Binding="{Binding TxNumber}" Width="125"/>
+                            <DataGridTextColumn Header="النوع" Binding="{Binding TypeLabel}" Width="120"/>
+                            <DataGridTextColumn Header="الجهة / الصندوق المقابل" Binding="{Binding PartyName}" Width="130"/>
+                            <DataGridTextColumn Header="البيان" Binding="{Binding Description}" Width="*"/>
+                            <DataGridTextColumn Header="المستند" Binding="{Binding Reference}" Width="110"/>
+                            <DataGridTextColumn Header="داخل" Binding="{Binding In, StringFormat=N0}" Width="95"/>
+                            <DataGridTextColumn Header="خارج" Binding="{Binding Out, StringFormat=N0}" Width="95"/>
+                            <DataGridTextColumn Header="الرصيد" Binding="{Binding Balance, StringFormat=N0}" Width="100"/>
+                            <DataGridCheckBoxColumn Header="ملغاة" Binding="{Binding IsVoided, Mode=OneWay}" Width="50"/>
+                            <DataGridCheckBoxColumn Header="معدّلة" Binding="{Binding IsModified, Mode=OneWay}" Width="50"/>
+                            <DataGridTemplateColumn Header="" Width="84">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="&#xE749;" ToolTip="طباعة الإيصال" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                                    Command="{Binding DataContext.PrintTxCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                            <Button Content="&#xE70F;" ToolTip="تعديل / إلغاء (الأدمن)" Style="{StaticResource RowIconButton}" Tag="#2563EB"
+                                                    Command="{Binding DataContext.EditCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                                    Visibility="{Binding DataContext.IsAdmin, ElementName=Root, Converter={StaticResource BoolToVisibility}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+        </DockPanel>
+
+        <!-- ================= اللوحة الجانبية ================= -->
+        <ScrollViewer Grid.Column="1" Margin="12,0,0,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- تعديل / إلغاء -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12" BorderBrush="#2563EB" BorderThickness="2"
+                        Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding Editing.TxNumber, StringFormat='تعديل الحركة {0}'}" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="المبلغ" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding EditAmount, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker SelectedDate="{Binding EditDate}"/>
+                        <TextBlock Text="البيان" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding EditDescription, UpdateSourceTrigger=PropertyChanged}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button Style="{StaticResource PrimaryButton}" Command="{Binding SaveEditCommand}" Content="حفظ التعديل"/>
+                            <Button Style="{StaticResource SecondaryButton}" Command="{Binding CancelEditCommand}" Content="إغلاق"/>
+                        </StackPanel>
+                        <Separator Margin="0,14"/>
+                        <TextBlock Text="سبب الإلغاء" Style="{StaticResource FieldLabel}" Margin="0"/>
+                        <TextBox Text="{Binding VoidReason, UpdateSourceTrigger=PropertyChanged}"/>
+                        <Button Style="{StaticResource DangerButton}" Command="{Binding VoidCommand}" Content="إلغاء الحركة" Margin="0,10,0,0" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- حركة جديدة -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12" Visibility="{Binding SelectedIsActive, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="حركة جديدة" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="العملية" Style="{StaticResource FieldLabel}" Margin="0"/>
+                        <ComboBox ItemsSource="{Binding ActionOptions}" SelectedItem="{Binding Action}" DisplayMemberPath="Label"/>
+                        <StackPanel Visibility="{Binding IsTransfer, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="إلى صندوق" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding TransferTargets}" SelectedItem="{Binding TargetBox}" DisplayMemberPath="Name"/>
+                        </StackPanel>
+                        <TextBlock Text="المبلغ (د.ع)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right" FontSize="15"/>
+                        <TextBlock Text="{Binding AmountWords}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker SelectedDate="{Binding TxDate}"/>
+                        <StackPanel Visibility="{Binding IsTransfer, Converter={StaticResource InverseBoolToVisibility}}">
+                            <TextBlock Text="{Binding PartyLabel}" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding Party, UpdateSourceTrigger=PropertyChanged}"/>
+                        </StackPanel>
+                        <TextBlock Text="البيان" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding TxDescription, UpdateSourceTrigger=PropertyChanged}"/>
+                        <Button Style="{StaticResource SuccessButton}" Command="{Binding SubmitCommand}" Margin="0,14,0,0" HorizontalAlignment="Left">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="تسجيل الحركة"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- صندوق جديد (أدمن) -->
+                <Border Style="{StaticResource Card}" Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="صندوق جديد" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="الاسم" Style="{StaticResource FieldLabel}" Margin="0"/>
+                        <TextBox Text="{Binding NewBoxName, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBlock Text="النوع" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding BoxTypeOptions}" SelectedItem="{Binding NewBoxType}" DisplayMemberPath="Label"/>
+                        <StackPanel Visibility="{Binding NewBoxIsUser, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="المستخدم صاحب الصندوق" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding Users}" SelectedItem="{Binding NewBoxOwner}" DisplayMemberPath="Username"/>
+                        </StackPanel>
+                        <CheckBox Content="مفعّل الآن (يستقبل مبيعات صاحبه النقدية؛ وإلا تذهب للصندوق الرئيسي)" IsChecked="{Binding NewBoxActive}"
+                                  Visibility="{Binding NewBoxIsUser, Converter={StaticResource BoolToVisibility}}"/>
+                        <CheckBox Content="الصندوق الافتراضي (يستقبل المبيعات النقدية لمن لا صندوق له)" IsChecked="{Binding NewBoxDefault}"/>
+                        <Button Style="{StaticResource PrimaryButton}" Command="{Binding CreateBoxCommand}" Content="إنشاء الصندوق" Margin="0,12,0,0" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

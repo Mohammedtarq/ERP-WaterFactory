@@ -1,0 +1,69 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.FinalAccountsSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:FinalAccountsSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="460"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock Text="الشهر" VerticalAlignment="Center" Margin="0,0,6,0" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding Months}" SelectedItem="{Binding Month}" Width="60"/>
+                    <ComboBox ItemsSource="{Binding Years}" SelectedItem="{Binding Year}" Width="80" Margin="6,0,0,0"/>
+                    <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="8,0,0,0"/>
+                </WrapPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                <DataGrid ItemsSource="{Binding Lines}" IsReadOnly="True">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsTotal}" Value="True">
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="Background" Value="#F0FDF4"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="القسم" Binding="{Binding Section}" Width="130"/>
+                        <DataGridTextColumn Header="البند" Binding="{Binding Label}" Width="*"/>
+                        <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="110"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock Style="{StaticResource SectionTitle}" Margin="0,0,16,0">
+                        <Run Text="كلفة القنينة: "/><Run Text="{Binding Report.CostPerPiece, Mode=OneWay, StringFormat=N2}"/><Run Text=" د.ع"/>
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Muted}" VerticalAlignment="Center">
+                        <Run Text="القطع المباعة "/><Run Text="{Binding Report.PiecesSold, Mode=OneWay, StringFormat=N0}"/>
+                        <Run Text=" — مصاريف للقطعة "/><Run Text="{Binding Report.OverheadPerPiece, Mode=OneWay, StringFormat=N2}"/>
+                    </TextBlock>
+                </WrapPanel>
+                <TextBlock DockPanel.Dock="Top" Text="هامش كل منتج" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <DataGrid ItemsSource="{Binding Products}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding ItemName}" Width="*"/>
+                        <DataGridTextColumn Header="القطع" Binding="{Binding PiecesSold, StringFormat=N0}" Width="70"/>
+                        <DataGridTextColumn Header="الإيراد" Binding="{Binding Revenue, StringFormat=N0}" Width="95"/>
+                        <DataGridTextColumn Header="الخصم" Binding="{Binding Discount, StringFormat=N0}" Width="85"/>
+                        <DataGridTextColumn Header="الكلفة" Binding="{Binding Cost, StringFormat=N0}" Width="95"/>
+                        <DataGridTextColumn Header="كلفة القطعة" Binding="{Binding CostPerPiece, StringFormat=N2}" Width="80"/>
+                        <DataGridTextColumn Header="الهامش" Binding="{Binding Margin, StringFormat=N0}" Width="95"/>
+                        <DataGridTextColumn Header="%" Binding="{Binding MarginPercent, StringFormat=N1}" Width="50"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

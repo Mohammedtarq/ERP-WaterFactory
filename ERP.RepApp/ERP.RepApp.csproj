@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- تطبيق المندوب (أندرويد 8 فأحدث): واجهة فوق ERP.RepApp.Core — كل المنطق هناك ومختبَر.
+       يُبنى في CI (تبويب Actions ← ERP-RepApp-apk) ويُثبَّت على الهاتف مباشرة. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <RootNamespace>ERP.RepApp</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <ApplicationTitle>مندوب الرحمة</ApplicationTitle>
+    <ApplicationId>com.alrahma.repapp</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
+    <!-- DisplayAlert: البديل غير المتزامن في MAUI 10 يكفي لاحقًا؛ التحذير لا يمنع البناء -->
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <AndroidPackageFormats>apk</AndroidPackageFormats>
+  </PropertyGroup>
+
+  <!-- توقيع المعمل الثابت (اختياري): يُمرَّر من أسرار GitHub عند ضبطها — انظر docs/rep-app.md.
+       بدونه يوقَّع ملف التجربة بمفتاح مؤقت، فيلزم حذف النسخة القديمة من الهاتف قبل تثبيت الجديدة. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' And '$(ERP_REPAPP_KEYSTORE)' != ''">
+    <AndroidKeyStore>true</AndroidKeyStore>
+    <AndroidSigningKeyStore>$(ERP_REPAPP_KEYSTORE)</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias>$(ERP_REPAPP_KEY_ALIAS)</AndroidSigningKeyAlias>
+    <AndroidSigningStorePass>env:ERP_REPAPP_STORE_PASS</AndroidSigningStorePass>
+    <AndroidSigningKeyPass>env:ERP_REPAPP_STORE_PASS</AndroidSigningKeyPass>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0F766E" />
+    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0F766E" BaseSize="128,128" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.110" />
+    <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ERP.RepApp.Core\ERP.RepApp.Core.csproj" />
+  </ItemGroup>
+
+</Project>

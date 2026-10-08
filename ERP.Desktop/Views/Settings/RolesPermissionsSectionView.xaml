@@ -1,0 +1,89 @@
+<UserControl x:Class="ERP.Desktop.Views.Settings.RolesPermissionsSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:RolesPermissionsSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="الأدوار" Style="{StaticResource SectionTitle}"/>
+                <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                    <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="إضافة دور" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                            Command="{Binding AddRoleCommand}" Width="34" Height="32"/>
+                    <TextBox Text="{Binding NewRoleName, UpdateSourceTrigger=PropertyChanged}" ToolTip="اسم الدور الجديد"/>
+                </DockPanel>
+                <ListBox ItemsSource="{Binding Roles}" SelectedItem="{Binding SelectedRole}" HorizontalContentAlignment="Stretch" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,4">
+                                <Button DockPanel.Dock="Right" Content="&#xE74D;" ToolTip="حذف الدور" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                        Command="{Binding DataContext.DeleteRoleCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Content="تقرير من يملك ماذا" Style="{StaticResource SecondaryButton}" Command="{Binding PrintWhoHasWhatCommand}"/>
+                        <Button Content="منح الكل" Style="{StaticResource SecondaryButton}" Command="{Binding GrantAllCommand}"/>
+                        <Button Content="سحب الكل" Style="{StaticResource SecondaryButton}" Command="{Binding RevokeAllCommand}"/>
+                        <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="حفظ الصلاحيات"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <TextBlock Text="{Binding SelectedRole.Name, StringFormat='صلاحيات: {0}'}" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <Grid DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="240"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="صلاحيات خاصة على المعلومة والإجراء" Style="{StaticResource FieldLabel}" FontWeight="SemiBold"/>
+                        <ItemsControl ItemsSource="{Binding Specials}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Content="{Binding Name}" IsChecked="{Binding Granted}" ToolTip="{Binding Hint}" Margin="0,3"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                        <TextBlock Text="سقف الصرف للعملية الواحدة (د.ع)" Style="{StaticResource FieldLabel}" FontWeight="SemiBold"/>
+                        <TextBox Text="{Binding MaxPaymentText, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <TextBlock Text="فارغ = بلا سقف. ما فوق السقف من سندات الصرف والسحب من الصناديق يحتاج صلاحية «الصرف فوق سقف الدور»." Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Grid>
+                <DataGrid ItemsSource="{Binding Matrix}" IsReadOnly="False">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الوحدة" Binding="{Binding ModuleName}" Width="*" IsReadOnly="True"/>
+                        <DataGridCheckBoxColumn Header="عرض" Binding="{Binding CanView, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
+                        <DataGridCheckBoxColumn Header="إضافة" Binding="{Binding CanAdd, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
+                        <DataGridCheckBoxColumn Header="تعديل" Binding="{Binding CanEdit, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
+                        <DataGridCheckBoxColumn Header="حذف" Binding="{Binding CanDelete, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
+                        <DataGridCheckBoxColumn Header="ترحيل" Binding="{Binding CanPost, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

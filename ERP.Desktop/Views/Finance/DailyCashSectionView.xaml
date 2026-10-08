@@ -1,0 +1,33 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.DailyCashSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:DailyCashSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <TextBlock Text="اليوم" VerticalAlignment="Center" Margin="0,0,6,0" FontWeight="SemiBold"/>
+                <DatePicker SelectedDate="{Binding Date}" Width="130"/>
+                <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="8,0,0,0"/>
+                <TextBlock VerticalAlignment="Center" Margin="16,0,0,0" FontWeight="SemiBold">
+                    <Run Text="داخل "/><Run Text="{Binding TotalIn, Mode=OneWay, StringFormat=N0}"/>
+                    <Run Text=" — خارج "/><Run Text="{Binding TotalOut, Mode=OneWay, StringFormat=N0}"/>
+                    <Run Text=" — الرصيد آخر اليوم "/><Run Text="{Binding TotalClosing, Mode=OneWay, StringFormat=N0}"/>
+                </TextBlock>
+            </WrapPanel>
+            <DataGrid ItemsSource="{Binding Boxes}" IsReadOnly="True">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الصندوق" Binding="{Binding BoxName}" Width="*"/>
+                    <DataGridTextColumn Header="النوع" Binding="{Binding BoxType, Converter={StaticResource EnumArabicConverter}}" Width="150"/>
+                    <DataGridTextColumn Header="أول اليوم" Binding="{Binding Opening, StringFormat=N0}" Width="110"/>
+                    <DataGridTextColumn Header="داخل" Binding="{Binding In, StringFormat=N0}" Width="110"/>
+                    <DataGridTextColumn Header="خارج" Binding="{Binding Out, StringFormat=N0}" Width="110"/>
+                    <DataGridTextColumn Header="آخر اليوم" Binding="{Binding Closing, StringFormat=N0}" Width="110"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

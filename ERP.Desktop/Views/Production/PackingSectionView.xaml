@@ -1,0 +1,75 @@
+<UserControl x:Class="ERP.Desktop.Views.Production.PackingSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Production;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:PackingSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="380"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="تعبئة دفعة معتمدة" Style="{StaticResource SectionTitle}"/>
+                <TextBlock Text="أمر الإنتاج (ناجح بالمختبر)" Style="{StaticResource FieldLabel}"/>
+                <ComboBox ItemsSource="{Binding ReadyOrders}" SelectedItem="{Binding Order}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock>
+                                <Run Text="{Binding MONumber, Mode=OneWay}"/>
+                                <Run Text=" — "/>
+                                <Run Text="{Binding FinishedItemName, Mode=OneWay}"/>
+                                <Run Text=" — دفعة "/>
+                                <Run Text="{Binding OutputBatch, Mode=OneWay}"/>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Text="{Binding RemainingText}" Style="{StaticResource Muted}" Margin="0,6,0,0"/>
+                <TextBlock Text="وحدة التعبئة" Style="{StaticResource FieldLabel}"/>
+                <ComboBox ItemsSource="{Binding Levels}" SelectedItem="{Binding Level}" DisplayMemberPath="LevelName"/>
+                <TextBlock Text="عدد الوحدات المعبّأة" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding Units, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                <TextBlock Text="{Binding PiecesText}" Style="{StaticResource Muted}" Margin="0,4,0,0"/>
+                <TextBlock Text="مخزن المنتج التام" Style="{StaticResource FieldLabel}"/>
+                <ComboBox ItemsSource="{Binding Warehouses}" SelectedItem="{Binding Warehouse}" DisplayMemberPath="Name"/>
+                <Button Style="{StaticResource SuccessButton}" Command="{Binding PackCommand}" Margin="0,14,0,0" HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                        <TextBlock Text="تعبئة وإدخال للمخزن"/>
+                    </StackPanel>
+                </Button>
+                <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+            </StackPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    <TextBlock Text="سجل التعبئة" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+                <DataGrid ItemsSource="{Binding History}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding PackingDate, StringFormat='yyyy/MM/dd HH:mm'}" Width="130"/>
+                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="100"/>
+                        <DataGridTextColumn Header="الوحدة" Binding="{Binding LevelName}" Width="90"/>
+                        <DataGridTextColumn Header="العدد" Binding="{Binding Units, StringFormat=N0}" Width="80"/>
+                        <DataGridTextColumn Header="بالقطعة" Binding="{Binding Pieces, StringFormat=N0}" Width="90"/>
+                        <DataGridTextColumn Header="المخزن" Binding="{Binding WarehouseName}" Width="*"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE749;" ToolTip="طباعة محضر التعبئة" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

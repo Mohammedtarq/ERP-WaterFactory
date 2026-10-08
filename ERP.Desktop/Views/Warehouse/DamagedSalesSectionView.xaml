@@ -1,0 +1,131 @@
+<UserControl x:Class="ERP.Desktop.Views.Warehouse.DamagedSalesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Warehouse;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:DamagedSalesSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- فاتورة جديدة -->
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="فاتورة بيع مواد تالفة (نقدًا)" Style="{StaticResource SectionTitle}"/>
+                <Grid DockPanel.Dock="Top">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="المشتري (الجهة)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Buyer, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker SelectedDate="{Binding Date}"/>
+                    </StackPanel>
+                </Grid>
+                <Border DockPanel.Dock="Top" Background="#FEF2F2" CornerRadius="8" Padding="10" Margin="0,10,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="المادة (من مخزن التالف)" Style="{StaticResource FieldLabel}" Margin="0"/>
+                            <ComboBox ItemsSource="{Binding Available}" SelectedItem="{Binding LineItem}" DisplayMemberPath="Display" IsTextSearchEnabled="True"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="الكمية" Style="{StaticResource FieldLabel}" Margin="0"/>
+                            <TextBox Text="{Binding LineQuantity}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Text="سعر الوحدة" Style="{StaticResource FieldLabel}" Margin="0"/>
+                            <TextBox Text="{Binding LinePrice}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        </StackPanel>
+                        <Button Grid.Column="6" Style="{StaticResource PrimaryButton}" Command="{Binding AddLineCommand}" VerticalAlignment="Bottom" Margin="0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="إضافة"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Border>
+                <StackPanel DockPanel.Dock="Bottom">
+                    <TextBlock Text="ملاحظات" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Notes}"/>
+                    <DockPanel Margin="0,12,0,0">
+                        <Button DockPanel.Dock="Left" Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}" IsEnabled="{Binding CanAdd}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="حفظ الفاتورة وطباعتها"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="{Binding Total, StringFormat='الإجمالي: {0:N0} د.ع'}" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                    </DockPanel>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                </StackPanel>
+                <DataGrid ItemsSource="{Binding Lines}" IsReadOnly="True" Margin="0,10,0,0">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="المادة" Binding="{Binding ItemName}" Width="*" MinWidth="140"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding Quantity, StringFormat=#\,0.###}" Width="90"/>
+                        <DataGridTextColumn Header="السعر" Binding="{Binding UnitPrice, StringFormat=#\,0.##}" Width="90"/>
+                        <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="100"/>
+                        <DataGridTemplateColumn Header="" Width="46">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE74D;" ToolTip="حذف السطر" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <!-- السجل -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="من" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding From}" Width="125"/>
+                        <TextBlock Text="إلى" VerticalAlignment="Center" Margin="10,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding To}" Width="125"/>
+                    </StackPanel>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding SalesTotal, StringFormat='مجموع مبيعات التالف في الفترة: {0:N0} د.ع'}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <DataGrid ItemsSource="{Binding Sales}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الرقم" Binding="{Binding SaleNumber}" Width="110" MinWidth="100"/>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding SaleDate, StringFormat=yyyy/MM/dd}" Width="90"/>
+                        <DataGridTextColumn Header="المشتري" Binding="{Binding BuyerName}" Width="*" MinWidth="110"/>
+                        <DataGridTextColumn Header="المواد" Binding="{Binding ItemsText}" Width="*" MinWidth="110"/>
+                        <DataGridTextColumn Header="المبلغ" Binding="{Binding TotalAmount, StringFormat=N0}" Width="95"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE749;" ToolTip="طباعة الفاتورة" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

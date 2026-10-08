@@ -1,0 +1,89 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.VouchersSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:VouchersSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="360"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="سند جديد" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="نوع السند" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding VoucherTypes}" SelectedItem="{Binding VoucherType}" DisplayMemberPath="Label"/>
+                    <TextBlock Text="نوع الطرف" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding PartyTypes}" SelectedItem="{Binding PartyType}" DisplayMemberPath="Label"/>
+                    <TextBlock Text="الطرف" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding Parties}" SelectedItem="{Binding Party}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
+                    <TextBlock Text="المبلغ (د.ع)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Amount}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                    <TextBlock Text="طريقة الدفع" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding PaymentMethods}" SelectedItem="{Binding PaymentMethod}" DisplayMemberPath="Label"/>
+                    <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                    <DatePicker SelectedDate="{Binding VoucherDate}"/>
+                    <TextBlock Text="نوع العملية (العقل المالي)" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding MappingRules}" SelectedItem="{Binding MappingRule}" DisplayMemberPath="DisplayName"/>
+                    <Border Background="#F5F3FF" CornerRadius="6" Padding="10,8" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding RulePreview}" Foreground="#6D28D9" TextWrapping="Wrap" FontSize="12"/>
+                    </Border>
+                    <TextBlock Text="ملاحظات" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Notes}"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}" Margin="0,16,0,0" HorizontalAlignment="Left" IsEnabled="{Binding CanAdd}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="حفظ السند وإنشاء القيد"/>
+                        </StackPanel>
+                    </Button>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    <TextBlock Text="السندات المسجّلة" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock DockPanel.Dock="Right" Text="لإلغاء سند: اكتب السبب ثم اضغط ⊘ في سطره" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <TextBox Text="{Binding VoidReason, UpdateSourceTrigger=PropertyChanged}" ToolTip="سبب إلغاء السند"/>
+                </DockPanel>
+                <DataGrid ItemsSource="{Binding Vouchers}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الرقم" Binding="{Binding VoucherNumber}" Width="100"/>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding VoucherDate, StringFormat=yyyy/MM/dd}" Width="95"/>
+                        <DataGridTextColumn Header="النوع" Binding="{Binding TypeLabel}" Width="85"/>
+                        <DataGridTextColumn Header="الطرف" Binding="{Binding PartyLabel}" Width="*"/>
+                        <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="100"/>
+                        <DataGridTextColumn Header="الطريقة" Binding="{Binding MethodLabel}" Width="90"/>
+                        <DataGridTextColumn Header="القيد" Binding="{Binding EntryNumber}" Width="100"/>
+                        <DataGridTextColumn Header="ملاحظات" Binding="{Binding Notes}" Width="150"/>
+                        <DataGridTextColumn Header="الحالة" Binding="{Binding StatusLabel}" Width="120"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE711;" ToolTip="إلغاء السند (قيد عكسي)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.VoidCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE749;" ToolTip="طباعة السند" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

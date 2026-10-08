@@ -1,0 +1,61 @@
+<UserControl x:Class="ERP.Desktop.Views.Settings.SectionLayoutSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:SectionLayoutSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="إظهار الكل لهذا الدور" Style="{StaticResource SecondaryButton}" Command="{Binding ResetRoleCommand}" Margin="0,0,8,0"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="حفظ التوزيع"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <TextBlock Text="توزيع الأقسام" Style="{StaticResource SectionTitle}" Margin="0"/>
+            </DockPanel>
+            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <TextBlock Text="الدور" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                <ComboBox ItemsSource="{Binding Roles}" SelectedItem="{Binding Role}" DisplayMemberPath="Name" Width="200" Margin="0,0,16,4"/>
+                <TextBlock Text="الوحدة الأصلية" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,6,4"/>
+                <ComboBox ItemsSource="{Binding ModuleFilters}" SelectedItem="{Binding ModuleFilter}" Width="180" Margin="0,0,16,4" ToolTip="فارغ = كل الوحدات"/>
+                <TextBlock VerticalAlignment="Center" Style="{StaticResource Muted}" Margin="0,0,0,4">
+                    <Run Text="منقول:"/> <Run Text="{Binding MovedCount, Mode=OneWay}"/>
+                    <Run Text="  —  مخفي عن الدور:"/> <Run Text="{Binding HiddenCount, Mode=OneWay}"/>
+                </TextBlock>
+            </WrapPanel>
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                <TextBlock Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap"
+                           Text="«يظهر في»: الوحدة التي تظهر فيها الشاشة، ويعمل عليها من يملك صلاحية تلك الوحدة دون صلاحية وحدتها الأصلية. «ظاهر للدور»: إلغاؤه يخفي الشاشة عن الدور المختار فقط. شاشات الإعدادات ولوحة المعلومات خارج التوزيع، وفاتورة البيع وسجل الفواتير لا تُنقل. كل تعديل في سجل الحركات، ويسري عند الدخول التالي."/>
+                <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+            </StackPanel>
+            <DataGrid ItemsSource="{Binding Rows}" CanUserAddRows="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الشاشة" Binding="{Binding Title}" Width="2*" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="وحدتها الأصلية" Binding="{Binding HomeTitle}" Width="1.3*" IsReadOnly="True"/>
+                    <DataGridTemplateColumn Header="يظهر في" Width="1.5*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ComboBox ItemsSource="{Binding DataContext.Targets, ElementName=Root}" SelectedValuePath="Code" DisplayMemberPath="Name"
+                                          SelectedValue="{Binding Target, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Movable}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="ظاهر للدور" Width="95">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding Visible, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>
