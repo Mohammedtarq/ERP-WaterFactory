@@ -194,9 +194,11 @@ public class MainShellViewModel : ViewModelBase
         get => _selectedItem;
         set
         {
+            // الضغط على الوحدة المفتوحة نفسها لا يُخفي أقسامها من القائمة الجانبية
+            if (value is null || ReferenceEquals(value, _selectedItem)) return;
             if (_selectedItem is not null) _selectedItem.IsSelected = false;
             var previousModule = CurrentModule;
-            if (!SetProperty(ref _selectedItem, value) || value is null) return;
+            SetProperty(ref _selectedItem, value);
             // الخروج من وحدة: الشاشة الظاهرة فيها تعود نظيفة عند الرجوع
             if (previousModule is ModuleViewModel left) left.LeaveCurrent();
             value.IsSelected = true;

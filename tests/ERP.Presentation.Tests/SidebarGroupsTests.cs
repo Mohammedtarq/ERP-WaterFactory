@@ -56,6 +56,29 @@ public class SidebarGroupsTests
     }
 
     [Fact]
+    public async Task Clicking_the_open_module_again_keeps_its_sections_in_the_sidebar()
+    {
+        var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var hrNav = shell.NavItems.Single(n => n.ModuleCode == ModuleCode.HR);
+        shell.NavigateCommand.Execute(hrNav);
+        await shell.IdleAllAsync();
+        var hr = Assert.IsType<HrModuleViewModel>(shell.CurrentModule);
+        hr.SelectedTab = hr.Leaves;
+        await hr.LastActivation;
+
+        // ضغطة ثانية (وثالثة) على زر الوحدة نفسها: الأقسام تبقى ظاهرة والشاشة لا تتغير
+        shell.NavigateCommand.Execute(hrNav);
+        shell.NavigateCommand.Execute(hrNav);
+        Assert.True(hrNav.IsSelected);
+        Assert.Same(hrNav, shell.SelectedItem);
+        Assert.Same(hr, shell.CurrentModule);
+        Assert.Same(hr.Leaves, hr.SelectedTab);
+        Assert.NotEmpty(shell.CurrentModuleVm!.Groups);
+        await shell.IdleAllAsync();
+        Assert.Empty(_f.Unhandled);
+    }
+
+    [Fact]
     public async Task Opening_a_group_shows_its_first_section_and_closing_it_keeps_the_screen()
     {
         var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
