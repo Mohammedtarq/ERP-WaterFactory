@@ -29,10 +29,13 @@ public class PhotoService
         return parts.Length switch
         {
             0 => "؟",
-            1 => parts[0][..1],
-            _ => $"{parts[0][..1]} {parts[1][..1]}"
+            1 => First(parts[0]),
+            _ => $"{First(parts[0])} {First(parts[1])}"
         };
     }
+
+    /// <summary>أول حرف بعد «ال» التعريف: «المحاسبة» ← «م».</summary>
+    private static string First(string word) => word.Length > 2 && word.StartsWith("ال") ? word[2..3] : word[..1];
 
     public async Task<byte[]?> GetEmployeeAsync(int employeeId) =>
         await _db.EmployeePhotos.AsNoTracking().Where(p => p.EmployeeId == employeeId).Select(p => p.Photo).FirstOrDefaultAsync();

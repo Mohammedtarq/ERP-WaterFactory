@@ -84,6 +84,7 @@ public class PhotoTests
 
         Assert.Equal("س م", PhotoService.Initials("سارة المحاسبة"));
         Assert.Equal("ع", PhotoService.Initials(" علي "));
+        Assert.Equal("ع م", PhotoService.Initials("علي المندوب"));
         Assert.Equal("؟", PhotoService.Initials(null));
     }
 }

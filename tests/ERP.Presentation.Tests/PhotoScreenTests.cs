@@ -45,7 +45,7 @@ public class PhotoScreenTests
         await emps.NewCommand.ExecuteAsync();
         emps.Editor!.FullName = "موظفة الصورة";
         emps.Editor.BaseSalary = 500_000;
-        Assert.Equal("م ا", emps.EditorInitials);
+        Assert.Equal("م ص", emps.EditorInitials);
         dialogs.ImageToPick = notImage;
         emps.ChoosePhotoCommand.Execute(null);
         Assert.Contains(dialogs.Errors, e => e.Contains("PNG أو JPG"));
