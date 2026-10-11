@@ -12,26 +12,23 @@ namespace ERP.Presentation.ViewModels.Production;
 public class ProductionModuleViewModel : ModuleViewModel
 {
     public ProductionModuleViewModel(AppSession s, IDialogService d)
-        : base("الإنتاج والمختبر", Icons.Production, ModuleColors.Production)
+        : base("الإنتاج", Icons.Production, ModuleColors.Production)
     {
         UseDashboard(s, d, ModuleCode.Production, ModuleDashboardViewModel.Production);
-        // تسلسل العمل مرقّم: الإنتاج ← تحت التصنيع ← فحص المختبر ← التعبئة للمخزن، ثم المتابعة والمرجعيات بلا أرقام
+        // تسلسل العمل مرقّم: الأمر ← تحت التصنيع ← (فحص المختبر في وحدة المختبر) ← التعبئة للمخزن، ثم المتابعة والمرجعيات بلا أرقام
         Orders = AddStep(1, new ProductionOrdersSectionViewModel(s, d));
         Daily = AddStep(2, new DailyProductionSectionViewModel(s, d));
         Wip = AddStep(3, new MachineWipSectionViewModel(s, d));
-        Qc = AddStep(4, new QcSectionViewModel(s, d));
-        Packing = AddStep(5, new PackingSectionViewModel(s, d));
-        AddStep(6, new PendingProductionSectionViewModel(s, d));
+        Packing = AddStep(4, new PackingSectionViewModel(s, d));
+        AddStep(5, new PendingProductionSectionViewModel(s, d));
         Add(new VariantStockSectionViewModel(s, d));
         Add(new ProductionMonthSectionViewModel(s, d));
         Machines = Add(new MachinesSectionViewModel(s, d));
-        Add(new QualityTestsSectionViewModel(s, d));
         Add(new CustomRecipesSectionViewModel(s, d));
     }
 
     public DailyProductionSectionViewModel Daily { get; }
     public ProductionOrdersSectionViewModel Orders { get; }
-    public QcSectionViewModel Qc { get; }
     public PackingSectionViewModel Packing { get; }
     public MachineWipSectionViewModel Wip { get; }
     public MachinesSectionViewModel Machines { get; }
@@ -542,7 +539,7 @@ public class QcSectionViewModel : SectionViewModel
     private string? _lastResult;
 
     public QcSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.Production, "فحص المختبر", Icons.Star, "#8B5CF6", "فحص واحد لأمر الإنتاج كله بكل أصنافه — فشل اختبار واحد يرفض الأمر")
+        : base(s, d, ModuleCode.Lab, "فحص المختبر", Icons.Star, "#8B5CF6", "فحص واحد لأمر الإنتاج كله بكل أصنافه — فشل اختبار واحد يرفض الأمر")
     {
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         PrintCommand = new AsyncRelayCommand(p => p is QcHistoryRow r ? PrintAsync(db => DocumentReports.QcResultAsync(Session, db, r.Id)) : Task.CompletedTask);
@@ -762,7 +759,7 @@ public class PackingSectionViewModel : SectionViewModel
 public class QualityTestsSectionViewModel : CrudSectionViewModel<QualityTest>
 {
     public QualityTestsSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.Production, "اختبارات الجودة", Icons.List, "#EC4899", "تعريف الاختبارات وحدودها المقبولة") { }
+        : base(s, d, ModuleCode.Lab, "اختبارات الجودة", Icons.List, "#EC4899", "تعريف الاختبارات وحدودها المقبولة") { }
 
     public ObservableCollection<Item> ItemsLookup { get; } = new();
 

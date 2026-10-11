@@ -249,7 +249,7 @@ public static class DefaultConfiguration
     private static readonly string[] AllModules =
     {
         ModuleCode.Dashboard, ModuleCode.Warehouse, ModuleCode.Sales, ModuleCode.Suppliers, ModuleCode.Finance,
-        ModuleCode.HR, ModuleCode.Reps, ModuleCode.Production, ModuleCode.SystemSettings
+        ModuleCode.HR, ModuleCode.Reps, ModuleCode.Production, ModuleCode.Lab, ModuleCode.SystemSettings
     };
 
     /// <summary>الأدوار الجاهزة: (الوحدة، عرض، إضافة، تعديل، حذف، ترحيل). قابلة للتعديل من مصفوفة الصلاحيات.</summary>
@@ -277,7 +277,7 @@ public static class DefaultConfiguration
         ["مسؤول الإنتاج والمختبر"] = new[]
         {
             (ModuleCode.Dashboard, true, false, false, false, false), (ModuleCode.Production, true, true, true, false, true),
-            (ModuleCode.Warehouse, true, false, false, false, false),
+            (ModuleCode.Lab, true, true, true, false, true), (ModuleCode.Warehouse, true, false, false, false, false),
         },
         ["أمين صندوق"] = new[]
         {
@@ -307,6 +307,8 @@ public static class DefaultConfiguration
     {
         // ---- الأدوار ----
         var admin = await db.Roles.Include(r => r.Permissions).FirstOrDefaultAsync(r => r.Name == "مدير عام");
+        // ترقية قاعدة قائمة قبل فصل المختبر عن الإنتاج: كل دور كان يرى الإنتاج يأخذ المختبر بنفس صلاحياته (مرة واحدة)
+        var labSplitUpgrade = admin is not null && !await db.RolePermissions.AnyAsync(p => p.ModuleCode == ModuleCode.Lab);
         if (admin is null) db.Roles.Add(admin = new Role { Name = "مدير عام" });
         foreach (var m in AllModules.Where(m => admin.Permissions.All(p => p.ModuleCode != m)))
             admin.Permissions.Add(new RolePermission { ModuleCode = m, CanView = true, CanAdd = true, CanEdit = true, CanDelete = true, CanPost = true });
@@ -321,6 +323,10 @@ public static class DefaultConfiguration
                 role.Permissions.Add(new RolePermission { ModuleCode = m, CanView = v, CanAdd = a, CanEdit = e, CanDelete = d, CanPost = p });
             db.Roles.Add(role);
         }
+        if (labSplitUpgrade)
+            foreach (var role in await db.Roles.Include(r => r.Permissions).ToListAsync())
+                if (role.Permissions.FirstOrDefault(p => p.ModuleCode == ModuleCode.Production) is { } prod && role.Permissions.All(p => p.ModuleCode != ModuleCode.Lab))
+                    role.Permissions.Add(new RolePermission { ModuleCode = ModuleCode.Lab, CanView = prod.CanView, CanAdd = prod.CanAdd, CanEdit = prod.CanEdit, CanDelete = prod.CanDelete, CanPost = prod.CanPost });
         await db.SaveChangesAsync();
 
         // ---- دليل الحسابات وقواعد العقل المالي ----

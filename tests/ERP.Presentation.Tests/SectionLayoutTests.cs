@@ -61,7 +61,7 @@ public class SectionLayoutTests
             var (clerkShell, _) = await _f.LoginAsync(AppFixture.ClerkUser, AppFixture.ClerkPassword);
             var sales = clerkShell.Open<SalesModuleViewModel>(ModuleCode.Sales);
             var moved = Assert.Single(sales.Tabs.OfType<VariantStockSectionViewModel>());
-            Assert.Equal((ModuleCode.Sales, "الإنتاج والمختبر"), (moved.Module, moved.MovedFrom));
+            Assert.Equal((ModuleCode.Sales, "الإنتاج"), (moved.Module, moved.MovedFrom));
             Assert.DoesNotContain(sales.Tabs, t => t is CustomerStatementSectionViewModel);
             Assert.Contains(sales.Tabs, t => t is SalesInvoiceSectionViewModel);
             await Open(sales, moved);

@@ -66,7 +66,7 @@ public class RolesPermissionsSectionViewModel : SectionViewModel
     {
         (ModuleCode.Dashboard, "لوحة المعلومات"), (ModuleCode.Warehouse, "المخازن"), (ModuleCode.Sales, "المبيعات"),
         (ModuleCode.Suppliers, "الموردون والمشتريات"), (ModuleCode.Finance, "المالية"), (ModuleCode.HR, "الموارد البشرية"),
-        (ModuleCode.Reps, "المندوبون"), (ModuleCode.Production, "الإنتاج والمختبر"), (ModuleCode.SystemSettings, "إعدادات النظام"),
+        (ModuleCode.Reps, "المندوبون"), (ModuleCode.Production, "الإنتاج"), (ModuleCode.Lab, "المختبر"), (ModuleCode.SystemSettings, "إعدادات النظام"),
     };
 
     private Role? _selectedRole;

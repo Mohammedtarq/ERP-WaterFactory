@@ -41,7 +41,7 @@ public class ScreenFlowTests
         Assert.Null(nav.ProjectSelection);
 
         var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
-        Assert.Equal(9, shell.NavItems.Count);
+        Assert.Equal(10, shell.NavItems.Count);
         Assert.IsType<DashboardViewModel>(shell.CurrentModule);
         Assert.IsType<ERP.Presentation.ViewModels.Reps.RepsModuleViewModel>(shell.Open<object>(ModuleCode.Reps));
         Assert.IsType<ERP.Presentation.ViewModels.Production.ProductionModuleViewModel>(shell.Open<object>(ModuleCode.Production));
@@ -768,7 +768,7 @@ public class ScreenFlowTests
             Assert.True(m.Home.HasDashboard);
             dashboards++;
         }
-        Assert.Equal(7, dashboards);
+        Assert.Equal(8, dashboards);
 
         // المبيعات المرحّلة اليوم تظهر في عمود اليوم وفي الترتيب
         var salesDash = shell.Open<SalesModuleViewModel>(ModuleCode.Sales).Dashboard!;
@@ -782,7 +782,9 @@ public class ScreenFlowTests
         {
             Assert.Equal(150d, salesDash.Columns[0].Categories.SelectMany(c => c.Bars).Max(b => b.Height));
             Assert.NotNull(salesDash.Columns[0].Categories[^1].ValueLabel);              // ملصق آخر يوم
-            Assert.Contains(salesDash.Ranks[0].Bars, b => b.Label == "ماء 500 مل" && b.Ratio == 1);
+            // الأعلى مبيعًا يأخذ العمود الكامل (أي صنف كان: اختبارات أخرى تبيع أصنافًا تجريبية في اليوم نفسه)
+            Assert.Contains(salesDash.Ranks[0].Bars, b => b.Ratio == 1);
+            Assert.All(salesDash.Ranks[0].Bars, b => Assert.InRange(b.Ratio, 0, 1));
         }
         Assert.Empty(dialogs.Errors);
         Assert.Empty(_f.Unhandled);

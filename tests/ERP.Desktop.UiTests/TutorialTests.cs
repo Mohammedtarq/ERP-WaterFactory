@@ -206,8 +206,9 @@ public class TutorialTests
             await Open(prod, wip);
             await Shot("18-المواد-تحت-التصنيع-على-الماكينة", wip);
 
-            var qc = prod.Qc;
-            await Open(prod, qc);
+            var lab = shell.Open<LabModuleViewModel>(ModuleCode.Lab);
+            var qc = lab.Qc;
+            await Open(lab, qc);
             qc.Lines.Single(l => l.TestName.StartsWith("درجة")).Measured = "7.3";
             qc.Lines.Single(l => l.TestName.StartsWith("الأملاح")).Measured = "135";
             qc.Lines.Single(l => l.TestName.StartsWith("إحكام")).Measured = "سليم";

@@ -14,6 +14,7 @@ public static class Icons
     public const string HR = "\uE716";
     public const string Reps = "\uE804";
     public const string Production = "\uE9F5";
+    public const string Lab = "\uE734";
     public const string Settings = "\uE713";
 
     public const string Item = "\uE8EC";
@@ -59,5 +60,6 @@ public static class ModuleColors
     public const string HR = "#EC4899";
     public const string Reps = "#F97316";
     public const string Production = "#14B8A6";
+    public const string Lab = "#7C3AED";
     public const string Settings = "#64748B";
 }

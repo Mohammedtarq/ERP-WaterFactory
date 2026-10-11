@@ -173,6 +173,8 @@ public class HomeSectionViewModel : ObservableObject
     public string Glyph => Icons.Home;
     public string Color => Owner.Color;
     public IEnumerable<SectionViewModel> Sections => Owner.Tabs.OfType<SectionViewModel>();
+    /// <summary>بطاقات الأقسام مقسّمة بنفس مجموعات القائمة الجانبية وألوانها.</summary>
+    public ObservableCollection<SectionGroup> Groups => Owner.Groups;
     public ModuleDashboardViewModel? Dashboard => Owner.Dashboard;
     public bool HasDashboard => Owner.Dashboard is not null;
     public RelayCommand OpenSectionCommand { get; }
@@ -236,7 +238,7 @@ public abstract class ModuleViewModel : ViewModelBase
     private void RebuildGroups()
     {
         var open = Groups.Where(g => g.IsOpen).Select(g => g.Name).ToHashSet();
-        var sections = Tabs.OfType<SectionViewModel>().ToList();
+        var sections = Tabs.ToArray().OfType<SectionViewModel>().ToList();
         var placed = new HashSet<SectionViewModel>();
         var built = new List<SectionGroup>();
         foreach (var def in SectionGrouping.For(_moduleCode))
@@ -379,7 +381,8 @@ public abstract class ModuleViewModel : ViewModelBase
         Tabs.Remove(section);
     }
 
-    public T Section<T>() where T : SectionViewModel => Tabs.OfType<T>().Single();
+    // نسخة ثابتة من القائمة: أقسام تُبنى في الخلفية (مساحات المخازن) قد تُضاف أثناء القراءة
+    public T Section<T>() where T : SectionViewModel => Tabs.ToArray().OfType<T>().Single();
 }
 
 /// <summary>وحدة لم تُبنَ بعد (الموارد البشرية، المندوبون، الإنتاج).</summary>

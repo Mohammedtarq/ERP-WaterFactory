@@ -55,9 +55,12 @@ public static class SectionGrouping
         [ModuleCode.Production] = new[]
         {
             new GroupDef("التصنيع", Teal, "ProductionOrders", "DailyProduction", "MachineWip", "Packing"),
-            new GroupDef("المختبر", Purple, "Qc", "QualityTests"),
             new GroupDef("المتابعة", Amber, "PendingProduction", "VariantStock", "ProductionMonth"),
             new GroupDef("الإعداد", Slate, "Machines", "CustomRecipes"),
+        },
+        [ModuleCode.Lab] = new[]
+        {
+            new GroupDef("الفحص والاختبارات", Purple, "Qc", "QualityTests"),
         },
         [ModuleCode.Sales] = new[]
         {

@@ -237,6 +237,42 @@ public class ControlsTests
     }
 
     [Fact]
+    public async Task Lab_split_upgrade_copies_production_rights_to_lab_once()
+    {
+        await using var db = _f.NewDb();
+        // الأدوار الجاهزة: مسؤول الإنتاج يملك المختبر، وأمين المخزن لا يملكه رغم الإنتاج
+        var prodRole = await db.Roles.Include(r => r.Permissions).FirstAsync(r => r.Name == "مسؤول الإنتاج والمختبر");
+        Assert.Contains(prodRole.Permissions, p => p.ModuleCode == ModuleCode.Lab && p.CanView && p.CanAdd);
+        var keeper = await db.Roles.Include(r => r.Permissions).FirstAsync(r => r.Name == "أمين مخزن");
+        Assert.DoesNotContain(keeper.Permissions, p => p.ModuleCode == ModuleCode.Lab);
+
+        // قاعدة قديمة قبل الفصل: لا صلاحيات للمختبر ← الترقية تمنح كل من يرى الإنتاج المختبرَ بنفس صلاحياته
+        db.RolePermissions.RemoveRange(db.RolePermissions.Where(p => p.ModuleCode == ModuleCode.Lab));
+        await db.SaveChangesAsync();
+        await DefaultConfiguration.SeedAsync(db, includeWarehouses: false);
+        await using (var check = _f.NewDb())
+        {
+            var roles = await check.Roles.Include(r => r.Permissions).ToListAsync();
+            foreach (var role in roles.Where(r => r.Permissions.Any(p => p.ModuleCode == ModuleCode.Production)))
+            {
+                var prod = role.Permissions.Single(p => p.ModuleCode == ModuleCode.Production);
+                var lab = Assert.Single(role.Permissions, p => p.ModuleCode == ModuleCode.Lab);
+                Assert.Equal((prod.CanView, prod.CanAdd, prod.CanEdit, prod.CanDelete, prod.CanPost), (lab.CanView, lab.CanAdd, lab.CanEdit, lab.CanDelete, lab.CanPost));
+            }
+            Assert.All(roles.Where(r => r.Permissions.All(p => p.ModuleCode != ModuleCode.Production)),
+                       r => Assert.DoesNotContain(r.Permissions, p => p.ModuleCode == ModuleCode.Lab));
+        }
+
+        // مرة واحدة فقط: سحب المختبر من أمين المخزن بعد الترقية يبقى مسحوبًا عند الترقية التالية
+        var keeperLab = await db.RolePermissions.FirstAsync(p => p.RoleId == keeper.Id && p.ModuleCode == ModuleCode.Lab);
+        db.RolePermissions.Remove(keeperLab);
+        await db.SaveChangesAsync();
+        await DefaultConfiguration.SeedAsync(db, includeWarehouses: false);
+        await using (var again = _f.NewDb())
+            Assert.False(await again.RolePermissions.AnyAsync(p => p.RoleId == keeper.Id && p.ModuleCode == ModuleCode.Lab));
+    }
+
+    [Fact]
     public async Task Five_wrong_passwords_lock_the_account_temporarily()
     {
         await using (var db = _f.NewDb(_f.AdminId))

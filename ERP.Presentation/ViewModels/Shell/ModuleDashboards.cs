@@ -344,8 +344,27 @@ public class ModuleDashboardViewModel : SessionViewModel
         await Lab(db, d, days);
     }
 
+    /// <summary>لوحة وحدة المختبر: الأوامر بانتظار الفحص، ونتائج الفحص، وعدد الاختبارات المنفّذة يوميًا.</summary>
+    public static async Task LabModule(ProjectDbContext db, ModuleDashboardViewModel d)
+    {
+        var days = Days();
+        var waiting = await db.ProductionOrders.AsNoTracking()
+            .CountAsync(o => o.Status == ProductionOrderStatus.InProgress && !db.QCBatchResults.Any(q => q.ProductionOrderId == o.Id));
+        d.Tile("بانتظار الفحص", waiting.ToString(), Icons.Clock, ModuleColors.Lab, "أوامر بدأ تشغيلها ولم تُفحص");
+        await Lab(db, d, days);
+        var (f, t) = UtcRange(days[0], days[^1]);
+        var lines = await db.QCTestResultLines.AsNoTracking().Where(l => l.QCBatchResult.TestDate >= f && l.QCBatchResult.TestDate < t)
+            .Select(l => l.QCBatchResult.TestDate).ToListAsync();
+        var byDay = lines.GroupBy(x => x.ToLocalTime().Date).ToDictionary(g => g.Key, g => (decimal)g.Count());
+        d.Columns.Add(ColumnChart.Daily("الاختبارات المنفّذة يوميًا", "اختبار", days,
+            ("اختبارات", ChartPalette.Series1, day => byDay.GetValueOrDefault(day))));
+        var monthStart = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).ToUniversalTime();
+        var byTester = await db.QCBatchResults.AsNoTracking().Where(q => q.TestDate >= monthStart).Select(q => q.TestedByUser.Username).ToListAsync();
+        d.Ranks.Add(RankChart.Of("فحوصات هذا الشهر حسب الفاحص", byTester.GroupBy(n => n).Select(g => (g.Key, (decimal)g.Count())), "أمر"));
+    }
+
     /// <summary>
-    /// لوحة المختبر (ضمن "الإنتاج والمختبر"): عدد الفحوصات، نسبة النجاح والرسوب، النتائج اليومية،
+    /// لوحة المختبر (في وحدة المختبر، وملخّصها في لوحة الإنتاج): عدد الفحوصات، نسبة النجاح والرسوب، النتائج اليومية،
     /// والاختبارات الأكثر رسوبًا — لكل دفعة إنتاج عبر رقمها.
     /// </summary>
     public static async Task Lab(ProjectDbContext db, ModuleDashboardViewModel d, IReadOnlyList<DateTime> days)

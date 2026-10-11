@@ -128,7 +128,7 @@ public class WizardJourneyTests : IAsyncLifetime
 
         // ---------------- 2) دخول المدير: كل الوحدات حقيقية ----------------
         var (shell, dialogs) = await Login(controlCs, "owner", "Owner@2026");
-        Assert.Equal(9, shell.NavItems.Count);
+        Assert.Equal(10, shell.NavItems.Count);
         foreach (var n in shell.NavItems) Assert.IsNotType<PlaceholderModuleViewModel>(shell.Open<object>(n.ModuleCode));
 
         // ---------------- 3) إنشاء حساب موظفة مبيعات من داخل البرنامج ----------------
@@ -281,8 +281,14 @@ public class WizardJourneyTests : IAsyncLifetime
         await orders.StartCommand.ExecuteAsync(order);
         Assert.Contains("بانتظار فحص المختبر", orders.Orders.First().StageText);
 
-        var qc = prod.Qc;
-        await Open(prod, qc);
+        // المختبر وحدة مستقلة عن الإنتاج، والجرس ينبّهه بالأمر الذي بدأ تشغيله ولم يُفحص ويفتح شاشة الفحص
+        await shell.RefreshAlertsAsync();
+        var labAlert = Assert.Single(shell.Alerts, a => a.Key == "lab-waiting");
+        Assert.Contains(order.MONumber, labAlert.Detail);
+        Assert.IsType<QcSectionViewModel>(shell.OpenAlert(labAlert));
+        var lab = Assert.IsType<LabModuleViewModel>(shell.CurrentModule);
+        var qc = lab.Qc;
+        await Open(lab, qc);
         Assert.Equal(order.Id, qc.Order!.OrderId);
         Assert.Equal(3, qc.Lines.Count);
         qc.Lines.Single(l => l.TestName.StartsWith("درجة")).Measured = "7.4";
@@ -541,6 +547,6 @@ public class WizardJourneyTests : IAsyncLifetime
         await ps.OpenCommand.ExecuteAsync(null);
         Assert.Null(ps.ErrorMessage);
         lock (Shells) Shells.Add(loginNav.Shell!);
-        Assert.Equal(9, loginNav.Shell!.NavItems.Count);
+        Assert.Equal(10, loginNav.Shell!.NavItems.Count);
     }
 }

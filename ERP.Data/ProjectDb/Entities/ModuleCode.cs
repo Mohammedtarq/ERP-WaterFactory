@@ -14,5 +14,7 @@ public static class ModuleCode
     public const string HR = "HR";
     public const string Reps = "Reps";
     public const string Production = "Production";
+    /// <summary>المختبر وحدة مستقلة عن الإنتاج: من ينتج لا يحكم على جودة إنتاجه (فحص الأوامر واختبارات الجودة).</summary>
+    public const string Lab = "Lab";
     public const string SystemSettings = "SystemSettings";
 }

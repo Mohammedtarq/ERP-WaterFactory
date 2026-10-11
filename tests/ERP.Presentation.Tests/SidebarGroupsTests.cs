@@ -84,11 +84,12 @@ public class SidebarGroupsTests
         Assert.False(payroll.IsOpen);
         Assert.Same(shown, hr.SelectedTab);
 
-        // الإنتاج: التصنيع ثم المختبر منفصل بمجموعته
+        // الإنتاج بلا المختبر، والمختبر وحدة مستقلة بمجموعته
         var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
-        Assert.Equal(new[] { "التصنيع", "المختبر", "المتابعة", "الإعداد" }, prod.Groups.Select(g => g.Name));
-        Assert.Contains(prod.Qc, prod.Groups.Single(g => g.Name == "المختبر").Items);
+        Assert.Equal(new[] { "التصنيع", "المتابعة", "الإعداد" }, prod.Groups.Select(g => g.Name));
         Assert.Contains(prod.Packing, prod.Groups.Single(g => g.Name == "التصنيع").Items);
+        var lab = shell.Open<LabModuleViewModel>(ModuleCode.Lab);
+        Assert.Equal(new SectionViewModel[] { lab.Qc, lab.Tests }, lab.Groups.Single().Items);
 
         // المخازن: مساحات كل مخزن وسيارات المندوبين في مجموعة واحدة
         var wh = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);

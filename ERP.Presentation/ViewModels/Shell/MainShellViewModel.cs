@@ -72,8 +72,10 @@ public class MainShellViewModel : ViewModelBase
                         () => new HrModuleViewModel(session, dialogs)),
             new NavItem(ModuleCode.Reps, "المندوبون", Icons.Reps, ModuleColors.Reps,
                         () => new RepsModuleViewModel(session, dialogs)),
-            new NavItem(ModuleCode.Production, "الإنتاج والمختبر", Icons.Production, ModuleColors.Production,
+            new NavItem(ModuleCode.Production, "الإنتاج", Icons.Production, ModuleColors.Production,
                         () => new ProductionModuleViewModel(session, dialogs)),
+            new NavItem(ModuleCode.Lab, "المختبر", Icons.Lab, ModuleColors.Lab,
+                        () => new LabModuleViewModel(session, dialogs)),
             new NavItem(ModuleCode.SystemSettings, "إعدادات النظام", Icons.Settings, ModuleColors.Settings,
                         () => new SettingsModuleViewModel(session, dialogs)),
         };

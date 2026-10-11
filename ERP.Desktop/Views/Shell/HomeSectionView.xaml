@@ -13,38 +13,62 @@
                 <Button DockPanel.Dock="Left" Content="{Binding ToggleSectionsText}" Style="{StaticResource SecondaryButton}" Command="{Binding ToggleSectionsCommand}"/>
                 <TextBlock Text="القوائم الفرعية" Style="{StaticResource SectionTitle}"/>
             </DockPanel>
-            <ItemsControl ItemsSource="{Binding Sections}" Visibility="{Binding ShowSections, Converter={StaticResource BoolToVisibility}}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
+            <!-- البطاقات مقسّمة بمجموعات القائمة الجانبية: عنوان ملوّن لكل مجموعة ثم بطاقات أقسامها -->
+            <ItemsControl ItemsSource="{Binding Groups}" Visibility="{Binding ShowSections, Converter={StaticResource BoolToVisibility}}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Button Command="{Binding DataContext.OpenSectionCommand, ElementName=Root}" CommandParameter="{Binding}"
-                                Width="260" Height="128" Margin="0,0,14,14" Cursor="Hand">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border x:Name="Bd" Style="{StaticResource Card}">
-                                        <ContentPresenter/>
-                                    </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
-                                </ControlTemplate>
-                            </Button.Template>
-                            <DockPanel>
-                                <Border DockPanel.Dock="Top" Width="42" Height="42" CornerRadius="21" HorizontalAlignment="Left"
+                        <StackPanel Margin="0,4,0,6">
+                            <DockPanel Margin="0,0,0,10">
+                                <Border DockPanel.Dock="Left" Width="6" Height="24" CornerRadius="3" Margin="0,0,10,0"
+                                        Background="{Binding Color, Converter={StaticResource HexBrush}}"/>
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding Name}" FontSize="17" FontWeight="Bold" VerticalAlignment="Center"
+                                           Foreground="{Binding Color, Converter={StaticResource HexBrush}}"/>
+                                <Border DockPanel.Dock="Left" CornerRadius="9" Padding="8,1" Margin="10,0,0,0" VerticalAlignment="Center"
                                         Background="{Binding Color, Converter={StaticResource HexBrushSoft}}">
-                                    <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="19"
-                                               Foreground="{Binding Color, Converter={StaticResource HexBrush}}"/>
+                                    <TextBlock Text="{Binding Count}" FontSize="12.5" Foreground="{Binding Color, Converter={StaticResource HexBrush}}"/>
                                 </Border>
-                                <TextBlock DockPanel.Dock="Top" Text="{Binding DisplayTitle}" FontWeight="SemiBold" FontSize="15" Margin="0,10,0,2"/>
-                                <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" FontSize="12"/>
+                                <Border/>
                             </DockPanel>
-                        </Button>
+                            <ItemsControl ItemsSource="{Binding Items}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Command="{Binding DataContext.OpenSectionCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                                Width="270" Height="136" Margin="0,0,14,14" Cursor="Hand">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bd" Style="{StaticResource Card}">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                            <DockPanel>
+                                                <Border DockPanel.Dock="Left" Width="5" CornerRadius="3" Margin="0,10,0,10"
+                                                        Background="{Binding GroupColor, Converter={StaticResource HexBrush}}"/>
+                                                <DockPanel Margin="12,10,12,10">
+                                                    <Border DockPanel.Dock="Top" Width="42" Height="42" CornerRadius="21" HorizontalAlignment="Left"
+                                                            Background="{Binding GroupColor, Converter={StaticResource HexBrushSoft}}">
+                                                        <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="19"
+                                                                   Foreground="{Binding GroupColor, Converter={StaticResource HexBrush}}"/>
+                                                    </Border>
+                                                    <TextBlock DockPanel.Dock="Top" Text="{Binding DisplayTitle}" FontWeight="SemiBold" FontSize="16" Margin="0,8,0,2"/>
+                                                    <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                                                </DockPanel>
+                                            </DockPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

@@ -106,14 +106,14 @@ public class TrialFixesBatchATests
         Assert.True(wallet.CustomerDebt > 0);
         Assert.Contains("دين العميل الآن", wallet.CustomerDebtText);
 
-        // (15) أقسام الإنتاج مرقّمة بتسلسل العمل: الأوامر ← إنتاج اليوم ← المكائن ← الفحص ← التعبئة ← المعلّق
+        // (15) أقسام الإنتاج مرقّمة بتسلسل العمل: الأوامر ← إنتاج اليوم ← المكائن ← التعبئة ← المعلّق (الفحص في وحدة المختبر)
         var production = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
         var steps = production.Tabs.OfType<SectionViewModel>().Where(s => s.Step is not null).ToList();
-        Assert.Equal(new int?[] { 1, 2, 3, 4, 5, 6 }, steps.Select(s => s.Step).ToArray());
+        Assert.Equal(new int?[] { 1, 2, 3, 4, 5 }, steps.Select(s => s.Step).ToArray());
         Assert.Same(production.Orders, steps[0]);
         Assert.Same(production.Daily, steps[1]);
-        Assert.Same(production.Qc, steps[3]);
-        Assert.Same(production.Packing, steps[4]);
+        Assert.Same(production.Packing, steps[3]);
+        Assert.DoesNotContain(production.Tabs, t => t is QcSectionViewModel or QualityTestsSectionViewModel);
         Assert.Equal($"1. {production.Orders.Title}", production.Orders.DisplayTitle);
 
         await shell.IdleAllAsync();
