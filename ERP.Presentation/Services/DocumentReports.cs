@@ -395,7 +395,7 @@ public static class DocumentReports
          .Field("الفرع", e.Branch?.Name)
          .Field("الهاتف", e.Phone)
          .Field("تاريخ التعيين", e.HireDate?.ToString("yyyy/MM/dd"))
-         .Field("الشفت", e.Shift is null ? null : $"{e.Shift.Name} ({e.Shift.CheckInTime:hh\\:mm}–{e.Shift.CheckOutTime:hh\\:mm})")
+         .Field("الشفت", e.Shift is null ? null : $"{e.Shift.Name}: من {e.Shift.CheckInTime:hh\\:mm} إلى {e.Shift.CheckOutTime:hh\\:mm}")
          .Field("رقم البصمة", e.FingerprintCode)
          .Field("نوع التعيين", e.IsTemporary ? "عامل وقتي" : e.IsSalesManager ? "مدير مبيعات" : e.IsSalesRep ? "مندوب مبيعات" : "موظف دائم")
          .Field(e.IsTemporary ? "الأجر اليومي" : "الراتب الأساسي", $"{(e.IsTemporary ? e.DailyWage ?? 0 : e.BaseSalary):N0} {e.SalaryCurrency}")
