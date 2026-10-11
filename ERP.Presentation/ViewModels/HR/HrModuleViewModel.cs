@@ -17,6 +17,9 @@ public class HrModuleViewModel : ModuleViewModel
         UseDashboard(s, d, ModuleCode.HR, ModuleDashboardViewModel.Hr);
         Attendance = Add(new AttendanceSectionViewModel(s, d));
         Fingerprint = Add(new FingerprintImportSectionViewModel(s, d));
+        Leaves = Add(new LeavesSectionViewModel(s, d));
+        LeaveSettings = Add(new LeaveSettingsSectionViewModel(s, d));
+        Overtime = Add(new OvertimeSectionViewModel(s, d));
         Incentives = Add(new MonthlyIncentiveSectionViewModel(s, d));
         Payroll = Add(new PayrollSectionViewModel(s, d));
         Deductions = Add(new EmployeeDeductionsSectionViewModel(s, d));
@@ -32,6 +35,9 @@ public class HrModuleViewModel : ModuleViewModel
 
     public AttendanceSectionViewModel Attendance { get; }
     public FingerprintImportSectionViewModel Fingerprint { get; }
+    public LeavesSectionViewModel Leaves { get; }
+    public LeaveSettingsSectionViewModel LeaveSettings { get; }
+    public OvertimeSectionViewModel Overtime { get; }
     public MonthlyIncentiveSectionViewModel Incentives { get; }
     public PayrollSectionViewModel Payroll { get; }
     public EmployeeDeductionsSectionViewModel Deductions { get; }
@@ -153,6 +159,8 @@ public class AttendanceSectionViewModel : SectionViewModel
         var employees = await db.Employees.AsNoTracking().Include(e => e.Shift).Include(e => e.Department)
             .Where(e => e.IsActive && !e.IsTemporary).OrderBy(e => e.FullName).ToListAsync();
         var records = await db.AttendanceRecords.AsNoTracking().Where(a => a.AttendanceDate == Date).ToDictionaryAsync(a => a.EmployeeId);
+        // الإجازة تظهر بدل «غائب/متأخر»: «إجازة مرضية» أو «زمنية 08:00–10:00»
+        var leaveTexts = await new HrLeaveService(db).LeaveTextsAsync(Date);
         Rows.Clear();
         foreach (var e in employees)
         {
@@ -167,7 +175,9 @@ public class AttendanceSectionViewModel : SectionViewModel
                     ? ForcedOptions.First(o => o?.Value == rec.Status) : null,
                 CheckIn = rec?.CheckInTime?.ToString(@"hh\:mm") ?? "",
                 CheckOut = rec?.CheckOutTime?.ToString(@"hh\:mm") ?? "",
-                SavedStatus = rec is null ? "غير مسجّل" : ArabicLabels.Of(rec.Status),
+                SavedStatus = leaveTexts.TryGetValue(e.Id, out var leave)
+                    ? rec is null || rec.Status == AttendanceStatus.ApprovedLeave ? leave : $"{ArabicLabels.Of(rec.Status)} — {leave}"
+                    : rec is null ? "غير مسجّل" : ArabicLabels.Of(rec.Status),
                 SavedLateMinutes = rec?.LateMinutes ?? 0
             };
             row.MarkLoaded();
@@ -328,6 +338,10 @@ public class PayrollRow
     public decimal PenaltyDeduction { get; init; }
     public decimal SocialSecurity { get; init; }
     public decimal SocialSolidarity { get; init; }
+    public decimal OvertimeAmount { get; init; }
+    public string OvertimeHint { get; init; } = "";
+    public decimal UnpaidLeaveDeduction { get; init; }
+    public string UnpaidLeaveHint { get; init; } = "";
     public decimal NetSalary { get; init; }
 }
 
@@ -396,6 +410,8 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
                 AbsenceDeduction = l.AbsenceDeduction, RepIncentive = l.RepIncentiveAmount, ManagerIncentive = l.SalesManagerIncentiveAmount,
                 MonthlyIncentive = l.MonthlyIncentiveAmount, LoanDeduction = l.LoanDeduction, WithdrawalDeduction = l.WithdrawalDeduction,
                 PenaltyDeduction = l.PenaltyDeduction, SocialSecurity = l.SocialSecurityDeduction, SocialSolidarity = l.SocialSolidarityDeduction,
+                OvertimeAmount = l.OvertimeAmount, OvertimeHint = l.OvertimeAmount == 0 ? "" : $"{l.OvertimeDays:0.##} يوم + {l.OvertimeHours:0.##} ساعة",
+                UnpaidLeaveDeduction = l.UnpaidLeaveDeduction, UnpaidLeaveHint = l.UnpaidLeaveDays == 0 ? "" : $"{l.UnpaidLeaveDays:0.##} يوم بدون راتب",
                 NetSalary = l.NetSalary
             });
         Summary = await new HrService(db).SummarizeAsync(run.Id);
@@ -410,7 +426,13 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
         await using var db = Session.NewDb();
         if (await RunOperationAsync(async () => (await new HrService(db).GenerateAsync(Month, Year)).result,
                                     $"تم توليد رواتب {PeriodText}"))
+        {
             await LoadAsync();
+            // ساعات إضافية بلا سعر = راتب ناقص بصمت: تنبيه صريح قبل الاعتماد
+            var missing = (await new OvertimeService(db).SummaryAsync(Month, Year)).Where(o => o.MissingRate).Select(o => o.EmployeeName).ToList();
+            if (missing.Count > 0)
+                StatusMessage = $"تنبيه: ساعات إضافية بلا سعر ساعة لـ {string.Join("، ", missing)} — حدّد السعر من «العمل الإضافي» ثم أعد التوليد";
+        }
     }
 
     private async Task ApproveAsync()

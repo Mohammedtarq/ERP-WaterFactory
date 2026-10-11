@@ -93,15 +93,9 @@ public class FingerprintImportService
         return (list, skipped);
     }
 
-    /// <summary>هل اليوم عطلة أسبوعية لهذا الموظف؟ من «استثناءات أيام العمل»، والافتراضي الجمعة إن لم يُعرَّف شيء.</summary>
-    private static bool IsOffDay(DateTime day, Employee e, List<WorkDayException> rules)
-    {
-        var name = day.DayOfWeek.ToString();
-        if (rules.Count == 0) return day.DayOfWeek == DayOfWeek.Friday;
-        return rules.Any(r => r.IsActive && string.Equals(r.ExceptionDay, name, StringComparison.OrdinalIgnoreCase)
-                              && (r.DepartmentId == null || r.DepartmentId == e.DepartmentId)
-                              && r.StartDate.Date <= day && (r.EndDate == null || r.EndDate.Value.Date >= day));
-    }
+    /// <summary>هل اليوم عطلة لهذا الموظف؟ العطلة الأسبوعية (الافتراضي الجمعة) أو عطلة رسمية.</summary>
+    private static bool IsOffDay(DateTime day, Employee e, List<WorkDayException> rules, ISet<DateTime> holidays) =>
+        !HrCalendar.IsWorkDay(day, e, rules, holidays);
 
     public async Task<FingerprintPreview> PreviewAsync(IReadOnlyList<FingerprintPunch> punches, int skippedLines = 0)
     {
@@ -149,6 +143,15 @@ public class FingerprintImportService
         var existing = await _db.AttendanceRecords.AsNoTracking()
             .Where(a => a.AttendanceDate >= from && a.AttendanceDate <= to).ToListAsync();
         var leaves = existing.Where(a => a.Status == AttendanceStatus.ApprovedLeave).Select(a => (a.EmployeeId, a.AttendanceDate.Date)).ToHashSet();
+        // الإجازات المسجّلة (يومية) تبقى إجازة، والزمنية تُعفي من التأخير خلالها؛ والعطل الرسمية لا غياب فيها
+        var registered = await _db.EmployeeLeaves.AsNoTracking().Where(l => !l.IsVoided && l.FromDate <= to && l.ToDate >= from)
+            .Select(l => new { l.EmployeeId, l.Kind, l.FromDate, l.ToDate, l.FromTime, l.ToTime }).ToListAsync();
+        foreach (var l in registered.Where(l => l.Kind == LeaveKind.Day))
+            for (var d = l.FromDate.Date; d <= l.ToDate.Date; d = d.AddDays(1)) leaves.Add((l.EmployeeId, d));
+        var hourlyLeaves = registered.Where(l => l.Kind == LeaveKind.Hourly).GroupBy(l => (l.EmployeeId, l.FromDate.Date))
+            .ToDictionary(g => g.Key, g => g.Select(l => (l.FromTime!.Value, l.ToTime!.Value)).ToList());
+        var holidays = (await _db.PublicHolidays.AsNoTracking().Where(h => h.HolidayDate >= from && h.HolidayDate <= to).Select(h => h.HolidayDate).ToListAsync())
+            .Select(d => d.Date).ToHashSet();
 
         var summaries = new List<FingerprintEmployeeSummary>();
         var plan = new List<(int, DateTime, AttendanceInput)>();
@@ -175,11 +178,12 @@ public class FingerprintImportService
                     var entryOnly = e.Shift?.IsEntryOnly == true;
                     if (!entryOnly && lastPunch - checkIn >= MinShiftForCheckOut) checkOut = lastPunch.TimeOfDay;
                     if (!entryOnly && checkOut is null) s.MissingCheckOut++;
-                    var (status, _) = HrService.Classify(e.Shift, null, checkIn.TimeOfDay);
+                    var shift = HrCalendar.EffectiveShift(e.Shift, hourlyLeaves.GetValueOrDefault((e.Id, day)) ?? new());
+                    var (status, _) = HrService.Classify(shift, null, checkIn.TimeOfDay);
                     if (status == AttendanceStatus.Late) s.LateDays++; else s.PresentDays++;
                     plan.Add((e.Id, day, new AttendanceInput(e.Id, null, checkIn.TimeOfDay, checkOut)));
                 }
-                else if (!IsOffDay(day, e, rules))
+                else if (!IsOffDay(day, e, rules, holidays))
                 {
                     s.AbsentDays++;
                     plan.Add((e.Id, day, new AttendanceInput(e.Id, null, null, null)));

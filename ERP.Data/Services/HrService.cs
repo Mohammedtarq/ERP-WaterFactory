@@ -99,9 +99,15 @@ public class HrService
                 return FinanceOperationResult.Fail($"وقت الخروج قبل وقت الدخول للموظف {employees[i.EmployeeId].FullName}");
         var existing = await _db.AttendanceRecords.Where(a => a.AttendanceDate == date && ids.Contains(a.EmployeeId))
                                                   .ToDictionaryAsync(a => a.EmployeeId);
+        // الإجازات تسري على الحضور مهما كان ترتيب الإدخال: اليومية = «إجازة معتمدة»، والزمنية تُعفي من التأخير خلالها
+        var leaves = new HrLeaveService(_db);
+        var onLeave = await leaves.OnDayLeaveAsync(date, ids);
+        var hourly = await leaves.HourlyOnAsync(date, ids);
         foreach (var input in inputs)
         {
-            var (status, late) = Classify(employees[input.EmployeeId].Shift, input.ForcedStatus, input.CheckIn);
+            var shift = HrCalendar.EffectiveShift(employees[input.EmployeeId].Shift, hourly.GetValueOrDefault(input.EmployeeId) ?? new());
+            var forced = onLeave.Contains(input.EmployeeId) ? AttendanceStatus.ApprovedLeave : input.ForcedStatus;
+            var (status, late) = Classify(shift, forced, input.CheckIn);
             if (!existing.TryGetValue(input.EmployeeId, out var rec))
                 _db.AttendanceRecords.Add(rec = new AttendanceRecord { EmployeeId = input.EmployeeId, AttendanceDate = date });
             rec.Status = status;
@@ -267,6 +273,9 @@ public class HrService
         var absences = await _db.AttendanceRecords.AsNoTracking()
             .Where(a => a.AttendanceDate >= start && a.AttendanceDate <= end && a.Status == AttendanceStatus.Absent)
             .GroupBy(a => a.EmployeeId).Select(g => new { g.Key, Days = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Days);
+        // الإجازات بدون راتب (أو ما تجاوز الرصيد)، والعمل الإضافي (أيام بالأجر اليومي وساعات بسعر الساعة الخاص أو العام)
+        var unpaidLeave = await new HrLeaveService(_db).UnpaidDaysAsync(month, year);
+        var overtime = (await new OvertimeService(_db).SummaryAsync(month, year)).ToDictionary(o => o.EmployeeId);
 
         if (run is null)
         {
@@ -304,6 +313,12 @@ public class HrService
             // مبالغ ثابتة بعملة الراتب من بطاقة الموظف
             var social = e.HasSocialSecurity ? e.SocialSecurityAmount ?? 0 : 0;
             var solidarity = e.HasSocialSolidarity ? e.SocialSolidarityAmount ?? 0 : 0;
+            var dailyWage = baseSalary / HrRules.DaysPerMonthForDailyWage;
+            var unpaidDays = unpaidLeave.GetValueOrDefault(e.Id);
+            var unpaidDeduction = Math.Round(dailyWage * unpaidDays, 2);
+            var ot = overtime.GetValueOrDefault(e.Id);
+            // سعر الساعة يُضبط بالدينار؛ موظف الدولار يستلمه محوّلًا، والأيام بأجره اليومي بعملة راتبه
+            var overtimeAmount = ot is null ? 0 : Math.Round(dailyWage * ot.Days, 2) + Fx(Math.Round(ot.Hours * ot.HourlyRate, 2));
 
             run.Lines.Add(new PayrollLine
             {
@@ -320,7 +335,12 @@ public class HrService
                 PenaltyDeduction = penalty,
                 SocialSecurityDeduction = social,
                 SocialSolidarityDeduction = solidarity,
-                NetSalary = baseSalary + allowances + rep + manager + monthly - deduction - loan - withdrawal - penalty - social - solidarity
+                OvertimeDays = ot?.Days ?? 0,
+                OvertimeHours = ot?.Hours ?? 0,
+                OvertimeAmount = overtimeAmount,
+                UnpaidLeaveDays = unpaidDays,
+                UnpaidLeaveDeduction = unpaidDeduction,
+                NetSalary = baseSalary + allowances + rep + manager + monthly + overtimeAmount - deduction - unpaidDeduction - loan - withdrawal - penalty - social - solidarity
             });
         }
         foreach (var (d, amount) in deductionPlan)

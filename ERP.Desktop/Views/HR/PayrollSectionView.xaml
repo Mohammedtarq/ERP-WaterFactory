@@ -62,6 +62,16 @@
                     <DataGridTextColumn Header="الأساسي" Binding="{Binding BaseSalary, StringFormat=N0}" Width="100"/>
                     <DataGridTextColumn Header="البدلات" Binding="{Binding Allowances, StringFormat=N0}" Width="90"/>
                     <DataGridTextColumn Header="خصم الغياب" Binding="{Binding AbsenceDeduction, StringFormat=N0}" Width="95"/>
+                    <DataGridTextColumn Header="الإضافي" Binding="{Binding OvertimeAmount, StringFormat=N0}" Width="90">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding OvertimeHint}"/></Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="بدون راتب" Binding="{Binding UnpaidLeaveDeduction, StringFormat=N0}" Width="90">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding UnpaidLeaveHint}"/></Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
                     <DataGridTextColumn Header="حافز المندوب" Binding="{Binding RepIncentive, StringFormat=N0}" Width="100"/>
                     <DataGridTextColumn Header="حافز المدير" Binding="{Binding ManagerIncentive, StringFormat=N0}" Width="95"/>
                     <DataGridTextColumn Header="الحافز الشهري" Binding="{Binding MonthlyIncentive, StringFormat=N0}" Width="100"/>

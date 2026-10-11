@@ -321,16 +321,61 @@ public static class DocumentReports
         var r = New(s, $"كشف رواتب {run.PeriodMonth:00}/{run.PeriodYear}", run.Status == PayrollRunStatus.Draft ? "مسودة — غير معتمد" : null);
         r.Field("الشهر", $"{run.PeriodMonth:00}/{run.PeriodYear}").Field("الحالة", ArabicLabels.Of(run.Status)).Field("اعتمده", run.ApprovedByUser?.Username)
          .Field("عدد الموظفين", run.Lines.Count.ToString());
-        r.Columns.AddRange(new[] { "#", "الموظف", "العملة", "الأساسي", "خصم الغياب", "مخصصات", "حوافز", "قسط السلفة", "المسحوبات", "العقوبات", "الضمان", "التكافل", "الصافي", "التوقيع" });
+        r.Columns.AddRange(new[] { "#", "الموظف", "العملة", "الأساسي", "خصم الغياب", "بدون راتب", "الإضافي", "مخصصات", "حوافز", "قسط السلفة", "المسحوبات", "العقوبات", "الضمان", "التكافل", "الصافي", "التوقيع" });
         var i = 0;
         foreach (var l in run.Lines.OrderBy(l => l.Employee.FullName))
-            r.Rows.Add(new[] { (++i).ToString(), l.Employee.FullName, l.Currency, N(l.BaseSalary), N(l.AbsenceDeduction), N(l.Allowances),
+            r.Rows.Add(new[] { (++i).ToString(), l.Employee.FullName, l.Currency, N(l.BaseSalary), N(l.AbsenceDeduction), N(l.UnpaidLeaveDeduction), N(l.OvertimeAmount), N(l.Allowances),
                                N(l.MonthlyIncentiveAmount + l.RepIncentiveAmount + l.SalesManagerIncentiveAmount),
                                N(l.LoanDeduction), N(l.WithdrawalDeduction), N(l.PenaltyDeduction), N(l.SocialSecurityDeduction), N(l.SocialSolidarityDeduction),
                                N(l.NetSalary), "" });
         foreach (var g in run.Lines.GroupBy(l => l.Currency))
             r.Total($"صافي الرواتب ({g.Key})", N(g.Sum(l => l.NetSalary)), g.Key == "IQD");
         r.Signatures.AddRange(new[] { "مسؤول الموارد البشرية", "المحاسب", "المدير" });
+        return r;
+    }
+
+    /// <summary>إشعار إجازة يُوقَّع: النوع والفترة وكيف حُسبت (من الرصيد/بدون راتب) ورصيد الموظف بعدها.</summary>
+    public static async Task<ReportDocument?> LeaveNoticeAsync(AppSession s, ProjectDbContext db, int leaveId)
+    {
+        var l = await db.EmployeeLeaves.AsNoTracking().Include(x => x.Employee).ThenInclude(e => e.Department).Include(x => x.LeaveType)
+            .Include(x => x.CreatedByUser).FirstOrDefaultAsync(x => x.Id == leaveId);
+        if (l is null) return null;
+        var row = (await new HrLeaveService(db).ListAsync(l.FromDate, l.ToDate, l.EmployeeId)).Single(x => x.Id == l.Id);
+        var r = New(s, l.Kind == LeaveKind.Hourly ? "إشعار إجازة زمنية" : $"إشعار إجازة {l.LeaveType.Name}", l.IsVoided ? "ملغاة" : null);
+        r.Field("الرقم", l.LeaveNumber)
+         .Field("الموظف", l.Employee.FullName)
+         .Field("القسم", l.Employee.Department?.Name)
+         .Field("النوع", l.Kind == LeaveKind.Hourly ? $"زمنية (من رصيد {l.LeaveType.Name})" : l.LeaveType.Name)
+         .Field("الفترة", row.PeriodText)
+         .Field("أيام العمل", l.Kind == LeaveKind.Day ? $"{l.WorkDays:0.##} يوم" : null)
+         .Field("الاحتساب", row.ChargeText)
+         .Field("ملاحظة / التقرير الطبي", l.Note)
+         .Field("سجّلها", l.CreatedByUser.Username);
+        var (balances, hourly, free) = await new HrLeaveService(db).BalancesAsync(l.EmployeeId, l.FromDate);
+        foreach (var b in balances.Where(b => b.Allowed is not null))
+            r.Total($"المتبقي من {b.TypeName} ({b.PeriodText})", b.RemainingText);
+        r.Total("الزمنيات هذا الشهر", $"{hourly} من {free} مسموحة");
+        if (l.IsVoided) r.Total("سبب الإلغاء", l.VoidReason ?? "");
+        r.Signatures.AddRange(new[] { "الموظف", "المسؤول المباشر", "مسؤول الموارد البشرية" });
+        return r;
+    }
+
+    /// <summary>كشف إجازات موظف: أرصدته في فترة كل نوع، وكل إجازاته في السنة.</summary>
+    public static async Task<ReportDocument?> LeaveBalanceAsync(AppSession s, ProjectDbContext db, int employeeId, DateTime day)
+    {
+        var e = await db.Employees.AsNoTracking().Include(x => x.Department).FirstOrDefaultAsync(x => x.Id == employeeId);
+        if (e is null) return null;
+        var svc = new HrLeaveService(db);
+        var (balances, hourly, free) = await svc.BalancesAsync(employeeId, day);
+        var r = New(s, $"كشف إجازات {e.FullName} — {day.Year}", null);
+        r.Field("الموظف", e.FullName).Field("القسم", e.Department?.Name).Field("بتاريخ", day.ToString("yyyy/MM/dd"));
+        foreach (var b in balances)
+            r.Field($"{b.TypeName} ({b.PeriodText})", b.Allowed is null ? $"المأخوذ {b.Used:0.##} يوم (بلا حد)" : $"المسموح {b.AllowedText} — المأخوذ {b.Used:0.##} — المتبقي {b.RemainingText}");
+        r.Field("الزمنيات هذا الشهر", $"{hourly} من {free} مسموحة");
+        r.Columns.AddRange(new[] { "الرقم", "النوع", "الفترة", "الاحتساب", "الحالة", "ملاحظة" });
+        foreach (var l in await svc.ListAsync(new DateTime(day.Year, 1, 1), new DateTime(day.Year, 12, 31), employeeId))
+            r.Rows.Add(new[] { l.LeaveNumber, l.Kind == LeaveKind.Hourly ? "زمنية" : l.TypeName, l.PeriodText, l.ChargeText, l.StatusText, l.Note ?? "" });
+        r.Signatures.AddRange(new[] { "الموظف", "مسؤول الموارد البشرية" });
         return r;
     }
 

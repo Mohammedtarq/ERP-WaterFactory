@@ -151,6 +151,13 @@ public partial class ProjectDbContext : DbContext
     public DbSet<DailyProductionTemplate> DailyProductionTemplates => Set<DailyProductionTemplate>();
     public DbSet<DailyProductionTemplateLine> DailyProductionTemplateLines => Set<DailyProductionTemplateLine>();
 
+    // ---- الإجازات والعطل والعمل الإضافي (44_hr_leaves_overtime.sql) ----
+    public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
+    public DbSet<EmployeeLeave> EmployeeLeaves => Set<EmployeeLeave>();
+    public DbSet<PublicHoliday> PublicHolidays => Set<PublicHoliday>();
+    public DbSet<OvertimeEntry> OvertimeEntries => Set<OvertimeEntry>();
+    public DbSet<HrPolicy> HrPolicies => Set<HrPolicy>();
+
     // ---- توزيع الأقسام (36_section_layout.sql) ----
     public DbSet<SectionPlacement> SectionPlacements => Set<SectionPlacement>();
     public DbSet<RoleHiddenSection> RoleHiddenSections => Set<RoleHiddenSection>();
@@ -161,6 +168,42 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<Employee>().Property(e => e.SocialSolidarityAmount).HasPrecision(18, 2);
         modelBuilder.Entity<PayrollLine>().Property(l => l.SocialSecurityDeduction).HasPrecision(18, 2);
         modelBuilder.Entity<PayrollLine>().Property(l => l.SocialSolidarityDeduction).HasPrecision(18, 2);
+        modelBuilder.Entity<Employee>().Property(e => e.OvertimeHourlyRate).HasPrecision(18, 2);
+        modelBuilder.Entity<PayrollLine>(l =>
+        {
+            l.Property(x => x.OvertimeDays).HasPrecision(6, 2);
+            l.Property(x => x.OvertimeHours).HasPrecision(6, 2);
+            l.Property(x => x.OvertimeAmount).HasPrecision(18, 2);
+            l.Property(x => x.UnpaidLeaveDays).HasPrecision(6, 2);
+            l.Property(x => x.UnpaidLeaveDeduction).HasPrecision(18, 2);
+        });
+        modelBuilder.Entity<LeaveType>(e =>
+        {
+            e.Property(x => x.AllowedDays).HasPrecision(6, 2);
+            e.Property(x => x.AllowancePeriod).HasConversion<string>();
+        });
+        modelBuilder.Entity<EmployeeLeave>(e =>
+        {
+            e.Property(x => x.Kind).HasConversion<string>();
+            e.Property(x => x.WorkDays).HasPrecision(6, 2);
+            e.Property(x => x.PaidDays).HasPrecision(6, 2);
+            e.Property(x => x.UnpaidDays).HasPrecision(6, 2);
+            e.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.LeaveType).WithMany().HasForeignKey(x => x.LeaveTypeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<OvertimeEntry>(e =>
+        {
+            e.Property(x => x.Kind).HasConversion<string>();
+            e.Property(x => x.Quantity).HasPrecision(6, 2);
+            e.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<HrPolicy>(e =>
+        {
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.OvertimeHourlyRate).HasPrecision(18, 2);
+        });
         modelBuilder.Entity<Employee>()
             .Property(e => e.SalaryCurrency)
             .HasConversion<string>()

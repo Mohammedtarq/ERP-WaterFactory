@@ -60,9 +60,9 @@ public class SidebarGroupsTests
     {
         var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
-        Assert.Equal(new[] { "الموظفون", "الحضور", "الحوافز", "الرواتب" }, hr.Groups.Select(g => g.Name));
+        Assert.Equal(new[] { "الموظفون", "الحضور والإجازات", "الحوافز", "الرواتب" }, hr.Groups.Select(g => g.Name));
 
-        var attendance = hr.Groups.Single(g => g.Name == "الحضور");
+        var attendance = hr.Groups.Single(g => g.Name == "الحضور والإجازات");
         hr.OpenGroupCommand.Execute(attendance);
         await hr.LastActivation;
         Assert.Same(attendance.Items[0], hr.SelectedTab);

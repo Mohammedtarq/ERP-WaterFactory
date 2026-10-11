@@ -41,5 +41,12 @@ public class PayrollLine
     public decimal PenaltyDeduction { get; set; }
     public decimal SocialSecurityDeduction { get; set; }
     public decimal SocialSolidarityDeduction { get; set; }
+    /// <summary>العمل الإضافي: أيام بالأجر اليومي + ساعات بسعر الساعة (بعملة الراتب).</summary>
+    public decimal OvertimeDays { get; set; }
+    public decimal OvertimeHours { get; set; }
+    public decimal OvertimeAmount { get; set; }
+    /// <summary>أيام إجازة بدون راتب (أو تجاوز الرصيد) وخصمها بالأجر اليومي.</summary>
+    public decimal UnpaidLeaveDays { get; set; }
+    public decimal UnpaidLeaveDeduction { get; set; }
     public decimal NetSalary { get; set; }
 }

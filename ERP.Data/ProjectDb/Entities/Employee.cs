@@ -41,4 +41,7 @@ public class Employee
     /// <summary>تكافل اجتماعي: مبلغ ثابت يُستقطع شهريًا عند التفعيل.</summary>
     public bool HasSocialSolidarity { get; set; }
     public decimal? SocialSolidarityAmount { get; set; }
+
+    /// <summary>سعر ساعة إضافية خاص بالموظف (يعلو على السعر العام في سياسة الموارد البشرية) — 44_hr_leaves_overtime.sql.</summary>
+    public decimal? OvertimeHourlyRate { get; set; }
 }
