@@ -233,6 +233,7 @@ public class FullCycleJourneyTests
         shell.Open<RepsModuleViewModel>(ModuleCode.Reps);
         var board = reps.Vans;
         await Open(reps, board);
+        Assert.Equal("11 كارتون", board.TotalText);                         // الملخّص بالعبوات لا بالقطع
         board.SelectedCard = board.Cards.Single(c => c.VanName == "كاش فان علي");
         await board.IdleAsync();
         var detail = board.Detail!;

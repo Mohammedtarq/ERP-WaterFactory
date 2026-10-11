@@ -30,7 +30,7 @@
                     <TextBlock Margin="0,0,18,0"><Run Text="السيارات:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding VanCount, Mode=OneWay}" FontWeight="Bold"/></TextBlock>
                     <TextBlock Margin="0,0,18,0"><Run Text="بانتظار التسوية:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding PendingCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource WarningBrush}"/></TextBlock>
                     <TextBlock Margin="0,0,18,0"><Run Text="متأخر:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding OverdueCount, Mode=OneWay}" FontWeight="Bold" Foreground="{StaticResource DangerBrush}"/></TextBlock>
-                    <TextBlock Margin="0,0,18,0"><Run Text="في السيارات:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding TotalPieces, Mode=OneWay, StringFormat=N0}" FontWeight="Bold"/> <Run Text="قطعة"/></TextBlock>
+                    <TextBlock Margin="0,0,18,0" ToolTip="{Binding TotalPiecesHint}"><Run Text="في السيارات:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding TotalText, Mode=OneWay}" FontWeight="Bold"/></TextBlock>
                     <TextBlock><Run Text="النقد المتوقع:" Foreground="{StaticResource MutedTextBrush}"/> <Run Text="{Binding TotalCash, Mode=OneWay, StringFormat=N0}" FontWeight="Bold"/> <Run Text="د.ع"/></TextBlock>
                 </WrapPanel>
 

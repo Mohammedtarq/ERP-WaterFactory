@@ -927,6 +927,17 @@ public class TutorialTests
             var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1440, Height = 900,
                                         Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual, WindowState = WindowState.Normal };
             main.Show();
+            // شاشة CI أصغر من 1440 فتنضغط النافذة: نرسم المحتوى بعرض 1440×900 فعلًا (حجم شاشة مكتب شائع)
+            var content = (FrameworkElement)main.Content;
+            content.Width = 1440;
+            content.Height = 900;
+            bool TableScrolls()
+            {
+                content.UpdateLayout();
+                var grid = Descendants<DataGrid>(content).First(g => g.IsVisible);
+                var sv = Descendants<ScrollViewer>(grid).First();
+                return sv.ScrollableWidth > 1;
+            }
 
             async Task Shot(string name, ViewModelBase? busy = null)
             {
@@ -1018,9 +1029,11 @@ public class TutorialTests
             await orders.PreviewCommand.ExecuteAsync();
             Assert.True(orders.AllSufficient);
             await Shot("08-سطر-المطعم-ومعاينة-المواد", orders);
+            Assert.False(TableScrolls(), "جدول الأوامر يحتاج تمريرًا أفقيًا والنموذج مفتوح (1440)");
             await orders.CreateCommand.ExecuteAsync();
             await orders.IdleAsync();
             await Shot("09-الأمر-في-الجدول-15-كارتون", orders);
+            Assert.False(TableScrolls(), "جدول الأوامر يحتاج تمريرًا أفقيًا (1440)");
             var order = orders.Orders.First();
             Assert.Equal("15 كارتون", order.QuantityText);
             await orders.StartCommand.ExecuteAsync(order);

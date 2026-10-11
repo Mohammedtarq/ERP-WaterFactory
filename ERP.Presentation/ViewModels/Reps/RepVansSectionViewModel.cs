@@ -49,6 +49,10 @@ public class RepVansSectionViewModel : SectionViewModel
     public int PendingCount => _all.Count(c => c.NeedsSettlement);
     public int OverdueCount => _all.Count(c => c.Status == RepVanStatus.Overdue);
     public decimal TotalPieces => _all.Sum(c => c.BalancePieces);
+    private string _totalText = "0";
+    /// <summary>ما في كل السيارات بعبوات كل منتج (11 كارتون + 4 شرنك) — القطع في التلميح فقط.</summary>
+    public string TotalText { get => _totalText; private set => SetProperty(ref _totalText, value); }
+    public string TotalPiecesHint => $"{TotalPieces:N0} قطعة";
     public decimal TotalCash => _all.Sum(c => c.ExpectedCash);
     public RelayCommand PrintCommand { get; }
 
@@ -56,8 +60,13 @@ public class RepVansSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         _all = await new RepVanBoardService(db).CardsAsync(DateTime.Today);
+        var vanIds = _all.Select(c => c.VanWarehouseId).ToList();
+        var byItem = await db.StockTransactions.AsNoTracking().Where(t => vanIds.Contains(t.WarehouseId))
+            .GroupBy(t => t.ItemId).Select(g => new { g.Key, Pieces = g.Sum(t => t.QuantityBaseUnits) }).ToListAsync();
+        var packs = await PackFormatter.LoadAsync(db, byItem.Select(x => x.Key));
+        TotalText = packs.Total(byItem.Where(x => x.Pieces != 0).Select(x => (x.Key, x.Pieces)));
         ApplyFilter();
-        foreach (var p in new[] { nameof(VanCount), nameof(PendingCount), nameof(OverdueCount), nameof(TotalPieces), nameof(TotalCash) }) OnPropertyChanged(p);
+        foreach (var p in new[] { nameof(VanCount), nameof(PendingCount), nameof(OverdueCount), nameof(TotalPieces), nameof(TotalPiecesHint), nameof(TotalCash) }) OnPropertyChanged(p);
         StatusMessage = _all.Count == 0 ? "لا توجد سيارات مندوبين — عرّفها من المخازن (نوع «كاش فان» مع المندوب صاحبه)"
             : OverdueCount > 0 ? $"{OverdueCount} مندوب متأخر عن التسوية — اضغط بطاقته للتفاصيل"
             : $"{VanCount} سيارة، {PendingCount} بانتظار التسوية";
@@ -104,7 +113,7 @@ public class RepVansSectionViewModel : SectionViewModel
         r.Columns.AddRange(new[] { "المندوب", "السيارة", "الحالة", "حمولة اليوم", "الرصيد الآن", "النقد المتوقع" });
         foreach (var c in Cards)
             r.Rows.Add(new[] { c.RepName, c.VanName, c.StatusText, c.TodayLoadText, c.BalanceText, $"{c.ExpectedCash:N0}" });
-        r.Total("في السيارات", $"{TotalPieces:N0} قطعة");
+        r.Total("في السيارات", TotalText);
         r.Total("بانتظار التسوية", $"{PendingCount} مندوب");
         r.Total("النقد المتوقع", $"{TotalCash:N0} د.ع", true);
         Dialogs.ShowReport(r);

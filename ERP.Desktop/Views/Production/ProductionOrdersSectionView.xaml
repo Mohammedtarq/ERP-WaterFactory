@@ -36,22 +36,22 @@
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
                 <DataGrid ItemsSource="{Binding Orders}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="88" MinWidth="80"/>
-                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="1.6*" MinWidth="120" ElementStyle="{StaticResource WrapCell}"/>
-                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="1.1*" MinWidth="105" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="88" MinWidth="76"/>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="1.6*" MinWidth="105" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="1.1*" MinWidth="90" ElementStyle="{StaticResource WrapCell}"/>
                         <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="90" MinWidth="80"
                                             Visibility="{Binding Data.HasSidePanel, Source={StaticResource Proxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
-                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="105" MinWidth="90" ElementStyle="{StaticResource WrapCell}">
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="105" MinWidth="88" ElementStyle="{StaticResource WrapCell}">
                             <DataGridTextColumn.CellStyle>
                                 <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
                                     <Setter Property="ToolTip" Value="{Binding PiecesHint}"/>
                                 </Style>
                             </DataGridTextColumn.CellStyle>
                         </DataGridTextColumn>
-                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedText}" Width="95" MinWidth="80" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedText}" Width="95" MinWidth="72" ElementStyle="{StaticResource WrapCell}"/>
                         <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="115" MinWidth="105"
                                             Visibility="{Binding Data.HasSidePanel, Source={StaticResource Proxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
-                        <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.3*" MinWidth="125" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.3*" MinWidth="110" ElementStyle="{StaticResource WrapCell}"/>
                         <!-- الإجراءات: «تشغيل» و«طباعة الأمر» ظاهران، والباقي تحت «⋯» (يوفّر نحو 150 بكسل من عرض الجدول) -->
                         <DataGridTemplateColumn Header="" Width="118" MinWidth="118">
                             <DataGridTemplateColumn.CellTemplate>
