@@ -499,8 +499,57 @@ public class PromotionsSectionViewModel : CrudSectionViewModel<PromotionAndRaise
 // ============================ الموظفون ============================
 public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
 {
+    private byte[]? _editorPhoto;
+    private bool _photoChanged;
+
     public EmployeesSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.HR, "الموظفون", Icons.People, "#0EA5E9", "البيانات الأساسية، الشفت، العملة، وعلامة المندوب/مدير المبيعات") { }
+        : base(s, d, ModuleCode.HR, "الموظفون", Icons.People, "#0EA5E9", "البيانات الأساسية، الشفت، العملة، وعلامة المندوب/مدير المبيعات")
+    {
+        ChoosePhotoCommand = new RelayCommand(ChoosePhoto);
+        RemovePhotoCommand = new RelayCommand(() => SetEditorPhoto(null));
+        PrintCardCommand = new AsyncRelayCommand(p => p is Employee { Id: > 0 } e ? PrintAsync(db => DocumentReports.EmployeeCardAsync(Session, db, e.Id)) : Task.CompletedTask);
+    }
+
+    // ---- الصورة (تُحفظ مع حفظ النموذج) وبطاقة الموظف ----
+    public byte[]? EditorPhoto { get => _editorPhoto; private set { if (SetProperty(ref _editorPhoto, value)) OnPropertyChanged(nameof(HasEditorPhoto)); } }
+    public bool HasEditorPhoto => EditorPhoto is { Length: > 0 };
+    public string EditorInitials => PhotoService.Initials(Editor?.FullName);
+    public RelayCommand ChoosePhotoCommand { get; }
+    public RelayCommand RemovePhotoCommand { get; }
+    public AsyncRelayCommand PrintCardCommand { get; }
+
+    protected override void OnEditorChanged()
+    {
+        _photoChanged = false;
+        EditorPhoto = Editor?.PhotoPreview;
+        OnPropertyChanged(nameof(EditorInitials));
+    }
+
+    private void ChoosePhoto()
+    {
+        if (Editor is null) return;
+        var bytes = Dialogs.PickPhoto();
+        if (bytes is null) return;
+        if (PhotoService.Check(bytes) is { } error) { Dialogs.Error(error); return; }
+        SetEditorPhoto(bytes);
+    }
+
+    private void SetEditorPhoto(byte[]? bytes)
+    {
+        if (Editor is null) return;
+        EditorPhoto = bytes;
+        _photoChanged = true;
+    }
+
+    protected override async Task<string?> AfterSaveAsync(Employee e, bool isNew)
+    {
+        if (!_photoChanged) return null;
+        await using var db = Session.NewDb();
+        var result = await new PhotoService(db).SetEmployeeAsync(e.Id, EditorPhoto, Session.UserId);
+        if (!result.Success) return result.ErrorMessage;
+        Session.NotifyPhotoChanged();                 // يوزر مربوط بهذا الموظف يأخذ صورته أسفل القائمة
+        return null;
+    }
 
     public ObservableCollection<Branch> Branches { get; } = new();
     public ObservableCollection<Department> Departments { get; } = new();
@@ -532,8 +581,13 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
         foreach (var x in await db.Shifts.AsNoTracking().OrderBy(x => x.Name).ToListAsync()) Shifts.Add(x);
     }
 
-    protected override Task<List<Employee>> QueryAsync(ProjectDbContext db) =>
-        db.Employees.AsNoTracking().Include(e => e.Branch).Include(e => e.Department).Include(e => e.Shift).OrderBy(e => e.FullName).ToListAsync();
+    protected override async Task<List<Employee>> QueryAsync(ProjectDbContext db)
+    {
+        var list = await db.Employees.AsNoTracking().Include(e => e.Branch).Include(e => e.Department).Include(e => e.Shift).OrderBy(e => e.FullName).ToListAsync();
+        var photos = await new PhotoService(db).AllEmployeesAsync();
+        foreach (var e in list) e.PhotoPreview = photos.GetValueOrDefault(e.Id);
+        return list;
+    }
 
     protected override Employee CreateNew() => new() { HireDate = DateTime.Today, BranchId = Branches.FirstOrDefault()?.Id, ShiftId = Shifts.FirstOrDefault()?.Id };
     protected override string? Validate(Employee e) =>

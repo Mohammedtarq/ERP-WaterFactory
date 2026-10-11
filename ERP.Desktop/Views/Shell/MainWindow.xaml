@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Shell;assembly=ERP.Presentation"
+        xmlns:c="clr-namespace:ERP.Desktop.Views.Controls"
         mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:MainShellViewModel}"
         x:Name="Root"
         Title="{Binding WindowTitle}"
@@ -32,7 +33,18 @@
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Command="{Binding LogoutCommand}" ToolTip="تسجيل الخروج"
                             Style="{StaticResource RowIconButton}" Tag="#F87171" Content="&#xE7E8;"/>
-                    <StackPanel>
+                    <!-- الصورة: الضغط عليها يفتح «تغيير صورتي / إزالة صورتي» -->
+                    <Menu DockPanel.Dock="Left" Background="Transparent" VerticalAlignment="Center" Margin="0,0,10,0">
+                        <MenuItem Padding="0" ToolTip="صورتي — اضغط للتغيير">
+                            <MenuItem.Header>
+                                <c:Avatar Photo="{Binding MyPhoto}" DisplayName="{Binding Session.FullName}" Size="38"/>
+                            </MenuItem.Header>
+                            <MenuItem Header="تغيير صورتي" Command="{Binding ChangeMyPhotoCommand}"/>
+                            <MenuItem Header="إزالة صورتي" Command="{Binding RemoveMyPhotoCommand}" Foreground="#DC2626"
+                                      Visibility="{Binding HasOwnPhoto, Converter={StaticResource BoolToVisibility}}"/>
+                        </MenuItem>
+                    </Menu>
+                    <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="{Binding Session.GlobalUsername}" Foreground="White" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Session.FullName}"/>
                         <TextBlock Text="{Binding Session.RoleName}" Foreground="#94A3B8" FontSize="12.5"/>
                     </StackPanel>

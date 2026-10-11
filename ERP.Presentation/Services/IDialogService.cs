@@ -13,6 +13,12 @@ public interface IDialogService
     /// <summary>اختيار صورة (PNG/JPG) من الجهاز — يعيد مسارها أو null عند الإلغاء.</summary>
     string? PickImageFile();
 
+    /// <summary>
+    /// اختيار صورة شخصية (موظف أو مستخدم): تنفيذ WPF يقصّها مربعًا من الوسط ويصغّرها إلى 256×256 (JPEG) قبل إعادتها.
+    /// التنفيذ الافتراضي يقرأ الملف كما هو. null عند الإلغاء.
+    /// </summary>
+    byte[]? PickPhoto() => PickImageFile() is { } path ? File.ReadAllBytes(path) : null;
+
     /// <summary>اختيار ملف من الجهاز بعنوان ومرشّح (مثل ملف البصمة) — يعيد مساره أو null عند الإلغاء.</summary>
     string? PickFile(string title, string filter) => null;
 

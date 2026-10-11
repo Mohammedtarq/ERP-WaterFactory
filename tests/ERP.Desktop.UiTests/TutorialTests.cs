@@ -1280,6 +1280,25 @@ public class TutorialTests
             await payroll.IdleAsync();
             await Shot("09-الرواتب-بالإضافي-وبدون-راتب", payroll);
 
+            step = "الصور";
+            await using (var db = shell.Session.NewDb())
+            {
+                var photos = new PhotoService(db);
+                var saraId = await db.Employees.Where(e => e.FullName == name).Select(e => e.Id).SingleAsync();
+                Assert.True((await photos.SetEmployeeAsync(saraId, SamplePhoto("#0EA5E9"), shell.Session.UserId)).Success);
+                Assert.True((await photos.SetUserAsync(shell.Session.UserId, SamplePhoto("#10B981"), shell.Session.UserId)).Success);
+            }
+            await shell.RefreshMyPhotoAsync();
+            var emps = hr.Section<EmployeesSectionViewModel>();
+            await Open(hr, emps);
+            await emps.RefreshCommand.ExecuteAsync();
+            await emps.IdleAsync();
+            await emps.EditCommand.ExecuteAsync(emps.Items.Single(e => e.FullName == name));
+            await Shot("10-صورة-الموظف-وصورتي-أسفل-القائمة", emps);
+            emps.CancelCommand.Execute(null);
+            await emps.PrintCardCommand.ExecuteAsync(emps.Items.Single(e => e.FullName == name));
+            await PreviewShot("11-بطاقة-الموظف-بصورته", dialogs.Reports.Last());
+
             main.Close();
         });
         if (await Task.WhenAny(run, Task.Delay(TimeSpan.FromMinutes(3))) != run)
@@ -1287,9 +1306,28 @@ public class TutorialTests
         await run;
 
         _out.WriteLine($"دليل الإجازات والعمل الإضافي: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, dir)}");
-        Assert.Equal(9, shots.Count);
+        Assert.Equal(11, shots.Count);
         Assert.Empty(dialogs.Errors);
         lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
+    }
+
+    /// <summary>صورة شخصية تجريبية (بيانات اصطناعية): خلفية ملوّنة وصورة ظلّية بيضاء، PNG 256×256.</summary>
+    private static byte[] SamplePhoto(string color)
+    {
+        var visual = new System.Windows.Media.DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.DrawRectangle((System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(color)!, null, new Rect(0, 0, 256, 256));
+            dc.DrawEllipse(System.Windows.Media.Brushes.White, null, new Point(128, 100), 48, 52);
+            dc.DrawEllipse(System.Windows.Media.Brushes.White, null, new Point(128, 260), 96, 90);
+        }
+        var bmp = new System.Windows.Media.Imaging.RenderTargetBitmap(256, 256, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        bmp.Render(visual);
+        var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bmp));
+        using var ms = new MemoryStream();
+        enc.Save(ms);
+        return ms.ToArray();
     }
 
     /// <summary>

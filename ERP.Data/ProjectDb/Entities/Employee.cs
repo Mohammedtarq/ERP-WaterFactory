@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace ERP.Data.ProjectDb.Entities;
 
 public class Employee
@@ -44,4 +46,7 @@ public class Employee
 
     /// <summary>سعر ساعة إضافية خاص بالموظف (يعلو على السعر العام في سياسة الموارد البشرية) — 44_hr_leaves_overtime.sql.</summary>
     public decimal? OvertimeHourlyRate { get; set; }
+
+    /// <summary>صورة الموظف للعرض في القوائم (تُملأ من EmployeePhotos عند الحاجة — ليست عمودًا).</summary>
+    [NotMapped] public byte[]? PhotoPreview { get; set; }
 }

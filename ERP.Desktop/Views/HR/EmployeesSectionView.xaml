@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+             xmlns:c="clr-namespace:ERP.Desktop.Views.Controls"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:EmployeesSectionViewModel}"
              x:Name="Root">
     <!-- مُولَّد بنمط CRUD الموحّد: الجدول يمينًا، ونموذج الإضافة/التعديل يسارًا عند الفتح -->
@@ -37,6 +38,13 @@
 
                 <DataGrid ItemsSource="{Binding Items}">
                     <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <c:Avatar Photo="{Binding PhotoPreview}" DisplayName="{Binding FullName}" Size="26"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="الموظف" Binding="{Binding FullName}" Width="*"/>
                         <DataGridTextColumn Header="الوظيفة" Binding="{Binding JobTitle}" Width="130"/>
                         <DataGridTextColumn Header="القسم" Binding="{Binding Department.Name, TargetNullValue='بلا قسم', FallbackValue='بلا قسم'}" Width="130" FontWeight="SemiBold"/>
@@ -50,10 +58,12 @@
                         <DataGridTextColumn Header="الضمان" Binding="{Binding SocialSecurityAmount, StringFormat=N0}" Width="75"/>
                         <DataGridTextColumn Header="التكافل" Binding="{Binding SocialSolidarityAmount, StringFormat=N0}" Width="75"/>
                         <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="50"/>
-                        <DataGridTemplateColumn Header="" Width="84">
+                        <DataGridTemplateColumn Header="" Width="118">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Content="&#xE749;" ToolTip="طباعة بطاقة الموظف" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                                Command="{Binding DataContext.PrintCardCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE70F;" ToolTip="تعديل" Style="{StaticResource RowIconButton}" Tag="#0EA5E9"
                                                 Command="{Binding DataContext.EditCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE74D;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
@@ -83,6 +93,18 @@
                 </StackPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+                        <!-- الصورة: تُصغَّر تلقائيًا وتُحفظ مع «حفظ» -->
+                        <DockPanel Margin="0,0,0,6">
+                            <c:Avatar DockPanel.Dock="Right" Photo="{Binding EditorPhoto}" DisplayName="{Binding Editor.FullName}" Size="72" Margin="12,0,0,0"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="صورة الموظف" Style="{StaticResource FieldLabel}" Margin="0,0,0,6"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding ChoosePhotoCommand}" Content="اختيار صورة"/>
+                                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding RemovePhotoCommand}" Content="إزالة"
+                                            Visibility="{Binding HasEditorPhoto, Converter={StaticResource BoolToVisibility}}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </DockPanel>
                         <TextBlock Text="الاسم الكامل" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.FullName}"/>
                         <TextBlock Text="المسمى الوظيفي" Style="{StaticResource FieldLabel}"/>

@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace ERP.Data.ProjectDb.Entities;
 
 public class User
@@ -15,4 +17,7 @@ public class User
     public string PreferredLanguage { get; set; } = "ar";
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>الصورة الظاهرة في القوائم: صورته الخاصة وإلا صورة موظفه (تُملأ عند الحاجة — ليست عمودًا).</summary>
+    [NotMapped] public byte[]? PhotoPreview { get; set; }
 }

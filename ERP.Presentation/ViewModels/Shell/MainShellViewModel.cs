@@ -88,9 +88,54 @@ public class MainShellViewModel : ViewModelBase
         LogoutCommand = new RelayCommand(Logout);
         ToggleAlertsCommand = new RelayCommand(() => IsAlertsOpen = !IsAlertsOpen);
         OpenAlertCommand = new RelayCommand(p => { if (p is AlertItem a) OpenAlert(a); });
+        ChangeMyPhotoCommand = new AsyncRelayCommand(ChangeMyPhotoAsync);
+        RemoveMyPhotoCommand = new AsyncRelayCommand(() => SaveMyPhotoAsync(null));
+        session.PhotoChanged += () => Background(RefreshMyPhotoAsync());
         SelectedItem = NavItems.FirstOrDefault();
         Background(RefreshCloudStatusAsync());
         Background(RefreshAlertsAsync());
+        Background(RefreshMyPhotoAsync());
+    }
+
+    // ============================ صورة المستخدم ============================
+
+    private byte[]? _myPhoto;
+    private bool _hasOwnPhoto;
+    /// <summary>صورة المستخدم أسفل القائمة: الخاصة وإلا صورة موظفه المربوط.</summary>
+    public byte[]? MyPhoto { get => _myPhoto; private set => SetProperty(ref _myPhoto, value); }
+    /// <summary>له صورة خاصة (فيظهر «إزالة صورتي»).</summary>
+    public bool HasOwnPhoto { get => _hasOwnPhoto; private set => SetProperty(ref _hasOwnPhoto, value); }
+    /// <summary>كل مستخدم يغيّر صورته بنفسه (لا تمس الصلاحيات أو الحسابات) — ويُسجَّل التغيير في سجل التدقيق.</summary>
+    public AsyncRelayCommand ChangeMyPhotoCommand { get; }
+    public AsyncRelayCommand RemoveMyPhotoCommand { get; }
+
+    public async Task RefreshMyPhotoAsync()
+    {
+        try
+        {
+            await using var db = Session.NewDb();
+            var photos = new PhotoService(db);
+            HasOwnPhoto = await photos.HasOwnUserPhotoAsync(Session.UserId);
+            MyPhoto = await photos.GetUserDisplayAsync(Session.UserId);
+        }
+        catch (Exception ex) when (ex is Microsoft.Data.SqlClient.SqlException or InvalidOperationException) { }
+    }
+
+    private async Task ChangeMyPhotoAsync()
+    {
+        var bytes = _dialogs.PickPhoto();
+        if (bytes is null) return;
+        await SaveMyPhotoAsync(bytes);
+    }
+
+    private async Task SaveMyPhotoAsync(byte[]? bytes)
+    {
+        await using (var db = Session.NewDb())
+        {
+            var result = await new PhotoService(db).SetUserAsync(Session.UserId, bytes, Session.UserId);
+            if (!result.Success) { _dialogs.Error(result.ErrorMessage!); return; }
+        }
+        await RefreshMyPhotoAsync();
     }
 
     // ============================ التنبيهات ============================

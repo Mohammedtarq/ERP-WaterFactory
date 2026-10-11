@@ -34,6 +34,8 @@ public class ReportDocument
 
     /// <summary>هوية الطباعة؛ null = الهوية المركزية الحالية (ReportBranding.Current).</summary>
     public ReportBranding? Branding { get; init; }
+    /// <summary>صورة صاحب المستند (الموظف) تظهر بجانب حقول الرأس في طباعة A4 — بطاقة الموظف وإشعار الإجازة وكشفها.</summary>
+    public byte[]? Photo { get; set; }
 
     /// <summary>
     /// نسخة للطباعة بعد إخفاء أعمدة واختياريًا إخفاء الصفوف الصفرية/الفارغة (كل خلاياها الرقمية صفر أو فارغة).
@@ -43,7 +45,7 @@ public class ReportDocument
         var copy = new ReportDocument
         {
             CompanyName = CompanyName, Title = Title, Stamp = Stamp, Notes = Notes, PrintedBy = PrintedBy, PrintedAt = PrintedAt,
-            Key = Key, ReceiptCapable = ReceiptCapable, Branding = Branding,
+            Key = Key, ReceiptCapable = ReceiptCapable, Branding = Branding, Photo = Photo,
             ReceiptColumns = ReceiptColumns?.Where(i => !hiddenColumns.Contains(i)).Select(i => i - hiddenColumns.Count(h => h < i)).ToArray()
         };
         copy.HeaderFields.AddRange(HeaderFields);

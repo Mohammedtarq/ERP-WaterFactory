@@ -48,6 +48,10 @@ public class AppSession
     public long DataVersion => Interlocked.Read(ref _dataVersion);
     public void MarkDataChanged() => Interlocked.Increment(ref _dataVersion);
 
+    /// <summary>تغيّرت صورة موظف أو مستخدم: الواجهة تعيد قراءة صورة المستخدم الحالي أسفل القائمة.</summary>
+    public event Action? PhotoChanged;
+    public void NotifyPhotoChanged() => PhotoChanged?.Invoke();
+
     public ProjectDbContext NewDb() =>
         new(new DbContextOptionsBuilder<ProjectDbContext>().UseSqlServer(ConnectionString)
                 .AddInterceptors(_interceptor ??= new DataChangeInterceptor(this)).Options) { AuditUserId = UserId };

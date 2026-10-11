@@ -231,8 +231,48 @@ public class UsersSectionViewModel : CrudSectionViewModel<User>
 {
     private string _newPassword = "";
 
+    private byte[]? _editorPhoto;
+    private bool _photoChanged;
+    private Dictionary<int, byte[]> _ownPhotos = new(), _employeePhotos = new();
+
     public UsersSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.SystemSettings, "المستخدمون", Icons.People, "#0EA5E9", "حسابات الدخول وأدوارها في هذا المشروع") { }
+        : base(s, d, ModuleCode.SystemSettings, "المستخدمون", Icons.People, "#0EA5E9", "حسابات الدخول وأدوارها في هذا المشروع")
+    {
+        ChoosePhotoCommand = new RelayCommand(ChoosePhoto);
+        RemovePhotoCommand = new RelayCommand(() => SetEditorPhoto(null));
+    }
+
+    /// <summary>صورة اليوزر الخاصة في النموذج (تُحفظ مع «حفظ»). بدونها تظهر صورة موظفه المربوط.</summary>
+    public byte[]? EditorPhoto
+    {
+        get => _editorPhoto;
+        private set { if (SetProperty(ref _editorPhoto, value)) { OnPropertyChanged(nameof(HasEditorPhoto)); OnPropertyChanged(nameof(EditorShownPhoto)); OnPropertyChanged(nameof(PhotoHint)); } }
+    }
+    public bool HasEditorPhoto => EditorPhoto is { Length: > 0 };
+    private byte[]? EditorEmployeePhoto => Editor?.EmployeeId is int e ? _employeePhotos.GetValueOrDefault(e) : null;
+    /// <summary>ما يظهر فعلًا: الخاصة وإلا صورة الموظف.</summary>
+    public byte[]? EditorShownPhoto => EditorPhoto ?? EditorEmployeePhoto;
+    public string PhotoHint => HasEditorPhoto ? "صورة خاصة بالمستخدم"
+        : EditorEmployeePhoto is not null ? "يستعمل صورة الموظف المربوط به"
+        : "بلا صورة — تظهر أول حروف الاسم";
+    public RelayCommand ChoosePhotoCommand { get; }
+    public RelayCommand RemovePhotoCommand { get; }
+
+    private void ChoosePhoto()
+    {
+        if (Editor is null) return;
+        var bytes = Dialogs.PickPhoto();
+        if (bytes is null) return;
+        if (PhotoService.Check(bytes) is { } error) { Dialogs.Error(error); return; }
+        SetEditorPhoto(bytes);
+    }
+
+    private void SetEditorPhoto(byte[]? bytes)
+    {
+        if (Editor is null) return;
+        EditorPhoto = bytes;
+        _photoChanged = true;
+    }
 
     public ObservableCollection<Role> Roles { get; } = new();
     public ObservableCollection<Employee> Employees { get; } = new();
@@ -251,11 +291,26 @@ public class UsersSectionViewModel : CrudSectionViewModel<User>
         foreach (var e in await db.Employees.AsNoTracking().Where(e => e.IsActive).OrderBy(e => e.FullName).ToListAsync()) Employees.Add(e);
     }
 
-    protected override Task<List<User>> QueryAsync(ProjectDbContext db) =>
-        db.Users.AsNoTracking().Include(u => u.Role).Include(u => u.Employee).OrderBy(u => u.Username).ToListAsync();
+    protected override async Task<List<User>> QueryAsync(ProjectDbContext db)
+    {
+        var list = await db.Users.AsNoTracking().Include(u => u.Role).Include(u => u.Employee).OrderBy(u => u.Username).ToListAsync();
+        var photos = new PhotoService(db);
+        (_ownPhotos, _employeePhotos) = (await photos.AllUsersAsync(), await photos.AllEmployeesAsync());
+        foreach (var u in list)
+            u.PhotoPreview = _ownPhotos.GetValueOrDefault(u.Id) ?? (u.EmployeeId is int e ? _employeePhotos.GetValueOrDefault(e) : null);
+        return list;
+    }
 
     protected override User CreateNew() => new() { RoleId = Roles.FirstOrDefault()?.Id ?? 0 };
-    protected override void OnEditorChanged() => NewPassword = "";
+    protected override void OnEditorChanged()
+    {
+        NewPassword = "";
+        _photoChanged = false;
+        _editorPhoto = null;
+        EditorPhoto = Editor is { Id: > 0 } u ? _ownPhotos.GetValueOrDefault(u.Id) : null;
+        OnPropertyChanged(nameof(EditorShownPhoto));
+        OnPropertyChanged(nameof(PhotoHint));
+    }
 
     protected override string? Validate(User e)
     {
@@ -280,6 +335,13 @@ public class UsersSectionViewModel : CrudSectionViewModel<User>
     /// </summary>
     protected override async Task<string?> AfterSaveAsync(User e, bool isNew)
     {
+        if (_photoChanged)
+        {
+            await using var db = Session.NewDb();
+            var photo = await new PhotoService(db).SetUserAsync(e.Id, EditorPhoto, Session.UserId);
+            if (!photo.Success) return photo.ErrorMessage;
+            Session.NotifyPhotoChanged();
+        }
         if (Session.ControlConnectionString is null || Session.ProjectId == 0) return null;
         await using var cdb = new ControlDbContext(new DbContextOptionsBuilder<ControlDbContext>().UseSqlServer(Session.ControlConnectionString).Options);
         var global = await cdb.GlobalUsers.FirstOrDefaultAsync(g => g.Username == e.Username);

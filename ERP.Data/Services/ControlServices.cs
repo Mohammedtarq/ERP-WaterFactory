@@ -103,6 +103,7 @@ public class AuditService
         "ProductionOrders" => "أوامر الإنتاج", "PayrollRuns" => "مسيرات الرواتب", "AccountMappingRules" => "قواعد العقل المالي",
         "ChartOfAccounts" => "دليل الحسابات", "Warehouses" => "المخازن", "CustomerDeposits" => "التأمينات",
         "EmployeeDeductions" => "السلف والاستقطاعات", "Partners" => "الشركاء", "Reconciliations" => "المطابقات",
+        "EmployeePhotos" => "صور الموظفين", "UserPhotos" => "صور المستخدمين",
         _ => table,
     };
 }

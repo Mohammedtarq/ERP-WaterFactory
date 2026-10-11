@@ -357,6 +357,7 @@ public static class DocumentReports
         r.Total("الزمنيات هذا الشهر", $"{hourly} من {free} مسموحة");
         if (l.IsVoided) r.Total("سبب الإلغاء", l.VoidReason ?? "");
         r.Signatures.AddRange(new[] { "الموظف", "المسؤول المباشر", "مسؤول الموارد البشرية" });
+        r.Photo = await new PhotoService(db).GetEmployeeAsync(l.EmployeeId);
         return r;
     }
 
@@ -376,6 +377,41 @@ public static class DocumentReports
         foreach (var l in await svc.ListAsync(new DateTime(day.Year, 1, 1), new DateTime(day.Year, 12, 31), employeeId))
             r.Rows.Add(new[] { l.LeaveNumber, l.Kind == LeaveKind.Hourly ? "زمنية" : l.TypeName, l.PeriodText, l.ChargeText, l.StatusText, l.Note ?? "" });
         r.Signatures.AddRange(new[] { "الموظف", "مسؤول الموارد البشرية" });
+        r.Photo = await new PhotoService(db).GetEmployeeAsync(employeeId);
+        return r;
+    }
+
+    /// <summary>بطاقة الموظف (ملفه الوظيفي) بصورته: بياناته الأساسية والراتب والاستقطاعات الثابتة وأرصدة إجازاته الآن.</summary>
+    public static async Task<ReportDocument?> EmployeeCardAsync(AppSession s, ProjectDbContext db, int employeeId)
+    {
+        var e = await db.Employees.AsNoTracking().Include(x => x.Department).Include(x => x.Branch).Include(x => x.Shift)
+            .FirstOrDefaultAsync(x => x.Id == employeeId);
+        if (e is null) return null;
+        var r = New(s, $"بطاقة موظف — {e.FullName}", e.IsActive ? null : "غير فعّال");
+        r.Field("الرقم الوظيفي", e.Id.ToString())
+         .Field("الاسم", e.FullName)
+         .Field("المسمى الوظيفي", e.JobTitle)
+         .Field("القسم", e.Department?.Name)
+         .Field("الفرع", e.Branch?.Name)
+         .Field("الهاتف", e.Phone)
+         .Field("تاريخ التعيين", e.HireDate?.ToString("yyyy/MM/dd"))
+         .Field("الشفت", e.Shift is null ? null : $"{e.Shift.Name} ({e.Shift.CheckInTime:hh\\:mm}–{e.Shift.CheckOutTime:hh\\:mm})")
+         .Field("رقم البصمة", e.FingerprintCode)
+         .Field("نوع التعيين", e.IsTemporary ? "عامل وقتي" : e.IsSalesManager ? "مدير مبيعات" : e.IsSalesRep ? "مندوب مبيعات" : "موظف دائم")
+         .Field(e.IsTemporary ? "الأجر اليومي" : "الراتب الأساسي", $"{(e.IsTemporary ? e.DailyWage ?? 0 : e.BaseSalary):N0} {e.SalaryCurrency}")
+         .Field("الضمان الاجتماعي", e.HasSocialSecurity ? $"{e.SocialSecurityAmount:N0} شهريًا" : null)
+         .Field("التكافل الاجتماعي", e.HasSocialSolidarity ? $"{e.SocialSolidarityAmount:N0} شهريًا" : null)
+         .Field("معفى من البصمة", e.AttendanceExempt ? "نعم" : null)
+         .Field("نهاية الخدمة", e.EndOfServiceDate?.ToString("yyyy/MM/dd"));
+        if (!e.IsTemporary)
+        {
+            var (balances, hourly, free) = await new HrLeaveService(db).BalancesAsync(employeeId, DateTime.Today);
+            foreach (var b in balances.Where(b => b.Allowed is not null))
+                r.Total($"المتبقي من {b.TypeName} ({b.PeriodText})", b.RemainingText);
+            r.Total("الزمنيات هذا الشهر", $"{hourly} من {free} مسموحة");
+        }
+        r.Signatures.AddRange(new[] { "الموظف", "مسؤول الموارد البشرية" });
+        r.Photo = await new PhotoService(db).GetEmployeeAsync(employeeId);
         return r;
     }
 

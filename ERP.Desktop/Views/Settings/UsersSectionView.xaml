@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
+             xmlns:c="clr-namespace:ERP.Desktop.Views.Controls"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:UsersSectionViewModel}"
              x:Name="Root">
     <!-- مُولَّد بنمط CRUD الموحّد: الجدول يمينًا، ونموذج الإضافة/التعديل يسارًا عند الفتح -->
@@ -35,6 +36,13 @@
 
                 <DataGrid ItemsSource="{Binding Items}">
                     <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <c:Avatar Photo="{Binding PhotoPreview}" DisplayName="{Binding Username}" Size="26"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="اسم المستخدم" Binding="{Binding Username}" Width="*"/>
                         <DataGridTextColumn Header="الدور" Binding="{Binding Role.Name}" Width="150"/>
                         <DataGridTextColumn Header="الموظف" Binding="{Binding Employee.FullName}" Width="170"/>
@@ -73,6 +81,19 @@
                 </StackPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+                        <!-- الصورة الخاصة (اختيارية): بدونها يأخذ صورة الموظف المربوط -->
+                        <DockPanel Margin="0,0,0,6">
+                            <c:Avatar DockPanel.Dock="Right" Photo="{Binding EditorShownPhoto}" DisplayName="{Binding Editor.Username}" Size="72" Margin="12,0,0,0"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="صورة المستخدم" Style="{StaticResource FieldLabel}" Margin="0,0,0,6"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding ChoosePhotoCommand}" Content="اختيار صورة"/>
+                                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding RemovePhotoCommand}" Content="إزالة"
+                                            Visibility="{Binding HasEditorPhoto, Converter={StaticResource BoolToVisibility}}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding PhotoHint}" Style="{StaticResource StatusText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </DockPanel>
                         <TextBlock Text="اسم المستخدم" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.Username}" FlowDirection="LeftToRight"/>
                         <TextBlock Text="كلمة مرور جديدة (اتركها فارغة للإبقاء على الحالية)" Style="{StaticResource FieldLabel}"/>

@@ -158,6 +158,10 @@ public partial class ProjectDbContext : DbContext
     public DbSet<OvertimeEntry> OvertimeEntries => Set<OvertimeEntry>();
     public DbSet<HrPolicy> HrPolicies => Set<HrPolicy>();
 
+    // ---- صور الموظفين والمستخدمين (45_photos.sql) ----
+    public DbSet<EmployeePhoto> EmployeePhotos => Set<EmployeePhoto>();
+    public DbSet<UserPhoto> UserPhotos => Set<UserPhoto>();
+
     // ---- توزيع الأقسام (36_section_layout.sql) ----
     public DbSet<SectionPlacement> SectionPlacements => Set<SectionPlacement>();
     public DbSet<RoleHiddenSection> RoleHiddenSections => Set<RoleHiddenSection>();
@@ -198,6 +202,18 @@ public partial class ProjectDbContext : DbContext
             e.Property(x => x.Quantity).HasPrecision(6, 2);
             e.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<EmployeePhoto>(e =>
+        {
+            e.HasKey(x => x.EmployeeId);
+            e.Property(x => x.EmployeeId).ValueGeneratedNever();
+            e.HasOne<Employee>().WithOne().HasForeignKey<EmployeePhoto>(x => x.EmployeeId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<UserPhoto>(e =>
+        {
+            e.HasKey(x => x.UserId);
+            e.Property(x => x.UserId).ValueGeneratedNever();
+            e.HasOne<User>().WithOne().HasForeignKey<UserPhoto>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<HrPolicy>(e =>
         {

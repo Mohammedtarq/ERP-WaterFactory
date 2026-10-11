@@ -49,6 +49,8 @@ public static class ReportRenderer
         } : b;
     }
 
+    private const double PhotoSize = 96;
+
     public static ImageSource? LoadLogo(byte[]? bytes)
     {
         if (bytes is not { Length: > 0 }) return null;
@@ -197,19 +199,32 @@ public static class ReportRenderer
 
         // حقول الرأس: أربعة أعمدة بعروض ثابتة نسبيًا (عنوان: قيمة × 2) — رقم المستند في الترويسة
         var fields = r.HeaderFields.Where(f => !f.Label.StartsWith("رقم")).ToList();
-        if (fields.Count > 0)
+        // صورة صاحب المستند (الموظف): عمود خامس في طرف الحقول يمتد على صفوفها
+        var photo = LoadLogo(r.Photo);
+        if (fields.Count > 0 || photo is not null)
         {
             var t = new Table { CellSpacing = 0, Margin = new Thickness(0, 0, 0, 12) };
             foreach (var w in new[] { 1.0, 2.0, 1.0, 2.0 }) t.Columns.Add(new TableColumn { Width = new GridLength(w, GridUnitType.Star) });
+            // نسبي لا ثابت: العرض الثابت مع النسبي في جدول RTL يبتلع العرض (انظر جدول الأعمدة أدناه)
+            if (photo is not null) t.Columns.Add(new TableColumn { Width = new GridLength(1.1, GridUnitType.Star) });
             var g = new TableRowGroup();
-            for (var i = 0; i < fields.Count; i += 2)
+            int rows = Math.Max(1, (fields.Count + 1) / 2);
+            for (var i = 0; i < rows * 2; i += 2)
             {
                 var row = new TableRow();
-                foreach (var f in fields.Skip(i).Take(2))
+                var pair = fields.Skip(i).Take(2).ToList();
+                foreach (var f in pair)
                 {
                     row.Cells.Add(Cell(f.Label, Muted, FontWeights.Normal, 10.5));
                     row.Cells.Add(Cell(f.Value, Ink, FontWeights.SemiBold, 11));
                 }
+                for (var k = pair.Count; k < 2; k++) { row.Cells.Add(Cell("", Muted, FontWeights.Normal, 10.5)); row.Cells.Add(Cell("", Ink, FontWeights.Normal, 11)); }
+                if (i == 0 && photo is not null)
+                    row.Cells.Add(new TableCell(new BlockUIContainer(new Border
+                    {
+                        Width = PhotoSize, Height = PhotoSize, CornerRadius = new CornerRadius(8), BorderBrush = Rule, BorderThickness = new Thickness(1),
+                        Background = new ImageBrush(photo) { Stretch = Stretch.UniformToFill }, HorizontalAlignment = HorizontalAlignment.Left
+                    })) { RowSpan = rows, Padding = new Thickness(12, 0, 0, 0) });
                 g.Rows.Add(row);
             }
             t.RowGroups.Add(g);
