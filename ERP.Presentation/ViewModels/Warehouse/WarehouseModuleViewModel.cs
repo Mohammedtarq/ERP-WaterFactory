@@ -56,7 +56,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
     public WarehouseRepVansSectionViewModel Vans { get; }
 
     /// <summary>واجهة مستقلة لكل مخزن فعّال (مواد أولية، منتج تام، كاش فان، تالف، وأي مخزن جديد).</summary>
-    public IReadOnlyList<WarehouseWorkspaceSectionViewModel> Workspaces => Tabs.OfType<WarehouseWorkspaceSectionViewModel>().ToList();
+    public IReadOnlyList<WarehouseWorkspaceSectionViewModel> Workspaces => Tabs.ToArray().OfType<WarehouseWorkspaceSectionViewModel>().ToList();
 
     public WarehouseWorkspaceSectionViewModel Workspace(int warehouseId) => Workspaces.Single(w => w.WarehouseId == warehouseId);
 

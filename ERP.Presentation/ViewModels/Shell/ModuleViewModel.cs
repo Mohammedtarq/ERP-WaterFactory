@@ -226,7 +226,7 @@ public abstract class ModuleViewModel : ViewModelBase
 
     /// <summary>مسار القسم الظاهر: «الحوافز ‹ حافز المندوب» (أو «الرئيسية»).</summary>
     public string Breadcrumb => SelectedTab is SectionViewModel s
-        ? (Groups.FirstOrDefault(x => x.Items.Contains(s))?.Name is { } groupName ? $"{groupName} ‹ {s.DisplayTitle}" : s.DisplayTitle)
+        ? (Groups.ToArray().FirstOrDefault(x => x.Items.Contains(s))?.Name is { } groupName ? $"{groupName} ‹ {s.DisplayTitle}" : s.DisplayTitle)
         : "الرئيسية";
 
     protected void UseGroups(string moduleCode)
@@ -237,7 +237,7 @@ public abstract class ModuleViewModel : ViewModelBase
 
     private void RebuildGroups()
     {
-        var open = Groups.Where(g => g.IsOpen).Select(g => g.Name).ToHashSet();
+        var open = Groups.ToArray().Where(g => g.IsOpen).Select(g => g.Name).ToHashSet();
         var sections = Tabs.ToArray().OfType<SectionViewModel>().ToList();
         var placed = new HashSet<SectionViewModel>();
         var built = new List<SectionGroup>();
@@ -272,9 +272,10 @@ public abstract class ModuleViewModel : ViewModelBase
     /// <summary>المجموعة التي فيها القسم الظاهر تُفتح، وتُغلق البقية (الرئيسية تغلق الكل).</summary>
     private void ApplySelection()
     {
-        foreach (var g in Groups)
+        // نسخ ثابتة: أقسام تُبنى في الخلفية (مساحات المخازن) قد تُضاف أثناء التظليل
+        foreach (var g in Groups.ToArray())
             g.IsOpen = SelectedTab is SectionViewModel s ? g.Items.Contains(s) : false;
-        foreach (var s in Tabs.OfType<SectionViewModel>()) s.IsCurrent = ReferenceEquals(s, SelectedTab);
+        foreach (var s in Tabs.ToArray().OfType<SectionViewModel>()) s.IsCurrent = ReferenceEquals(s, SelectedTab);
         Home.IsCurrent = ReferenceEquals(Home, SelectedTab);
         OnPropertyChanged(nameof(Breadcrumb));
     }
@@ -283,7 +284,7 @@ public abstract class ModuleViewModel : ViewModelBase
     private void OpenGroup(SectionGroup group)
     {
         if (group.IsOpen) { group.IsOpen = false; return; }
-        foreach (var g in Groups) g.IsOpen = ReferenceEquals(g, group);
+        foreach (var g in Groups.ToArray()) g.IsOpen = ReferenceEquals(g, group);
         if (group.Items.Count > 0 && (SelectedTab is not SectionViewModel cur || !group.Items.Contains(cur)))
             SelectedTab = group.Items[0];
     }
