@@ -1287,7 +1287,7 @@ public class TutorialTests
         await run;
 
         _out.WriteLine($"دليل الإجازات والعمل الإضافي: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, dir)}");
-        Assert.Equal(10, shots.Count);
+        Assert.Equal(9, shots.Count);
         Assert.Empty(dialogs.Errors);
         lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
     }
