@@ -20,9 +20,10 @@
             </StackPanel>
         </DockPanel>
 
-        <!-- تبويب "الرئيسية" أولًا ثم الأقسام الفرعية — المحتوى يُختار تلقائيًا حسب نوع كل قسم (ViewMappings.xaml) -->
-        <TabControl ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
-                    ItemTemplate="{StaticResource TabHeaderTemplate}" ItemContainerStyle="{StaticResource ModuleTabItem}"
-                    Background="Transparent" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}" Padding="0,14,0,0"/>
+        <!-- المسار الحالي: المجموعة ‹ القسم. التنقل بين الأقسام من القائمة الجانبية (الرئيسية ثم المجموعات) -->
+        <TextBlock DockPanel.Dock="Top" Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" FontSize="14" Margin="52,-6,0,12"/>
+
+        <!-- المحتوى يُختار تلقائيًا حسب نوع القسم (ViewMappings.xaml) -->
+        <ContentControl Content="{Binding SelectedTab}"/>
     </DockPanel>
 </UserControl>

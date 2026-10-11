@@ -78,7 +78,10 @@ public class MainShellViewModel : ViewModelBase
                         () => new SettingsModuleViewModel(session, dialogs)),
         };
 
-        NavItems = all.Where(n => session.Permissions.CanView(n.ModuleCode)).ToList();
+        var visible = all.Where(n => session.Permissions.CanView(n.ModuleCode)).ToList();
+        // مستخدم عمله في وحدة واحدة (مثل مسؤول الموارد البشرية): لا حاجة للوحة المعلومات العامة، يفتح على وحدته مباشرة
+        if (visible.Count(n => n.ModuleCode != ModuleCode.Dashboard) == 1) visible.RemoveAll(n => n.ModuleCode == ModuleCode.Dashboard);
+        NavItems = visible;
         NavigateCommand = new RelayCommand(p => { if (p is NavItem n) SelectedItem = n; });
         LogoutCommand = new RelayCommand(Logout);
         ToggleAlertsCommand = new RelayCommand(() => IsAlertsOpen = !IsAlertsOpen);
@@ -212,7 +215,9 @@ public class MainShellViewModel : ViewModelBase
         }
     }
 
-    public object? CurrentModule { get => _currentModule; private set => SetProperty(ref _currentModule, value); }
+    public object? CurrentModule { get => _currentModule; private set { if (SetProperty(ref _currentModule, value)) OnPropertyChanged(nameof(CurrentModuleVm)); } }
+    /// <summary>الوحدة الظاهرة إن كانت وحدة أقسام (لأقسامها ومجموعاتها في القائمة الجانبية).</summary>
+    public ModuleViewModel? CurrentModuleVm => CurrentModule as ModuleViewModel;
 
     public RelayCommand NavigateCommand { get; }
     public RelayCommand LogoutCommand { get; }

@@ -7,13 +7,13 @@
         mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:MainShellViewModel}"
         x:Name="Root"
         Title="{Binding WindowTitle}"
-        FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
+        FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}" FontSize="14"
         Width="1400" Height="860" MinWidth="1100" MinHeight="680"
         WindowStartupLocation="CenterScreen" WindowState="Maximized"
         Background="{StaticResource BackgroundBrush}">
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="250"/>
+            <ColumnDefinition Width="300"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -22,8 +22,8 @@
             <StackPanel DockPanel.Dock="Top" Margin="18,22,18,18" Orientation="Horizontal">
                 <Image Source="pack://application:,,,/Assets/app-256.png" Width="42" Height="42" RenderOptions.BitmapScalingMode="HighQuality"/>
                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="نظام ERP" Foreground="White" FontSize="16" FontWeight="Bold"/>
-                    <TextBlock Text="{Binding Session.ProjectName}" Foreground="#94A3B8" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="160"/>
+                    <TextBlock Text="نظام ERP" Foreground="White" FontSize="18" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding Session.ProjectName}" Foreground="#94A3B8" FontSize="12.5" TextTrimming="CharacterEllipsis" MaxWidth="190"/>
                 </StackPanel>
             </StackPanel>
 
@@ -34,7 +34,7 @@
                             Style="{StaticResource RowIconButton}" Tag="#F87171" Content="&#xE7E8;"/>
                     <StackPanel>
                         <TextBlock Text="{Binding Session.GlobalUsername}" Foreground="White" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Session.FullName}"/>
-                        <TextBlock Text="{Binding Session.RoleName}" Foreground="#94A3B8" FontSize="11"/>
+                        <TextBlock Text="{Binding Session.RoleName}" Foreground="#94A3B8" FontSize="12.5"/>
                     </StackPanel>
                 </DockPanel>
             </Border>
@@ -49,7 +49,7 @@
                                   ToolTip="تنبيهات عملك: اضغط لعرضها">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xEA8F;" Style="{StaticResource Icon}" FontSize="16" Foreground="{Binding AlertsColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding AlertsText}" Foreground="#E2E8F0" FontSize="13" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding AlertsText}" Foreground="#E2E8F0" FontSize="14" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </ToggleButton>
                     <Popup x:Name="AlertsPopup" IsOpen="{Binding IsAlertsOpen, Mode=TwoWay}" PlacementTarget="{Binding ElementName=AlertsButton}" Placement="Top" StaysOpen="False"
@@ -69,8 +69,8 @@
                                                     <DockPanel>
                                                         <Border DockPanel.Dock="Left" Width="6" CornerRadius="3" Background="{Binding Color, Converter={StaticResource HexBrush}}" Margin="0,0,10,0"/>
                                                         <StackPanel>
-                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" TextWrapping="Wrap"/>
-                                                            <TextBlock Text="{Binding Detail}" Foreground="#64748B" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" TextWrapping="Wrap"/>
+                                                            <TextBlock Text="{Binding Detail}" Foreground="#64748B" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"/>
                                                         </StackPanel>
                                                     </DockPanel>
                                                 </Button>
@@ -89,7 +89,7 @@
                     Visibility="{Binding HasCloudStatus, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding CloudStatusText}">
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="9" Height="9" Fill="{Binding CloudStatusColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding CloudStatusText}" Foreground="#CBD5E1" FontSize="11" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="200"/>
+                    <TextBlock Text="{Binding CloudStatusText}" Foreground="#CBD5E1" FontSize="12.5" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="230"/>
                 </StackPanel>
             </Border>
 
@@ -100,30 +100,100 @@
                 <ItemsControl ItemsSource="{Binding NavItems}" Margin="10,0">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Button Command="{Binding DataContext.NavigateCommand, ElementName=Root}" CommandParameter="{Binding}"
-                                    Cursor="Hand" Margin="0,2" HorizontalContentAlignment="Stretch">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border x:Name="Bd" CornerRadius="8" Padding="10,9" Background="Transparent">
-                                            <ContentPresenter/>
+                            <StackPanel>
+                                <Button Command="{Binding DataContext.NavigateCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                        Cursor="Hand" Margin="0,2" HorizontalContentAlignment="Stretch">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" CornerRadius="8" Padding="10,9" Background="Transparent">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource SidebarHoverBrush}"/>
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#1F2937"/>
+                                                </DataTrigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Width="34" Height="34" CornerRadius="8" Background="{Binding Color, Converter={StaticResource HexBrush}}">
+                                            <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="16" Foreground="White"/>
                                         </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SidebarHoverBrush}"/>
-                                            </Trigger>
-                                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                <Setter TargetName="Bd" Property="Background" Value="#1F2937"/>
-                                            </DataTrigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Button.Template>
-                                <StackPanel Orientation="Horizontal">
-                                    <Border Width="32" Height="32" CornerRadius="8" Background="{Binding Color, Converter={StaticResource HexBrush}}">
-                                        <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="15" Foreground="White"/>
-                                    </Border>
-                                    <TextBlock Text="{Binding Title}" Foreground="#E2E8F0" FontSize="14" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Title}" Foreground="#E2E8F0" FontSize="16" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <!-- أقسام الوحدة المفتوحة: «الرئيسية» ثم مجموعات ملوّنة، وتفتح مجموعة واحدة فقط بأقسامها -->
+                                <StackPanel Margin="0,0,22,6" Visibility="{Binding IsSelected, Converter={StaticResource BoolToVisibility}}">
+                                    <StackPanel.Resources>
+                                        <Style x:Key="SideLink" TargetType="Button">
+                                            <Setter Property="Cursor" Value="Hand"/>
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="Bd" CornerRadius="8" Padding="12,8" Margin="0,1" Background="{TemplateBinding Background}">
+                                                            <ContentPresenter/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </StackPanel.Resources>
+                                    <Button Command="{Binding DataContext.CurrentModuleVm.GoHomeCommand, ElementName=Root}" Style="{StaticResource SideLink}">
+                                        <Button.Background>
+                                            <SolidColorBrush Color="Transparent"/>
+                                        </Button.Background>
+                                        <TextBlock Text="الرئيسية" FontSize="14.5" Foreground="#CBD5E1" FontWeight="SemiBold"/>
+                                    </Button>
+                                    <ItemsControl ItemsSource="{Binding DataContext.CurrentModuleVm.Groups, ElementName=Root}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,2,0,0">
+                                                    <Button Command="{Binding DataContext.CurrentModuleVm.OpenGroupCommand, ElementName=Root}" CommandParameter="{Binding}" Style="{StaticResource SideLink}">
+                                                        <Button.Background>
+                                                            <SolidColorBrush Color="Transparent"/>
+                                                        </Button.Background>
+                                                        <DockPanel>
+                                                            <Border DockPanel.Dock="Left" Width="5" CornerRadius="3" Margin="0,0,10,0" Background="{Binding Color, Converter={StaticResource HexBrush}}"/>
+                                                            <Border DockPanel.Dock="Right" CornerRadius="9" Padding="8,0" Background="#1E293B" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Count}" FontSize="12.5" Foreground="#94A3B8"/>
+                                                            </Border>
+                                                            <TextBlock Text="{Binding Name}" FontSize="15.5" FontWeight="SemiBold" Foreground="#F1F5F9" VerticalAlignment="Center"/>
+                                                        </DockPanel>
+                                                    </Button>
+                                                    <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,15,2"
+                                                                  Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisibility}}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Button x:Name="Btn" Command="{Binding DataContext.CurrentModuleVm.SelectTabCommand, ElementName=Root}" CommandParameter="{Binding}" Style="{StaticResource SideLink}">
+                                                                    <TextBlock x:Name="Lbl" Text="{Binding DisplayTitle}" FontSize="14.5" Foreground="#CBD5E1" TextWrapping="Wrap"/>
+                                                                </Button>
+                                                                <DataTemplate.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                                        <Setter TargetName="Btn" Property="Background" Value="{Binding GroupColor, Converter={StaticResource HexBrush}}"/>
+                                                                        <Setter TargetName="Lbl" Property="FontWeight" Value="Bold"/>
+                                                                        <Setter TargetName="Lbl" Property="Foreground" Value="White"/>
+                                                                    </DataTrigger>
+                                                                </DataTemplate.Triggers>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
-                            </Button>
+                            </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

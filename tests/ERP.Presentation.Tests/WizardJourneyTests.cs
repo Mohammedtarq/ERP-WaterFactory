@@ -143,7 +143,9 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Empty(dialogs.Errors);
 
         var (saraShell, _) = await Login(controlCs, "sara", "Sara@2026");
-        Assert.Equal(new[] { ModuleCode.Dashboard, ModuleCode.Sales }, saraShell.NavItems.Select(n => n.ModuleCode));
+        // موظف بوحدة عمل واحدة: بلا لوحة المعلومات العامة، ويفتح على وحدته مباشرة
+        Assert.Equal(new[] { ModuleCode.Sales }, saraShell.NavItems.Select(n => n.ModuleCode));
+        Assert.Equal(ModuleCode.Sales, saraShell.SelectedItem!.ModuleCode);
 
         // تغيير كلمة مرورها من الشاشة يسري على الدخول
         await users.EditCommand.ExecuteAsync(users.Items.Single(u => u.Username == "sara"));

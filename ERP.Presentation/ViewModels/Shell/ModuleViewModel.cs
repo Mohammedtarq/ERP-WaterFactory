@@ -57,6 +57,14 @@ public abstract class SectionViewModel : SessionViewModel
         return _inflight = LoadAsync();
     }
 
+    private bool _isCurrent;
+    /// <summary>القسم الظاهر الآن في وحدته (لتظليله في القائمة الجانبية).</summary>
+    public bool IsCurrent { get => _isCurrent; internal set => SetProperty(ref _isCurrent, value); }
+
+    private string _groupColor = "#64748B";
+    /// <summary>لون مجموعة القسم في القائمة الجانبية (يُظلَّل به عند اختياره).</summary>
+    public string GroupColor { get => _groupColor; internal set => SetProperty(ref _groupColor, value); }
+
     public string Title { get; }
     /// <summary>رقم الخطوة في تسلسل العمل (مثل الإنتاج ← الفحص ← التعبئة) — يظهر قبل العنوان.</summary>
     public int? Step { get; internal set; }
@@ -156,6 +164,9 @@ public class HomeSectionViewModel : ObservableObject
     public string ToggleSectionsText => ShowSections ? "إخفاء القوائم الفرعية" : "إظهار القوائم الفرعية";
     public RelayCommand ToggleSectionsCommand { get; }
 
+    private bool _isCurrent;
+    public bool IsCurrent { get => _isCurrent; internal set => SetProperty(ref _isCurrent, value); }
+
     public ModuleViewModel Owner { get; }
     public string Title => "الرئيسية";
     public string DisplayTitle => Title;
@@ -170,15 +181,21 @@ public class HomeSectionViewModel : ObservableObject
 public abstract class ModuleViewModel : ViewModelBase
 {
     private object? _selectedTab;
+    private string? _moduleCode;
 
     protected ModuleViewModel(string title, string glyph, string color)
     {
+        Tabs.CollectionChanged += (_, _) => RebuildGroups();
+        OpenGroupCommand = new RelayCommand(p => { if (p is SectionGroup g) OpenGroup(g); });
+        SelectTabCommand = new RelayCommand(p => { if (p is not null) SelectedTab = p; });
+        GoHomeCommand = new RelayCommand(() => SelectedTab = Home);
         Title = title;
         Glyph = glyph;
         Color = color;
         Home = new HomeSectionViewModel(this);
         Tabs.Add(Home);
         _selectedTab = Home;
+        Home.IsCurrent = true;
         ClearCurrentCommand = new AsyncRelayCommand(() => SelectedTab is SectionViewModel s ? s.ClearScreenCommand.ExecuteAsync() : Task.CompletedTask);
     }
 
@@ -197,6 +214,78 @@ public abstract class ModuleViewModel : ViewModelBase
     /// <summary>أول عنصر دائمًا الرئيسية، ثم الأقسام الفرعية.</summary>
     public ObservableCollection<object> Tabs { get; } = new();
 
+    // ---------------- التنقل الجانبي: مجموعات الأقسام ----------------
+    /// <summary>أقسام الوحدة موزعة على مجموعات ملوّنة (تُعاد بنايتها كلما تغيّرت التبويبات).</summary>
+    public ObservableCollection<SectionGroup> Groups { get; } = new();
+    public RelayCommand OpenGroupCommand { get; }
+    public RelayCommand SelectTabCommand { get; }
+    public RelayCommand GoHomeCommand { get; }
+    public string? ModuleCodeValue => _moduleCode;
+
+    /// <summary>مسار القسم الظاهر: «الحوافز ‹ حافز المندوب» (أو «الرئيسية»).</summary>
+    public string Breadcrumb => SelectedTab is SectionViewModel s
+        ? (Groups.FirstOrDefault(x => x.Items.Contains(s))?.Name is { } groupName ? $"{groupName} ‹ {s.DisplayTitle}" : s.DisplayTitle)
+        : "الرئيسية";
+
+    protected void UseGroups(string moduleCode)
+    {
+        _moduleCode = moduleCode;
+        RebuildGroups();
+    }
+
+    private void RebuildGroups()
+    {
+        var open = Groups.Where(g => g.IsOpen).Select(g => g.Name).ToHashSet();
+        var sections = Tabs.OfType<SectionViewModel>().ToList();
+        var placed = new HashSet<SectionViewModel>();
+        var built = new List<SectionGroup>();
+        foreach (var def in SectionGrouping.For(_moduleCode))
+        {
+            var group = new SectionGroup(def.Name, def.Color);
+            foreach (var key in def.Keys)
+                foreach (var s in sections.Where(s => SectionCatalog.KeyOf(s) == key && placed.Add(s))) group.Items.Add(s);
+            if (group.Count > 0) built.Add(group);
+        }
+        foreach (var g in built) foreach (var s in g.Items) s.GroupColor = g.Color;
+        var others = sections.Where(s => !placed.Contains(s)).ToList();
+        if (others.Count > 0 && _moduleCode is not null)
+        {
+            var group = new SectionGroup(SectionGrouping.OtherName, SectionGrouping.OtherColor);
+            foreach (var s in others) group.Items.Add(s);
+            built.Add(group);
+        }
+        // وحدة بلا توزيع: كل أقسامها مجموعة واحدة حتى لا تُحجب
+        if (_moduleCode is null && sections.Count > 0)
+        {
+            var group = new SectionGroup("الأقسام", Color);
+            foreach (var s in sections) group.Items.Add(s);
+            built.Add(group);
+        }
+        foreach (var s in others) s.GroupColor = SectionGrouping.OtherColor;
+        Groups.Clear();
+        foreach (var g in built) { g.IsOpen = open.Contains(g.Name); Groups.Add(g); }
+        ApplySelection();
+    }
+
+    /// <summary>المجموعة التي فيها القسم الظاهر تُفتح، وتُغلق البقية (الرئيسية تغلق الكل).</summary>
+    private void ApplySelection()
+    {
+        foreach (var g in Groups)
+            g.IsOpen = SelectedTab is SectionViewModel s ? g.Items.Contains(s) : false;
+        foreach (var s in Tabs.OfType<SectionViewModel>()) s.IsCurrent = ReferenceEquals(s, SelectedTab);
+        Home.IsCurrent = ReferenceEquals(Home, SelectedTab);
+        OnPropertyChanged(nameof(Breadcrumb));
+    }
+
+    /// <summary>ضغطة على مجموعة: تُطوى إن كانت مفتوحة، وإلا تُفتح وحدها ويظهر أول أقسامها.</summary>
+    private void OpenGroup(SectionGroup group)
+    {
+        if (group.IsOpen) { group.IsOpen = false; return; }
+        foreach (var g in Groups) g.IsOpen = ReferenceEquals(g, group);
+        if (group.Items.Count > 0 && (SelectedTab is not SectionViewModel cur || !group.Items.Contains(cur)))
+            SelectedTab = group.Items[0];
+    }
+
     public object? SelectedTab
     {
         get => _selectedTab;
@@ -206,6 +295,7 @@ public abstract class ModuleViewModel : ViewModelBase
             if (!SetProperty(ref _selectedTab, value)) return;
             if (previous is SectionViewModel left) left.Leave();
             OnPropertyChanged(nameof(CanClearCurrent));
+            ApplySelection();
             if (value is SectionViewModel s)
             {
                 LastActivation = s.ActivateAsync();
@@ -275,6 +365,7 @@ public abstract class ModuleViewModel : ViewModelBase
     protected void UseDashboard(AppSession session, IDialogService dialogs, string moduleCode,
                                 Func<Data.ProjectDb.ProjectDbContext, ModuleDashboardViewModel, Task> loader)
     {
+        UseGroups(moduleCode);
         Dashboard = new ModuleDashboardViewModel(session, dialogs, moduleCode, loader);
         Background(Dashboard.LoadAsync());
     }

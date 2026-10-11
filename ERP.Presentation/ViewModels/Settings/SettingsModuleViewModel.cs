@@ -19,6 +19,7 @@ public class SettingsModuleViewModel : ModuleViewModel
     public SettingsModuleViewModel(AppSession s, IDialogService d)
         : base("إعدادات النظام", Icons.Settings, ModuleColors.Settings)
     {
+        UseGroups(ModuleCode.SystemSettings);
         Add(new RolesPermissionsSectionViewModel(s, d));
         Add(new SectionLayoutSectionViewModel(s, d));
         Add(new UsersSectionViewModel(s, d));
