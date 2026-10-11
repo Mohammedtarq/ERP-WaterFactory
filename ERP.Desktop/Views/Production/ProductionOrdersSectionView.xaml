@@ -34,7 +34,8 @@
                     <TextBlock Text="المراحل: مسودة ← بدء التشغيل (صرف المواد) ← فحص المختبر ← التعبئة ← مكتمل" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
                 </DockPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
-                <DataGrid ItemsSource="{Binding Orders}">
+                <!-- الصفوف تتمدد للنص الملتف (المنتج/المرحلة) بدل قصّه -->
+                <DataGrid ItemsSource="{Binding Orders}" RowHeight="NaN" MinRowHeight="34">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="88" MinWidth="76"/>
                         <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="1.6*" MinWidth="105" ElementStyle="{StaticResource WrapCell}"/>

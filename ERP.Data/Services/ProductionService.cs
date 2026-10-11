@@ -614,7 +614,8 @@ public class ProductionService
             return new ProductionOrderRow
             {
                 Id = o.Id, MONumber = o.MONumber, Status = o.Status, MachineName = o.Machine, QuantityToProduce = o.QuantityToProduce,
-                FinishedItemName = string.Join(" + ", mine.Select(l => l.FinishedItemName)),
+                // الصنف نفسه بسطرين (عام وطلب خاص) يُذكر مرة واحدة، والطلب الخاص في عمود الوصفة
+                FinishedItemName = string.Join(" + ", mine.Select(l => l.FinishedItemName).Distinct()),
                 RecipeName = mine.Any(l => l.RecipeName != null) ? string.Join("، ", mine.Where(l => l.RecipeName != null).Select(l => l.RecipeName)) : null,
                 OutputBatch = mine.Count == 0 ? null : string.Join("، ", mine.Select(l => l.OutputBatch)),
                 PackedQuantity = mine.Sum(l => l.PackedQuantity), LastQc = qc, LinesCount = mine.Count, Lines = mine,
