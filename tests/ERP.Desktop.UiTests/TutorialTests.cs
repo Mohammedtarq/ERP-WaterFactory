@@ -927,16 +927,20 @@ public class TutorialTests
             var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1440, Height = 900,
                                         Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual, WindowState = WindowState.Normal };
             main.Show();
-            // شاشة CI أصغر من 1440 فتنضغط النافذة: نرسم المحتوى بعرض 1440×900 فعلًا (حجم شاشة مكتب شائع)
+            // شاشة CI أصغر من 1440 (وبتكبير 133%): الصور بحجم نافذتها، أما فحص الجدول فيقيس التخطيط بعرض 1440×900 فعلًا
+            // (حجم شاشة مكتب شائع) ثم يعيد النافذة كما كانت — رسم محتوى أعرض من النافذة يقصّه ويمطّه في الصورة
             var content = (FrameworkElement)main.Content;
-            content.Width = 1440;
-            content.Height = 900;
             bool TableScrolls()
             {
+                content.Width = 1440;
+                content.Height = 900;
                 content.UpdateLayout();
                 var grid = Descendants<DataGrid>(content).First(g => g.IsVisible);
-                var sv = Descendants<ScrollViewer>(grid).First();
-                return sv.ScrollableWidth > 1;
+                var scrolls = Descendants<ScrollViewer>(grid).First().ScrollableWidth > 1;
+                content.Width = double.NaN;
+                content.Height = double.NaN;
+                content.UpdateLayout();
+                return scrolls;
             }
 
             async Task Shot(string name, ViewModelBase? busy = null)
