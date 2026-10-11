@@ -43,6 +43,8 @@ public class RequirementPreview
     public string RawMaterialName { get; init; } = "";
     public decimal Required { get; init; }
     public decimal Available { get; init; }
+    public string RequiredText { get; init; } = "";
+    public string AvailableText { get; init; } = "";
     public string WhereText { get; init; } = "";
     public string UsedBy { get; init; } = "";
     public bool IsShared { get; init; }
@@ -63,6 +65,8 @@ public class OrderLineDraft
     public int? RecipeId { get; init; }
     public string? RecipeName { get; init; }
     public decimal Quantity { get; init; }
+    /// <summary>الكمية بالعبوة كما أُدخلت: «7 كارتون».</summary>
+    public string QuantityText { get; init; } = "";
     public string BatchNumber { get; init; } = "";
     public ProductionLineInput ToInput() => new(FinishedItemId, Quantity, RecipeId, BatchNumber);
 }
@@ -72,7 +76,9 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private bool _isComposing;
     private Item? _finishedItem;
     private CustomRecipe? _recipe;
-    private decimal _quantity = 1000;
+    private decimal _packs;
+    private ItemPackagingLevel? _level;
+    private int _levelsLoad;
     private Data.ProjectDb.Entities.Warehouse? _rawWarehouse;
     private Machine? _machine;
 
@@ -84,6 +90,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
             if (!Require(CanAdd, "إنشاء أوامر الإنتاج")) return;
             BatchOrder = null;
             ComposeLines.Clear();
+            SetPacks(0);
             await using var db = Session.NewDb();
             BatchNumber = await new ProductionService(db).NextBatchNumberAsync();
             IsComposing = true;
@@ -119,7 +126,49 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public bool IsComposing { get => _isComposing; private set => SetProperty(ref _isComposing, value); }
     public Item? FinishedItem { get => _finishedItem; set { if (SetProperty(ref _finishedItem, value)) Background(LoadRecipesAsync()); } }
     public CustomRecipe? Recipe { get => _recipe; set { if (SetProperty(ref _recipe, value)) Background(PreviewAsync()); } }
-    public decimal Quantity { get => _quantity; set => SetProperty(ref _quantity, value); }
+    /// <summary>عبوات المنتج المختار (كارتون، شرنك…) — الأكبر أولًا؛ الإنتاج يُدخل بالعبوة لا بالقطعة.</summary>
+    public ObservableCollection<ItemPackagingLevel> Levels { get; } = new();
+    /// <summary>وحدة الإنتاج المختارة؛ تغييرها يُبقي العدد كما كُتب (7 كارتون ← 7 شرنك).</summary>
+    public ItemPackagingLevel? Level
+    {
+        get => _level;
+        set { if (SetProperty(ref _level, value)) RaiseQuantity(); }
+    }
+    /// <summary>عدد العبوات المطلوب إنتاجها (مثل 7 كراتين).</summary>
+    public decimal Packs { get => _packs; set { if (SetProperty(ref _packs, value)) RaiseQuantity(); } }
+    public string LevelName => Level?.LevelName ?? "قطعة";
+    private decimal PerPack => Level is { EquivalentBaseUnits: > 0 } l ? l.EquivalentBaseUnits : 1;
+    /// <summary>الكمية بالقطع (للحساب الداخلي) = العدد × قطع العبوة. ضبطها بالقطع يحوّلها لعبوات إن قُسمت عليها.</summary>
+    public decimal Quantity
+    {
+        get => Packs * PerPack;
+        set => SetPieces(value);
+    }
+    public string PiecesText => Level is { EquivalentBaseUnits: > 1 } ? $"{Packs:N0} {LevelName} = {Quantity:N0} قطعة" : "";
+
+    private void RaiseQuantity()
+    {
+        OnPropertyChanged(nameof(Quantity));
+        OnPropertyChanged(nameof(LevelName));
+        OnPropertyChanged(nameof(PiecesText));
+    }
+
+    private void SetPacks(decimal packs)
+    {
+        _packs = packs;
+        OnPropertyChanged(nameof(Packs));
+        RaiseQuantity();
+    }
+
+    /// <summary>كمية بالقطع: بأكبر عبوة تقسمها، وإلا بالقطعة.</summary>
+    private void SetPieces(decimal pieces)
+    {
+        var level = pieces == 0 ? Levels.FirstOrDefault()
+            : Levels.FirstOrDefault(l => l.EquivalentBaseUnits > 0 && pieces % l.EquivalentBaseUnits == 0);
+        _level = level;
+        OnPropertyChanged(nameof(Level));
+        SetPacks(level is { EquivalentBaseUnits: > 0 } ? pieces / level.EquivalentBaseUnits : pieces);
+    }
     public Data.ProjectDb.Entities.Warehouse? RawWarehouse { get => _rawWarehouse; set => SetProperty(ref _rawWarehouse, value); }
     public bool AllSufficient => Preview.Count > 0 && Preview.All(p => p.IsSufficient);
 
@@ -162,6 +211,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     {
         IsComposing = false;
         ComposeLines.Clear();
+        SetPacks(0);
         BatchOrder = null;
         OverrideOrder = null;
     }
@@ -292,14 +342,27 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
 
     private async Task LoadRecipesAsync()
     {
+        var token = ++_levelsLoad;
+        var item = FinishedItem;
         Recipes.Clear();
         _recipe = null;
         OnPropertyChanged(nameof(Recipe));
-        if (FinishedItem is not null)
+        List<ItemPackagingLevel> levels = new();
+        if (item is not null)
         {
             await using var db = Session.NewDb();
             foreach (var r in await db.CustomRecipes.AsNoTracking().Include(r => r.Customer)
-                         .Where(r => r.FinishedItemId == FinishedItem.Id && r.IsActive).OrderBy(r => r.Name).ToListAsync()) Recipes.Add(r);
+                         .Where(r => r.FinishedItemId == item.Id && r.IsActive).OrderBy(r => r.Name).ToListAsync()) Recipes.Add(r);
+            levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == item.Id && l.EquivalentBaseUnits > 0)
+                .OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync();
+        }
+        if (token == _levelsLoad)
+        {
+            // تبقى الكمية بالقطع كما هي (قد تُضبط أثناء التحميل)، وتُعرض بأكبر عبوة تقسمها — الكارتون/الشرنك افتراضيًا
+            var pieces = Quantity;
+            Levels.Clear();
+            foreach (var l in levels) Levels.Add(l);
+            SetPieces(pieces);
         }
         await PreviewAsync();
     }
@@ -316,7 +379,8 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     /// <summary>يثبّت الصنف المختار كسطر في الأمر ويجهّز إدخال صنف آخر برقم الدفعة التالي.</summary>
     private async Task AddLineAsync()
     {
-        if (FinishedItem is null || Quantity <= 0) { Dialogs.Error("اختر المنتج وأدخل كمية أكبر من صفر"); return; }
+        if (FinishedItem is null || Quantity <= 0) { Dialogs.Error($"اختر المنتج وأدخل عدد {LevelName} أكبر من صفر"); return; }
+        if (Packs != Math.Floor(Packs)) { Dialogs.Error($"أدخل عددًا صحيحًا من {LevelName}"); return; }
         // الصنف نفسه مسموح مرتين: عام وطلب خاص (أو طلبان خاصان مختلفان)
         if (ComposeLines.Any(l => l.FinishedItemId == FinishedItem.Id && l.RecipeId == Recipe?.Id))
         { Dialogs.Error(Recipe is null ? "الصنف العام مضاف للأمر مسبقًا" : $"الطلب الخاص «{Recipe.Name}» مضاف للأمر مسبقًا"); return; }
@@ -325,9 +389,10 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         ComposeLines.Add(new OrderLineDraft
         {
             FinishedItemId = FinishedItem.Id, ItemName = FinishedItem.ItemName, RecipeId = Recipe?.Id, RecipeName = Recipe?.Name,
-            Quantity = Quantity, BatchNumber = BatchNumber.Trim()
+            Quantity = Quantity, QuantityText = $"{Packs:N0} {LevelName}", BatchNumber = BatchNumber.Trim()
         });
         BatchNumber = NextSuggested(BatchNumber);
+        SetPacks(0);
         FinishedItem = null;
         await PreviewAsync();
     }
@@ -353,8 +418,11 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
             if (error is not null) { StatusMessage = error; OnPropertyChanged(nameof(AllSufficient)); return; }
         }
         // نفس محرك التوفر المستخدم في "احتياجات التصنيع" وفي بدء التشغيل
-        foreach (var r in await new ManufacturingRequirementService(db).CalculateForLinesAsync(lines, RawWarehouse.Id))
+        var needs = await new ManufacturingRequirementService(db).CalculateForLinesAsync(lines, RawWarehouse.Id);
+        var packs = await PackFormatter.LoadAsync(db, needs.Select(r => r.RawMaterialItemId));
+        foreach (var r in needs)
             Preview.Add(new RequirementPreview { RawMaterialName = r.RawMaterialName, Required = r.QuantityRequired, Available = r.QuantityAvailable,
+                                                 RequiredText = packs.Of(r.RawMaterialItemId, r.QuantityRequired), AvailableText = packs.Of(r.RawMaterialItemId, r.QuantityAvailable),
                                                  WhereText = r.WhereText, UsedBy = r.UsedBy, IsShared = r.IsShared });
         OnPropertyChanged(nameof(AllSufficient));
     }
@@ -363,6 +431,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     {
         var lines = CollectLines();
         if (lines.Count == 0 || RawWarehouse is null) { Dialogs.Error("اختر المنتج ومخزن المواد الأولية"); return; }
+        if (FinishedItem is not null && Packs != Math.Floor(Packs)) { Dialogs.Error($"أدخل عددًا صحيحًا من {LevelName}"); return; }
         if (Machine is null) { Dialogs.Error("اختر الماكينة (أضفها من تبويب الماكينات إن لم توجد)"); return; }
         await using var db = Session.NewDb();
         if (await RunOperationAsync(async () => (await new ProductionService(db).CreateOrderAsync(lines, RawWarehouse.Id, Machine.Id, Session.UserId)).result,
@@ -370,6 +439,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         {
             IsComposing = false;
             ComposeLines.Clear();
+            SetPacks(0);
             await LoadAsync();
         }
     }
@@ -422,7 +492,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private async Task CompleteAsync(ProductionOrderRow row)
     {
         if (!Require(CanPost, "إغلاق أوامر الإنتاج")) return;
-        if (!Dialogs.Confirm($"إغلاق {row.MONumber} بما عُبّئ ({row.PackedQuantity:N0} من {row.QuantityToProduce:N0})؟ الفرق يُعتبر هدرًا.")) return;
+        if (!Dialogs.Confirm($"إغلاق {row.MONumber} بما عُبّئ ({row.PackedText} من {row.QuantityText})؟ الفرق يُعتبر هدرًا.")) return;
         await using var db = Session.NewDb();
         if (await RunOperationAsync(() => new ProductionService(db).CompleteAsync(row.Id), $"أُغلق {row.MONumber}"))
             await LoadAsync();
@@ -609,9 +679,8 @@ public class PackingSectionViewModel : SectionViewModel
     /// <summary>الافتراضي: كل المتبقي بالوحدة المختارة (العدد الصحيح منها).</summary>
     private decimal DefaultUnits() => Level is { EquivalentBaseUnits: > 0 } l ? Math.Floor(RemainingPieces / l.EquivalentBaseUnits) : 0;
     public Data.ProjectDb.Entities.Warehouse? Warehouse { get => _warehouse; set => SetProperty(ref _warehouse, value); }
-    public string RemainingText => Order is null ? "" : $"المطلوب {Order.QuantityToProduce:N0} — المعبّأ {Order.PackedQuantity:N0} — المتبقي {RemainingPieces:N0} قطعة"
-        + (Level is { EquivalentBaseUnits: > 1 } l ? $" (= {Math.Floor(RemainingPieces / l.EquivalentBaseUnits):N0} {l.LevelName}"
-           + (RemainingPieces % l.EquivalentBaseUnits is var rest and > 0 ? $" + {rest:N0} قطعة)" : ")") : "");
+    /// <summary>المطلوب والمعبّأ والمتبقي بالعبوات (كارتون/شرنك)، والقطع بين قوسين للمرجعية.</summary>
+    public string RemainingText => Order is null ? "" : $"المطلوب {Order.QuantityText} — المعبّأ {Order.PackedText} — المتبقي {Order.RemainingText} ({RemainingPieces:N0} قطعة)";
     public string PiecesText => Level is null ? "" : $"= {Units * Level.EquivalentBaseUnits:N0} قطعة";
     public AsyncRelayCommand PackCommand { get; }
     public AsyncRelayCommand PrintCommand { get; }
@@ -675,8 +744,8 @@ public class PackingSectionViewModel : SectionViewModel
         if (Units <= 0) { Dialogs.Error("عدد الوحدات يجب أن يكون أكبر من صفر"); return; }
         if (Units * Level.EquivalentBaseUnits > RemainingPieces)
         {
-            Dialogs.Error($"{Units:N0} {Level.LevelName} = {Units * Level.EquivalentBaseUnits:N0} قطعة، والمتبقي من الأمر {RemainingPieces:N0} قطعة فقط"
-                          + (Level.EquivalentBaseUnits > 1 ? $" (أي {Math.Floor(RemainingPieces / Level.EquivalentBaseUnits):N0} {Level.LevelName} كحد أقصى)." : "."));
+            Dialogs.Error($"{Units:N0} {Level.LevelName} أكثر من المتبقي من الأمر ({Order.RemainingText})"
+                          + (Level.EquivalentBaseUnits > 1 ? $" — الحد الأقصى {Math.Floor(RemainingPieces / Level.EquivalentBaseUnits):N0} {Level.LevelName}." : "."));
             return;
         }
         await using var db = Session.NewDb();

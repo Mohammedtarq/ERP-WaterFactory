@@ -33,6 +33,10 @@ public class ProductionLineRow
     public ProductionOrderStatus Status { get; init; }
     public string? MachineName { get; init; }
     public string StageText { get; init; } = "";
+    /// <summary>الكمية بالعبوات (كارتون/شرنك) — القطع للحساب الداخلي فقط.</summary>
+    public string QuantityText { get; init; } = "";
+    public string PackedText { get; init; } = "";
+    public string RemainingText { get; init; } = "";
 }
 
 public class ProductionOrderRow
@@ -49,6 +53,10 @@ public class ProductionOrderRow
     public QCOverallResult? LastQc { get; init; }
     public string StageText { get; init; } = "";
     public int LinesCount { get; init; } = 1;
+    /// <summary>كمية الأمر والمعبّأ منه بالعبوات (كارتون/شرنك)؛ القطع في التلميح.</summary>
+    public string QuantityText { get; init; } = "";
+    public string PackedText { get; init; } = "";
+    public string PiecesHint => $"{QuantityToProduce:N0} قطعة — المعبّأ {PackedQuantity:N0} قطعة";
     public IReadOnlyList<ProductionLineRow> Lines { get; init; } = Array.Empty<ProductionLineRow>();
 }
 
@@ -576,11 +584,14 @@ public class ProductionService
                 Packed = _db.PackingOrders.Where(p => p.ProductionOrderLineId == l.Id).Sum(p => (decimal?)(p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits)) ?? 0
             })
             .OrderByDescending(l => l.ProductionOrderId).ThenBy(l => l.LineNo).ToListAsync();
+        var packs = await PackFormatter.LoadAsync(_db, lines.Select(l => l.FinishedItemId));
         return lines.Select(l => new ProductionLineRow
         {
             LineId = l.Id, OrderId = l.ProductionOrderId, LineNo = l.LineNo, MONumber = l.MONumber, FinishedItemId = l.FinishedItemId,
             FinishedItemName = l.Item, RecipeName = l.Recipe, QuantityToProduce = l.QuantityToProduce, PackedQuantity = l.Packed,
             OutputBatch = l.Batch, LastQc = l.LastQc, Status = l.Status, MachineName = l.Machine,
+            QuantityText = packs.Of(l.FinishedItemId, l.QuantityToProduce), PackedText = packs.Of(l.FinishedItemId, l.Packed),
+            RemainingText = packs.Of(l.FinishedItemId, Math.Max(0, l.QuantityToProduce - l.Packed)),
             StageText = l.Status == ProductionOrderStatus.InProgress && l.Packed >= l.QuantityToProduce ? "عُبّئ بالكامل" : Stage(l.Status, l.LastQc)
         }).ToList();
     }
@@ -590,7 +601,9 @@ public class ProductionService
         var orders = await _db.ProductionOrders.AsNoTracking()
             .Select(o => new { o.Id, o.MONumber, o.QuantityToProduce, o.Status, Machine = o.Machine != null ? o.Machine.Name : null })
             .OrderByDescending(o => o.Id).ToListAsync();
-        var lines = (await GetLinesAsync()).ToLookup(l => l.OrderId);
+        var all = await GetLinesAsync();
+        var lines = all.ToLookup(l => l.OrderId);
+        var packs = await PackFormatter.LoadAsync(_db, all.Select(l => l.FinishedItemId));
 
         return orders.Select(o =>
         {
@@ -605,6 +618,8 @@ public class ProductionService
                 RecipeName = mine.Any(l => l.RecipeName != null) ? string.Join("، ", mine.Where(l => l.RecipeName != null).Select(l => l.RecipeName)) : null,
                 OutputBatch = mine.Count == 0 ? null : string.Join("، ", mine.Select(l => l.OutputBatch)),
                 PackedQuantity = mine.Sum(l => l.PackedQuantity), LastQc = qc, LinesCount = mine.Count, Lines = mine,
+                QuantityText = mine.Count == 0 ? $"{o.QuantityToProduce:N0} قطعة" : packs.Total(mine.Select(l => (l.FinishedItemId, l.QuantityToProduce))),
+                PackedText = packs.Total(mine.Select(l => (l.FinishedItemId, l.PackedQuantity))),
                 StageText = Stage(o.Status, qc)
             };
         }).ToList();

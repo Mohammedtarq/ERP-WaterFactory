@@ -32,8 +32,14 @@
                         <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="1.4*" MinWidth="130"/>
                         <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="*" MinWidth="80"/>
                         <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="90" MinWidth="90"/>
-                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityToProduce, StringFormat=N0}" Width="60"/>
-                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedQuantity, StringFormat=N0}" Width="60"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="100" MinWidth="90">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="ToolTip" Value="{Binding PiecesHint}"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedText}" Width="100" MinWidth="80"/>
                         <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="125" MinWidth="120"/>
                         <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.8*" MinWidth="190"/>
                         <DataGridTemplateColumn Header="" Width="180">
@@ -91,8 +97,17 @@
                         <ComboBox ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name"/>
                         <TextBlock Text="رقم الدفعة (مولَّد تلقائيًا ويمكن تعديله)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding BatchNumber, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
-                        <TextBlock Text="الكمية المطلوب إنتاجها (قطعة)" Style="{StaticResource FieldLabel}"/>
-                        <TextBox Text="{Binding Quantity}" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="الكمية المطلوب إنتاجها (بالكارتون/الشرنك)" Style="{StaticResource FieldLabel}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="150"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding Packs}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                            <ComboBox Grid.Column="1" Margin="8,0,0,0" ItemsSource="{Binding Levels}" SelectedItem="{Binding Level}" DisplayMemberPath="LevelName"
+                                      ToolTip="وحدة الإنتاج: الكارتون/الشرنك"/>
+                        </Grid>
+                        <TextBlock Text="{Binding PiecesText}" Style="{StaticResource Muted}" Margin="0,4,0,0"/>
                         <TextBlock Text="مخزن المواد الأولية المفضّل (يُصرف من كل مخازن المواد الأولية بترتيب الصلاحية)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
                         <ComboBox ItemsSource="{Binding RawWarehouses}" SelectedItem="{Binding RawWarehouse}" DisplayMemberPath="Name"/>
                         <TextBlock Text="الماكينة (تُصرف المواد إلى رصيدها تحت التصنيع)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
@@ -106,7 +121,7 @@
                                                 Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
                                             <Run Text="{Binding ItemName, Mode=OneWay}" FontWeight="SemiBold"/>
-                                            <Run Text=" — "/><Run Text="{Binding Quantity, Mode=OneWay, StringFormat=N0}"/><Run Text=" قطعة — دفعة "/>
+                                            <Run Text=" — "/><Run Text="{Binding QuantityText, Mode=OneWay}"/><Run Text=" — دفعة "/>
                                             <Run Text="{Binding BatchNumber, Mode=OneWay}"/>
                                             <Run Text="{Binding RecipeName, Mode=OneWay}" Foreground="{StaticResource MutedTextBrush}"/>
                                         </TextBlock>
@@ -127,8 +142,8 @@
                             </DataGrid.RowStyle>
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="المادة" Binding="{Binding RawMaterialName}" Width="*"/>
-                                <DataGridTextColumn Header="المطلوب" Binding="{Binding Required, StringFormat=N0}" Width="80"/>
-                                <DataGridTextColumn Header="المتاح" Binding="{Binding Available, StringFormat=N0}" Width="80"/>
+                                <DataGridTextColumn Header="المطلوب" Binding="{Binding RequiredText}" Width="90"/>
+                                <DataGridTextColumn Header="المتاح" Binding="{Binding AvailableText}" Width="90"/>
                                 <DataGridTextColumn Header="للأصناف" Binding="{Binding UsedBy}" Width="110"/>
                                 <DataGridTextColumn Header="الموقع" Binding="{Binding WhereText}" Width="120"/>
                             </DataGrid.Columns>

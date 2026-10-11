@@ -38,21 +38,21 @@ public static class DocumentReports
         {
             var l = lines.FirstOrDefault();
             r.Field("المنتج", $"{o.FinishedItem.ItemName} ({o.FinishedItem.ItemCode})")
-             .Field("الكمية المطلوبة", $"{Q(o.QuantityToProduce)} قطعة")
+             .Field("الكمية المطلوبة", l is null ? $"{Q(o.QuantityToProduce)} قطعة" : $"{l.QuantityText} ({Q(o.QuantityToProduce)} قطعة)")
              .Field("الوصفة", o.CustomRecipe?.Name ?? "الوصفة الأساسية")
              .Field("رقم الدفعة", l?.OutputBatch)
              .Field("الرقم الأصلي للدفعة", originals.GetValueOrDefault(1))
              .Field("نتيجة المختبر", QcText(l?.LastQc))
-             .Field("المعبّأ", l is null || l.PackedQuantity == 0 ? null : $"{Q(l.PackedQuantity)} قطعة");
+             .Field("المعبّأ", l is null || l.PackedQuantity == 0 ? null : l.PackedText);
         }
         else
         {
             // أمر متعدد الأصناف: سطر لكل صنف بكميته ودفعته ونتيجة مختبره وما عُبّئ منه
             foreach (var l in lines)
-                r.Field($"الصنف {l.LineNo}", $"{l.FinishedItemName} — {Q(l.QuantityToProduce)} قطعة — دفعة {l.OutputBatch}"
+                r.Field($"الصنف {l.LineNo}", $"{l.FinishedItemName} — {l.QuantityText} — دفعة {l.OutputBatch}"
                                               + (originals.TryGetValue(l.LineNo, out var orig) ? $" (الأصلي {orig})" : "")
                                               + (l.RecipeName is null ? "" : $" — {l.RecipeName}")
-                                              + $" — المختبر: {QcText(l.LastQc)} — المعبّأ {Q(l.PackedQuantity)}");
+                                              + $" — المختبر: {QcText(l.LastQc)} — المعبّأ {l.PackedText}");
             r.Field("إجمالي الكمية", $"{Q(o.QuantityToProduce)} قطعة");
         }
         foreach (var ov in await new PackagingTemplateService(db).GetOrderOverridesAsync(orderId))
@@ -130,12 +130,13 @@ public static class DocumentReports
         var lines = await new ProductionService(db).GetLinesAsync(orderId);
         r.Field("أمر الإنتاج", o.MONumber).Field("المنتج", string.Join(" + ", lines.OrderBy(l => l.LineNo).Select(l => l.FinishedItemName)))
          .Field("رقم الدفعة", string.Join("، ", lines.OrderBy(l => l.LineNo).Select(l => l.OutputBatch)))
-         .Field("المطلوب إنتاجه", $"{Q(o.QuantityToProduce)} قطعة");
+         .Field("المطلوب إنتاجه", lines.Count == 0 ? $"{Q(o.QuantityToProduce)} قطعة" : string.Join(" + ", lines.OrderBy(l => l.LineNo).Select(l => l.QuantityText)));
         r.Columns.AddRange(new[] { "التاريخ", "الصنف", "الدفعة", "الوحدة", "العدد", "بالقطعة", "إلى مخزن", "المستخدم" });
         foreach (var p in rows)
             r.Rows.Add(new[] { p.PackingDate.ToLocalTime().ToString("yyyy/MM/dd HH:mm"), p.Item, p.Batch ?? "", p.Level, Q(p.UnitsPackaged), Q(p.Pieces), p.Warehouse, p.User });
-        var total = rows.Sum(p => p.Pieces);
-        r.Total("إجمالي المعبّأ", $"{Q(total)} قطعة", true).Total("المتبقي", $"{Q(Math.Max(0, o.QuantityToProduce - total))} قطعة");
+        var packs = await PackFormatter.LoadAsync(db, lines.Select(l => l.FinishedItemId));
+        r.Total("إجمالي المعبّأ", packs.Total(lines.Select(l => (l.FinishedItemId, l.PackedQuantity))), true)
+         .Total("المتبقي", packs.Total(lines.Select(l => (l.FinishedItemId, Math.Max(0, l.QuantityToProduce - l.PackedQuantity)))));
         r.Signatures.AddRange(new[] { "مسؤول التعبئة", "أمين مخزن المنتج التام" });
         return r;
     }

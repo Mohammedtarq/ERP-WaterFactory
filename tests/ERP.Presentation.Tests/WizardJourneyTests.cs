@@ -261,15 +261,21 @@ public class WizardJourneyTests : IAsyncLifetime
         await orders.NewOrderCommand.ExecuteAsync();
         Assert.StartsWith($"B{DateTime.Today:yyMMdd}-", orders.BatchNumber);
         orders.FinishedItem = orders.FinishedItems.Single(i => i.ItemCode == "W-500");
-        orders.Quantity = 240;
         orders.Machine = orders.Machines.Single(m => m.Name == "نافخة 1");
         await orders.IdleAsync();
+        // الإنتاج يُدخل بالعبوة: الكارتون افتراضيًا (الأكبر)، والعدد × 12 = القطع
+        Assert.Equal("كارتون", orders.Level!.LevelName);
+        orders.Packs = 20;
+        Assert.Equal(240m, orders.Quantity);
+        Assert.Equal("20 كارتون = 240 قطعة", orders.PiecesText);
+        await orders.PreviewCommand.ExecuteAsync();
         Assert.True(orders.AllSufficient);
         Assert.Equal(3, orders.Preview.Count);
         await orders.CreateCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         var order = orders.Orders.First();
         Assert.Contains("مسودة", order.StageText);
+        Assert.Equal(("20 كارتون", "0"), (order.QuantityText, order.PackedText));
         await orders.StartCommand.ExecuteAsync(order);
         Assert.Contains("بانتظار فحص المختبر", orders.Orders.First().StageText);
 
@@ -294,10 +300,10 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Equal(packing.Levels.Count, packing.Levels.Select(l => l.Id).Distinct().Count());
         Assert.Equal("كارتون", packing.Level!.LevelName);                  // الأكبر أولًا
         Assert.Equal(20m, packing.Units);                                 // افتراضيًا كل المتبقي: 240 ÷ 12
-        Assert.Contains("= 20 كارتون", packing.RemainingText);
+        Assert.Contains("المطلوب 20 كارتون — المعبّأ 0 — المتبقي 20 كارتون", packing.RemainingText);
         packing.Units = 25;
         await packing.PackCommand.ExecuteAsync();
-        Assert.Contains(dialogs.Errors, e => e.Contains("20 كارتون كحد أقصى"));
+        Assert.Contains(dialogs.Errors, e => e.Contains("الحد الأقصى 20 كارتون"));
         dialogs.Errors.Clear();
         packing.Level = packing.Levels.Single(l => l.LevelName == "كارتون");
         packing.Units = 20;
@@ -444,7 +450,7 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Equal(3, dialogs.Reports.Last().Rows.Count);
         await Open(prod, packing);
         await packing.PrintCommand.ExecuteAsync(packing.History.First());
-        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "إجمالي المعبّأ" && t.Value == "240 قطعة");
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "إجمالي المعبّأ" && t.Value == "20 كارتون");
         wallet.PrintStatementCommand.Execute(null);
         Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "رصيد المحفظة" && t.Value == "5,000 د.ع");
         van.PrintStockCommand.Execute(null);
