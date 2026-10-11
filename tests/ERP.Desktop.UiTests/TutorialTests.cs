@@ -1140,6 +1140,159 @@ public class TutorialTests
     }
 
     /// <summary>
+    /// دليل «الإجازات والعمل الإضافي» (الموارد البشرية): أنواع الإجازات والعطلة، إجازة يومية بمعاينة الاحتساب وإشعارها، إجازة زمنية،
+    /// الحضور يُظهر الإجازة، العمل الإضافي مع تنبيه السعر ثم سعر للكل، وكشف الرواتب بعمودي الإضافي وبدون راتب.
+    /// </summary>
+    [Fact]
+    public async Task Illustrated_guide_hr_leaves_and_overtime()
+    {
+        var server = Environment.GetEnvironmentVariable("ERP_UI_SQL_CONNECTION");
+        if (server is null) { _out.WriteLine("ERP_UI_SQL_CONNECTION غير معيّن — تخطي"); return; }
+        const string dir = "tutorial-hrleaves";
+        const string name = "سارة المحاسبة";
+
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var controlCs = new SqlConnectionStringBuilder(server) { InitialCatalog = $"ERP_TutLvCtl_{suffix}" }.ConnectionString;
+        var install = await new ProvisioningService().InstallAsync(new InstallRequest(
+            controlCs, "معمل مياه الرحمة", $"ERP_TutLvPrj_{suffix}", "المدير العام", "admin", "Admin@123", DemoData: true));
+        Assert.True(install.Success, install.ErrorMessage);
+        await using (var db = new ERP.Data.ProjectDb.ProjectDbContext(new DbContextOptionsBuilder<ERP.Data.ProjectDb.ProjectDbContext>()
+                         .UseSqlServer(install.ProjectConnectionString).Options))
+        {
+            var shift = new Shift { Name = "الصباحي (10 ساعات)", CheckInTime = new TimeSpan(8, 0, 0), CheckInGraceMinutes = 10, CheckOutTime = new TimeSpan(18, 0, 0) };
+            db.Shifts.Add(shift);
+            await db.SaveChangesAsync();
+            db.Employees.Add(new Employee { FullName = name, JobTitle = "محاسبة", BaseSalary = 900_000, ShiftId = shift.Id, HireDate = DateTime.Today.AddYears(-2) });
+            await db.SaveChangesAsync();
+        }
+        // أيام ماضية قريبة: اليومية 5–3 أيام قبل اليوم، والزمنية أمس (أو قبله إن كان جمعة)
+        var d1 = DateTime.Today.AddDays(-5);
+        var d2 = DateTime.Today.AddDays(-3);
+        var dh = DateTime.Today.AddDays(-1).DayOfWeek == DayOfWeek.Friday ? DateTime.Today.AddDays(-2) : DateTime.Today.AddDays(-1);
+
+        var dialogs = new TutorialDialogs();
+        var shots = new List<string>();
+        var step = "الدخول";
+        var run = UiThread.RunAsync(async () =>
+        {
+            var nav = new CapturingNavigator();
+            var login = new LoginViewModel(new AuthService(controlCs), dialogs, nav) { Username = "admin" };
+            await login.LoginCommand.ExecuteAsync("Admin@123");
+            Assert.Null(login.ErrorMessage);
+            await nav.ProjectSelection!.OpenCommand.ExecuteAsync(null);
+            var shell = nav.Shell!;
+            var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1440, Height = 900,
+                                        Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual, WindowState = WindowState.Normal };
+            main.Show();
+
+            async Task Shot(string shot, ViewModelBase? busy = null)
+            {
+                if (busy is not null) await busy.IdleAsync();
+                await UiThread.SettleAsync();
+                RefreshBindings(main);
+                await UiThread.SettleAsync();
+                Assert.True(dialogs.Errors.Count == 0, $"قبل الصورة {shot}: " + string.Join(" | ", dialogs.Errors));
+                shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{dir}/{shot}.png"));
+                step = $"بعد الصورة {shot}";
+            }
+            async Task Open(ModuleViewModel module, SectionViewModel section)
+            {
+                module.SelectedTab = section;
+                await module.LastActivation;
+                await section.IdleAsync();
+                await UiThread.SettleAsync();
+            }
+            async Task PreviewShot(string shot, ReportDocument report)
+            {
+                var preview = new ReportPreviewWindow(report) { ShowActivated = false, ShowInTaskbar = false, Left = 0, Top = 0,
+                                                                WindowStartupLocation = WindowStartupLocation.Manual };
+                preview.Show();
+                await UiThread.SettleAsync();
+                shots.Add(UiThread.Save((FrameworkElement)preview.Content, $"{dir}/{shot}.png"));
+                preview.Close();
+            }
+
+            var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
+            await hr.IdleAsync();
+
+            step = "الأنواع والعطلة";
+            var settings = hr.LeaveSettings;
+            await Open(hr, settings);
+            settings.NewHolidayDate = DateTime.Today.AddDays(20);
+            settings.NewHolidayName = "عطلة رسمية (مثال)";
+            await settings.AddHolidayCommand.ExecuteAsync();
+            settings.HolidayYear = DateTime.Today.AddDays(20).Year;
+            await Shot("01-أنواع-الإجازات-والعطل", settings);
+
+            step = "اليومية";
+            var leaves = hr.Leaves;
+            await Open(hr, leaves);
+            leaves.Employee = leaves.Employees.Single(e => e.FullName == name);
+            leaves.Type = leaves.Types.Single(t => t.Name == "مرضية");
+            leaves.FromDate = d1;
+            leaves.ToDate = d2;
+            leaves.Note = "تقرير طبي رقم 214";
+            await Shot("02-إجازة-يومية-ومعاينة-الاحتساب", leaves);
+            await leaves.RegisterCommand.ExecuteAsync();
+            await leaves.IdleAsync();
+            await PreviewShot("03-إشعار-الإجازة", dialogs.Reports.Last());
+
+            step = "الزمنية";
+            leaves.Kind = leaves.Kinds.Single(k => k.Value == LeaveKind.Hourly);
+            leaves.FromDate = dh;
+            leaves.FromTime = "08:00";
+            leaves.ToTime = "10:00";
+            await Shot("04-إجازة-زمنية", leaves);
+            await leaves.RegisterCommand.ExecuteAsync();
+            (leaves.Month, leaves.Year) = (DateTime.Today.Month, DateTime.Today.Year);
+            await leaves.IdleAsync();
+            await Shot("05-إجازات-الشهر-ورصيد-الموظف", leaves);
+
+            step = "الحضور";
+            var att = hr.Attendance;
+            await Open(hr, att);
+            att.Date = d2;
+            await att.IdleAsync();
+            await Shot("06-الحضور-يظهر-الإجازة-بدل-الغياب", att);
+
+            step = "العمل الإضافي";
+            var ot = hr.Overtime;
+            await Open(hr, ot);
+            ot.Employee = ot.Employees.Single(e => e.FullName == name);
+            ot.Kind = ot.Kinds.Single(k => k.Value == OvertimeKind.Hours);
+            ot.Date = DateTime.Today.AddDays(-2);
+            ot.Quantity = 3;
+            await ot.AddCommand.ExecuteAsync();
+            await ot.IdleAsync();
+            await Shot("07-ساعات-إضافية-وتنبيه-السعر", ot);
+            ot.RateForAll = true;
+            ot.Rate = 5_000;
+            await ot.ApplyRateCommand.ExecuteAsync();
+            await ot.IdleAsync();
+            await Shot("08-سعر-الساعة-للكل", ot);
+
+            step = "الرواتب";
+            var payroll = hr.Payroll;
+            await Open(hr, payroll);
+            (payroll.Month, payroll.Year) = (DateTime.Today.Month, DateTime.Today.Year);
+            await payroll.IdleAsync();
+            await payroll.GenerateCommand.ExecuteAsync();
+            await payroll.IdleAsync();
+            await Shot("09-الرواتب-بالإضافي-وبدون-راتب", payroll);
+
+            main.Close();
+        });
+        if (await Task.WhenAny(run, Task.Delay(TimeSpan.FromMinutes(3))) != run)
+            Assert.Fail($"توقف دليل الإجازات عند: {step} — أخطاء: {string.Join(" | ", dialogs.Errors)}");
+        await run;
+
+        _out.WriteLine($"دليل الإجازات والعمل الإضافي: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, dir)}");
+        Assert.Equal(10, shots.Count);
+        Assert.Empty(dialogs.Errors);
+        lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
+    }
+
+    /// <summary>
     /// نماذج التحرير مرتبطة بالكيان نفسه (بلا إشعار تغيير)، فما يكتبه المستخدم يصل للكيان مباشرة،
     /// أما ما يضبطه الاختبار برمجيًا فلا يظهر في الحقول. نعيد قراءة كل الربطات قبل التصوير لتطابق الصورة ما سيُحفَظ.
     /// </summary>
