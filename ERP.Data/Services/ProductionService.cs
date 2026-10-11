@@ -108,8 +108,9 @@ public class ProductionService
     {
         if (inputs.Count == 0) return (FinanceOperationResult.Fail("أضف صنفًا واحدًا على الأقل للأمر"), null);
         if (inputs.Any(i => i.Quantity <= 0)) return (FinanceOperationResult.Fail("كمية الإنتاج يجب أن تكون أكبر من صفر لكل صنف"), null);
-        if (inputs.GroupBy(i => i.FinishedItemId).Any(g => g.Count() > 1))
-            return (FinanceOperationResult.Fail("الصنف مكرر في الأمر — اجمع كميته في سطر واحد"), null);
+        // الصنف نفسه مسموح مرتين بوصفتين مختلفتين (عام وطلب خاص)؛ المكرر بالوصفة نفسها يُجمع في سطر
+        if (inputs.GroupBy(i => (i.FinishedItemId, i.CustomRecipeId)).Any(g => g.Count() > 1))
+            return (FinanceOperationResult.Fail("الصنف مكرر في الأمر بالوصفة نفسها — اجمع كميته في سطر واحد"), null);
         var customBatches = inputs.Where(i => !string.IsNullOrWhiteSpace(i.BatchNumber)).Select(i => i.BatchNumber!.Trim()).ToList();
         if (customBatches.Count != customBatches.Distinct().Count()) return (FinanceOperationResult.Fail("رقم الدفعة مكرر بين أصناف الأمر"), null);
         var raw = await _db.Warehouses.FindAsync(rawWarehouseId);
@@ -475,11 +476,11 @@ public class ProductionService
                                .SumAsync(p => (decimal?)(p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits)) ?? 0;
 
     /// <summary>
-    /// أمر التعبئة: الصنف يُعرف من وحدة التعبئة المختارة (لكل صنف سطر واحد في الأمر). يُسمح فقط بعد نجاح آخر
+    /// أمر التعبئة لسطر من الأمر (lineId؛ وإلا أول سطر لصنف وحدة التعبئة). يُسمح فقط بعد نجاح آخر
     /// فحص لدفعة ذلك الصنف، ويُدخل الوحدات المعبّأة لمخزن المنتج التام بدفعته، دون تجاوز كمية الصنف.
     /// يكتمل الأمر تلقائيًا عند تعبئة كامل كميات أصنافه.
     /// </summary>
-    public async Task<FinanceOperationResult> PackAsync(int orderId, int packagingLevelId, decimal units, int finishedGoodsWarehouseId, int userId)
+    public async Task<FinanceOperationResult> PackAsync(int orderId, int packagingLevelId, decimal units, int finishedGoodsWarehouseId, int userId, int? lineId = null)
     {
         if (units <= 0) return FinanceOperationResult.Fail("عدد الوحدات المعبّأة يجب أن يكون أكبر من صفر");
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -489,7 +490,8 @@ public class ProductionService
         if (order.Status != ProductionOrderStatus.InProgress) return FinanceOperationResult.Fail("التعبئة تكون لأمر قيد التشغيل");
 
         var level = await _db.ItemPackagingLevels.FirstOrDefaultAsync(l => l.Id == packagingLevelId);
-        var line = level is null ? null : order.Lines.FirstOrDefault(l => l.FinishedItemId == level.ItemId);
+        // الصنف نفسه قد يتكرر بوصفتين (عام وطلب خاص): السطر المختار يحدد أيهما يُعبّأ
+        var line = level is null ? null : order.Lines.FirstOrDefault(l => l.FinishedItemId == level.ItemId && (lineId is null || l.Id == lineId));
         if (level is null || line is null) return FinanceOperationResult.Fail("وحدة التعبئة لا تخص أي صنف في هذا الأمر");
 
         var lastQc = await _db.QCBatchResults.Where(q => q.BatchId == line.OutputBatchId).OrderByDescending(q => q.Id)

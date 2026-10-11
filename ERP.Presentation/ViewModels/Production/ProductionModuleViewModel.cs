@@ -308,7 +308,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private List<ProductionLineInput> CollectLines()
     {
         var lines = ComposeLines.Select(l => l.ToInput()).ToList();
-        if (FinishedItem is not null && Quantity > 0 && lines.All(l => l.FinishedItemId != FinishedItem.Id))
+        if (FinishedItem is not null && Quantity > 0 && lines.All(l => l.FinishedItemId != FinishedItem.Id || l.CustomRecipeId != Recipe?.Id))
             lines.Add(new ProductionLineInput(FinishedItem.Id, Quantity, Recipe?.Id, BatchNumber));
         return lines;
     }
@@ -317,7 +317,9 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private async Task AddLineAsync()
     {
         if (FinishedItem is null || Quantity <= 0) { Dialogs.Error("اختر المنتج وأدخل كمية أكبر من صفر"); return; }
-        if (ComposeLines.Any(l => l.FinishedItemId == FinishedItem.Id)) { Dialogs.Error("الصنف مضاف للأمر مسبقًا"); return; }
+        // الصنف نفسه مسموح مرتين: عام وطلب خاص (أو طلبان خاصان مختلفان)
+        if (ComposeLines.Any(l => l.FinishedItemId == FinishedItem.Id && l.RecipeId == Recipe?.Id))
+        { Dialogs.Error(Recipe is null ? "الصنف العام مضاف للأمر مسبقًا" : $"الطلب الخاص «{Recipe.Name}» مضاف للأمر مسبقًا"); return; }
         if (!string.IsNullOrWhiteSpace(BatchNumber) && ComposeLines.Any(l => l.BatchNumber == BatchNumber.Trim()))
         { Dialogs.Error("رقم الدفعة مستخدم لصنف آخر في الأمر"); return; }
         ComposeLines.Add(new OrderLineDraft
@@ -678,7 +680,7 @@ public class PackingSectionViewModel : SectionViewModel
             return;
         }
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(() => new ProductionService(db).PackAsync(Order.OrderId, Level.Id, Units, Warehouse.Id, Session.UserId),
+        if (await RunOperationAsync(() => new ProductionService(db).PackAsync(Order.OrderId, Level.Id, Units, Warehouse.Id, Session.UserId, Order.LineId),
                                     $"تمت تعبئة {Units:N0} {Level.LevelName} ودخولها {Warehouse.Name}"))
         {
             Units = 0;

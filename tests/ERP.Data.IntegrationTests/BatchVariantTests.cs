@@ -290,6 +290,38 @@ public class BatchVariantTests
     }
 
     [Fact]
+    public async Task One_production_order_holds_the_general_product_and_its_special_order_through_qc_and_packing()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "GS");
+        var raw = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial);
+        var (_, machineId) = await new MachineService(db).SaveAsync(null, "خط عام وخاص GS", "تعبئة", null, null, true);
+        var prod = new ProductionService(db);
+
+        // المنتج نفسه مرتين: عام وطلب خاص — مسموح؛ والمكرر بالوصفة نفسها مرفوض
+        var general = new ProductionLineInput(s.Water.Id, 120);
+        var special = new ProductionLineInput(s.Water.Id, 48, s.HassounRecipe.Id);
+        Assert.Contains("مكرر", (await prod.CreateOrderAsync(new[] { special, special }, raw.Id, machineId, _f.AdminId)).result.ErrorMessage);
+        var (created, orderId) = await prod.CreateOrderAsync(new[] { general, special }, raw.Id, machineId, _f.AdminId);
+        Assert.True(created.Success, created.ErrorMessage);
+        var lines = await db.ProductionOrderLines.AsNoTracking().Include(l => l.OutputBatch).Where(l => l.ProductionOrderId == orderId).OrderBy(l => l.LineNo).ToListAsync();
+        Assert.Equal(2, lines.Count);
+        Assert.Equal((null, s.HassounRecipe.Id), (lines[0].OutputBatch!.CustomRecipeId, lines[1].OutputBatch!.CustomRecipeId));
+
+        // تشغيل ← فحص واحد للأمر ← تعبئة كل سطر على حدة بالسطر المختار
+        Assert.True((await prod.StartAsync(orderId!.Value, _f.AdminId)).Success);
+        var tests = await prod.GetOrderTestsAsync(orderId.Value);
+        QcInput For(string name, string value) => new(tests.Single(t => t.TestName.StartsWith(name)).Id, value);
+        Assert.True((await prod.RecordQcByBatchAsync(lines[0].OutputBatch!.BatchNumber, new[] { For("درجة", "7.2"), For("الأملاح", "120"), For("إحكام", "سليم") }, _f.AdminId)).result.Success);
+        Assert.True((await prod.PackAsync(orderId.Value, s.Carton.Id, 4, s.Fg.Id, _f.AdminId, lines[1].Id)).Success);   // الخاص أولًا
+        Assert.Contains("المتبقي 0", (await prod.PackAsync(orderId.Value, s.Carton.Id, 1, s.Fg.Id, _f.AdminId, lines[1].Id)).ErrorMessage);
+        Assert.True((await prod.PackAsync(orderId.Value, s.Carton.Id, 10, s.Fg.Id, _f.AdminId, lines[0].Id)).Success);
+        Assert.Equal((120m, 48m), (await FgAsync(db, s, null), await FgAsync(db, s, s.HassounRecipe.Id)));
+        await using var check = _f.NewDb();
+        Assert.Equal(ProductionOrderStatus.Completed, (await check.ProductionOrders.AsNoTracking().SingleAsync(o => o.Id == orderId)).Status);
+    }
+
+    [Fact]
     public async Task Load_order_takes_basic_stock_unless_a_variant_is_named()
     {
         await using var db = _f.NewDb(_f.AdminId);
