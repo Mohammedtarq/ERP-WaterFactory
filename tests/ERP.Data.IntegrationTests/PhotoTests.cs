@@ -64,7 +64,7 @@ public class PhotoTests
 
         var audit = await db.AuditLogs.AsNoTracking().Where(a => (a.TableName == "EmployeePhotos" && a.RecordId == emp.Id.ToString())
                                                               || (a.TableName == "UserPhotos" && a.RecordId == user.Id.ToString()))
-            .OrderBy(a => a.Id).Select(a => a.Summary).ToListAsync();
+            .Where(a => a.Summary != null).OrderBy(a => a.Id).Select(a => a.Summary).ToListAsync();   // سطور الالتقاط التلقائي بلا ملخص تُستبعد
         Assert.Equal(new[]
         {
             "تغيير صورة الموظف موظف اختبار الصور", "تغيير صورته", "إزالة صورته",
