@@ -123,7 +123,9 @@ public class FullCycleJourneyTests
         // ---------- 3) أمر إنتاج واحد: 10 كراتين عام + 5 كراتين للمطعم ----------
         var orders = prod.Orders;
         await Open(prod, orders);
+        Assert.False(orders.HasSidePanel);
         await orders.NewOrderCommand.ExecuteAsync();
+        Assert.True(orders.HasSidePanel);                       // النموذج مفتوح: يُخفى عمودا «الماكينة» و«رقم الدفعة» من الجدول
         orders.Machine = orders.Machines.Single(m => m.Name == "نافخة 1");
         orders.FinishedItem = orders.FinishedItems.Single(i => i.ItemCode == ProductCode);
         await orders.IdleAsync();
@@ -144,6 +146,7 @@ public class FullCycleJourneyTests
         Assert.Contains(orders.Preview, p => p.RawMaterialName == "لاصق أمامي" && p.Required == 800);
         await orders.CreateCommand.ExecuteAsync();
         NoErrors("إنشاء الأمر");
+        Assert.False(orders.HasSidePanel);                      // أُغلق النموذج: تعود كل الأعمدة
         var order = orders.Orders.First();
         Assert.Equal(2, order.LinesCount);
         Assert.Equal("15 كارتون", order.QuantityText);

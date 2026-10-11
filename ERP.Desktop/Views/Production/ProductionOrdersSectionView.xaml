@@ -5,7 +5,15 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Production;assembly=ERP.Presentation"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ProductionOrdersSectionViewModel}"
+             xmlns:m="clr-namespace:ERP.Desktop.Mvvm"
              x:Name="Root">
+    <UserControl.Resources>
+        <m:BindingProxy x:Key="Proxy" Data="{Binding}"/>
+        <Style x:Key="WrapCell" TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
@@ -28,51 +36,43 @@
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
                 <DataGrid ItemsSource="{Binding Orders}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="80" MinWidth="80"/>
-                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="1.4*" MinWidth="130"/>
-                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="*" MinWidth="80"/>
-                        <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="90" MinWidth="90"/>
-                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="100" MinWidth="90">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
+                        <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="88" MinWidth="80"/>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="1.6*" MinWidth="120" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="1.1*" MinWidth="105" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="90" MinWidth="80"
+                                            Visibility="{Binding Data.HasSidePanel, Source={StaticResource Proxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="105" MinWidth="90" ElementStyle="{StaticResource WrapCell}">
+                            <DataGridTextColumn.CellStyle>
+                                <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
                                     <Setter Property="ToolTip" Value="{Binding PiecesHint}"/>
                                 </Style>
-                            </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn.CellStyle>
                         </DataGridTextColumn>
-                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedText}" Width="100" MinWidth="80"/>
-                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="125" MinWidth="120"/>
-                        <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.8*" MinWidth="190"/>
-                        <DataGridTemplateColumn Header="" Width="180">
+                        <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedText}" Width="95" MinWidth="80" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="115" MinWidth="105"
+                                            Visibility="{Binding Data.HasSidePanel, Source={StaticResource Proxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
+                        <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.3*" MinWidth="125" ElementStyle="{StaticResource WrapCell}"/>
+                        <!-- الإجراءات: «تشغيل» و«طباعة الأمر» ظاهران، والباقي تحت «⋯» (يوفّر نحو 150 بكسل من عرض الجدول) -->
+                        <DataGridTemplateColumn Header="" Width="118" MinWidth="118">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                        <Button Content="&#xE8AB;" ToolTip="استبدال مكوّن لهذا الأمر فقط (قبل التشغيل)" Style="{StaticResource RowIconButton}" Tag="#F59E0B"
-                                                Command="{Binding DataContext.OverrideCommand, ElementName=Root}" CommandParameter="{Binding}"/>
-                                        <Button Content="&#xE70F;" ToolTip="تعديل رقم الدفعة" Style="{StaticResource RowIconButton}" Tag="#8B5CF6"
-                                                Command="{Binding DataContext.EditBatchCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE768;" ToolTip="بدء التشغيل (صرف المواد)" Style="{StaticResource RowIconButton}" Tag="#10B981"
                                                 Command="{Binding DataContext.StartCommand, ElementName=Root}" CommandParameter="{Binding}"/>
-                                        <Button Content="&#xE73E;" ToolTip="إغلاق بما عُبّئ" Style="{StaticResource RowIconButton}" Tag="#0EA5E9"
-                                                Command="{Binding DataContext.CompleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
-                                        <Button Content="&#xE711;" ToolTip="إلغاء الأمر" Style="{StaticResource RowIconButton}" Tag="#DC2626"
-                                                Command="{Binding DataContext.CancelOrderCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Button Content="&#xE749;" ToolTip="طباعة أمر الإنتاج" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                                Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Menu Background="Transparent" VerticalAlignment="Center" Margin="2,0">
+                                            <MenuItem Header="&#xE712;" FontFamily="{StaticResource IconFont}" ToolTip="المزيد: استبدال مكوّن، رقم الدفعة، إغلاق، إلغاء، محضر التعبئة"
+                                                      Padding="8,4" Foreground="#475569">
+                                                <MenuItem Header="استبدال مكوّن لهذا الأمر فقط (قبل التشغيل)" Command="{Binding DataContext.OverrideCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                <MenuItem Header="تعديل رقم الدفعة" Command="{Binding DataContext.EditBatchCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                <MenuItem Header="إغلاق بما عُبّئ" Command="{Binding DataContext.CompleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                <MenuItem Header="طباعة محضر التعبئة" Command="{Binding DataContext.PrintPackingCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                <Separator/>
+                                                <MenuItem Header="إلغاء الأمر" Foreground="#DC2626" Command="{Binding DataContext.CancelOrderCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                            </MenuItem>
+                                        </Menu>
                                     </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="" Width="40">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Button Content="&#xE749;" ToolTip="طباعة أمر الإنتاج" Style="{StaticResource RowIconButton}" Tag="#0F766E"
-                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="" Width="40">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Button Content="&#xE749;" ToolTip="طباعة محضر التعبئة" Style="{StaticResource RowIconButton}" Tag="#8B5CF6"
-                                            Command="{Binding DataContext.PrintPackingCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

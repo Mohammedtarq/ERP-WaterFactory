@@ -120,7 +120,9 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public ObservableCollection<Machine> Machines { get; } = new();
     public Machine? Machine { get => _machine; set => SetProperty(ref _machine, value); }
 
-    public bool IsComposing { get => _isComposing; private set => SetProperty(ref _isComposing, value); }
+    public bool IsComposing { get => _isComposing; private set { if (SetProperty(ref _isComposing, value)) OnPropertyChanged(nameof(HasSidePanel)); } }
+    /// <summary>لوحة جانبية مفتوحة (أمر جديد، رقم الدفعة، الاستبدال): تأخذ عرضًا من الجدول، فتُخفى منه الأعمدة الأقل أهمية.</summary>
+    public bool HasSidePanel => IsComposing || IsEditingBatch || IsOverriding;
     public Item? FinishedItem { get => _finishedItem; set { if (SetProperty(ref _finishedItem, value)) Background(LoadRecipesAsync()); } }
     public CustomRecipe? Recipe { get => _recipe; set { if (SetProperty(ref _recipe, value)) Background(PreviewAsync()); } }
     /// <summary>عبوات المنتج المختار (كارتون، شرنك…) — الأكبر أولًا؛ الإنتاج يُدخل بالعبوة لا بالقطعة.</summary>
@@ -196,7 +198,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public ProductionOrderRow? BatchOrder
     {
         get => _batchOrder;
-        private set { if (SetProperty(ref _batchOrder, value)) { OnPropertyChanged(nameof(IsEditingBatch)); if (value is not null) { IsComposing = false; OverrideOrder = null; } } }
+        private set { if (SetProperty(ref _batchOrder, value)) { OnPropertyChanged(nameof(IsEditingBatch)); OnPropertyChanged(nameof(HasSidePanel)); if (value is not null) { IsComposing = false; OverrideOrder = null; } } }
     }
     public bool IsEditingBatch => BatchOrder is not null;
     public string NewBatchNumber { get => _newBatchNumber; set => SetProperty(ref _newBatchNumber, value); }
@@ -229,6 +231,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         {
             if (!SetProperty(ref _overrideOrder, value)) return;
             OnPropertyChanged(nameof(IsOverriding));
+            OnPropertyChanged(nameof(HasSidePanel));
             if (value is not null) { IsComposing = false; BatchOrder = null; }
         }
     }
