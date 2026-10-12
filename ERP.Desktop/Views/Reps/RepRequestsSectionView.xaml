@@ -45,12 +45,12 @@
             <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="الوقت" Binding="{Binding OccurredAt, StringFormat='yyyy/MM/dd HH:mm'}" Width="140" MinWidth="130"/>
-                    <DataGridTextColumn Header="المندوب" Binding="{Binding RepName}" Width="120"/>
+                    <DataGridTextColumn Header="المندوب" Binding="{Binding RepName}" Width="110" MinWidth="95"/>
                     <DataGridTextColumn Header="النوع" Binding="{Binding KindText}" Width="90" MinWidth="80"/>
-                    <DataGridTextColumn Header="التفاصيل" Binding="{Binding Summary}" Width="*" MinWidth="150"/>
-                    <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="90"/>
-                    <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="120"/>
-                    <DataGridTextColumn Header="تنبيه / سبب" Binding="{Binding Warning}" Width="170"/>
+                    <DataGridTextColumn Header="التفاصيل" Binding="{Binding Summary}" Width="*" MinWidth="90"/>
+                    <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="100" MinWidth="92"/>
+                    <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="130" MinWidth="110"/>
+                    <DataGridTextColumn Header="تنبيه / سبب" Binding="{Binding Warning}" Width="130"/>
                     <DataGridCheckBoxColumn Header="صورة" Binding="{Binding HasPhoto, Mode=OneWay}" Width="55"/>
                 </DataGrid.Columns>
             </DataGrid>
