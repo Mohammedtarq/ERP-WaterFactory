@@ -1410,6 +1410,131 @@ public class TutorialTests
         lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
     }
 
+    /// <summary>
+    /// ما يصل المعمل من هاتف المندوب (لقطات حقيقية من Windows): بيع نقدي وآجل ومجاني وتحصيل يدخل «طلبات المندوبين» ويُرحَّل،
+    /// ورصيد السيارة والنقد في «سيارات المندوبين». الحركات تُدخَل بنفس مسار الهاتف (RepAppService.ReceiveAsync) ببيانات اصطناعية.
+    /// </summary>
+    [Fact]
+    public async Task Illustrated_guide_rep_work_reaches_the_lab()
+    {
+        var server = Environment.GetEnvironmentVariable("ERP_UI_SQL_CONNECTION");
+        if (server is null) { _out.WriteLine("ERP_UI_SQL_CONNECTION غير معيّن — تخطي"); return; }
+        const string dir = "tutorial-repwork";
+
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var controlCs = new SqlConnectionStringBuilder(server) { InitialCatalog = $"ERP_TutWrkCtl_{suffix}" }.ConnectionString;
+        var install = await new ProvisioningService().InstallAsync(new InstallRequest(
+            controlCs, "معمل مياه الرحمة", $"ERP_TutWrkPrj_{suffix}", "المدير العام", "admin", "Admin@123", DemoData: true));
+        Assert.True(install.Success, install.ErrorMessage);
+
+        // ---- بيانات اصطناعية: مندوب بسيارة محمّلة (10 شرنك) وزبونان، وهاتف مسجَّل ----
+        string deviceKey;
+        int waterId, shrinkId, cartonId, nearId, farId;
+        await using (var db = new ERP.Data.ProjectDb.ProjectDbContext(new DbContextOptionsBuilder<ERP.Data.ProjectDb.ProjectDbContext>()
+                         .UseSqlServer(install.ProjectConnectionString).Options))
+        {
+            var adminId = await db.Users.Where(u => u.Username == "admin").Select(u => u.Id).SingleAsync();
+            db.AuditUserId = adminId;
+            var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+            var water = new Item { ItemCode = "WRK-W330", ItemName = "ماء مثال 330 مل", SalePrice = 250, CostPrice = 100 };
+            var near = new Customer { Name = "مطعم مثال الأول", CreditLimit = 5_000_000 };
+            var far = new Customer { Name = "محل مثال الثاني", CreditLimit = 100_000 };
+            var rep = new Employee { FullName = "مندوب مثال", IsSalesRep = true, BaseSalary = 500_000 };
+            db.AddRange(water, near, far, rep);
+            await db.SaveChangesAsync();
+            var shrink = new ItemPackagingLevel { ItemId = water.Id, LevelName = "شرنك", EquivalentBaseUnits = 20 };
+            var carton = new ItemPackagingLevel { ItemId = water.Id, LevelName = "كارتون", EquivalentBaseUnits = 40 };
+            db.ItemPackagingLevels.AddRange(new ItemPackagingLevel { ItemId = water.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 }, shrink, carton);
+            db.StockTransactions.Add(new StockTransaction { ItemId = water.Id, WarehouseId = fg.Id, QuantityBaseUnits = 2_000, UnitCost = 100,
+                                                            TransactionType = StockTransactionType.Receipt, CreatedByUserId = adminId });
+            var van = new Warehouse { BranchId = fg.BranchId, Name = "سيارة مندوب مثال", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id };
+            db.Warehouses.Add(van);
+            await db.SaveChangesAsync();
+            db.RepCustomerAssignments.AddRange(new RepCustomerAssignment { EmployeeId = rep.Id, CustomerId = near.Id },
+                                               new RepCustomerAssignment { EmployeeId = rep.Id, CustomerId = far.Id });
+            await db.SaveChangesAsync();
+            var ops = new RepOperationsService(db);
+            var (_, order) = await ops.CreateLoadOrderAsync(van.Id, fg.Id, DateTime.Today, new[] { new RepLoadLineInput(water.Id, shrink.Id, 20) }, null, adminId);
+            Assert.True((await ops.PrepareLoadOrderAsync(order!.Id, null, adminId)).result.Success);
+            deviceKey = (await new RepAppService(db).RegisterDeviceAsync(rep.Id, "هاتف المثال", adminId)).deviceKey!;
+            (waterId, shrinkId, cartonId, nearId, farId) = (water.Id, shrink.Id, carton.Id, near.Id, far.Id);
+
+            // ما يرسله الهاتف: نقدي، آجل فوق حد الدين، مجاني بسبب، وتحصيل
+            var app = new RepAppService(db);
+            RepRequestEnvelope Env(RepRequestKind kind, object payload) =>
+                new(Guid.NewGuid(), kind, DateTime.Now, System.Text.Json.JsonSerializer.Serialize(payload));
+            Assert.True((await app.ReceiveAsync(deviceKey, Env(RepRequestKind.CashSale,
+                new ERP.Cloud.Contracts.SalePayload(new ERP.Cloud.Contracts.CustomerRef(nearId), new() { new ERP.Cloud.Contracts.SaleLinePayload(waterId, shrinkId, 3) })))).Accepted);
+            Assert.True((await app.ReceiveAsync(deviceKey, Env(RepRequestKind.CreditSale,
+                new ERP.Cloud.Contracts.SalePayload(new ERP.Cloud.Contracts.CustomerRef(farId), new() { new ERP.Cloud.Contracts.SaleLinePayload(waterId, cartonId, 2) })))).Accepted);
+            Assert.True((await app.ReceiveAsync(deviceKey, Env(RepRequestKind.Free,
+                new ERP.Cloud.Contracts.SalePayload(new ERP.Cloud.Contracts.CustomerRef(nearId), new() { new ERP.Cloud.Contracts.SaleLinePayload(waterId, shrinkId, 1) }, "هدية للمحل")))).Accepted);
+            Assert.True((await app.ReceiveAsync(deviceKey, Env(RepRequestKind.Collection,
+                new ERP.Cloud.Contracts.CollectionPayload(new ERP.Cloud.Contracts.CustomerRef(farId), 50_000)))).Accepted);
+        }
+
+        var dialogs = new TutorialDialogs();
+        var shots = new List<string>();
+        var step = "الدخول";
+        var run = UiThread.RunAsync(async () =>
+        {
+            var nav = new CapturingNavigator();
+            var login = new LoginViewModel(new AuthService(controlCs), dialogs, nav) { Username = "admin" };
+            await login.LoginCommand.ExecuteAsync("Admin@123");
+            Assert.Null(login.ErrorMessage);
+            await nav.ProjectSelection!.OpenCommand.ExecuteAsync(null);
+            var shell = nav.Shell!;
+            var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1440, Height = 900,
+                                        Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual, WindowState = WindowState.Normal };
+            main.Show();
+
+            async Task Shot(string shot, ViewModelBase? busy = null)
+            {
+                if (busy is not null) await busy.IdleAsync();
+                await UiThread.SettleAsync();
+                RefreshBindings(main);
+                await UiThread.SettleAsync();
+                Assert.True(dialogs.Errors.Count == 0, $"قبل الصورة {shot}: " + string.Join(" | ", dialogs.Errors));
+                shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{dir}/{shot}.png"));
+                step = $"بعد الصورة {shot}";
+            }
+            async Task Open(ModuleViewModel module, SectionViewModel section)
+            {
+                module.SelectedTab = section;
+                await module.LastActivation;
+                await section.IdleAsync();
+                await UiThread.SettleAsync();
+            }
+
+            step = "طلبات المندوبين";
+            var reps = shell.Open<RepsModuleViewModel>(ModuleCode.Reps);
+            await reps.IdleAsync();
+            var requests = reps.Requests;
+            await Open(reps, requests);
+            requests.Filter = requests.Filters.Single(f => f.Value == RepRequestFilter.All);
+            await requests.IdleAsync();
+            Assert.True(requests.Rows.Count >= 4);
+            await Shot("01-طلبات-المندوبين-ما-وصل-من-الهاتف", requests);
+            requests.Filter = requests.Filters.Single(f => f.Value == RepRequestFilter.ToReview);
+            await requests.IdleAsync();
+            await Shot("02-للاطلاع-الآجل-والمجاني", requests);
+
+            step = "سيارات المندوبين";
+            await Open(reps, reps.Vans);
+            await Shot("03-سيارات-المندوبين-الرصيد-والنقد-بعد-البيع", reps.Vans);
+
+            main.Close();
+        });
+        if (await Task.WhenAny(run, Task.Delay(TimeSpan.FromMinutes(3))) != run)
+            Assert.Fail($"توقف دليل عمل المندوب عند: {step} — أخطاء: {string.Join(" | ", dialogs.Errors)}");
+        await run;
+
+        _out.WriteLine($"دليل عمل المندوب في المعمل: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, dir)}");
+        Assert.Equal(3, shots.Count);
+        Assert.Empty(dialogs.Errors);
+        lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
+    }
+
     /// <summary>صورة شخصية تجريبية (بيانات اصطناعية): خلفية ملوّنة وصورة ظلّية بيضاء، PNG 256×256.</summary>
     private static byte[] SamplePhoto(string color)
     {
