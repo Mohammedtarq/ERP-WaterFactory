@@ -1080,6 +1080,11 @@ public class TutorialTests
             SelectInnerTab(main, "الأرصدة الحالية");
             await Shot("16-رصيد-المنتج-التام-بالكارتون", fg);
             Assert.Contains(fg.Balances, b => b.ItemCode == productCode && b.Variant == restaurant && b.Breakdown == "5 كارتون");
+            // بحث المخزن في صف التبويبات: اسم المطعم يجد رصيده
+            fg.SearchText = restaurant;
+            Assert.NotEmpty(fg.VisibleBalances);
+            await Shot("16b-بحث-في-أرصدة-المخزن", fg);
+            fg.SearchText = "";
 
             step = "طلب التحميل";
             // ---------- 6) طلب تحميل لسيارة «كاش فان علي»: 6 كراتين عامة + 5 باسم المطعم ----------
@@ -1134,7 +1139,7 @@ public class TutorialTests
         await run;
 
         _out.WriteLine($"دليل الدورة الكاملة: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, dir)}");
-        Assert.Equal(20, shots.Count);
+        Assert.Equal(21, shots.Count);
         Assert.Empty(dialogs.Errors);
         lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
     }

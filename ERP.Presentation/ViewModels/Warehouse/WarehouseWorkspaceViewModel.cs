@@ -81,6 +81,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         PrintDocumentCommand = new AsyncRelayCommand(p => p is StockDocumentRow r ? PrintDocumentAsync(r.Id) : Task.CompletedTask);
         LoadReportsCommand = new AsyncRelayCommand(LoadReportsAsync);
         PrintBalancesCommand = new RelayCommand(() => Dialogs.ShowReport(BuildBalancesReport()));
+        ClearSearchCommand = new RelayCommand(() => SearchText = "");
         PrintSummaryCommand = new RelayCommand(() => Dialogs.ShowReport(BuildSummaryReport()));
         PrintLedgerCommand = new RelayCommand(() => Dialogs.ShowReport(BuildLedgerReport()));
         AllItemsLedgerCommand = new RelayCommand(() => LedgerItem = null);
@@ -247,7 +248,46 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public Item? LedgerItem { get => _ledgerItem; set { if (SetProperty(ref _ledgerItem, value)) Background(LoadLedgerAsync()); } }
     public ObservableCollection<Item> LedgerItems { get; } = new();
     public ObservableCollection<StockDocumentRow> Documents { get; } = new();
-    public ObservableCollection<StockBalanceRow> Balances { get; } = new();
+    public ObservableCollection<StockBalanceRow> Balances { get; } = new BulkObservableCollection<StockBalanceRow>();
+
+    // ---------------- البحث في أرصدة المخزن (صندوق في صف التبويبات) ----------------
+    private string _searchText = "";
+    private int _selectedTabIndex;
+    private const int BalancesTab = 1;
+
+    /// <summary>الأرصدة المعروضة بعد البحث (نفسها Balances حين لا بحث) — الجدول والطباعة منها.</summary>
+    public ObservableCollection<StockBalanceRow> VisibleBalances { get; } = new BulkObservableCollection<StockBalanceRow>();
+    /// <summary>
+    /// بحث بالكود أو اسم الصنف أو التشغيلة أو المتغير (اسم المطعم)، مع توحيد الهمزات والتاء المربوطة؛ كلمات متعددة = كلها مطلوبة.
+    /// الكتابة تنقل إلى تبويب «الأرصدة الحالية» حيث النتائج.
+    /// </summary>
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (!SetProperty(ref _searchText, value ?? "")) return;
+            ApplyBalanceFilter();
+            if (HasSearch) SelectedTabIndex = BalancesTab;
+            OnPropertyChanged(nameof(HasSearch));
+        }
+    }
+    public bool HasSearch => !string.IsNullOrWhiteSpace(SearchText);
+    public int SelectedTabIndex { get => _selectedTabIndex; set => SetProperty(ref _selectedTabIndex, value); }
+    /// <summary>«12 من 131» أثناء البحث.</summary>
+    public string BalancesCountText => HasSearch ? $"{VisibleBalances.Count} من {Balances.Count}" : "";
+    public RelayCommand ClearSearchCommand { get; }
+
+    private void ApplyBalanceFilter()
+    {
+        var terms = ArabicText.Normalize(SearchText).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        VisibleBalances.ReplaceAll(terms.Length == 0 ? Balances.ToList() : Balances.Where(b =>
+        {
+            var hay = ArabicText.Normalize($"{b.ItemCode} {b.ItemName} {b.BatchNumber} {b.Variant}");
+            return terms.All(t => hay.Contains(t, StringComparison.OrdinalIgnoreCase));
+        }).ToList());
+        OnPropertyChanged(nameof(BalancesCountText));
+    }
     public ObservableCollection<StockSummaryRow> Summary { get; } = new();
     public ObservableCollection<StockLedgerRow> Ledger { get; } = new();
 
@@ -302,8 +342,8 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         var balances = await new WarehouseDocumentService(db).GetBalancesAsync(WarehouseId);
-        Balances.Clear();
-        foreach (var b in balances) Balances.Add(b);
+        Balances.ReplaceAll(balances);
+        ApplyBalanceFilter();
         ItemsCount = balances.Select(b => b.ItemId).Distinct().Count();
         _packs = await PackFormatter.LoadAsync(db);
         TotalPieces = balances.Sum(b => b.Quantity);
@@ -498,13 +538,20 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         var r = NewReport($"أرصدة {Title}");
         r.Field("المخزن", Title).Field("النوع", WarehouseTypeLabel).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
+        if (HasSearch) r.Field("تصفية البحث", SearchText.Trim());
         r.Columns.AddRange(new[] { "#", "الكود", "الصنف", "التشغيلة", "الصلاحية", "الرصيد", "بالقطعة" });
         var i = 0;
-        foreach (var b in Balances)
+        foreach (var b in VisibleBalances)
             r.Rows.Add(new[] { (++i).ToString(), b.ItemCode, b.ItemName + (b.BelowAlert ? " ⚠" : ""), b.BatchNumber ?? "—",
                                b.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", b.Breakdown, $"{b.Quantity:N0}" });
-        r.Total("عدد الأصناف", ItemsCount.ToString()).Total("إجمالي الرصيد", TotalText, true);
-        if (LowCount > 0) r.Total("أصناف عند حد التنبيه", LowCount.ToString());
+        if (HasSearch)
+            r.Total("عدد الأصناف في النتائج", VisibleBalances.Select(b => b.ItemId).Distinct().Count().ToString())
+             .Total("إجمالي النتائج", _packs.Total(VisibleBalances.Select(b => (b.ItemId, b.Quantity))), true);
+        else
+        {
+            r.Total("عدد الأصناف", ItemsCount.ToString()).Total("إجمالي الرصيد", TotalText, true);
+            if (LowCount > 0) r.Total("أصناف عند حد التنبيه", LowCount.ToString());
+        }
         r.Signatures.AddRange(new[] { "أمين المخزن", "المدقق" });
         return r;
     }
