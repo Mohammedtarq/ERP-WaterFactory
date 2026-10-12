@@ -11,6 +11,8 @@ using ERP.Presentation.Services;
 using ERP.Presentation.ViewModels;
 using ERP.Presentation.ViewModels.HR;
 using ERP.Presentation.ViewModels.Production;
+using ERP.Presentation.ViewModels.Reps;
+using ERP.Presentation.ViewModels.Settings;
 using ERP.Presentation.ViewModels.Shell;
 using ERP.Presentation.ViewModels.Warehouse;
 using Microsoft.Data.SqlClient;
@@ -1316,6 +1318,94 @@ public class TutorialTests
 
         _out.WriteLine($"دليل الإجازات والعمل الإضافي: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, dir)}");
         Assert.Equal(11, shots.Count);
+        Assert.Empty(dialogs.Errors);
+        lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
+    }
+
+    /// <summary>
+    /// دليل تفعيل تطبيق المندوبين من الحاسوب (لقطات حقيقية من Windows): المزامنة السحابية (العنوان والتفعيل ومفتاح المعمل)
+    /// ثم تسجيل هاتف المندوب فيظهر رمز الربط QR الذي يصوّره المندوب من هاتفه.
+    /// </summary>
+    [Fact]
+    public async Task Illustrated_guide_rep_app_activation_from_the_desktop()
+    {
+        var server = Environment.GetEnvironmentVariable("ERP_UI_SQL_CONNECTION");
+        if (server is null) { _out.WriteLine("ERP_UI_SQL_CONNECTION غير معيّن — تخطي"); return; }
+        const string dir = "tutorial-repapp";
+
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        var controlCs = new SqlConnectionStringBuilder(server) { InitialCatalog = $"ERP_TutRepCtl_{suffix}" }.ConnectionString;
+        var install = await new ProvisioningService().InstallAsync(new InstallRequest(
+            controlCs, "معمل مياه الرحمة", $"ERP_TutRepPrj_{suffix}", "المدير العام", "admin", "Admin@123", DemoData: true));
+        Assert.True(install.Success, install.ErrorMessage);
+
+        var dialogs = new TutorialDialogs();
+        var shots = new List<string>();
+        var step = "الدخول";
+        var run = UiThread.RunAsync(async () =>
+        {
+            var nav = new CapturingNavigator();
+            var login = new LoginViewModel(new AuthService(controlCs), dialogs, nav) { Username = "admin" };
+            await login.LoginCommand.ExecuteAsync("Admin@123");
+            Assert.Null(login.ErrorMessage);
+            await nav.ProjectSelection!.OpenCommand.ExecuteAsync(null);
+            var shell = nav.Shell!;
+            var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1440, Height = 900,
+                                        Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual, WindowState = WindowState.Normal };
+            main.Show();
+
+            async Task Shot(string shot, ViewModelBase? busy = null)
+            {
+                if (busy is not null) await busy.IdleAsync();
+                await UiThread.SettleAsync();
+                RefreshBindings(main);
+                await UiThread.SettleAsync();
+                Assert.True(dialogs.Errors.Count == 0, $"قبل الصورة {shot}: " + string.Join(" | ", dialogs.Errors));
+                shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{dir}/{shot}.png"));
+                step = $"بعد الصورة {shot}";
+            }
+            async Task Open(ModuleViewModel module, SectionViewModel section)
+            {
+                module.SelectedTab = section;
+                await module.LastActivation;
+                await section.IdleAsync();
+                await UiThread.SettleAsync();
+            }
+
+            step = "المزامنة السحابية";
+            var settings = shell.Open<SettingsModuleViewModel>(ModuleCode.SystemSettings);
+            await settings.IdleAsync();
+            var cloud = settings.Section<CloudSyncSectionViewModel>();
+            await Open(settings, cloud);
+            cloud.ServerUrl = "http://192.168.1.10:5080";      // عنوان خادم تجربة (مثال)
+            cloud.IsEnabled = true;
+            await Shot("01-المزامنة-السحابية-العنوان-والتفعيل", cloud);
+            await cloud.GenerateKeyCommand.ExecuteAsync();
+            Assert.False(string.IsNullOrEmpty(cloud.NewKey));
+            await Shot("02-توليد-مفتاح-المعمل", cloud);
+            await cloud.SaveCommand.ExecuteAsync();
+            await Shot("03-بعد-الحفظ-المزامنة-مفعّلة", cloud);
+
+            step = "تسجيل الجهاز";
+            var reps = shell.Open<RepsModuleViewModel>(ModuleCode.Reps);
+            await reps.IdleAsync();
+            var devices = reps.Section<RepDevicesSectionViewModel>();
+            await Open(reps, devices);
+            devices.NewRep = devices.Reps.First();
+            devices.NewName = "هاتف المندوب — سامسونج";
+            await Shot("04-أجهزة-التطبيق-اختيار-المندوب-واسم-الجهاز", devices);
+            await devices.RegisterCommand.ExecuteAsync();
+            Assert.True(devices.HasLinkQr);
+            await Shot("05-رمز-الربط-QR-يصوّره-المندوب", devices);
+
+            main.Close();
+        });
+        if (await Task.WhenAny(run, Task.Delay(TimeSpan.FromMinutes(3))) != run)
+            Assert.Fail($"توقف دليل تفعيل تطبيق المندوب عند: {step} — أخطاء: {string.Join(" | ", dialogs.Errors)}");
+        await run;
+
+        _out.WriteLine($"دليل تفعيل تطبيق المندوب: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, dir)}");
+        Assert.Equal(5, shots.Count);
         Assert.Empty(dialogs.Errors);
         lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
     }

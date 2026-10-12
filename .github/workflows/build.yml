@@ -73,6 +73,8 @@ jobs:
           Copy-Item ui-screenshots/tutorial-fullcycle/*.png docs/user-guide/images/fullcycle/ -Force
           New-Item -ItemType Directory -Force docs/user-guide/images/hr-leaves | Out-Null
           Copy-Item ui-screenshots/tutorial-hrleaves/*.png docs/user-guide/images/hr-leaves/ -Force
+          New-Item -ItemType Directory -Force docs/user-guide/images/rep-app | Out-Null
+          Copy-Item ui-screenshots/tutorial-repapp/*.png docs/user-guide/images/rep-app/ -Force
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/user-guide/images
