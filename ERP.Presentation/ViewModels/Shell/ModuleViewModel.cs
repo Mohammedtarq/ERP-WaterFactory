@@ -39,8 +39,11 @@ public abstract class SectionViewModel : SessionViewModel
     /// <summary>الخروج من الشاشة (إلى تبويب أو وحدة أخرى): يُفرَّغ ما لم يُحفظ، وتُحمَّل من جديد عند العودة.</summary>
     internal void Leave()
     {
+        // إعادة التحميل عند العودة فقط إن تُرك إدخال غير محفوظ؛ غير ذلك تظهر الشاشة فورًا (التحديث عند تغيّر البيانات يتولاه ActivateCoreAsync).
+        // إعادة قراءة كل القوائم (عشرات آلاف العملاء مثلًا) عند كل تنقل بين الأقسام كانت تعلّق الواجهة
+        var hadInput = HasPendingInput;
         ResetInput();
-        _forceReload = _loaded;
+        _forceReload = _loaded && hadInput;
     }
 
     private async Task ClearAsync()

@@ -259,7 +259,7 @@ public class WalletSectionViewModel : SectionViewModel
         new Option<WalletAction>(WalletAction.Collection, "تحصيل دين من عميل"),
     };
     public ObservableCollection<Employee> Reps { get; } = new();
-    public ObservableCollection<Customer> Customers { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<WalletRow> Rows { get; } = new();
 
     public Employee? Rep { get => _rep; set { if (SetProperty(ref _rep, value)) Background(LoadStatementAsync()); } }
@@ -303,8 +303,7 @@ public class WalletSectionViewModel : SectionViewModel
         var repId = Rep?.Id;
         Reps.Clear();
         foreach (var r in await db.Employees.AsNoTracking().Where(e => e.IsSalesRep && e.IsActive).OrderBy(e => e.FullName).ToListAsync()) Reps.Add(r);
-        Customers.Clear();
-        foreach (var c in await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync()) Customers.Add(c);
+        Customers.ReplaceAll(await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
         _rep = Reps.FirstOrDefault(r => r.Id == repId) ?? Reps.FirstOrDefault();
         OnPropertyChanged(nameof(Rep));
         await LoadStatementAsync();
@@ -376,7 +375,7 @@ public class CustomerAssignmentsSectionViewModel : CrudSectionViewModel<RepCusto
         : base(s, d, ModuleCode.Reps, "الزبائن المخصصون", Icons.People, "#8B5CF6", "العملاء الذين يخدمهم كل مندوب") { }
 
     public ObservableCollection<Employee> Reps { get; } = new();
-    public ObservableCollection<Customer> Customers { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
 
     protected override int GetId(RepCustomerAssignment e) => e.Id;
     protected override string Describe(RepCustomerAssignment e) => $"{e.Employee?.FullName} ← {e.Customer?.Name}";
@@ -385,8 +384,7 @@ public class CustomerAssignmentsSectionViewModel : CrudSectionViewModel<RepCusto
     {
         Reps.Clear();
         foreach (var r in await db.Employees.AsNoTracking().Where(e => e.IsSalesRep && e.IsActive).OrderBy(e => e.FullName).ToListAsync()) Reps.Add(r);
-        Customers.Clear();
-        foreach (var c in await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync()) Customers.Add(c);
+        Customers.ReplaceAll(await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
     }
 
     protected override Task<List<RepCustomerAssignment>> QueryAsync(ProjectDbContext db) =>

@@ -70,7 +70,7 @@ public class CustomerDepositsSectionViewModel : SectionViewModel
         ArabicLabels.OptionsOf<CustomerDepositKind>().Where(k => k.Value != CustomerDepositKind.Opening).ToList();
     public IReadOnlyList<string> Currencies { get; } = new[] { "IQD", "USD" };
 
-    public ObservableCollection<Customer> Customers { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<CustomRecipe> Recipes { get; } = new();
     public ObservableCollection<CustomerDepositRow> History { get; } = new();
     public ObservableCollection<CustomerDepositBalanceRow> Balances { get; } = new();
@@ -126,9 +126,7 @@ public class CustomerDepositsSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         var selectedId = Customer?.Id;
-        Customers.Clear();
-        foreach (var c in await db.Customers.AsNoTracking().Where(c => c.IsActive || c.Id == selectedId).OrderBy(c => c.Name).ToListAsync())
-            Customers.Add(c);
+        Customers.ReplaceAll(await db.Customers.AsNoTracking().Where(c => c.IsActive || c.Id == selectedId).OrderBy(c => c.Name).ToListAsync());
         Balances.Clear();
         foreach (var b in await new CustomerDepositService(db).GetBalancesAsync()) Balances.Add(b);
         OnPropertyChanged(nameof(TotalBalances));

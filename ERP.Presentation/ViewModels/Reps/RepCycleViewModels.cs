@@ -485,7 +485,7 @@ public class RepSettlementSectionViewModel : SectionViewModel
     public ObservableCollection<Item> ItemsLookup { get; } = new();
     public ObservableCollection<ItemPackagingLevel> LevelOptions { get; } = new();
     public ObservableCollection<ItemPackagingLevel> FreeLevelOptions { get; } = new();
-    public ObservableCollection<Customer> Customers { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<Vehicle> Vehicles { get; } = new();
     public ObservableCollection<CurrentStockRow> VanStock { get; } = new();
     public ObservableCollection<RepLineDraft> Returns { get; } = new();
@@ -575,8 +575,7 @@ public class RepSettlementSectionViewModel : SectionViewModel
         if (ItemsLookup.Count == 0)
             foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync())
                 ItemsLookup.Add(i);
-        Customers.Clear();
-        foreach (var c in await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync()) Customers.Add(c);
+        Customers.ReplaceAll(await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
         Vehicles.Clear();
         foreach (var v in await db.Vehicles.AsNoTracking().Where(v => v.IsActive).OrderBy(v => v.VehicleName).ToListAsync()) Vehicles.Add(v);
         _store = Stores.FirstOrDefault(w => w.Id == storeId) ?? Stores.FirstOrDefault();

@@ -32,7 +32,7 @@ public abstract class CrudSectionViewModel<T> : SectionViewModel where T : class
         CancelCommand = new RelayCommand(() => Editor = null);
     }
 
-    public ObservableCollection<T> Items { get; } = new();
+    public ObservableCollection<T> Items { get; } = new BulkObservableCollection<T>();
 
     public string SearchText
     {
@@ -102,10 +102,8 @@ public abstract class CrudSectionViewModel<T> : SectionViewModel where T : class
 
     protected void ApplyFilter()
     {
-        Items.Clear();
         var text = SearchText.Trim();
-        foreach (var e in _all)
-            if (Includes(e) && (text.Length == 0 || Matches(e, text))) Items.Add(e);
+        Items.ReplaceAll(_all.Where(e => Includes(e) && (text.Length == 0 || Matches(e, text))));
     }
 
     private Task NewAsync()

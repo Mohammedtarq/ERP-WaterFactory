@@ -78,7 +78,7 @@ public class CustomerReturnSectionViewModel : SectionViewModel
         new Option<CustomerReturnSettlement>(CustomerReturnSettlement.Debt, "خصم من دين الزبون"),
         new Option<CustomerReturnSettlement>(CustomerReturnSettlement.Cash, "رد نقدي من محفظة المندوب"),
     };
-    public ObservableCollection<Customer> Customers { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<Data.ProjectDb.Entities.Warehouse> Warehouses { get; } = new();
     public ObservableCollection<Item> Products { get; } = new();
     public ObservableCollection<ReturnLineDraft> Lines { get; } = new();
@@ -100,8 +100,7 @@ public class CustomerReturnSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var keepCustomer = Customer?.Id;
         var keepWarehouse = Warehouse?.Id;
-        Customers.Clear();
-        foreach (var c in await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync()) Customers.Add(c);
+        Customers.ReplaceAll(await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
         Warehouses.Clear();
         // مخزن المنتج التام أولًا ثم سيارات المندوبين
         foreach (var w in (await db.Warehouses.AsNoTracking().Where(w => w.IsActive && (w.WarehouseType == WarehouseType.FinishedGoods || w.WarehouseType == WarehouseType.RepVan))

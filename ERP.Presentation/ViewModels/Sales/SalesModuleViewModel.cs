@@ -169,7 +169,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
     // ---------------- القوائم ----------------
     public IReadOnlyList<Option<InvoicePaymentMethod>> PaymentOptions { get; } = ArabicLabels.OptionsOf<InvoicePaymentMethod>();
-    public ObservableCollection<Customer> Customers { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<Data.ProjectDb.Entities.Warehouse> Warehouses { get; } = new();
     public ObservableCollection<Item> ItemsLookup { get; } = new();
     public ObservableCollection<ItemPackagingLevel> LevelOptions { get; } = new();
@@ -410,9 +410,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         var selectedCustomerId = Customer?.Id;
         var selectedWarehouseId = Warehouse?.Id;
 
-        Customers.Clear();
-        foreach (var c in await db.Customers.AsNoTracking().Include(c => c.ParentAgent).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync())
-            Customers.Add(c);
+        Customers.ReplaceAll(await db.Customers.AsNoTracking().Include(c => c.ParentAgent).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
 
         _allWarehouses.Clear();
         _allWarehouses.AddRange(await db.Warehouses.AsNoTracking()
@@ -845,7 +843,7 @@ public class SalesInvoiceListSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
 
     public ObservableCollection<SalesInvoiceListRow> Rows { get; } = new();
-    public ObservableCollection<Customer> Customers { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public DateTime? FromDate { get => _fromDate; set { if (SetProperty(ref _fromDate, value)) Background(LoadAsync()); } }
     public DateTime? ToDate { get => _toDate; set { if (SetProperty(ref _toDate, value)) Background(LoadAsync()); } }
     public Customer? CustomerFilter { get => _customerFilter; set { if (SetProperty(ref _customerFilter, value)) Background(LoadAsync()); } }
@@ -1036,7 +1034,7 @@ public class CustomerStatementSectionViewModel : SectionViewModel
 
     protected override bool ReloadOnActivate => true;
 
-    public ObservableCollection<Customer> Customers { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<CustomerStatementRow> Rows { get; } = new();
     public ObservableCollection<CustomerBalanceRow> Balances { get; } = new();
     public RelayCommand OpenCustomerCommand { get; }
@@ -1070,8 +1068,7 @@ public class CustomerStatementSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         var selectedId = Customer?.Id;
-        Customers.Clear();
-        foreach (var c in await db.Customers.AsNoTracking().Include(c => c.ParentAgent).OrderBy(c => c.Name).ToListAsync()) Customers.Add(c);
+        Customers.ReplaceAll(await db.Customers.AsNoTracking().Include(c => c.ParentAgent).OrderBy(c => c.Name).ToListAsync());
         Balances.Clear();
         foreach (var b in await new SalesService(db).GetCustomerBalancesAsync()) Balances.Add(b);
 

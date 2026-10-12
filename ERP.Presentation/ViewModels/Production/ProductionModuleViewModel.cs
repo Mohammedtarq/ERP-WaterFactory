@@ -950,7 +950,7 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
 
     public ObservableCollection<Item> FinishedItems { get; } = new();
     public ObservableCollection<Item> RawItems { get; } = new();
-    public ObservableCollection<Customer> Customers { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<RecipeLineRow> Lines { get; } = new();
 
     public CustomRecipe? SelectedRecipe { get => _selectedRecipe; set { if (SetProperty(ref _selectedRecipe, value)) Background(LoadLinesAsync()); } }
@@ -973,8 +973,7 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
         RawItems.Clear();
         foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Manufactured).OrderBy(i => i.ItemName).ToListAsync())
             RawItems.Add(i);
-        Customers.Clear();
-        foreach (var c in await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync()) Customers.Add(c);
+        Customers.ReplaceAll(await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
     }
 
     protected override Task<List<CustomRecipe>> QueryAsync(ProjectDbContext db) =>
