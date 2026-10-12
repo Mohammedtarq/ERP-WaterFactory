@@ -967,6 +967,10 @@ public class TutorialTests
             await wh.IdleAsync();
             await UiThread.SettleAsync();
             await Shot("01-المخازن-والقائمة-الجانبية", wh);
+            // بطاقات القوائم الفرعية الملوّنة تحت لوحة القسم: تمرير الصفحة إليها
+            ScrollHomeTo(main, "القوائم الفرعية");
+            await Shot("01b-بطاقات-القوائم-الفرعية-بألوان-المجموعات", wh);
+            ScrollHomeTo(main, null);
             var items = wh.Section<ItemsSectionViewModel>();
             await Open(wh, items);
             await items.NewCommand.ExecuteAsync();
@@ -1139,7 +1143,7 @@ public class TutorialTests
         await run;
 
         _out.WriteLine($"دليل الدورة الكاملة: {shots.Count} صورة → {Path.Combine(UiThread.OutputDir, dir)}");
-        Assert.Equal(21, shots.Count);
+        Assert.Equal(22, shots.Count);
         Assert.Empty(dialogs.Errors);
         lock (UiThread.Unhandled) Assert.True(UiThread.Unhandled.Count == 0, string.Join("\n", UiThread.Unhandled.Select(e => e.ToString())));
     }
@@ -1351,6 +1355,21 @@ public class TutorialTests
     }
 
     /// <summary>يختار تبويبًا داخليًا (مثل "الأرصدة الحالية") في الشاشة الظاهرة.</summary>
+    /// <summary>يمرّر صفحة «الرئيسية» حتى العنوان المذكور في أعلى الإطار (أو إلى الأعلى بلا عنوان).</summary>
+    private static void ScrollHomeTo(DependencyObject root, string? title)
+    {
+        var home = Descendants<ERP.Desktop.Views.Shell.HomeSectionView>(root).FirstOrDefault();
+        var sv = home is null ? null : Descendants<ScrollViewer>(home).FirstOrDefault();
+        if (sv is null) return;
+        sv.UpdateLayout();
+        if (title is null) { sv.ScrollToTop(); return; }
+        var tb = Descendants<TextBlock>(home!).FirstOrDefault(t => t.Text == title);
+        if (tb is null) return;
+        var y = tb.TransformToAncestor(sv).Transform(new Point(0, 0)).Y + sv.VerticalOffset;
+        sv.ScrollToVerticalOffset(Math.Max(0, y - 8));
+        sv.UpdateLayout();
+    }
+
     private static void SelectInnerTab(DependencyObject root, string header)
     {
         foreach (var tab in Descendants<TabItem>(root))
