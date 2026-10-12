@@ -81,11 +81,18 @@ public class LeaveSettingsSectionViewModel : SectionViewModel
         await LoadHolidaysAsync();
     }
 
+    private int _holidaysToken;
+
+    /// <summary>تُقرأ العطل كاملة أولًا ثم تُستبدل القائمة، وآخر طلب فقط يُطبَّق: تحميلان متداخلان (تغيير السنة مع الإضافة) لا يخلطان القائمة.</summary>
     private async Task LoadHolidaysAsync()
     {
-        await using var db = Session.NewDb();
+        var token = Interlocked.Increment(ref _holidaysToken);
+        List<PublicHoliday> list;
+        await using (var db = Session.NewDb())
+            list = await new HrLeaveService(db).GetHolidaysAsync(HolidayYear);
+        if (token != _holidaysToken) return;
         Holidays.Clear();
-        foreach (var h in await new HrLeaveService(db).GetHolidaysAsync(HolidayYear)) Holidays.Add(h);
+        foreach (var h in list) Holidays.Add(h);
     }
 
     private async Task SaveTypesAsync()
@@ -116,7 +123,8 @@ public class LeaveSettingsSectionViewModel : SectionViewModel
                                     $"سُجّلت العطلة {NewHolidayName} ({NewHolidayDate:yyyy/MM/dd}) — لا غياب فيها"))
         {
             NewHolidayName = "";
-            HolidayYear = NewHolidayDate.Year;
+            // السنة تُضبط بلا تحميل في الخلفية: تحميل واحد ننتظره هنا
+            SetProperty(ref _holidayYear, NewHolidayDate.Year, nameof(HolidayYear));
             await LoadHolidaysAsync();
         }
     }

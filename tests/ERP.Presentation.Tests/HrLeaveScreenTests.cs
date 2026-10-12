@@ -57,7 +57,9 @@ public class HrLeaveScreenTests
         settings.NewHolidayName = "عطلة شاشة الاختبار";
         await settings.AddHolidayCommand.ExecuteAsync();
         NoErrors("العطلة");
-        Assert.Contains(settings.Holidays, h => h.HolidayDate == D(10));
+        await settings.IdleAsync();
+        Assert.Equal(2025, settings.HolidayYear);
+        Assert.Single(settings.Holidays, h => h.HolidayDate == D(10));     // تحميل واحد: لا تكرار
 
         // ---------- إجازة يومية: المعاينة ثم التسجيل والإشعار والرصيد ----------
         var leaves = hr.Leaves;
