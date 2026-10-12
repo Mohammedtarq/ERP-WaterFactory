@@ -26,6 +26,31 @@ public class CloudSyncRunner
         _clientFactory = clientFactory ?? ((url, key) => CloudSyncService.CreateClient(url, key));
     }
 
+    /// <summary>
+    /// مفتاح المعمل المولَّد في مشاريع قاعدة التحكم (أول مفتاح لكل مشروع فعّال له مفتاح).
+    /// يستعمله ملف إعداد «تجربة المندوبين» ليضع المفتاح في الخادم الوسيط بنفسه فلا ينسخه المستخدم يدويًا.
+    /// </summary>
+    public static async Task<List<(string Project, string Key)>> ReadAgentKeysAsync(string controlConnectionString, CancellationToken ct = default)
+    {
+        var keys = new List<(string, string)>();
+        await using var control = new ControlDbContext(new DbContextOptionsBuilder<ControlDbContext>().UseSqlServer(controlConnectionString).Options);
+        var projects = await control.Projects.AsNoTracking().Where(p => p.IsActive)
+            .Select(p => new ProjectOption(p.Id, p.ProjectName, p.DatabaseName, p.ServerAddress, 0)).ToListAsync(ct);
+        var auth = new AuthService(controlConnectionString);
+        foreach (var project in projects)
+        {
+            try
+            {
+                await using var db = new ProjectDbContext(new DbContextOptionsBuilder<ProjectDbContext>()
+                    .UseSqlServer(auth.BuildProjectConnectionString(project)).Options);
+                var key = await db.CloudSyncSettings.AsNoTracking().Select(x => x.AgentKey).FirstOrDefaultAsync(ct);
+                if (!string.IsNullOrEmpty(key)) keys.Add((project.ProjectName, key));
+            }
+            catch (SqlException) { /* مشروع لم يُرقَّ بعد أو غير متاح: يُتخطى */ }
+        }
+        return keys;
+    }
+
     public async Task<TimeSpan> RunAllAsync(Action<string>? log = null, CancellationToken ct = default)
     {
         List<ProjectOption> projects;

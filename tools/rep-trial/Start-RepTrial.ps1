@@ -1,7 +1,7 @@
 ﻿# تجربة تطبيق المندوب عبر واي فاي المعمل (قبل الخادم السحابي):
 # يشغّل الخادم الوسيط على جهاز السيرفر نفسه، ثم خدمة المزامنة في هذه النافذة. أغلق النافذة لإيقاف التجربة.
 # التفاصيل: docs/rep-app.md
-param([int]$Port = 5080)
+param([int]$Port = 5080, [string]$Ip = '')
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
 $server = Join-Path $here 'CloudServer\ERP.Cloud.Api.exe'
@@ -17,10 +17,19 @@ if (-not (Test-Path $keyFile) -or -not ([string](Get-Content $keyFile -Raw)).Tri
 $env:Relay__AgentKey = ([string](Get-Content $keyFile -Raw)).Trim()
 $env:ConnectionStrings__Relay = 'Server=localhost\SQLEXPRESS;Database=ERP_Relay;Integrated Security=True;TrustServerCertificate=True'
 
-$ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-       Where-Object { $_.IPAddress -match '^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)' } | Select-Object -First 1).IPAddress
+# العنوان: يمرّره ملف الإعداد (عنوان الشبكة التي لها بوابة)، وإلا أول عنوان داخلي
+if ([string]::IsNullOrWhiteSpace($Ip)) {
+    $Ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+           Where-Object { $_.IPAddress -match '^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)' } | Select-Object -First 1).IPAddress
+}
+if ([string]::IsNullOrWhiteSpace($Ip)) {
+    Write-Host 'لم أجد عنوان شبكة داخليًا: تأكد أن الحاسبة متصلة بالواي فاي أو الراوتر.' -ForegroundColor Red
+    exit 1
+}
+$url = "http://${Ip}:$Port"
+try { Set-Clipboard -Value $url } catch { }
 Write-Host ''
-Write-Host "عنوان الخادم للتجربة: http://${ip}:$Port" -ForegroundColor Green
+Write-Host "عنوان الخادم للتجربة: $url   (نُسخ إلى الحافظة، الصقه في «المزامنة السحابية»)" -ForegroundColor Green
 Write-Host 'اكتبه في «المزامنة السحابية» (وفعّلها)، ثم سجّل هواتف المندوبين من «أجهزة التطبيق».' -ForegroundColor Green
 Write-Host ''
 

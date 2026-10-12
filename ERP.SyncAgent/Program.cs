@@ -3,6 +3,7 @@ using ERP.SyncAgent;
 
 // ERP.SyncAgent.exe            ← يعمل كخدمة Windows (أو في نافذة للتجربة)
 // ERP.SyncAgent.exe --once     ← دورة واحدة ويطبع النتيجة
+// ERP.SyncAgent.exe --print-key ← يطبع مفتاح المعمل المولَّد (لإعداد تجربة المندوبين)
 // ERP.SyncAgent.exe --install --control "<سلسلة اتصال قاعدة التحكم>"   (كمسؤول) ← يثبّت الخدمة ويمنحها الوصول للقواعد
 // ERP.SyncAgent.exe --uninstall  (كمسؤول)
 if (args.Contains("--help") || args.Contains("-h"))
@@ -22,6 +23,27 @@ if (config is null)
 {
     Console.Error.WriteLine($"لا يوجد إعداد للخدمة ({AgentConfig.MachinePath}). ثبّتها من شاشة «المزامنة السحابية» أو بـ --install.");
     return 2;
+}
+if (args.Contains("--print-key"))
+{
+    // يطبع مفتاح المعمل وحده (لملف إعداد «تجربة المندوبين» الذي يضعه في الخادم الوسيط)
+    try
+    {
+        var keys = await CloudSyncRunner.ReadAgentKeysAsync(config.ControlDbConnectionString);
+        if (keys.Count == 0)
+        {
+            Console.Error.WriteLine("لا مفتاح للمعمل بعد: ولّده من «الإعدادات ← المزامنة السحابية ← توليد مفتاح جديد».");
+            return 3;
+        }
+        if (keys.Count > 1) Console.Error.WriteLine($"تنبيه: {keys.Count} مشاريع لها مفاتيح؛ استُعمل مفتاح «{keys[0].Project}».");
+        Console.WriteLine(keys[0].Key);
+        return 0;
+    }
+    catch (Exception ex) when (ex is Microsoft.Data.SqlClient.SqlException or InvalidOperationException)
+    {
+        Console.Error.WriteLine($"تعذّر الاتصال بقاعدة التحكم: {ex.Message}");
+        return 4;
+    }
 }
 if (args.Contains("--once"))
 {
