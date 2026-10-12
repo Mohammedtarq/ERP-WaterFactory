@@ -44,14 +44,14 @@
 
             <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="الوقت" Binding="{Binding OccurredAt, StringFormat='yyyy/MM/dd HH:mm'}" Width="125"/>
+                    <DataGridTextColumn Header="الوقت" Binding="{Binding OccurredAt, StringFormat='yyyy/MM/dd HH:mm'}" Width="140" MinWidth="130"/>
                     <DataGridTextColumn Header="المندوب" Binding="{Binding RepName}" Width="120"/>
-                    <DataGridTextColumn Header="النوع" Binding="{Binding KindText}" Width="90"/>
-                    <DataGridTextColumn Header="التفاصيل" Binding="{Binding Summary}" Width="*"/>
+                    <DataGridTextColumn Header="النوع" Binding="{Binding KindText}" Width="90" MinWidth="80"/>
+                    <DataGridTextColumn Header="التفاصيل" Binding="{Binding Summary}" Width="*" MinWidth="150"/>
                     <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="90"/>
                     <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="120"/>
                     <DataGridTextColumn Header="تنبيه / سبب" Binding="{Binding Warning}" Width="170"/>
-                    <DataGridTextColumn Header="صورة" Binding="{Binding HasPhoto}" Width="50"/>
+                    <DataGridCheckBoxColumn Header="صورة" Binding="{Binding HasPhoto, Mode=OneWay}" Width="55"/>
                 </DataGrid.Columns>
             </DataGrid>
         </DockPanel>
