@@ -31,3 +31,29 @@ public class ProductionReportsSectionViewModel : ReportsSectionViewModel
             (db, f) => new ReportsService(db).ProductionAsync(f.Request)) { UsesItem = true, UsesPeriod = true, ShowsCost = true },
     };
 }
+
+/// <summary>
+/// تقارير الموارد البشرية: تقرير الموظف (غياب، إجازات، تأخر، زمنيات، عقوبات، قطع راتب، سلف، ترقيات، تقييم، حافز)
+/// وسجله التفصيلي، والحضور (اليوم أو فترة) والمتأخرون والغائبون — لقسم أو موظف أو للكل.
+/// </summary>
+public class HrReportsSectionViewModel : ReportsSectionViewModel
+{
+    public HrReportsSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.HR, "تقارير الموارد البشرية", "تقرير الموظف والحضور والمتأخرين والغائبين لقسم أو موظف", Catalog) { }
+
+    private static HrReportRequest Hr(ReportFilter f) => new(f.From, f.To, f.DepartmentId, f.EmployeeId);
+
+    public static readonly ReportOption[] Catalog =
+    {
+        new("hr-attendance", "الحضور (اليوم أو فترة)", "لكل موظف: حاضر أو متأخر أو غائب أو إجازة، بوقت الدخول والخروج ودقائق التأخر",
+            (db, f) => new HrReportsService(db).AttendanceAsync(Hr(f))) { UsesDepartment = true, UsesEmployee = true },
+        new("hr-late", "المتأخرون", "من تأخر: التاريخ ووقت الدخول ودقائق التأخر، ومجموعها",
+            (db, f) => new HrReportsService(db).AttendanceAsync(Hr(f), AttendanceStatus.Late)) { UsesDepartment = true, UsesEmployee = true },
+        new("hr-absent", "الغائبون", "من غاب في الفترة (لا تشمل الإجازات المسجّلة)",
+            (db, f) => new HrReportsService(db).AttendanceAsync(Hr(f), AttendanceStatus.Absent)) { UsesDepartment = true, UsesEmployee = true },
+        new("hr-employee", "تقرير الموظف", "غياب، إجازات، تأخر، زمنيات، عقوبات، قطع راتب، سلف، ترقيات، تقييم، حافز شهري — لكل موظف",
+            (db, f) => new HrReportsService(db).EmployeeSummaryAsync(Hr(f))) { UsesDepartment = true, UsesEmployee = true },
+        new("hr-employee-detail", "سجل الموظف التفصيلي", "كل حدث للموظف المختار بتاريخه وتفصيله ومبلغه",
+            (db, f) => new HrReportsService(db).EmployeeDetailAsync(Hr(f))) { UsesEmployee = true },
+    };
+}

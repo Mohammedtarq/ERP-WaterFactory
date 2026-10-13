@@ -60,6 +60,23 @@ public class ReportsScreenTests
         Assert.Contains("كلفة العبوة", Enumerable.Range(0, production.Table!.Table!.Columns.Count).Select(i => production.Table.Table.Columns[i].Caption));
         Assert.True(production.Filter.WithCost);
 
+        // الموارد البشرية: حضور اليوم لقسم أو موظف، والسجل التفصيلي يطلب موظفًا
+        var hrModule = shell.Open<ERP.Presentation.ViewModels.HR.HrModuleViewModel>(ModuleCode.HR);
+        await hrModule.IdleAsync();
+        var hrPage = hrModule.Section<HrReportsSectionViewModel>();
+        hrModule.SelectedTab = hrPage;
+        await hrModule.IdleAsync();
+        await hrPage.IdleAsync();
+        Assert.Equal(new[] { "hr-attendance", "hr-late", "hr-absent", "hr-employee", "hr-employee-detail" }, hrPage.Reports.Select(r => r.Key));
+        Assert.True(hrPage.UsesDepartment && hrPage.UsesEmployee && !hrPage.UsesItem);
+        Assert.Equal("كل الأقسام", hrPage.Department!.Label);
+        await hrPage.TodayCommand.ExecuteAsync();
+        Assert.Equal("حضور اليوم", hrPage.Last!.Title);
+        hrPage.SelectedReport = hrPage.Reports.Single(r => r.Key == "hr-employee-detail");
+        Assert.False(hrPage.UsesDepartment);
+        await hrPage.MonthCommand.ExecuteAsync();
+        Assert.Contains("اختر الموظف", hrPage.Last!.Subtitle);
+
         // موظف المبيعات بلا صلاحية الكلفة: لا يرى تقرير الربح، والإنتاج بلا كلفة
         var (clerkShell, _) = await _f.LoginAsync(AppFixture.ClerkUser, AppFixture.ClerkPassword);
         Assert.Equal(new[] { "sales-by-product" }, new SalesReportsSectionViewModel(clerkShell.Session, dialogs).Reports.Select(r => r.Key));

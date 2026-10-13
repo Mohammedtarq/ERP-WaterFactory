@@ -31,6 +31,7 @@ public class HrModuleViewModel : ModuleViewModel
         Add(new IncentiveSettingsSectionViewModel(s, d));
         Add(new RepIncentiveRatesSectionViewModel(s, d));
         Add(new ManagerTiersSectionViewModel(s, d));
+        Add(new Shell.HrReportsSectionViewModel(s, d));
     }
 
     public AttendanceSectionViewModel Attendance { get; }
