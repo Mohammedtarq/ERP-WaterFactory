@@ -10,13 +10,14 @@ public class VanStockPage : ContentPage
         var work = AppServices.Instance.Work;
         var list = new VerticalStackLayout { Spacing = 4 };
         var snap = work.Snapshot;
-        var van = work.VanStock();
+        var van = work.VanStockByVariant();
         foreach (var p in snap?.Products ?? new())
-        {
-            var pieces = van.GetValueOrDefault(p.ItemId);
-            if (pieces == 0) continue;
-            list.Children.Add(Ui.Card(new VerticalStackLayout { Children = { Ui.Text(p.Name, 18), Ui.Text(Formats.Packs(pieces, p.Levels), 20, Ui.Primary) } }));
-        }
+            foreach (var (key, pieces) in van.Where(kv => kv.Key.ItemId == p.ItemId && kv.Value != 0).OrderBy(kv => kv.Key.RecipeId is null ? 0 : 1))
+            {
+                // الاسم الموحد بعبوته الكبرى: «كارتون 40×330 الرحمة»، والأساسي والطلب الخاص كل في بطاقة
+                var top = p.Levels.OrderByDescending(l => l.Units).First();
+                list.Children.Add(Ui.Card(new VerticalStackLayout { Children = { Ui.Text(p.Label(top, key.RecipeId), 18), Ui.Text(Formats.Packs(pieces, p.Levels), 20, Ui.Primary) } }));
+            }
         if (list.Children.Count == 0) list.Children.Add(Ui.Text(snap is null ? "لم تصل نسخة العمل بعد — زامن أولًا" : "السيارة فارغة", 17, Ui.Muted));
         Ui.Setup(this, "رصيد السيارة", new VerticalStackLayout
         {

@@ -24,7 +24,8 @@ public class ProductNameTests
         Assert.Equal("مطعم داون تاون", ProductName.Variant(null, "مطعم داون تاون", "وصفة داون تاون", false, "الرحمة"));
         Assert.Equal("زواج سعيد", ProductName.Variant(" ", null, "زواج سعيد", false, "الرحمة"));
         Assert.Equal("الرحمة", ProductName.Variant(null, null, null, true, "الرحمة"));
-        Assert.Equal(ProductName.DefaultBaseVariant, ProductName.Variant(null, null, null, true, null));
+        Assert.Equal("", ProductName.Variant(null, null, null, true, null));                          // لم يُضبط اسم الأساسي
+        Assert.Equal("كارتون 40×330", ProductName.Of("كارتون", 40, 330, "ماء", ProductName.Variant(null, null, null, true, null)));
 
         Assert.Equal(330m, ProductName.ParseSizeMl("ماء الرحمة 330 مل كارتون 40"));
         Assert.Equal(500m, ProductName.ParseSizeMl("ماء 500مل"));

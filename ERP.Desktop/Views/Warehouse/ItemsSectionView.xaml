@@ -23,6 +23,7 @@
                                 <TextBlock Text="إضافة"/>
                             </StackPanel>
                         </Button>
+                        <Button Content="الأسماء الموحدة" ToolTip="قائمة «كارتون 40×330 الرحمة» لكل منتج وعبوة ومتغير — للمراجعة والطباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintNamesCommand}" Margin="0,0,6,0"/>
                         <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
@@ -92,6 +93,8 @@
                                    Visibility="{Binding CanSeeCost, Converter={StaticResource BoolToVisibility}}"/>
                         <TextBox Text="{Binding Editor.CostPrice, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"
                                  Visibility="{Binding CanSeeCost, Converter={StaticResource BoolToVisibility}}"/>
+                        <TextBlock Text="حجم القطعة بالمليلتر (330، 1500…) للاسم الموحد — فارغ = يُقرأ من الاسم" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                        <TextBox Text="{Binding Editor.SizeMl, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                         <TextBlock Text="وزن القطعة بالغرام (للشراء بالكغم أو الطن)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.UnitWeightGrams, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                         <TextBlock Text="مدة تجهيز المورد (يوم)" Style="{StaticResource FieldLabel}"/>

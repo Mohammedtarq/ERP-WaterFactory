@@ -357,23 +357,33 @@ public class CloudSyncService
         var itemIds = items.Select(i => i.Id).ToList();
         var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId) && l.IsSellableUnit).ToListAsync())
                      .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
+        // الاسم الموحد في الهاتف: الحجم واسم الأساسي والمتغيرات (الطلبات الخاصة بأسمائها المختصرة وأسعارها العامة)
+        var baseVariant = (await new CompanyProfileService(_db).GetAsync())?.BaseVariantName;
+        var variants = (await _db.CustomRecipes.AsNoTracking().Where(r => r.IsActive && itemIds.Contains(r.FinishedItemId))
+                .Select(r => new { r.Id, r.FinishedItemId, r.ShortName, Customer = r.Customer != null ? r.Customer.Name : null, r.Name, r.SalePrice }).ToListAsync())
+            .GroupBy(r => r.FinishedItemId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(r => r.Id)
+                .Select(r => new SnapshotVariant(r.Id, ProductName.Variant(r.ShortName, r.Customer, r.Name, false, null), r.SalePrice)).ToList());
         var products = items.Where(i => levels.ContainsKey(i.Id))
             .Select(i => new SnapshotProduct(i.Id, i.ItemCode, i.ItemName, i.SalePrice,
-                                             levels[i.Id].Select(l => new SnapshotLevel(l.Id, l.LevelName, l.EquivalentBaseUnits)).ToList()))
+                                             levels[i.Id].Select(l => new SnapshotLevel(l.Id, l.LevelName, l.EquivalentBaseUnits)).ToList(),
+                                             i.SizeMl, ProductName.Variant(null, null, null, true, baseVariant), variants.GetValueOrDefault(i.Id)))
             .ToList();
         var productIds = products.Select(p => p.ItemId).ToList();
 
         var agentIds = snapCustomers.Where(c => c.PriceAgentId is not null).Select(c => c.PriceAgentId!.Value).Distinct().ToList();
         // أسعار الوكلاء للمنتج الأساسي (الطلب الخاص يسعّره المعمل عند الترحيل)
-        var agentPrices = await _db.AgentItemPrices.AsNoTracking().Where(p => agentIds.Contains(p.CustomerId) && productIds.Contains(p.ItemId) && p.CustomRecipeId == null)
-            .OrderBy(p => p.CustomerId).ThenBy(p => p.ItemId)
-            .Select(p => new SnapshotAgentPrice(p.CustomerId, p.ItemId, p.AgentPrice)).ToListAsync();
+        var agentPrices = await _db.AgentItemPrices.AsNoTracking().Where(p => agentIds.Contains(p.CustomerId) && productIds.Contains(p.ItemId))
+            .OrderBy(p => p.CustomerId).ThenBy(p => p.ItemId).ThenBy(p => p.CustomRecipeId)
+            .Select(p => new SnapshotAgentPrice(p.CustomerId, p.ItemId, p.AgentPrice, p.CustomRecipeId)).ToListAsync();
 
         var van = await _db.Warehouses.AsNoTracking().FirstOrDefaultAsync(w => w.IsActive && w.WarehouseType == WarehouseType.RepVan && w.OwnerEmployeeId == rep.Id);
         var stock = van is null ? new List<SnapshotStock>()
             : (await _db.StockTransactions.AsNoTracking().Where(t => t.WarehouseId == van.Id)
-                    .GroupBy(t => t.ItemId).Select(g => new { ItemId = g.Key, Pieces = g.Sum(t => t.QuantityBaseUnits) }).ToListAsync())
-              .Where(x => x.Pieces != 0).OrderBy(x => x.ItemId).Select(x => new SnapshotStock(x.ItemId, x.Pieces)).ToList();
+                    .GroupBy(t => new { t.ItemId, RecipeId = t.Batch != null ? t.Batch.CustomRecipeId : null })
+                    .Select(g => new { g.Key.ItemId, g.Key.RecipeId, Pieces = g.Sum(t => t.QuantityBaseUnits) }).ToListAsync())
+              .Where(x => x.Pieces != 0).OrderBy(x => x.ItemId).ThenBy(x => x.RecipeId)
+              .Select(x => new SnapshotStock(x.ItemId, x.Pieces, x.RecipeId)).ToList();
 
         var since = DateTime.UtcNow.AddDays(-7);
         var posted = await _db.RepRequests.AsNoTracking()

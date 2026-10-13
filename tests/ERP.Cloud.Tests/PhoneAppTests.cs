@@ -84,7 +84,7 @@ public class PhoneAppTests : CloudTestBase, IDisposable
 
         // قائمة البيع: ما في السيارة فقط بكل عبوة (الأكبر أولًا)
         var options = work.LoadedOptions();
-        Assert.Equal(new[] { "ماء هاتف شرنك — شرنك", "ماء هاتف شرنك — قطعة" }, options.Select(o => o.Text));
+        Assert.Equal(new[] { "شرنك 20 — ماء هاتف شرنك", "قطعة — ماء هاتف شرنك" }, options.Select(o => o.Text));   // الاسم الموحد (الحجم غير مضبوط)
         Assert.Equal(new[] { 10m, 200m }, options.Select(o => o.Available));
 
         // ---- يوم بلا إنترنت: كل شيء يُحفظ في الهاتف والأرصدة تتحرك ----
@@ -93,7 +93,7 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         var cash = work.SaveSale("CashSale", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 2) });
         Assert.Equal(10_000m, cash.Amount);                                         // 250 × 20 × 2
         Assert.Equal(1, cash.ReceiptNo);
-        Assert.Equal(new ReceiptLine("ماء هاتف شرنك", "شرنك", 2, 5_000, 10_000), Assert.Single(cash.Lines!));
+        Assert.Equal(new ReceiptLine("شرنك 20 — ماء هاتف شرنك", "شرنك", 2, 5_000, 10_000), Assert.Single(cash.Lines!));
         // الوصل: الشعار ورقم الوصل والمواد والمندوب والشكر
         var receipt = work.ReceiptFor(cash)!;
         Assert.Equal(($"{seed.RepId}-1", "بيع نقدي", "زبون هاتف", "مندوب هاتف", 10_000m), (receipt.Number, receipt.Kind, receipt.Customer, receipt.Rep, receipt.Total));
@@ -101,7 +101,7 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         Assert.Equal(new[]
         {
             "معمل الرحمة للمياه", $"وصل بيع نقدي رقم {seed.RepId}-1", cash.OccurredAt.ToString("yyyy/MM/dd HH:mm"), "الزبون: زبون هاتف",
-            "ماء هاتف شرنك — شرنك", "2 × 5,000 د.ع = 10,000 د.ع", "الإجمالي: 10,000 د.ع", "المندوب: مندوب هاتف", "شكرا لتعاملكم معنا"
+            "شرنك 20 — ماء هاتف شرنك", "2 × 5,000 د.ع = 10,000 د.ع", "الإجمالي: 10,000 د.ع", "المندوب: مندوب هاتف", "شكرا لتعاملكم معنا"
         }, receipt.TextLines());
         var credit = work.CheckSale("CreditSale", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 4) });
         Assert.Null(credit.Warning);
@@ -114,7 +114,7 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         // «حركاتي»: الوصل التالي برقم 2، والتحصيل بلا وصل بيع، ومجموع مواد اليوم
         Assert.Equal(new int?[] { null, 2, 1 }, store.Outbox().Select(i => i.ReceiptNo));
         Assert.Equal(4m, store.Outbox()[1].Lines!.Single().Quantity);
-        Assert.Equal(new DayItemTotal("ماء هاتف شرنك", "شرنك", 6), Assert.Single(work.TodayItems()));
+        Assert.Equal(new DayItemTotal("شرنك 20 — ماء هاتف شرنك", "شرنك", 6), Assert.Single(work.TodayItems()));
         Assert.Equal(new[] { 4m, 80m }, work.LoadedOptions().Select(o => o.Available));
 
         Assert.Equal(80m, work.VanStock()[seed.WaterId]);                           // 200 − 6 شرنك

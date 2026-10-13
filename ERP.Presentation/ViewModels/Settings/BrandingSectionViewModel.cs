@@ -45,6 +45,9 @@ public class BrandingSectionViewModel : SectionViewModel
 
     public string NameAr { get => _nameAr; set => SetProperty(ref _nameAr, value); }
     public string? NameEn { get => _nameEn; set => SetProperty(ref _nameEn, value); }
+    private string? _baseVariantName;
+    /// <summary>اسم المنتج الأساسي في الاسم الموحد («كارتون 40×330 الرحمة»).</summary>
+    public string? BaseVariantName { get => _baseVariantName; set => SetProperty(ref _baseVariantName, value); }
     public ObservableCollection<PhoneEntry> Phones { get; } = new();
     public string NewPhone { get => _newPhone; set => SetProperty(ref _newPhone, value); }
     public string? Address { get => _address; set => SetProperty(ref _address, value); }
@@ -77,6 +80,7 @@ public class BrandingSectionViewModel : SectionViewModel
         var p = await new CompanyProfileService(db).GetAsync();
         NameAr = p?.NameAr ?? Session.ProjectName;
         NameEn = p?.NameEn;
+        BaseVariantName = p?.BaseVariantName;
         Phones.Clear();
         foreach (var ph in (p?.Phones ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             Phones.Add(new PhoneEntry { Value = ph });
@@ -106,7 +110,7 @@ public class BrandingSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var r = await new CompanyProfileService(db).SaveAsync(new CompanyProfile
         {
-            NameAr = NameAr, NameEn = NameEn, Phones = string.Join("\n", Phones.Select(p => p.Value)), Address = Address,
+            NameAr = NameAr, NameEn = NameEn, BaseVariantName = BaseVariantName, Phones = string.Join("\n", Phones.Select(p => p.Value)), Address = Address,
             TaxNumber = TaxNumber, CommercialRegister = CommercialRegister, BrandColor = BrandColor.Trim(), FooterText = FooterText, Logo = Logo
         });
         if (!r.Success) { Dialogs.Error(r.ErrorMessage!); return; }

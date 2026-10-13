@@ -71,7 +71,7 @@ public class SalePage : ContentPage
         _options = _work.LoadedOptions();
         _item.ItemsSource = _options;
         _item.SelectedIndex = keep is null ? (_options.Count > 0 ? 0 : -1)
-            : _options.FindIndex(o => o.Product.ItemId == keep.Product.ItemId && o.Level.LevelId == keep.Level.LevelId);
+            : _options.FindIndex(o => o.Product.ItemId == keep.Product.ItemId && o.Level.LevelId == keep.Level.LevelId && o.RecipeId == keep.RecipeId);
         ShowItemPrice();
     }
 
@@ -79,10 +79,10 @@ public class SalePage : ContentPage
     {
         var snap = _work.Snapshot;
         if (snap is null || _item.SelectedItem is not LoadedOption o) { _itemPrice.Text = ""; return; }
-        var inCart = _lines.Where(l => l.ItemId == o.Product.ItemId).Sum(l => l.Quantity * (o.Product.Levels.FirstOrDefault(x => x.LevelId == l.LevelId)?.Units ?? 0));
+        var inCart = _lines.Where(l => l.ItemId == o.Product.ItemId && l.RecipeId == o.RecipeId).Sum(l => l.Quantity * (o.Product.Levels.FirstOrDefault(x => x.LevelId == l.LevelId)?.Units ?? 0));
         var left = Formats.Packs(o.VanPieces - inCart, o.Product.Levels);
         _itemPrice.Text = (_kind == "Free" ? "مجاني"
-            : _customer.Selected is { } c ? $"سعر ال{o.Level.Name}: {Formats.Money(Math.Round(RepWork.PiecePrice(snap, c.Customer, o.Product) * o.Level.Units, 2))}"
+            : _customer.Selected is { } c ? $"سعر ال{o.Level.Name}: {Formats.Money(Math.Round(RepWork.PiecePrice(snap, c.Customer, o.Product, o.RecipeId) * o.Level.Units, 2))}"
             : "اختر الزبون لعرض السعر") + $" — الباقي في السيارة: {left}";
     }
 
@@ -91,9 +91,9 @@ public class SalePage : ContentPage
         if (_item.SelectedItem is not LoadedOption o) return;
         var q = Ui.Number(_qty.Text) ?? 0;
         if (q <= 0) { _warning.Text = "اكتب العدد"; _warning.TextColor = Ui.Red; return; }
-        var i = _lines.FindIndex(l => l.ItemId == o.Product.ItemId && l.LevelId == o.Level.LevelId);
+        var i = _lines.FindIndex(l => l.ItemId == o.Product.ItemId && l.LevelId == o.Level.LevelId && l.RecipeId == o.RecipeId);
         if (i >= 0) _lines[i] = _lines[i] with { Quantity = _lines[i].Quantity + q };
-        else _lines.Add(new SaleLine(o.Product.ItemId, o.Level.LevelId, q));
+        else _lines.Add(new SaleLine(o.Product.ItemId, o.Level.LevelId, q, o.RecipeId));
         _qty.Text = "1";
         Recalc();
     }
@@ -107,8 +107,8 @@ public class SalePage : ContentPage
         {
             var p = snap.Products.First(x => x.ItemId == line.ItemId);
             var lvl = p.Levels.First(x => x.LevelId == line.LevelId);
-            var priced = check?.Lines.FirstOrDefault(x => x.Product.ItemId == line.ItemId && x.Level.LevelId == line.LevelId);
-            var text = $"{Formats.Qty(line.Quantity)} {lvl.Name} {p.Name}" + (priced is null ? "" : $" = {Formats.Money(priced.Total)}");
+            var priced = check?.Lines.FirstOrDefault(x => x.Product.ItemId == line.ItemId && x.Level.LevelId == line.LevelId && x.RecipeId == line.RecipeId);
+            var text = $"{Formats.Qty(line.Quantity)} × {p.Label(lvl, line.RecipeId)}" + (priced is null ? "" : $" = {Formats.Money(priced.Total)}");
             var remove = Ui.Small("حذف", Ui.Red, () => { _lines.Remove(line); Recalc(); });
             _cart.Children.Add(Ui.Card(new Grid
             {

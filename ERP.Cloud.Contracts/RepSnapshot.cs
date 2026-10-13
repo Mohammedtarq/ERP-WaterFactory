@@ -33,8 +33,24 @@ public record RepSnapshot(
 /// </summary>
 public record SnapshotServers(string? LocalUrl, string? CloudUrl, string? FactoryId);
 
-/// <summary>صنف قابل للبيع: سعر القطعة العادي، وعبواته (الأكبر أولًا).</summary>
-public record SnapshotProduct(int ItemId, string Code, string Name, decimal PiecePrice, List<SnapshotLevel> Levels);
+/// <summary>
+/// صنف قابل للبيع: سعر القطعة العادي، وعبواته (الأكبر أولًا)، وحجمه واسم منتجه الأساسي ومتغيراته (الطلبات الخاصة)
+/// للاسم الموحد «كارتون 40×330 الرحمة». الحقول الجديدة اختيارية: نسخة عمل أقدم تبقى مقروءة.
+/// </summary>
+public record SnapshotProduct(int ItemId, string Code, string Name, decimal PiecePrice, List<SnapshotLevel> Levels,
+                              decimal? SizeMl = null, string? BaseVariant = null, List<SnapshotVariant>? Variants = null)
+{
+    public SnapshotVariant? VariantOf(int? recipeId) =>
+        recipeId is int id ? Variants?.FirstOrDefault(v => v.RecipeId == id) ?? new SnapshotVariant(id, "طلب خاص", null) : null;
+
+    /// <summary>الاسم الموحد لعبوة ومتغير: «كارتون 40×330 مطعم داون تاون».</summary>
+    public string Label(SnapshotLevel level, int? recipeId) =>
+        ProductName.Of(level.Name, level.Units, SizeMl ?? ProductName.ParseSizeMl(Name), Name,
+                       recipeId is null ? ProductName.Variant(null, null, null, true, BaseVariant) : VariantOf(recipeId)!.Name);
+}
+
+/// <summary>متغير المنتج (طلب خاص لمطعم أو مناسبة): اسمه في الاسم الموحد، وسعر قطعته العام (فارغ = سعر الأساسي).</summary>
+public record SnapshotVariant(int RecipeId, string Name, decimal? PiecePrice);
 
 public record SnapshotLevel(int LevelId, string Name, decimal Units);
 
@@ -44,7 +60,7 @@ public record SnapshotLevel(int LevelId, string Name, decimal Units);
 public record SnapshotCustomer(int Id, string Name, string? Phone, string? Address, string Type, int? PriceAgentId, decimal? CreditLimit, decimal Balance);
 
 /// <summary>سعر قطعة خاص بوكيل لصنف.</summary>
-public record SnapshotAgentPrice(int AgentCustomerId, int ItemId, decimal PiecePrice);
+public record SnapshotAgentPrice(int AgentCustomerId, int ItemId, decimal PiecePrice, int? RecipeId = null);
 
-/// <summary>رصيد السيارة بالقطعة؛ الهاتف يعرضه بالعبوة.</summary>
-public record SnapshotStock(int ItemId, decimal Pieces);
+/// <summary>رصيد السيارة بالقطعة لكل منتج ومتغيره (RecipeId فارغ = الأساسي)؛ الهاتف يعرضه بالعبوة.</summary>
+public record SnapshotStock(int ItemId, decimal Pieces, int? RecipeId = null);

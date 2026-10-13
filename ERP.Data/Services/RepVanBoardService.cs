@@ -65,11 +65,8 @@ public class RepVanBoardService
             .ToListAsync();
         var itemIds = balances.Select(b => b.ItemId).Concat(loads.Select(l => l.ItemId)).Concat(loadLines.Select(l => l.ItemId)).Distinct().ToList();
         var items = await _db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.ItemName);
-        var recipeIds = balances.Select(b => b.RecipeId).Concat(loads.Select(l => l.RecipeId)).OfType<int>().Distinct().ToList();
-        var recipes = await _db.CustomRecipes.AsNoTracking().Where(r => recipeIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Name);
-        var packs = await PackFormatter.LoadAsync(_db, itemIds);
-        string Name(int itemId, int? recipeId) =>
-            items.GetValueOrDefault(itemId, "؟") + (recipeId is int r ? $" — {recipes.GetValueOrDefault(r, "طلب خاص")}" : "");
+        // الاسم الموحد: «11 كارتون 40×330 الرحمة»، والطلب الخاص منتج مستقل باسمه
+        var names = await ProductNames.LoadAsync(_db, itemIds);
         var settledToday = (await _db.RepSettlements.AsNoTracking().Where(s => s.SettlementDate == day && vanIds.Contains(s.VanWarehouseId))
                                      .Select(s => s.VanWarehouseId).ToListAsync()).ToHashSet();
         var lastSettlement = await _db.RepSettlements.AsNoTracking().Where(s => repIds.Contains(s.RepEmployeeId))
@@ -90,13 +87,14 @@ public class RepVanBoardService
             var load = loads.Where(l => l.Van == v.Id).ToList();
             var lines = loadLines.Where(l => l.Van == v.Id).ToList();
             var loadPieces = lines.Sum(l => l.Pieces);
-            // صنف بلا متغير: بوحداته كما طُلب؛ صنف فيه متغير: الأساسي وكل متغير مستقل بعبوته
+            // كل منتج ومتغيره سطر مستقل بالاسم الموحد (لا يُجمع الأساسي مع الطلب الخاص ولا كارتون مع شرنك):
+            // صنف بلا متغير بعبواته كما حُمّلت فعلًا، وصنف فيه متغير بكمية كل متغير
             var withVariant = load.Where(l => l.RecipeId is not null).Select(l => l.ItemId).ToHashSet();
-            var loadParts = lines.Where(l => !withVariant.Contains(l.ItemId)).GroupBy(l => l.ItemId)
-                .Select(g => (Item: items.GetValueOrDefault(g.Key, "؟"), Order: 0,
-                              Text: $"{items.GetValueOrDefault(g.Key, "؟")}: {string.Join(" + ", g.OrderByDescending(l => l.EquivalentBaseUnits).Select(l => $"{l.Qty:#,0.##} {l.LevelName}"))}"))
+            var loadParts = lines.Where(l => !withVariant.Contains(l.ItemId))
+                .OrderBy(l => items.GetValueOrDefault(l.ItemId)).ThenByDescending(l => l.EquivalentBaseUnits)
+                .Select(l => (Item: items.GetValueOrDefault(l.ItemId, "؟"), Order: 0, Text: $"{l.Qty:#,0.##} {names.Name(l.ItemId, null, l.LevelName, l.EquivalentBaseUnits)}"))
                 .Concat(load.Where(l => withVariant.Contains(l.ItemId))
-                    .Select(l => (Item: items.GetValueOrDefault(l.ItemId, "؟"), Order: l.RecipeId is null ? 0 : 1, Text: $"{Name(l.ItemId, l.RecipeId)}: {packs.Of(l.ItemId, l.Pieces)}")))
+                    .Select(l => (Item: items.GetValueOrDefault(l.ItemId, "؟"), Order: l.RecipeId is null ? 0 : 1, Text: names.Quantity(l.ItemId, l.RecipeId, l.Pieces))))
                 .OrderBy(x => x.Item).ThenBy(x => x.Order).Select(x => x.Text).ToList();
             var pieces = bal.Sum(b => b.Qty);
             var status = overdue.ContainsKey(v.RepId) ? RepVanStatus.Overdue
@@ -106,7 +104,7 @@ public class RepVanBoardService
                        : RepVanStatus.Idle;
             return new RepVanCard(v.Id, v.Name, v.RepId, v.RepName, territories.GetValueOrDefault(v.RepId), pieces,
                 bal.Count == 0 ? "فارغة" : string.Join("، ", bal.OrderBy(b => items.GetValueOrDefault(b.ItemId)).ThenBy(b => b.RecipeId is not null)
-                    .Select(b => $"{Name(b.ItemId, b.RecipeId)}: {packs.Of(b.ItemId, b.Qty)}")),
+                    .Select(b => names.Quantity(b.ItemId, b.RecipeId, b.Qty))),
                 loadParts.Count == 0 ? "—" : string.Join("، ", loadParts),
                 loadPieces, status, overdue.GetValueOrDefault(v.RepId), lastSettlement.GetValueOrDefault(v.RepId), wallets.GetValueOrDefault(v.RepId))
             {

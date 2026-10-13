@@ -982,6 +982,8 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
     protected override string? Validate(CustomRecipe e)
     {
         if (string.IsNullOrWhiteSpace(e.Name)) return "أدخل اسم الوصفة";
+        if (e.ShortName is { Length: > 60 }) return "الاسم المختصر حتى 60 حرفًا";
+        e.ShortName = string.IsNullOrWhiteSpace(e.ShortName) ? null : e.ShortName.Trim();
         if (e.FinishedItemId == 0) return "اختر المنتج (يجب أن تكون له قائمة مواد)";
         return null;
     }

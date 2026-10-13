@@ -108,6 +108,7 @@ public class FullCycleJourneyTests
         recipes.Editor!.Name = Restaurant;
         recipes.Editor.FinishedItemId = recipes.FinishedItems.Single(i => i.ItemCode == ProductCode).Id;
         recipes.Editor.CustomerId = recipes.Customers.Single(c => c.Name == Restaurant).Id;
+        recipes.Editor.ShortName = " زوارق ";                                    // الاسم المختصر في الاسم الموحد
         await recipes.SaveCommand.ExecuteAsync();
         await recipes.IdleAsync();
         recipes.SelectedRecipe = recipes.Items.Single(r => r.Name == Restaurant);
@@ -240,6 +241,25 @@ public class FullCycleJourneyTests
         await detail.IdleAsync();
         Assert.Contains(detail.Balances, b => b.ItemCode == ProductCode && b.Variant == Restaurant && b.Breakdown == "5 كارتون");
         Assert.Contains(detail.Balances, b => b.ItemCode == ProductCode && b.Variant == null && b.Breakdown == "6 كارتون");
+
+        // ---------- 9) الاسم الموحد (قرار المالك): اسم الأساسي من «هوية الطباعة»، والمطعم باسمه المختصر ----------
+        await using (var db = shell.Session.NewDb())
+        {
+            var profile = await new CompanyProfileService(db).GetAsync() ?? new CompanyProfile { NameAr = "معمل" };
+            profile.BaseVariantName = " الرحمة ";
+            Assert.True((await new CompanyProfileService(db).SaveAsync(profile)).Success);
+            Assert.Equal("الرحمة", (await new CompanyProfileService(db).GetAsync())!.BaseVariantName);
+        }
+        await board.LoadAsync();
+        var ali = board.Cards.Single(c => c.VanName == "كاش فان علي");
+        Assert.Contains("6 كارتون 40×330 الرحمة", ali.BalanceText);
+        Assert.Contains("5 كارتون 40×330 زوارق", ali.BalanceText);
+        await Open(wh, items);
+        await items.PrintNamesCommand.ExecuteAsync();
+        var names = dialogs.Reports.Last();
+        Assert.Equal("الأسماء الموحدة للمنتجات", names.Title);
+        Assert.Contains(names.Rows, r => r[1] == "كارتون 40×330 الرحمة" && r[6] == "الرحمة");
+        Assert.Contains(names.Rows, r => r[1] == "كارتون 40×330 زوارق" && r[7] == $"محجوز لـ {Restaurant}");
 
         await shell.IdleAllAsync();
         Assert.Empty(dialogs.Errors);

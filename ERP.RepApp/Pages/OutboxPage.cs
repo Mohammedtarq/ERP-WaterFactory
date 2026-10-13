@@ -23,7 +23,8 @@ public class OutboxPage : ContentPage
         if (today.Count > 0)
         {
             var sum = new VerticalStackLayout { Spacing = 2, Children = { Ui.Text("مواد بيع اليوم", 17, Ui.Primary) } };
-            foreach (var t in today) sum.Children.Add(Ui.Text($"{t.Item} — {Formats.Qty(t.Quantity)} {t.Pack}", 16));
+            foreach (var t in today)
+                sum.Children.Add(Ui.Text(t.Item.StartsWith(t.Pack) ? $"{t.Item}: {Formats.Qty(t.Quantity)}" : $"{t.Item} — {Formats.Qty(t.Quantity)} {t.Pack}", 16));
             _list.Children.Add(Ui.Card(sum, Ui.Primary));
         }
         foreach (var i in items)

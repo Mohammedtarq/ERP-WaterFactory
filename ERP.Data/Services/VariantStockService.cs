@@ -12,6 +12,8 @@ public record VariantSummaryRow(string ItemName, int? RecipeId, string Variant, 
     /// <summary>المنتج والمبيع بالعبوات ("300 شرنك").</summary>
     public string ProducedText { get; init; } = "";
     public string SoldText { get; init; } = "";
+    /// <summary>الاسم الموحد: «كارتون 40×330 الرحمة».</summary>
+    public string ProductName { get; init; } = "";
 }
 
 /// <summary>تشغيلة منتج تام برصيدها الحالي ومتغيرها.</summary>
@@ -19,6 +21,8 @@ public record VariantBatchRow(int BatchId, int ItemId, string ItemName, string B
 {
     /// <summary>الرصيد بالعبوات.</summary>
     public string BalanceText { get; init; } = "";
+    /// <summary>الاسم الموحد: «كارتون 40×330 مطعم داون تاون».</summary>
+    public string ProductName { get; init; } = "";
 }
 
 /// <summary>
@@ -63,6 +67,7 @@ public class VariantStockService
         var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
             .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
 
+        var names = await ProductNames.LoadAsync(_db, itemIds);
         return rows.Select(r =>
         {
             var recipe = r.Recipe is int id ? recipes.GetValueOrDefault(id) : null;
@@ -70,7 +75,8 @@ public class VariantStockService
             return new VariantSummaryRow(items[r.ItemId], r.Recipe, recipe?.Name ?? "أساسي", KindOf(recipe), r.Produced, Math.Round(r.Cost, 2), r.Sold, r.Balance,
                                          WarehouseDocumentService.Breakdown(r.Balance, lv))
             {
-                ProducedText = WarehouseDocumentService.Breakdown(r.Produced, lv), SoldText = WarehouseDocumentService.Breakdown(r.Sold, lv)
+                ProducedText = WarehouseDocumentService.Breakdown(r.Produced, lv), SoldText = WarehouseDocumentService.Breakdown(r.Sold, lv),
+                ProductName = names.Name(r.ItemId, r.Recipe)
             };
         }).OrderBy(r => r.ItemName).ThenBy(r => r.RecipeId is null ? 0 : 1).ThenBy(r => r.Variant).ToList();
     }
@@ -90,7 +96,9 @@ public class VariantStockService
         var itemIds = rows.Select(r => r.ItemId).Distinct().ToList();
         var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
             .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
-        return rows.Select(r => r with { BalanceText = WarehouseDocumentService.Breakdown(r.Balance, levels.GetValueOrDefault(r.ItemId)) }).ToList();
+        var names = await ProductNames.LoadAsync(_db, itemIds);
+        return rows.Select(r => r with { BalanceText = WarehouseDocumentService.Breakdown(r.Balance, levels.GetValueOrDefault(r.ItemId)),
+                                         ProductName = names.Name(r.ItemId, r.RecipeId) }).ToList();
     }
 
     /// <summary>تصحيح متغير تشغيلة (مثلًا إنتاج مطعم سُجّل أساسيًا): يغيّر من يحق له الصرف منها من الآن.</summary>

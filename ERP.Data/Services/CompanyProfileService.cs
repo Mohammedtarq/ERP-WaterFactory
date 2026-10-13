@@ -25,6 +25,7 @@ public class CompanyProfileService
         if (existing is null) _db.CompanyProfiles.Add(existing = new CompanyProfile());
         existing.NameAr = p.NameAr.Trim();
         existing.NameEn = Clean(p.NameEn);
+        existing.BaseVariantName = Clean(p.BaseVariantName) is { Length: > 60 } longName ? longName[..60] : Clean(p.BaseVariantName);
         existing.Phones = string.Join("\n", (p.Phones ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         if (existing.Phones.Length == 0) existing.Phones = null;
         existing.Address = Clean(p.Address);

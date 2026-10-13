@@ -21,7 +21,8 @@ public record Receipt(
         yield return $"الزبون: {Customer}";
         foreach (var l in Lines)
         {
-            yield return $"{l.Item} — {l.Pack}";
+            // الاسم الموحد يبدأ بالعبوة («كارتون 40×330 الرحمة»)؛ الوصولات الأقدم: «الصنف — العبوة»
+            yield return l.Item.StartsWith(l.Pack) ? l.Item : $"{l.Item} — {l.Pack}";
             yield return l.Total > 0 ? $"{Formats.Qty(l.Quantity)} × {Formats.Money(l.UnitPrice)} = {Formats.Money(l.Total)}" : $"{Formats.Qty(l.Quantity)} (مجاني)";
         }
         yield return $"الإجمالي: {Formats.Money(Total)}";

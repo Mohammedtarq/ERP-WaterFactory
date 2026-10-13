@@ -166,6 +166,8 @@
                         <ComboBox ItemsSource="{Binding FinishedItems}" DisplayMemberPath="ItemName" SelectedValuePath="Id" SelectedValue="{Binding Editor.FinishedItemId}"/>
                         <TextBlock Text="العميل صاحب الاسم التجاري (فارغ = ملصق مناسبة عام)" Style="{StaticResource FieldLabel}"/>
                         <ComboBox ItemsSource="{Binding Customers}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Editor.CustomerId}"/>
+                        <TextBlock Text="الاسم المختصر في الاسم الموحد (مثل «داون تاون») — فارغ = اسم العميل" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                        <TextBox Text="{Binding Editor.ShortName, TargetNullValue=''}" MaxLength="60"/>
                         <CheckBox Content="فعّالة" IsChecked="{Binding Editor.IsActive}"/>
 
                     </StackPanel>

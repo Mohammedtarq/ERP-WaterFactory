@@ -101,7 +101,27 @@ public class WarehouseModuleViewModel : ModuleViewModel
 public class ItemsSectionViewModel : CrudSectionViewModel<Item>
 {
     public ItemsSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.Warehouse, "الأصناف", Icons.Item, "#0EA5E9", "الأصناف والباركود وسعر البيع وحد التنبيه") { }
+        : base(s, d, ModuleCode.Warehouse, "الأصناف", Icons.Item, "#0EA5E9", "الأصناف والباركود وسعر البيع وحد التنبيه")
+    {
+        PrintNamesCommand = new AsyncRelayCommand(PrintNamesAsync);
+    }
+
+    /// <summary>قائمة الأسماء الموحدة للمراجعة: «كارتون 40×330 الرحمة» لكل منتج وعبوة ومتغير.</summary>
+    public AsyncRelayCommand PrintNamesCommand { get; }
+
+    private async Task PrintNamesAsync()
+    {
+        await using var db = Session.NewDb();
+        var rows = await ProductNames.CatalogAsync(db);
+        var r = new ReportDocument { Key = "product-names", CompanyName = Session.ProjectName, Title = "الأسماء الموحدة للمنتجات", PrintedBy = Session.FullName,
+                                     Notes = "الصيغة: العبوة ثم عدد القطع×الحجم ثم المتغير. الحجم يُضبط من «الأصناف»، والاسم المختصر للطلب الخاص من «الوصفات المخصصة»، واسم الأساسي من «هوية الطباعة»." };
+        r.Columns.AddRange(new[] { "#", "الاسم الموحد", "الصنف", "الرمز", "العبوة", "الحجم", "المتغير", "النوع" });
+        var n = 0;
+        foreach (var x in rows)
+            r.Rows.Add(new[] { (++n).ToString(), x.UnifiedName, x.ItemName, x.Code, $"{x.Level} ({x.Pieces:0.##} قطعة)", x.Size, x.Variant, x.Kind });
+        r.Totals.Add(new ReportField("عدد الأسماء", rows.Count.ToString(), true));
+        Dialogs.ShowReport(r);
+    }
 
     public IReadOnlyList<Option<SourcingMethod>> SourcingOptions { get; } = ArabicLabels.OptionsOf<SourcingMethod>();
     /// <summary>سعر الكلفة معلومة حساسة: يظهر فقط لمن يملك صلاحية "رؤية الكلفة والأرباح".</summary>
@@ -120,6 +140,7 @@ public class ItemsSectionViewModel : CrudSectionViewModel<Item>
         if (e.SalePrice < 0) return "سعر البيع لا يمكن أن يكون سالبًا";
         if (e.MinStockAlertLevel < 0) return "حد التنبيه لا يمكن أن يكون سالبًا";
         if (e.UnitWeightGrams < 0) return "وزن القطعة لا يمكن أن يكون سالبًا";
+        if (e.SizeMl is <= 0) return "حجم القطعة بالمليلتر يجب أن يكون أكبر من صفر (أو فارغًا)";
         if (e.LeadTimeDays < 0) return "مدة التجهيز لا يمكن أن تكون سالبة";
         return null;
     }

@@ -28,19 +28,20 @@ public static class Formats
     }
 }
 
-/// <summary>سطر بيع في الهاتف.</summary>
-public record SaleLine(int ItemId, int LevelId, decimal Quantity);
+/// <summary>سطر بيع في الهاتف (RecipeId: متغير المنتج، فارغ = الأساسي).</summary>
+public record SaleLine(int ItemId, int LevelId, decimal Quantity, int? RecipeId = null);
 
-/// <summary>سطر محسوب: الاسم والسعر والقطع.</summary>
-public record PricedLine(SnapshotProduct Product, SnapshotLevel Level, decimal Quantity, decimal UnitPrice, decimal Total, decimal Pieces)
+/// <summary>سطر محسوب: الاسم الموحد والسعر والقطع.</summary>
+public record PricedLine(SnapshotProduct Product, SnapshotLevel Level, decimal Quantity, decimal UnitPrice, decimal Total, decimal Pieces, int? RecipeId = null)
 {
-    public string Text => $"{Formats.Qty(Quantity)} {Level.Name} {Product.Name} × {Formats.Money(UnitPrice)} = {Formats.Money(Total)}";
+    public string Name => Product.Label(Level, RecipeId);
+    public string Text => $"{Formats.Qty(Quantity)} {Name} × {Formats.Money(UnitPrice)} = {Formats.Money(Total)}";
 }
 
-/// <summary>خيار في قائمة البيع: صنف محمّل في السيارة بعبوة معيّنة (مثل «ماء 330 مل — كارتون 40»).</summary>
-public record LoadedOption(SnapshotProduct Product, SnapshotLevel Level, decimal VanPieces)
+/// <summary>خيار في قائمة البيع: منتج محمّل في السيارة بعبوة ومتغير معيّنين، باسمه الموحد (مثل «كارتون 40×330 الرحمة»).</summary>
+public record LoadedOption(SnapshotProduct Product, SnapshotLevel Level, decimal VanPieces, int? RecipeId = null)
 {
-    public string Text => $"{Product.Name} — {Level.Name}";
+    public string Text => Product.Label(Level, RecipeId);
     /// <summary>كم عبوة كاملة من هذا النوع في السيارة.</summary>
     public decimal Available => Level.Units > 0 ? Math.Floor(VanPieces / Level.Units) : 0;
     public override string ToString() => $"{Text}  (في السيارة {Formats.Qty(Available)})";
@@ -93,14 +94,18 @@ public class RepWork
             && (i.State != OutboxState.Done || i.CreatedAtUtc >= horizon));
     }
 
-    /// <summary>رصيد السيارة بالقطعة لكل صنف.</summary>
-    public Dictionary<int, decimal> VanStock()
+    /// <summary>رصيد السيارة بالقطعة لكل صنف (كل متغيراته معًا).</summary>
+    public Dictionary<int, decimal> VanStock() =>
+        VanStockByVariant().GroupBy(kv => kv.Key.ItemId).ToDictionary(g => g.Key, g => g.Sum(kv => kv.Value));
+
+    /// <summary>رصيد السيارة بالقطعة لكل منتج ومتغيره: الأساسي والطلب الخاص لا يختلطان.</summary>
+    public Dictionary<(int ItemId, int? RecipeId), decimal> VanStockByVariant()
     {
         var snap = Snapshot;
         if (snap is null) return new();
-        var stock = snap.VanStock.ToDictionary(s => s.ItemId, s => s.Pieces);
+        var stock = snap.VanStock.GroupBy(s => (s.ItemId, s.RecipeId)).ToDictionary(g => g.Key, g => g.Sum(s => s.Pieces));
         foreach (var e in Unreflected(snap).SelectMany(i => i.Effect.Stock))
-            stock[e.ItemId] = stock.GetValueOrDefault(e.ItemId) + e.Pieces;
+            stock[(e.ItemId, e.RecipeId)] = stock.GetValueOrDefault((e.ItemId, e.RecipeId)) + e.Pieces;
         return stock;
     }
 
@@ -148,15 +153,16 @@ public class RepWork
         .Where(i => i.Kind is "CashSale" or "CreditSale" && i.OccurredAt.Date == DateTime.Today && i.Status is not ("Failed" or "Rejected"))
         .Sum(i => i.Amount);
 
-    /// <summary>ما يُعرض في قائمة البيع: كل عبوة لكل صنف في السيارة الآن (الأكبر أولًا).</summary>
+    /// <summary>ما يُعرض في قائمة البيع: كل عبوة لكل منتج ومتغير في السيارة الآن (الأساسي ثم المتغيرات، والعبوة الأكبر أولًا).</summary>
     public List<LoadedOption> LoadedOptions()
     {
         var snap = Snapshot;
         if (snap is null) return new();
-        var van = VanStock();
+        var van = VanStockByVariant();
         return snap.Products
-            .Where(p => van.GetValueOrDefault(p.ItemId) > 0)
-            .SelectMany(p => p.Levels.OrderByDescending(l => l.Units).Select(l => new LoadedOption(p, l, van[p.ItemId])))
+            .SelectMany(p => van.Where(kv => kv.Key.ItemId == p.ItemId && kv.Value > 0)
+                                .OrderBy(kv => kv.Key.RecipeId is null ? 0 : 1).ThenBy(kv => p.VariantOf(kv.Key.RecipeId)?.Name)
+                                .SelectMany(kv => p.Levels.OrderByDescending(l => l.Units).Select(l => new LoadedOption(p, l, kv.Value, kv.Key.RecipeId))))
             .Where(o => o.Available > 0)
             .ToList();
     }
@@ -174,11 +180,22 @@ public class RepWork
 
     public int WaitingCount() => _store.Outbox(days: 30).Count(i => i.State != OutboxState.Done);
 
-    /// <summary>سعر القطعة للزبون: سعر وكيله الخاص إن وُجد، وإلا السعر العادي (كما في fn_Sales_BaseUnitPrice).</summary>
-    public static decimal PiecePrice(RepSnapshot snap, SnapshotCustomer c, SnapshotProduct p) =>
-        c.PriceAgentId is int agent && snap.AgentPrices.FirstOrDefault(a => a.AgentCustomerId == agent && a.ItemId == p.ItemId) is { } special
+    /// <summary>
+    /// سعر القطعة للزبون بقاعدة المعمل (fn_Sales_UnitPrice): للطلب الخاص سعر وكيله للطلب الخاص ← سعره العام ← كالأساسي؛
+    /// وللأساسي سعر وكيله ← السعر العادي.
+    /// </summary>
+    public static decimal PiecePrice(RepSnapshot snap, SnapshotCustomer c, SnapshotProduct p, int? recipeId = null)
+    {
+        if (recipeId is int r)
+        {
+            if (c.PriceAgentId is int a && snap.AgentPrices.FirstOrDefault(x => x.AgentCustomerId == a && x.ItemId == p.ItemId && x.RecipeId == r) is { } vp)
+                return vp.PiecePrice;
+            if (p.VariantOf(r)?.PiecePrice is decimal general) return general;
+        }
+        return c.PriceAgentId is int agent && snap.AgentPrices.FirstOrDefault(x => x.AgentCustomerId == agent && x.ItemId == p.ItemId && x.RecipeId == null) is { } special
             ? special.PiecePrice
             : p.PiecePrice;
+    }
 
     // ============================ البيع ============================
 
@@ -201,20 +218,21 @@ public class RepWork
             var product = snap.Products.FirstOrDefault(p => p.ItemId == l.ItemId);
             var level = product?.Levels.FirstOrDefault(x => x.LevelId == l.LevelId);
             if (product is null || level is null) return Fail("صنف أو عبوة غير موجودة في نسخة العمل — زامن ثم أعد المحاولة");
-            var unit = kind == "Free" ? 0 : Math.Round(PiecePrice(snap, customer.Customer, product) * level.Units, 2, MidpointRounding.AwayFromZero);
-            priced.Add(new PricedLine(product, level, l.Quantity, unit, Math.Round(l.Quantity * unit, 2, MidpointRounding.AwayFromZero), l.Quantity * level.Units));
+            var unit = kind == "Free" ? 0 : Math.Round(PiecePrice(snap, customer.Customer, product, l.RecipeId) * level.Units, 2, MidpointRounding.AwayFromZero);
+            priced.Add(new PricedLine(product, level, l.Quantity, unit, Math.Round(l.Quantity * unit, 2, MidpointRounding.AwayFromZero), l.Quantity * level.Units, l.RecipeId));
         }
 
-        // لا يُباع أكثر مما في السيارة (المعمل يرفضه أيضًا)
-        var van = VanStock();
-        foreach (var g in priced.GroupBy(p => p.Product.ItemId))
+        // لا يُباع أكثر مما في السيارة من المنتج ومتغيره نفسه (المعمل يرفضه أيضًا)
+        var van = VanStockByVariant();
+        foreach (var g in priced.GroupBy(p => (p.Product.ItemId, p.RecipeId)))
         {
             var need = g.Sum(p => p.Pieces);
             var have = van.GetValueOrDefault(g.Key);
             if (need > have)
             {
-                var p = g.First().Product;
-                return Fail($"رصيد السيارة من {p.Name} لا يكفي: المتوفر {Formats.Packs(have, p.Levels)}، والمطلوب {Formats.Packs(need, p.Levels)}");
+                var p = g.First();
+                var top = p.Product.Levels.OrderByDescending(x => x.Units).First();
+                return Fail($"رصيد السيارة من {p.Product.Label(top, p.RecipeId)} لا يكفي: المتوفر {Formats.Packs(have, p.Product.Levels)}، والمطلوب {Formats.Packs(need, p.Product.Levels)}");
             }
         }
 
@@ -234,9 +252,9 @@ public class RepWork
         var check = CheckSale(kind, customerId, lines, freeReason);
         if (!check.Ok) throw new InvalidOperationException(check.Error);
         var customer = Customer(customerId)!;
-        var payload = new SalePayload(customer.Ref, check.Lines.Select(l => new SaleLinePayload(l.Product.ItemId, l.Level.LevelId, l.Quantity)).ToList(),
+        var payload = new SalePayload(customer.Ref, check.Lines.Select(l => new SaleLinePayload(l.Product.ItemId, l.Level.LevelId, l.Quantity, l.RecipeId)).ToList(),
                                       kind == "Free" ? freeReason!.Trim() : null);
-        var stock = check.Lines.GroupBy(l => l.Product.ItemId).Select(g => new SnapshotStock(g.Key, -g.Sum(l => l.Pieces))).ToList();
+        var stock = check.Lines.GroupBy(l => (l.Product.ItemId, l.RecipeId)).Select(g => new SnapshotStock(g.Key.ItemId, -g.Sum(l => l.Pieces), g.Key.RecipeId)).ToList();
         var effect = kind switch
         {
             "CashSale" => new Effect(stock, Wallet: check.Total),
@@ -244,8 +262,8 @@ public class RepWork
             _ => new Effect(stock)
         };
         var label = kind switch { "CashSale" => "بيع نقدي", "CreditSale" => "بيع آجل", _ => "مجاني" };
-        var summary = $"{label} — {customer.Name}: {string.Join("، ", check.Lines.Select(l => $"{Formats.Qty(l.Quantity)} {l.Level.Name} {l.Product.Name}"))}";
-        var lines2 = check.Lines.Select(l => new ReceiptLine(l.Product.Name, l.Level.Name, l.Quantity, l.UnitPrice, l.Total)).ToList();
+        var summary = $"{label} — {customer.Name}: {string.Join("، ", check.Lines.Select(l => $"{Formats.Qty(l.Quantity)} {l.Name}"))}";
+        var lines2 = check.Lines.Select(l => new ReceiptLine(l.Name, l.Level.Name, l.Quantity, l.UnitPrice, l.Total)).ToList();
         return _store.Enqueue(kind, payload, summary, check.Total, effect, lines: lines2, receipt: true);
     }
 

@@ -256,7 +256,8 @@ public class BatchVariantTests
         // لوحة السيارات: سُوّيت اليوم والسيارة فارغة، وحمولة اليوم بوحداتها
         var card = (await new RepVanBoardService(db).CardsAsync(DateTime.Today)).Single(c => c.VanWarehouseId == van.Id);
         Assert.Equal((RepVanStatus.Settled, 0m), (card.Status, card.BalancePieces));
-        Assert.Equal($"{s.Water.ItemName}: 6 كارتون + 10 شرنك", card.TodayLoadText);
+        // الاسم الموحد بالعبوة كما حُمّلت (لا يُحوَّل الشرنك إلى كارتون)
+        Assert.Equal($"6 كارتون 12 — {s.Water.ItemName}، 10 شرنك 6 — {s.Water.ItemName}", card.TodayLoadText);
 
         // فاتورة ما بقي في السيارة (سطر لكل تشغيلة) بالعبوة لا بالقطعة متى كان الباقي عبوات كاملة
         var auto = await db.SalesInvoiceLines.AsNoTracking().Include(l => l.PackagingLevel)
@@ -366,7 +367,8 @@ public class BatchVariantTests
 
         // لوحة سيارات المندوبين (ملاحظة التجربة 17): الطلب الخاص يظهر مستقلًا عن الأساسي في الرصيد وحمولة اليوم
         var card = (await new RepVanBoardService(db).CardsAsync(DateTime.Today)).Single(c => c.VanWarehouseId == van.Id);
-        Assert.Equal($"{s.Water.ItemName}: 2 كارتون، {s.Water.ItemName} — {s.HassounRecipe.Name}: 3 كارتون", card.BalanceText);
+        // الأساسي والمحجوز منتجان مستقلان بالاسم الموحد (المتغير باسم الزبون المحجوز له)
+        Assert.Equal($"2 كارتون 12 — {s.Water.ItemName}، 3 كارتون 12 — {s.Water.ItemName} {s.Hassoun.Name}", card.BalanceText);
         Assert.Equal(card.BalanceText, card.TodayLoadText);
         Assert.Equal(60m, card.BalancePieces);
     }
@@ -434,6 +436,7 @@ public class BatchVariantTests
         Assert.Equal((60m, 60m, "أساسي"), (basic.Produced, basic.Balance, basic.Kind));
         Assert.Equal((48m, 48m, $"محجوز لـ {s.Hassoun.Name}"), (hassoun.Produced, hassoun.Balance, hassoun.Kind));
         Assert.Equal("4 كارتون", hassoun.BalanceText);
+        Assert.Equal($"كارتون 12 — {s.Water.ItemName} {s.Hassoun.Name}", hassoun.ProductName);
         Assert.Equal(30m, basic.UnitCost);                   // امبولة + سدادة + ليبل بكلفة 10
         Assert.Equal(30m, hassoun.UnitCost);
 

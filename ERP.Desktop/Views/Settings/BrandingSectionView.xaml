@@ -32,6 +32,8 @@
                             <TextBox Text="{Binding NameEn, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
                         </StackPanel>
                     </Grid>
+                    <TextBlock Text="اسم المنتج الأساسي في أسماء المنتجات (مثل «الرحمة» ← كارتون 40×330 الرحمة)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding BaseVariantName, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}" MaxLength="60" Width="260" HorizontalAlignment="Left"/>
                     <TextBlock Text="أرقام الهاتف" Style="{StaticResource FieldLabel}"/>
                     <ItemsControl ItemsSource="{Binding Phones}">
                         <ItemsControl.ItemTemplate>

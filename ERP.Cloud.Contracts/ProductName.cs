@@ -11,8 +11,6 @@ namespace ERP.Cloud.Contracts;
 /// </summary>
 public static partial class ProductName
 {
-    public const string DefaultBaseVariant = "الأساسي";
-
     public static string Of(string levelName, decimal piecesPerPack, decimal? sizeMl, string itemName, string? variant)
     {
         var v = string.IsNullOrWhiteSpace(variant) ? "" : " " + variant.Trim();
@@ -22,10 +20,13 @@ public static partial class ProductName
         return piecesPerPack > 1 ? $"{level} {Num(piecesPerPack)} — {itemName.Trim()}{v}" : $"{level} — {itemName.Trim()}{v}";
     }
 
-    /// <summary>اسم المتغير: المختصر، ثم اسم الزبون (المحجوز له)، ثم اسم الطلب الخاص؛ والأساسي باسم المعمل المضبوط.</summary>
+    /// <summary>
+    /// اسم المتغير: المختصر، ثم اسم الزبون (المحجوز له)، ثم اسم الطلب الخاص؛ والأساسي باسمه المضبوط في «هوية الطباعة»
+    /// (مثل «الرحمة»)، أو بلا اسم إن لم يُضبط.
+    /// </summary>
     public static string Variant(string? shortName, string? customerName, string? recipeName, bool isBase, string? baseVariantName) =>
-        isBase ? (string.IsNullOrWhiteSpace(baseVariantName) ? DefaultBaseVariant : baseVariantName.Trim())
-        : FirstNonEmpty(shortName, customerName, recipeName) ?? "";
+        isBase ? baseVariantName?.Trim() ?? ""
+        : FirstNonEmpty(shortName, customerName, recipeName) ?? "طلب خاص";
 
     /// <summary>330 ← 330، و1500 ← 1.5 لتر.</summary>
     public static string Size(decimal ml) => ml >= 1000 ? $"{Num(ml / 1000)} لتر" : Num(ml);

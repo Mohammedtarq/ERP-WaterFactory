@@ -81,10 +81,10 @@ public class RepVansScreenTests
         var hasanCard = board.Cards.Single(c => c.VanWarehouseId == idleVan);
         Assert.Equal(RepVanStatus.Pending, aliCard.Status);
         // حمولة اليوم والرصيد الآن بعدد العبوات لكل منتج
-        Assert.Contains("ماء لوحة شرنك: 10 شرنك", aliCard.TodayLoadText);
-        Assert.Contains("ماء لوحة كارتون: 5 كارتون", aliCard.TodayLoadText);
-        Assert.Contains("ماء لوحة شرنك: 10 شرنك", aliCard.BalanceText);
-        Assert.Contains("ماء لوحة كارتون: 5 كارتون", aliCard.BalanceText);
+        Assert.Contains("10 شرنك 20 — ماء لوحة شرنك", aliCard.TodayLoadText);
+        Assert.Contains("5 كارتون 40 — ماء لوحة كارتون", aliCard.TodayLoadText);
+        Assert.Contains("10 شرنك 20 — ماء لوحة شرنك", aliCard.BalanceText);
+        Assert.Contains("5 كارتون 40 — ماء لوحة كارتون", aliCard.BalanceText);
         Assert.Equal(400m, aliCard.BalancePieces);
         Assert.Equal("الزبير", aliCard.Territories);
         Assert.Equal(RepVanStatus.Idle, hasanCard.Status);
