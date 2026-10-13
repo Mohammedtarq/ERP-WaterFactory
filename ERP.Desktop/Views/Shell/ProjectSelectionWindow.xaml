@@ -9,7 +9,7 @@
         Title="اختيار المشروع — نظام إدارة الأعمال المتكامل"
         FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
         Width="660" Height="580" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize"
-        Background="{StaticResource BackgroundBrush}">
+        Background="{DynamicResource BackgroundBrush}">
     <DockPanel Margin="32">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,18">
             <TextBlock Text="{Binding Greeting}" Style="{StaticResource PageTitle}"/>
@@ -49,7 +49,7 @@
                                     Command="{Binding DataContext.BeginDeleteCommand, ElementName=Root}" CommandParameter="{Binding}" VerticalAlignment="Center"/>
                         <StackPanel Orientation="Horizontal">
                             <Border Width="44" Height="44" CornerRadius="10" Background="#CCFBF1">
-                                <TextBlock Text="&#xE7B8;" Style="{StaticResource Icon}" FontSize="20" Foreground="{StaticResource PrimaryBrush}"/>
+                                <TextBlock Text="&#xE7B8;" Style="{StaticResource Icon}" FontSize="20" Foreground="{DynamicResource PrimaryBrush}"/>
                             </Border>
                             <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding ProjectName}" FontSize="16" FontWeight="SemiBold"/>

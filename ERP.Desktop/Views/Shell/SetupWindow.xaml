@@ -9,11 +9,11 @@
         Title="إعداد النظام — نظام إدارة الأعمال المتكامل"
         FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
         Width="980" Height="720" WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BackgroundBrush}">
+        Background="{DynamicResource BackgroundBrush}">
     <DockPanel Margin="28,22">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,14">
             <StackPanel Orientation="Horizontal">
-                <Border Width="44" Height="44" CornerRadius="11" Background="{StaticResource PrimaryBrush}">
+                <Border Width="44" Height="44" CornerRadius="11" Background="{DynamicResource PrimaryBrush}">
                     <TextBlock Text="&#xE713;" Style="{StaticResource Icon}" FontSize="20" Foreground="White"/>
                 </Border>
                 <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">

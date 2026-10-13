@@ -49,7 +49,7 @@
                     <TextBlock Text="{Binding Summary.TotalNetIqd, StringFormat='صافي الدينار: {0:N0} د.ع'}" FontWeight="SemiBold" Margin="0,0,24,0"/>
                     <TextBlock Text="{Binding Summary.TotalNetUsd, StringFormat='صافي الدولار: {0:N2} $'}" FontWeight="SemiBold" Margin="0,0,24,0"/>
                     <TextBlock Text="{Binding Summary.UsdRate, StringFormat='سعر الصرف: {0:N0}'}" Style="{StaticResource Muted}" Margin="0,0,24,0"/>
-                    <TextBlock Text="{Binding Summary.TotalInIqd, StringFormat='إجمالي القيد: {0:N0} د.ع'}" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}"/>
+                    <TextBlock Text="{Binding Summary.TotalInIqd, StringFormat='إجمالي القيد: {0:N0} د.ع'}" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"/>
                 </WrapPanel>
             </Border>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>

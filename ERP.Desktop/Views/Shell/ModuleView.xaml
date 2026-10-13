@@ -17,6 +17,26 @@
                     <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="19" Foreground="White"/>
                 </Border>
                 <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                <!-- تثبيت الشاشة الظاهرة في «مفضلتي» -->
+                <Button Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding SelectedTab}"
+                        Cursor="Hand" Margin="10,0,0,0" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" Padding="4">
+                    <TextBlock FontSize="20">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="☆"/>
+                                <Setter Property="Foreground" Value="#94A3B8"/>
+                                <Setter Property="ToolTip" Value="أضف هذه الشاشة إلى «مفضلتي»"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedTab.IsFavorite}" Value="True">
+                                        <Setter Property="Text" Value="★"/>
+                                        <Setter Property="Foreground" Value="#F59E0B"/>
+                                        <Setter Property="ToolTip" Value="في «مفضلتي» — اضغط للإزالة"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Button>
             </StackPanel>
         </DockPanel>
 

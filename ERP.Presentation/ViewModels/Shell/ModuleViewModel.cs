@@ -60,6 +60,10 @@ public abstract class SectionViewModel : SessionViewModel
         return _inflight = LoadAsync();
     }
 
+    private bool _isFavorite;
+    /// <summary>مثبّتة في «مفضلتي» (نجمة في رأس الشاشة).</summary>
+    public bool IsFavorite { get => _isFavorite; internal set => SetProperty(ref _isFavorite, value); }
+
     private bool _isCurrent;
     /// <summary>القسم الظاهر الآن في وحدته (لتظليله في القائمة الجانبية).</summary>
     public bool IsCurrent { get => _isCurrent; internal set => SetProperty(ref _isCurrent, value); }

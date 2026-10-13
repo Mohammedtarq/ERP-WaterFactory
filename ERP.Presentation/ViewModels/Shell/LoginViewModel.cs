@@ -19,7 +19,28 @@ public class LoginViewModel : ViewModelBase
         _dialogs = dialogs;
         _navigator = navigator;
         LoginCommand = new AsyncRelayCommand(LoginAsync);
+        PickUserCommand = new RelayCommand(p => { if (p is RecentUser u) { Username = u.Username; PickedUser = u; } });
+        OtherUserCommand = new RelayCommand(() => { Username = ""; PickedUser = null; });
+        foreach (var u in RecentUsers.Store?.Load() ?? new()) Recent.Add(u);
+        // شاشة الدخول بمظهر آخر من دخل، وشعار معمله واسمه
+        if (Recent.FirstOrDefault() is { } last)
+        {
+            ThemeHost.Apply(Themes.Get(last.Theme));
+            CompanyName = last.CompanyName;
+            CompanyLogo = last.CompanyLogo;
+        }
     }
+
+    /// <summary>المستخدمون الأخيرون على هذا الجهاز بصورهم (الأحدث أولًا): الضغط يملأ الاسم ويبقى إدخال كلمة المرور.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<RecentUser> Recent { get; } = new();
+    public bool HasRecent => Recent.Count > 0;
+    private RecentUser? _picked;
+    public RecentUser? PickedUser { get => _picked; private set => SetProperty(ref _picked, value); }
+    public string? CompanyName { get; }
+    public byte[]? CompanyLogo { get; }
+    public string Title => CompanyName ?? "نظام إدارة الأعمال المتكامل";
+    public RelayCommand PickUserCommand { get; }
+    public RelayCommand OtherUserCommand { get; }
 
     public string Username { get => _username; set => SetProperty(ref _username, value); }
 

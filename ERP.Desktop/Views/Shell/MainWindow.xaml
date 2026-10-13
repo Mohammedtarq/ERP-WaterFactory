@@ -11,7 +11,11 @@
         FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}" FontSize="14"
         Width="1400" Height="860" MinWidth="1100" MinHeight="680"
         WindowStartupLocation="CenterScreen" WindowState="Maximized"
-        Background="{StaticResource BackgroundBrush}">
+        Background="{DynamicResource BackgroundBrush}">
+    <Window.InputBindings>
+        <!-- البحث السريع عن أي شاشة -->
+        <KeyBinding Key="K" Modifiers="Control" Command="{Binding OpenSearchCommand}"/>
+    </Window.InputBindings>
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="260"/>
@@ -19,7 +23,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- ================= الشريط الجانبي ================= -->
-        <DockPanel Grid.Column="0" Background="{StaticResource SidebarBrush}">
+        <DockPanel Grid.Column="0" Background="{DynamicResource SidebarBrush}">
             <StackPanel DockPanel.Dock="Top" Margin="18,22,18,18" Orientation="Horizontal">
                 <Image Source="pack://application:,,,/Assets/app-256.png" Width="42" Height="42" RenderOptions.BitmapScalingMode="HighQuality"/>
                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
@@ -28,20 +32,75 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- المستخدم + الخروج -->
-            <Border DockPanel.Dock="Bottom" Background="#111827" Padding="14,12">
+            <!-- البحث السريع و«مفضلتي» -->
+            <StackPanel DockPanel.Dock="Top" Margin="12,0,12,8">
+                <Button Command="{Binding OpenSearchCommand}" Cursor="Hand" HorizontalContentAlignment="Stretch" ToolTip="ابحث عن أي شاشة باسمها (Ctrl+K)">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border CornerRadius="8" Padding="10,8" Background="{DynamicResource SidebarHoverBrush}"><ContentPresenter/></Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="Ctrl+K" Foreground="#94A3B8" FontSize="12" VerticalAlignment="Center" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="14" Foreground="#CBD5E1" VerticalAlignment="Center"/>
+                        <TextBlock Text="بحث سريع عن شاشة" Foreground="#CBD5E1" FontSize="13.5" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Button>
+                <StackPanel Margin="0,10,0,0" Visibility="{Binding HasFavorites, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="★ مفضلتي" Foreground="#FBBF24" FontSize="13" FontWeight="SemiBold" Margin="4,0,0,4"/>
+                    <ItemsControl ItemsSource="{Binding Favorites}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Command="{Binding DataContext.OpenEntryCommand, ElementName=Root}" CommandParameter="{Binding}" Cursor="Hand"
+                                        HorizontalContentAlignment="Stretch" ToolTip="{Binding Text}">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" CornerRadius="6" Padding="8,5" Background="Transparent"><ContentPresenter/></Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Width="22" Height="22" CornerRadius="6" Background="{Binding Color, Converter={StaticResource HexBrush}}">
+                                            <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="11" Foreground="White"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding Title}" Foreground="#E2E8F0" FontSize="13.5" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" MaxWidth="180"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- المستخدم مرة واحدة: صورته وقائمته (الصورة، المظهر، تبديل المستخدم، إغلاق البرنامج) -->
+            <Border DockPanel.Dock="Bottom" Background="{DynamicResource SidebarDeepBrush}" Padding="14,12">
                 <DockPanel>
-                    <Button DockPanel.Dock="Right" Command="{Binding LogoutCommand}" ToolTip="تسجيل الخروج"
-                            Style="{StaticResource RowIconButton}" Tag="#F87171" Content="&#xE7E8;"/>
                     <!-- الصورة: الضغط عليها يفتح «تغيير صورتي / إزالة صورتي» -->
                     <Menu DockPanel.Dock="Left" Background="Transparent" VerticalAlignment="Center" Margin="0,0,10,0">
-                        <MenuItem Padding="0" ToolTip="صورتي — اضغط للتغيير">
+                        <MenuItem Padding="0" ToolTip="حسابي — الصورة والمظهر وتبديل المستخدم">
                             <MenuItem.Header>
                                 <c:Avatar Photo="{Binding MyPhoto}" DisplayName="{Binding Session.FullName}" Size="38"/>
                             </MenuItem.Header>
                             <MenuItem Header="تغيير صورتي" Command="{Binding ChangeMyPhotoCommand}"/>
                             <MenuItem Header="إزالة صورتي" Command="{Binding RemoveMyPhotoCommand}" Foreground="#DC2626"
                                       Visibility="{Binding HasOwnPhoto, Converter={StaticResource BoolToVisibility}}"/>
+                            <MenuItem Header="المظهر" ItemsSource="{Binding ThemeOptions}">
+                                <MenuItem.ItemContainerStyle>
+                                    <Style TargetType="MenuItem">
+                                        <Setter Property="Header" Value="{Binding Name}"/>
+                                        <Setter Property="Command" Value="{Binding DataContext.SetThemeCommand, ElementName=Root}"/>
+                                        <Setter Property="CommandParameter" Value="{Binding}"/>
+                                    </Style>
+                                </MenuItem.ItemContainerStyle>
+                            </MenuItem>
+                            <Separator/>
+                            <MenuItem Header="تبديل المستخدم (تسجيل الخروج)" Command="{Binding LogoutCommand}"/>
+                            <MenuItem Header="إغلاق البرنامج" Click="OnExitClick" Foreground="#DC2626"/>
                         </MenuItem>
                     </Menu>
                     <StackPanel VerticalAlignment="Center">
@@ -52,7 +111,7 @@
             </Border>
 
             <!-- جرس التنبيهات -->
-            <Border DockPanel.Dock="Bottom" Padding="10,6" Background="#0B1220">
+            <Border DockPanel.Dock="Bottom" Padding="10,6" Background="{DynamicResource SidebarDeepBrush}">
                 <Grid>
                     <!-- زر قلب (لا زر عادي): يفتح عند الضغط نفسه، ولا يُعاد قلبه بالضغطة التي أغلقت القائمة -->
                     <ToggleButton x:Name="AlertsButton" IsChecked="{Binding IsAlertsOpen, Mode=TwoWay}" ClickMode="Press"
@@ -97,7 +156,7 @@
             </Border>
 
             <!-- مؤشر المزامنة السحابية -->
-            <Border DockPanel.Dock="Bottom" Padding="14,8" Background="#0B1220"
+            <Border DockPanel.Dock="Bottom" Padding="14,8" Background="{DynamicResource SidebarDeepBrush}"
                     Visibility="{Binding HasCloudStatus, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding CloudStatusText}">
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="9" Height="9" Fill="{Binding CloudStatusColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
@@ -122,10 +181,10 @@
                                             </Border>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="{StaticResource SidebarHoverBrush}"/>
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
                                                 </Trigger>
                                                 <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="#1F2937"/>
+                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarSelectedBrush}"/>
                                                 </DataTrigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
@@ -177,7 +236,7 @@
                                                         </Button.Background>
                                                         <DockPanel>
                                                             <Border DockPanel.Dock="Left" Width="5" CornerRadius="3" Margin="0,0,10,0" Background="{Binding Color, Converter={StaticResource HexBrush}}"/>
-                                                            <Border DockPanel.Dock="Right" CornerRadius="9" Padding="8,0" Background="#1E293B" VerticalAlignment="Center">
+                                                            <Border DockPanel.Dock="Right" CornerRadius="9" Padding="8,0" Background="{DynamicResource SidebarChipBrush}" VerticalAlignment="Center">
                                                                 <TextBlock Text="{Binding Count}" FontSize="12.5" Foreground="#94A3B8"/>
                                                             </Border>
                                                             <TextBlock Text="{Binding Name}" FontSize="15.5" FontWeight="SemiBold" Foreground="#F1F5F9" VerticalAlignment="Center"/>
@@ -214,5 +273,51 @@
 
         <!-- ================= محتوى الوحدة المختارة ================= -->
         <ContentControl Grid.Column="1" Content="{Binding CurrentModule}" Margin="22,18,22,14"/>
+
+        <!-- ================= البحث السريع (Ctrl+K) ================= -->
+        <Grid x:Name="SearchOverlay" Grid.ColumnSpan="2" Visibility="{Binding IsSearchOpen, Converter={StaticResource BoolToVisibility}}"
+              IsVisibleChanged="OnSearchVisibleChanged">
+            <Border Background="#66000000" MouseLeftButtonDown="OnSearchBackdrop"/>
+            <Border Background="White" CornerRadius="12" Width="560" VerticalAlignment="Top" Margin="0,90,0,0" Padding="14"
+                    BorderBrush="#CBD5E1" BorderThickness="1">
+                <StackPanel>
+                    <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" FontSize="16" Padding="8,6">
+                        <TextBox.InputBindings>
+                            <KeyBinding Key="Enter" Command="{Binding OpenFirstResultCommand}"/>
+                            <KeyBinding Key="Escape" Command="{Binding CloseSearchCommand}"/>
+                        </TextBox.InputBindings>
+                    </TextBox>
+                    <TextBlock Text="اكتب اسم الشاشة (مثل: فاتورة، رواتب، تقارير) ثم Enter — Esc للإغلاق" Style="{StaticResource Muted}" FontSize="12" Margin="2,6,0,6"/>
+                    <ItemsControl ItemsSource="{Binding SearchResults}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Command="{Binding DataContext.OpenEntryCommand, ElementName=Root}" CommandParameter="{Binding}" Cursor="Hand"
+                                        HorizontalContentAlignment="Stretch" Margin="0,1">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bd" CornerRadius="8" Padding="10,7" Background="Transparent"><ContentPresenter/></Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#F1F5F9"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                    <DockPanel>
+                                        <Border DockPanel.Dock="Left" Width="30" Height="30" CornerRadius="8" Background="{Binding Color, Converter={StaticResource HexBrush}}">
+                                            <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="14" Foreground="White"/>
+                                        </Border>
+                                        <StackPanel Margin="10,0,0,0">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14"/>
+                                            <TextBlock Text="{Binding ModuleTitle}" Foreground="#64748B" FontSize="12"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

@@ -22,7 +22,7 @@
                               Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVisibility}}"/>
                     <WrapPanel HorizontalAlignment="Right">
                         <TextBlock Text="الصندوق العام (مجموع المفعّلة عدا البطاقات):" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding GeneralTotal, StringFormat='{}{0:N0} د.ع'}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,24,0"/>
+                        <TextBlock Text="{Binding GeneralTotal, StringFormat='{}{0:N0} د.ع'}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}" Margin="0,0,24,0"/>
                         <TextBlock Text="البطاقات الإلكترونية:" VerticalAlignment="Center" Margin="0,0,8,0" Style="{StaticResource Muted}"/>
                         <TextBlock Text="{Binding CardsTotal, StringFormat='{}{0:N0} د.ع'}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </WrapPanel>

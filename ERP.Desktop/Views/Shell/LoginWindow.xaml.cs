@@ -16,4 +16,7 @@ public partial class LoginWindow : Window
         if (DataContext is LoginViewModel vm)
             vm.LoginCommand.Execute(PasswordBox.Password);
     }
+
+    // اختيار مستخدم من الصور: الاسم يُملأ والمؤشر ينتقل لكلمة المرور
+    private void OnPickUser(object sender, RoutedEventArgs e) => Dispatcher.BeginInvoke(new Action(() => PasswordBox.Focus()));
 }

@@ -4,7 +4,7 @@
         Title="معاينة الطباعة"
         FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
         Width="1180" Height="860" WindowStartupLocation="CenterOwner"
-        Background="{StaticResource BackgroundBrush}">
+        Background="{DynamicResource BackgroundBrush}">
     <DockPanel>
         <!-- ================= لوحة الخيارات ================= -->
         <Border DockPanel.Dock="Left" Width="270" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">

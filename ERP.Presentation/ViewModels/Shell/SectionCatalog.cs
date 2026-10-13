@@ -51,4 +51,20 @@ public static class SectionCatalog
             .Select(s => new SectionEntry(KeyOf(s), s.Title, s.HomeModule, ModuleTitle(s.HomeModule), IsMovable(s.GetType(), s.HomeModule)))
             .OrderBy(e => Settings.RolesPermissionsSectionViewModel.Modules.Select(m => m.code).ToList().IndexOf(e.HomeModule)).ThenBy(e => e.Title)
             .ToList();
+
+    /// <summary>كل الشاشات (ومنها الإعدادات) بعنوانها ووحدتها ولونها: للبحث السريع (Ctrl+K) و«مفضلتي».</summary>
+    public static List<QuickEntry> QuickEntries(AppSession session, IDialogService dialogs) =>
+        Types.Value.Keys.Select(k => Create(k, session, dialogs)).OfType<SectionViewModel>()
+            .Where(s => s.HomeModule != ModuleCode.Dashboard && session.Permissions.CanView(s.HomeModule))
+            .Select(s => new QuickEntry(KeyOf(s), s.Title, s.HomeModule, ModuleTitle(s.HomeModule), s.Glyph, s.Color, s.Description))
+            .OrderBy(e => e.ModuleTitle).ThenBy(e => e.Title).ToList();
+
+    /// <summary>توحيد الحروف للبحث: الهمزات والتاء المربوطة والألف المقصورة.</summary>
+    public static string Normalize(string s) => s.Replace('أ', 'ا').Replace('إ', 'ا').Replace('آ', 'ا').Replace('ة', 'ه').Replace('ى', 'ي').ToLowerInvariant();
+}
+
+/// <summary>شاشة في البحث السريع أو «مفضلتي».</summary>
+public sealed record QuickEntry(string Key, string Title, string HomeModule, string ModuleTitle, string Glyph, string Color, string Description)
+{
+    public string Text => $"{Title} — {ModuleTitle}";
 }

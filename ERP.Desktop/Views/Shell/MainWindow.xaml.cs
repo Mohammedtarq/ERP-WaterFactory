@@ -35,4 +35,21 @@ public partial class MainWindow : Window
             && DataContext is MainShellViewModel vm)
             vm.ReportActivity();
     }
+
+    private void OnExitClick(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this, "إغلاق البرنامج؟", "نظام معمل المياه", MessageBoxButton.YesNo, MessageBoxImage.Question,
+                            MessageBoxResult.No, MessageBoxOptions.RtlReading | MessageBoxOptions.RightAlign) == MessageBoxResult.Yes)
+            Application.Current.Shutdown();
+    }
+
+    private void OnSearchVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true) Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => { SearchBox.Focus(); Keyboard.Focus(SearchBox); }));
+    }
+
+    private void OnSearchBackdrop(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is MainShellViewModel vm) vm.IsSearchOpen = false;
+    }
 }

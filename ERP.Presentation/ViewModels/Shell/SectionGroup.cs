@@ -93,7 +93,7 @@ public static class SectionGrouping
         [ModuleCode.SystemSettings] = new[]
         {
             new GroupDef("الصلاحيات", Blue, "RolesPermissions", "SectionLayout", "Users", "AuditLog"),
-            new GroupDef("المشروع", Green, "Branches", "Projects", "Branding"),
+            new GroupDef("المشروع", Green, "Branches", "Projects", "Branding", "Appearance"),
             new GroupDef("النظام", Slate, "Backup", "CloudSync", "RahmaImport"),
         },
     };

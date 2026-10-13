@@ -4,24 +4,31 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Shell;assembly=ERP.Presentation"
+        xmlns:c="clr-namespace:ERP.Desktop.Views.Controls"
         mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:LoginViewModel}"
         Title="تسجيل الدخول — نظام إدارة الأعمال المتكامل"
         FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
-        Width="880" Height="540" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize"
-        Background="{StaticResource BackgroundBrush}"
+        Width="960" Height="600" WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize"
+        Background="{DynamicResource BackgroundBrush}"
         FocusManager.FocusedElement="{Binding ElementName=UserBox}">
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="400"/>
+            <ColumnDefinition Width="460"/>
         </Grid.ColumnDefinitions>
 
         <!-- لوحة الترحيب -->
-        <Border Grid.Column="0" Background="{StaticResource SidebarBrush}">
+        <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}">
             <StackPanel VerticalAlignment="Center" Margin="48,0">
-                <Image Source="pack://application:,,,/Assets/app-256.png" Width="88" Height="88" HorizontalAlignment="Left"
-                       RenderOptions.BitmapScalingMode="HighQuality"/>
-                <TextBlock Text="نظام إدارة الأعمال المتكامل" Foreground="White" FontSize="28" FontWeight="Bold" Margin="0,24,0,8"/>
+                <!-- شعار المعمل (من «هوية الطباعة») وإلا أيقونة البرنامج -->
+                <Grid HorizontalAlignment="Left">
+                    <Image Source="pack://application:,,,/Assets/app-256.png" Width="88" Height="88"
+                           RenderOptions.BitmapScalingMode="HighQuality" Visibility="{Binding CompanyLogo, Converter={StaticResource NullToVisible}}"/>
+                    <Border Background="White" CornerRadius="16" Padding="10" Visibility="{Binding CompanyLogo, Converter={StaticResource NullToCollapsed}}">
+                        <Image Source="{Binding CompanyLogo, Converter={StaticResource BytesToImage}}" MaxWidth="180" MaxHeight="120" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    </Border>
+                </Grid>
+                <TextBlock Text="{Binding Title}" Foreground="White" FontSize="28" FontWeight="Bold" Margin="0,24,0,8" TextWrapping="Wrap"/>
                 <TextBlock Text="المخازن · المبيعات · المشتريات · المالية" Foreground="#94A3B8" FontSize="15"/>
                 <TextBlock Text="دخول موحّد لكل مشاريعك، وصلاحيات دقيقة لكل قسم." Foreground="#94A3B8" FontSize="13" Margin="0,16,0,0" TextWrapping="Wrap"/>
             </StackPanel>
@@ -30,7 +37,38 @@
         <!-- نموذج الدخول -->
         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="40,0">
             <TextBlock Text="تسجيل الدخول" Style="{StaticResource PageTitle}"/>
-            <TextBlock Text="أدخل بيانات حسابك للمتابعة" Style="{StaticResource Muted}" Margin="0,4,0,20"/>
+            <TextBlock Text="اختر حسابك أو اكتب اسم المستخدم" Style="{StaticResource Muted}" Margin="0,4,0,12"/>
+
+            <!-- المستخدمون الأخيرون على هذا الجهاز بصورهم -->
+            <ItemsControl ItemsSource="{Binding Recent}" Visibility="{Binding HasRecent, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,8">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Command="{Binding DataContext.PickUserCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                Click="OnPickUser" Cursor="Hand" Margin="0,0,8,8" Width="122" ToolTip="{Binding Username}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" CornerRadius="10" Padding="6,8" Background="White" BorderBrush="#E2E8F0" BorderThickness="1"><ContentPresenter/></Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <StackPanel>
+                                <c:Avatar Photo="{Binding Photo}" DisplayName="{Binding FullName}" Size="48" HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding FullName}" FontWeight="SemiBold" FontSize="12.5" TextAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,6,0,0"/>
+                                <TextBlock Text="{Binding Role}" Foreground="#64748B" FontSize="11" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="مستخدم آخر…" Command="{Binding OtherUserCommand}" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left"
+                    Visibility="{Binding HasRecent, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,6"/>
 
             <TextBlock Text="اسم المستخدم" Style="{StaticResource FieldLabel}"/>
             <TextBox x:Name="UserBox" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>

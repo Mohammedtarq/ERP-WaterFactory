@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Microsoft.EntityFrameworkCore;
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
 using ERP.Presentation.Mvvm;
@@ -91,7 +92,13 @@ public class MainShellViewModel : ViewModelBase
         ChangeMyPhotoCommand = new AsyncRelayCommand(ChangeMyPhotoAsync);
         RemoveMyPhotoCommand = new AsyncRelayCommand(() => SaveMyPhotoAsync(null));
         session.PhotoChanged += () => Background(RefreshMyPhotoAsync());
+        ToggleFavoriteCommand = new AsyncRelayCommand(ToggleFavoriteAsync);
+        OpenEntryCommand = new RelayCommand(p => { if (p is QuickEntry e) OpenEntry(e); });
+        OpenSearchCommand = new RelayCommand(() => { SearchText = ""; IsSearchOpen = true; });
+        CloseSearchCommand = new RelayCommand(() => IsSearchOpen = false);
+        OpenFirstResultCommand = new RelayCommand(() => { if (SearchResults.FirstOrDefault() is { } e) OpenEntry(e); });
         SelectedItem = NavItems.FirstOrDefault();
+        Background(LoadPreferencesAsync());
         Background(RefreshCloudStatusAsync());
         Background(RefreshAlertsAsync());
         Background(RefreshMyPhotoAsync());
@@ -136,6 +143,130 @@ public class MainShellViewModel : ViewModelBase
             if (!result.Success) { _dialogs.Error(result.ErrorMessage!); return; }
         }
         await RefreshMyPhotoAsync();
+    }
+
+    // ============================ المظهر و«مفضلتي» والبحث السريع ============================
+
+    private List<string> _favoriteKeys = new();
+    private List<QuickEntry>? _entries;
+    private string _searchText = "";
+    private bool _isSearchOpen;
+
+    /// <summary>كل الشاشات المسموحة (تُبنى مرة عند أول حاجة).</summary>
+    public IReadOnlyList<QuickEntry> Entries => _entries ??= SectionCatalog.QuickEntries(Session, _dialogs);
+
+    /// <summary>«مفضلتي»: أقسام ثبّتها المستخدم بالنجمة، أعلى القائمة الجانبية (تتبعه على أي جهاز).</summary>
+    public ObservableCollection<QuickEntry> Favorites { get; } = new();
+    public bool HasFavorites => Favorites.Count > 0;
+    public AsyncRelayCommand ToggleFavoriteCommand { get; }
+    public RelayCommand OpenEntryCommand { get; }
+
+    /// <summary>البحث السريع (Ctrl+K): اكتب جزءًا من اسم الشاشة فتظهر من كل الوحدات.</summary>
+    public bool IsSearchOpen { get => _isSearchOpen; set => SetProperty(ref _isSearchOpen, value); }
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (!SetProperty(ref _searchText, value)) return;
+            SearchResults.Clear();
+            var q = SectionCatalog.Normalize(value.Trim());
+            if (q.Length == 0) return;
+            foreach (var e in Entries.Where(e => SectionCatalog.Normalize(e.Title).Contains(q) || SectionCatalog.Normalize(e.ModuleTitle).Contains(q)
+                                                 || SectionCatalog.Normalize(e.Description).Contains(q))
+                                     .OrderBy(e => SectionCatalog.Normalize(e.Title).StartsWith(q) ? 0 : SectionCatalog.Normalize(e.Title).Contains(q) ? 1 : 2)
+                                     .Take(12))
+                SearchResults.Add(e);
+        }
+    }
+    public ObservableCollection<QuickEntry> SearchResults { get; } = new();
+    public RelayCommand OpenSearchCommand { get; }
+    public RelayCommand CloseSearchCommand { get; }
+    public RelayCommand OpenFirstResultCommand { get; }
+
+    /// <summary>المظاهر الستة (قائمة المستخدم ← المظهر)، والمختار الآن.</summary>
+    public IReadOnlyList<ThemeInfo> ThemeOptions => Themes.All;
+    private string _themeKey = Themes.Default;
+    public string ThemeKey { get => _themeKey; private set => SetProperty(ref _themeKey, value); }
+    public AsyncRelayCommand SetThemeCommand => _setTheme ??= new AsyncRelayCommand(async p =>
+    {
+        if (p is not ThemeInfo t) return;
+        await using var db = Session.NewDb();
+        await new UserPreferencesService(db).SetThemeAsync(Session.UserId, t.Key);
+        ThemeKey = t.Key;
+        ThemeHost.Apply(t);
+        RecentUsers.UpdateTheme(Session.GlobalUsername, t.Key);
+    });
+    private AsyncRelayCommand? _setTheme;
+
+    /// <summary>مظهر المستخدم ومفضلته عند الدخول.</summary>
+    public async Task LoadPreferencesAsync()
+    {
+        try
+        {
+            await using var db = Session.NewDb();
+            var (theme, favorites) = await new UserPreferencesService(db).GetAsync(Session.UserId);
+            ThemeKey = Themes.Get(theme).Key;
+            ThemeHost.Apply(Themes.Get(theme));
+            SetFavorites(favorites);
+            await RememberUserAsync();
+        }
+        catch (Exception ex) when (ex is Microsoft.Data.SqlClient.SqlException or InvalidOperationException) { }
+    }
+
+    /// <summary>يظهر هذا المستخدم بصورته ووظيفته في شاشة الدخول على هذا الجهاز.</summary>
+    private async Task RememberUserAsync()
+    {
+        if (RecentUsers.Store is not { } store) return;
+        await RefreshMyPhotoAsync();
+        await using var db = Session.NewDb();
+        var company = await new CompanyProfileService(db).GetAsync();
+        var job = await db.Users.Where(u => u.Id == Session.UserId).Select(u => u.Employee != null ? u.Employee.JobTitle : null).FirstOrDefaultAsync();
+        store.Remember(new RecentUser(Session.GlobalUsername, Session.FullName, job ?? Session.RoleName, Session.ProjectName, MyPhoto, ThemeKey, DateTime.UtcNow,
+                                      string.IsNullOrWhiteSpace(company?.NameAr) ? null : company.NameAr, company?.Logo));
+    }
+
+    private void SetFavorites(List<string> keys)
+    {
+        _favoriteKeys = keys;
+        Favorites.Clear();
+        foreach (var k in keys)
+            if (Entries.FirstOrDefault(e => e.Key == k) is { } e) Favorites.Add(e);
+        OnPropertyChanged(nameof(HasFavorites));
+        foreach (var m in _modules.Values.OfType<ModuleViewModel>())
+            foreach (var t in m.Tabs.ToArray().OfType<SectionViewModel>()) t.IsFavorite = _favoriteKeys.Contains(SectionCatalog.KeyOf(t));
+    }
+
+    /// <summary>تثبيت الشاشة في «مفضلتي» أو إزالتها (الشاشة الظاهرة، أو المعطاة).</summary>
+    private async Task ToggleFavoriteAsync(object? parameter)
+    {
+        var key = parameter switch
+        {
+            SectionViewModel s => SectionCatalog.KeyOf(s),
+            QuickEntry e => e.Key,
+            string k => k,
+            _ => CurrentModuleVm?.SelectedTab is SectionViewModel cur ? SectionCatalog.KeyOf(cur) : null
+        };
+        if (key is null) return;
+        await using var db = Session.NewDb();
+        SetFavorites(await new UserPreferencesService(db).ToggleFavoriteAsync(Session.UserId, key));
+    }
+
+    /// <summary>فتح شاشة بمفتاحها: في وحدتها الأصلية، وإلا حيث نقلتها الإدارة.</summary>
+    public SectionViewModel? OpenEntry(QuickEntry entry)
+    {
+        IsSearchOpen = false;
+        foreach (var nav in NavItems.Where(n => n.ModuleCode != ModuleCode.Dashboard)
+                                    .OrderBy(n => n.ModuleCode == entry.HomeModule ? 0 : _modules.ContainsKey(n.ModuleCode) ? 1 : 2))
+        {
+            SelectedItem = nav;
+            if (CurrentModule is ModuleViewModel m && m.Tabs.ToArray().OfType<SectionViewModel>().FirstOrDefault(t => SectionCatalog.KeyOf(t) == entry.Key) is { } section)
+            {
+                m.SelectedTab = section;
+                return section;
+            }
+        }
+        return null;
     }
 
     // ============================ التنبيهات ============================
@@ -250,7 +381,11 @@ public class MainShellViewModel : ViewModelBase
             if (!_modules.TryGetValue(value.ModuleCode, out var module))
             {
                 _modules[value.ModuleCode] = module = value.Factory();
-                if (module is ModuleViewModel created) created.AdoptMovedSections(Session, _dialogs, value.ModuleCode);
+                if (module is ModuleViewModel created)
+                {
+                    created.AdoptMovedSections(Session, _dialogs, value.ModuleCode);
+                    foreach (var t in created.Tabs.ToArray().OfType<SectionViewModel>()) t.IsFavorite = _favoriteKeys.Contains(SectionCatalog.KeyOf(t));
+                }
             }
             else
             {

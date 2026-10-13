@@ -18,6 +18,10 @@ public partial class App : Application
         // أي خطأ غير متوقع يظهر كرسالة عربية بدل إغلاق البرنامج
         DispatcherUnhandledException += OnUnhandled;
         AsyncRelayCommand.UnhandledErrorHandler = ex => Dispatcher.Invoke(() => ShowUnexpected(ex));
+        // مظهر كل مستخدم (يُطبَّق عند دخوله، وفورًا عند تغييره)
+        ERP.Presentation.Services.ThemeHost.Current = new ThemeApplier();
+        // المستخدمون الأخيرون بصورهم في شاشة الدخول
+        ERP.Presentation.Services.RecentUsers.Store = new RecentUsersStore();
 
         var config = new AppConfigStore();
         var controlCs = config.LoadControlConnectionString();

@@ -19,7 +19,7 @@
             <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="14,10" Margin="0,10,0,0">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding TotalQuantity, StringFormat='إجمالي الكمية: {0:N0} قطعة'}" FontWeight="SemiBold" Margin="0,0,30,0"/>
-                    <TextBlock Text="{Binding TotalValue, StringFormat='القيمة بسعر البيع: {0:N0} د.ع'}" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}"/>
+                    <TextBlock Text="{Binding TotalValue, StringFormat='القيمة بسعر البيع: {0:N0} د.ع'}" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}"/>
                 </StackPanel>
             </Border>
             <DataGrid ItemsSource="{Binding Rows}">
