@@ -37,7 +37,13 @@ public class WpfNavigator : INavigator
         vm.FinishCommand.Execute(null);
     }
     public void ShowProjectSelection(ProjectSelectionViewModel vm) => Replace(new ProjectSelectionWindow { DataContext = vm });
-    public void ShowMainShell(MainShellViewModel vm) => Replace(new MainWindow { DataContext = vm });
+    public void ShowMainShell(MainShellViewModel vm)
+    {
+        var main = new MainWindow { DataContext = vm };
+        Replace(main);
+        // حركة الترحيب: قطرة ماء تصير شعار المعمل ثم تنكشف الواجهة
+        WelcomeIntro.Show(main, vm.Session.FullName, vm.Session.ProjectName, LoginViewModel.SloganFor(vm.Session.ProjectName));
+    }
 
     public void UseControlConnection(string controlConnectionString)
     {

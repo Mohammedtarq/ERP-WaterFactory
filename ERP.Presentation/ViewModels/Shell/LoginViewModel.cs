@@ -40,7 +40,9 @@ public class LoginViewModel : ViewModelBase
     public byte[]? CompanyLogo { get; }
     public string Title => CompanyName ?? "نظام إدارة الأعمال المتكامل";
     /// <summary>شعار معمل الرحمة اللفظي تحت اسمه.</summary>
-    public string? Slogan => CompanyName?.Contains("الرحمة") == true ? "خليك مثل الماي" : null;
+    public string? Slogan => SloganFor(CompanyName);
+    /// <summary>شعار المعمل اللفظي (للرحمة «خليك مثل الماي»)، يظهر في الدخول وفي حركة الترحيب.</summary>
+    public static string? SloganFor(string? company) => company?.Contains("الرحمة") == true ? "خليك مثل الماي" : null;
     public RelayCommand PickUserCommand { get; }
     public RelayCommand OtherUserCommand { get; }
 
