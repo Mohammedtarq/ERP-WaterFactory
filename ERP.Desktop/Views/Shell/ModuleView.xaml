@@ -19,7 +19,8 @@
                 <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" Margin="12,0,0,0" VerticalAlignment="Center"/>
                 <!-- تثبيت الشاشة الظاهرة في «مفضلتي» -->
                 <Button Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding SelectedTab}"
-                        Cursor="Hand" Margin="10,0,0,0" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" Padding="4">
+                        Cursor="Hand" Margin="10,0,0,0" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" Padding="4"
+                        Visibility="{Binding SelectedTab.CanFavorite, Converter={StaticResource BoolToVisibility}}">
                     <TextBlock FontSize="20">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">

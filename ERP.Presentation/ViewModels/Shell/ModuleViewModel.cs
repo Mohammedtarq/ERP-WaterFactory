@@ -60,6 +60,9 @@ public abstract class SectionViewModel : SessionViewModel
         return _inflight = LoadAsync();
     }
 
+    /// <summary>تقبل التثبيت في «مفضلتي» (الصفحة «الرئيسية» لا).</summary>
+    public bool CanFavorite => true;
+
     private bool _isFavorite;
     /// <summary>مثبّتة في «مفضلتي» (نجمة في رأس الشاشة).</summary>
     public bool IsFavorite { get => _isFavorite; internal set => SetProperty(ref _isFavorite, value); }
@@ -146,6 +149,10 @@ public abstract class SectionViewModel : SessionViewModel
 /// <summary>تبويب "الرئيسية" داخل كل وحدة: بطاقات ملوّنة تفتح الأقسام الفرعية.</summary>
 public class HomeSectionViewModel : ObservableObject
 {
+    /// <summary>«الرئيسية» لا تُثبَّت في «مفضلتي» (نجمة الرأس مخفية).</summary>
+    public bool CanFavorite => false;
+    public bool IsFavorite => false;
+
     public HomeSectionViewModel(ModuleViewModel owner)
     {
         Owner = owner;
