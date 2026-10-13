@@ -14,5 +14,7 @@ public class CompanyProfile
     public string BrandColor { get; set; } = "#0F766E";
     public string? FooterText { get; set; }
     public byte[]? Logo { get; set; }
+    /// <summary>اسم المنتج الأساسي (بلا طلب خاص) في الاسم الموحد، مثل «الرحمة»؛ فارغ = «الأساسي».</summary>
+    public string? BaseVariantName { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -22,5 +22,7 @@ public class Item
     public int? LeadTimeDays { get; set; }
     /// <summary>حد التنبيه — عند وصول الرصيد لهذه الكمية أو أقل، يظهر تنبيه نقص مخزون.</summary>
     public decimal? MinStockAlertLevel { get; set; }
+    /// <summary>حجم القطعة بالمليلتر (330، 1500…) للاسم الموحد؛ فارغ = يُقرأ من اسم الصنف (48_product_naming.sql).</summary>
+    public decimal? SizeMl { get; set; }
     public bool IsActive { get; set; } = true;
 }

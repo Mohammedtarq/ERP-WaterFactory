@@ -14,6 +14,8 @@ public class CustomRecipe
     public bool IsActive { get; set; } = true;
     /// <summary>السعر العام للطلب الخاص بالقطعة؛ NULL = سعر المنتج الأساسي (42_selling_prices_variants.sql).</summary>
     public decimal? SalePrice { get; set; }
+    /// <summary>اسم مختصر للمتغير في الاسم الموحد (مثل «داون تاون»)؛ فارغ = اسم الزبون أو اسم الطلب الخاص.</summary>
+    public string? ShortName { get; set; }
 
     public ICollection<CustomRecipeLine> Lines { get; set; } = new List<CustomRecipeLine>();
 }

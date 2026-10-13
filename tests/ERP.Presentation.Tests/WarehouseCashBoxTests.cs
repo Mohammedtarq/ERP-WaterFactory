@@ -62,7 +62,7 @@ public class WarehouseCashBoxTests
         fg.LineNewBatch = "WS-R1";
         fg.LineExpiry = DateTime.Today.AddMonths(12);
         await fg.AddLineCommand.ExecuteAsync();
-        Assert.Equal("1 سطر — 10 كارتون", fg.LinesTotalText);          // بالعبوات لا بالقطع (ملاحظة التجربة 1)
+        Assert.Equal("1 سطر — 10 كارتون 12×500", fg.LinesTotalText);          // بالعبوات لا بالقطع (ملاحظة التجربة 1)
         await fg.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.StartsWith("SR-", fg.LastDocument!.DocumentNumber);
@@ -167,7 +167,7 @@ public class WarehouseCashBoxTests
 
         // المستندات قابلة لإعادة الطباعة؛ مستند المناقلة يظهر في المخزنين
         Assert.Equal(4, fg.Documents.Count(d => d.DocumentNumber.StartsWith("S")));
-        Assert.Equal("2 كارتون", fg.Documents.Single(d => d.DocumentType == StockDocumentType.Transfer).TotalText);
+        Assert.Equal("2 كارتون 12×500", fg.Documents.Single(d => d.DocumentType == StockDocumentType.Transfer).TotalText);
         await fg.PrintDocumentCommand.ExecuteAsync(fg.Documents.Single(d => d.DocumentType == StockDocumentType.Transfer));
         Assert.Equal("مستند مناقلة إلى مخزن آخر", dialogs.Reports.Last().Title);
         Assert.Contains(dialogs.Reports.Last().HeaderFields, f => f.Label == "إلى مخزن" && f.Value == "مخزن الأغطية والملصقات");

@@ -1045,7 +1045,7 @@ public class TutorialTests
             await Shot("09-الأمر-في-الجدول-15-كارتون", orders);
             Assert.False(TableScrolls(), "جدول الأوامر يحتاج تمريرًا أفقيًا (1440)");
             var order = orders.Orders.First();
-            Assert.Equal("15 كارتون", order.QuantityText);
+            Assert.Equal("15 كارتون 40×330", order.QuantityText);
             await orders.StartCommand.ExecuteAsync(order);
             await Shot("10-بعد-بدء-التشغيل", orders);
 

@@ -149,7 +149,7 @@ public class FullCycleJourneyTests
         Assert.False(orders.HasSidePanel);                      // أُغلق النموذج: تعود كل الأعمدة
         var order = orders.Orders.First();
         Assert.Equal(2, order.LinesCount);
-        Assert.Equal("15 كارتون", order.QuantityText);
+        Assert.Equal("15 كارتون 40×330", order.QuantityText);
         await orders.StartCommand.ExecuteAsync(order);
         NoErrors("بدء التشغيل");
 
@@ -233,7 +233,7 @@ public class FullCycleJourneyTests
         shell.Open<RepsModuleViewModel>(ModuleCode.Reps);
         var board = reps.Vans;
         await Open(reps, board);
-        Assert.Equal("11 كارتون", board.TotalText);                         // الملخّص بالعبوات لا بالقطع
+        Assert.Equal("11 كارتون 40×330", board.TotalText);                         // الملخّص بالعبوات لا بالقطع
         board.SelectedCard = board.Cards.Single(c => c.VanName == "كاش فان علي");
         await board.IdleAsync();
         var detail = board.Detail!;
