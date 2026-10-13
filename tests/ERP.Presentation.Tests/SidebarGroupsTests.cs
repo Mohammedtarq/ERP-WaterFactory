@@ -109,7 +109,7 @@ public class SidebarGroupsTests
 
         // الإنتاج بلا المختبر، والمختبر وحدة مستقلة بمجموعته
         var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
-        Assert.Equal(new[] { "التصنيع", "المتابعة", "الإعداد" }, prod.Groups.Select(g => g.Name));
+        Assert.Equal(new[] { "التصنيع", "المتابعة", "التقارير", "الإعداد" }, prod.Groups.Select(g => g.Name));
         Assert.Contains(prod.Packing, prod.Groups.Single(g => g.Name == "التصنيع").Items);
         var lab = shell.Open<LabModuleViewModel>(ModuleCode.Lab);
         Assert.Equal(new SectionViewModel[] { lab.Qc, lab.Tests }, lab.Groups.Single().Items);

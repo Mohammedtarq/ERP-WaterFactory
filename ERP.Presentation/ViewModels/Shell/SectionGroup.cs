@@ -56,6 +56,7 @@ public static class SectionGrouping
         {
             new GroupDef("التصنيع", Teal, "ProductionOrders", "DailyProduction", "MachineWip", "Packing"),
             new GroupDef("المتابعة", Amber, "PendingProduction", "VariantStock", "ProductionMonth"),
+            new GroupDef("التقارير", Purple, "ProductionReports"),
             new GroupDef("الإعداد", Slate, "Machines", "CustomRecipes"),
         },
         [ModuleCode.Lab] = new[]
@@ -67,6 +68,7 @@ public static class SectionGrouping
             new GroupDef("البيع", Green, "SalesInvoice", "SalesInvoiceList", "CustomerReturn"),
             new GroupDef("العملاء", Blue, "Customers", "CustomerStatement", "CustomerDeposits"),
             new GroupDef("الأسعار والصندوق", Amber, "SellingPrices", "LoadingSettings", "CashBoxes"),
+            new GroupDef("التقارير", Purple, "SalesReports"),
         },
         [ModuleCode.Suppliers] = new[]
         {

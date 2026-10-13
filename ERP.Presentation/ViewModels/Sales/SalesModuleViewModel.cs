@@ -23,6 +23,7 @@ public class SalesModuleViewModel : ModuleViewModel
         Add(new CustomersSectionViewModel(s, d));
         Add(new SellingPricesSectionViewModel(s, d));
         Add(new LoadingSettingsSectionViewModel(s, d));
+        Add(new Shell.SalesReportsSectionViewModel(s, d));
         // صندوق موظف المبيعات: تدخله مبيعاته النقدية، ويسلّم منه للصندوق الرئيسي
         MyBox = Add(new Finance.CashBoxesSectionViewModel(s, d, ModuleCode.Sales, "صندوقي"));
     }

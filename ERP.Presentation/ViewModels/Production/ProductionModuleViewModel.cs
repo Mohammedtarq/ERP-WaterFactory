@@ -22,6 +22,7 @@ public class ProductionModuleViewModel : ModuleViewModel
         Packing = AddStep(4, new PackingSectionViewModel(s, d));
         AddStep(5, new PendingProductionSectionViewModel(s, d));
         Add(new VariantStockSectionViewModel(s, d));
+        Add(new ProductionReportsSectionViewModel(s, d));
         Add(new ProductionMonthSectionViewModel(s, d));
         Machines = Add(new MachinesSectionViewModel(s, d));
         Add(new CustomRecipesSectionViewModel(s, d));

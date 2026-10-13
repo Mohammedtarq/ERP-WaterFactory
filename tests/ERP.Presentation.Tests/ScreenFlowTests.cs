@@ -59,7 +59,7 @@ public class ScreenFlowTests
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var sales = shell.Open<SalesModuleViewModel>(ModuleCode.Sales);
         Assert.IsType<HomeSectionViewModel>(sales.SelectedTab);
-        Assert.Equal(9, sales.Home.Sections.Count());                 // + صندوقي + تأمينات العملاء + مرتجع زبون
+        Assert.Equal(10, sales.Home.Sections.Count());                // + صندوقي + تأمينات العملاء + مرتجع زبون + تقارير المبيعات
 
         // الرصيد قبل البيع من شاشة الرصيد الحالي
         var warehouse = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
