@@ -3,10 +3,10 @@
 
     <!-- لوحة الألوان الموحّدة للنظام. ألوان المظهر (الأساسي، القائمة، الخلفية) يستبدلها المظهر المختار لكل مستخدم
          وقت التشغيل (ThemeApplier)، وتُستعمل بـ DynamicResource حتى تتغير فورًا. القيم هنا: مظهر «الرحمة» الافتراضي. -->
-    <Color x:Key="PrimaryColor">#46546F</Color>
-    <Color x:Key="SidebarColor">#2B3446</Color>
-    <Color x:Key="SidebarHoverColor">#36415A</Color>
-    <Color x:Key="BackgroundColor">#F3F5F8</Color>
+    <Color x:Key="PrimaryColor">#2B8FD6</Color>
+    <Color x:Key="SidebarColor">#1B4F7A</Color>
+    <Color x:Key="SidebarHoverColor">#24618F</Color>
+    <Color x:Key="BackgroundColor">#F2F8FC</Color>
     <Color x:Key="SurfaceColor">#FFFFFF</Color>
     <Color x:Key="BorderColor">#E2E8F0</Color>
     <Color x:Key="TextColor">#0F172A</Color>
@@ -19,10 +19,10 @@
     <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}"/>
     <SolidColorBrush x:Key="SidebarHoverBrush" Color="{StaticResource SidebarHoverColor}"/>
     <!-- أشرطة أسفل القائمة (المستخدم والجرس والمزامنة)، والعنصر المختار، وشارة العدد -->
-    <SolidColorBrush x:Key="SidebarDeepBrush" Color="#222A39"/>
-    <SolidColorBrush x:Key="SidebarSelectedBrush" Color="#3F4C66"/>
-    <SolidColorBrush x:Key="SidebarChipBrush" Color="#36415A"/>
-    <SolidColorBrush x:Key="AccentBrush" Color="#6B7FA8"/>
+    <SolidColorBrush x:Key="SidebarDeepBrush" Color="#153F62"/>
+    <SolidColorBrush x:Key="SidebarSelectedBrush" Color="#2C70A3"/>
+    <SolidColorBrush x:Key="SidebarChipBrush" Color="#24618F"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#6FCCF5"/>
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}"/>
     <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}"/>
     <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>

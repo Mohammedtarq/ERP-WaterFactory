@@ -17,6 +17,9 @@ if ($LASTEXITCODE) { throw "تعذّر نشر الخادم المحلي" }
 dotnet publish ERP.Cloud.Api\ERP.Cloud.Api.csproj -c Release -p:DebugType=none -p:UseAppHost=false -o "$out\CloudServer"
 if ($LASTEXITCODE) { throw "تعذّر نشر الخادم السحابي" }
 Copy-Item docs\rep-app.md "$out\اقرأني - تطبيق المندوب.md" -ErrorAction SilentlyContinue
+# شعار المعمل جاهزًا للرفع في «الإعدادات ← هوية الطباعة»
+New-Item "$out\الشعار" -ItemType Directory -Force | Out-Null
+Copy-Item docs\brand\* "$out\الشعار\" -ErrorAction SilentlyContinue
 Copy-Item docs\INSTALL.md "$out\اقرأني - التثبيت.md" -ErrorAction SilentlyContinue
 New-Item "$out\الشبكة" -ItemType Directory -Force | Out-Null
 Copy-Item docs\network-setup.md "$out\الشبكة\دليل تجهيز الشبكة.md" -ErrorAction SilentlyContinue

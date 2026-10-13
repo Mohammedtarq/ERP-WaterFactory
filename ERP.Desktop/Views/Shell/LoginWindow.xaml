@@ -29,6 +29,8 @@
                     </Border>
                 </Grid>
                 <TextBlock Text="{Binding Title}" Foreground="White" FontSize="28" FontWeight="Bold" Margin="0,24,0,8" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Slogan}" Foreground="#BFE6FA" FontSize="17" Margin="0,0,0,10"
+                           Visibility="{Binding Slogan, Converter={StaticResource NullToCollapsed}}"/>
                 <TextBlock Text="المخازن · المبيعات · المشتريات · المالية" Foreground="#94A3B8" FontSize="15"/>
                 <TextBlock Text="دخول موحّد لكل مشاريعك، وصلاحيات دقيقة لكل قسم." Foreground="#94A3B8" FontSize="13" Margin="0,16,0,0" TextWrapping="Wrap"/>
             </StackPanel>

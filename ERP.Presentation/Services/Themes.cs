@@ -16,7 +16,7 @@ public static class Themes
 
     public static readonly IReadOnlyList<ThemeInfo> All = new[]
     {
-        new ThemeInfo("rahma", "الرحمة", "لون الشعار — رمادي مزرق هادئ (الافتراضي)", "#46546F", "#2B3446", "#222A39", "#36415A", "#3F4C66", "#F3F5F8", "#6B7FA8"),
+        new ThemeInfo("rahma", "الرحمة", "ألوان الشعار: أزرق سماوي كالماء (الافتراضي)", "#2B8FD6", "#1B4F7A", "#153F62", "#24618F", "#2C70A3", "#F2F8FC", "#6FCCF5"),
         new ThemeInfo("water", "أزرق الماء", "أزرق صافٍ كالماء", "#2F6FA7", "#173A5E", "#122F4D", "#21496F", "#2A5A86", "#F1F6FB", "#4A90D0"),
         new ThemeInfo("teal", "فيروزي", "فيروزي مع تمييز أخضر مائي", "#1B7F6E", "#0F4A41", "#0B3B34", "#155A4F", "#1C6B5E", "#F0F7F5", "#33AF97"),
         new ThemeInfo("graphite", "رصاصي", "رمادي رصاصي محايد", "#4B5563", "#1F2937", "#111827", "#374151", "#374151", "#F3F4F6", "#6B7280"),
