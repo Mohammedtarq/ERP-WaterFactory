@@ -41,6 +41,10 @@ public class HomePage : ContentPage
                 Ui.Big("مزامنة الآن", Ui.Ink, SyncAsync),
             }
         });
+        ToolbarItems.Add(new ToolbarItem("الطابعة", null, async () =>
+        {
+            if (await ReceiptActions.ChoosePrinterAsync(this)) await DisplayAlert("الطابعة", ReceiptActions.PrinterText, "حسنًا");
+        }, ToolbarItemOrder.Secondary));
         ToolbarItems.Add(new ToolbarItem("تغيير عنوان الخادم", null, async () => await Navigation.PushAsync(new ServerPage()), ToolbarItemOrder.Secondary));
         ToolbarItems.Add(new ToolbarItem("فك الربط", null, async () => await UnlinkAsync(), ToolbarItemOrder.Secondary));
     }

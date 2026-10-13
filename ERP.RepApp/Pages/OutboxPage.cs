@@ -45,6 +45,19 @@ public class OutboxPage : ContentPage
                 body.Children.Insert(at++, Ui.Text($"• {Formats.Qty(l.Quantity)} {l.Pack} {l.Item}" + (l.Total > 0 ? $" = {Formats.Money(l.Total)}" : ""), 15));
             if (i.State == OutboxState.Done && !string.IsNullOrEmpty(i.Message) && i.Status != "Posted") body.Children.Add(Ui.Text(i.Message, 14, color));
             if (!string.IsNullOrEmpty(i.Warning)) body.Children.Add(Ui.Text($"⚠ {i.Warning}", 14, Ui.Amber));
+            if (i.ReceiptNo is not null)
+            {
+                var sale = i;
+                body.Children.Add(new HorizontalStackLayout
+                {
+                    Spacing = 8,
+                    Children =
+                    {
+                        Ui.Small("طباعة الوصل", Ui.Primary, async () => await ReceiptActions.PrintAsync(this, sale)),
+                        Ui.Small("مشاركة", Ui.Blue, async () => await ReceiptActions.ShareAsync(this, sale))
+                    }
+                });
+            }
             if (i.CanResubmit)
             {
                 var id = i.ClientId;

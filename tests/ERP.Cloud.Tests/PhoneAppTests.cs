@@ -94,6 +94,15 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         Assert.Equal(10_000m, cash.Amount);                                         // 250 × 20 × 2
         Assert.Equal(1, cash.ReceiptNo);
         Assert.Equal(new ReceiptLine("ماء هاتف شرنك", "شرنك", 2, 5_000, 10_000), Assert.Single(cash.Lines!));
+        // الوصل: الشعار ورقم الوصل والمواد والمندوب والشكر
+        var receipt = work.ReceiptFor(cash)!;
+        Assert.Equal(($"{seed.RepId}-1", "بيع نقدي", "زبون هاتف", "مندوب هاتف", 10_000m), (receipt.Number, receipt.Kind, receipt.Customer, receipt.Rep, receipt.Total));
+        Assert.Equal(png, receipt.Logo);
+        Assert.Equal(new[]
+        {
+            "معمل الرحمة للمياه", $"وصل بيع نقدي رقم {seed.RepId}-1", cash.OccurredAt.ToString("yyyy/MM/dd HH:mm"), "الزبون: زبون هاتف",
+            "ماء هاتف شرنك — شرنك", "2 × 5,000 د.ع = 10,000 د.ع", "الإجمالي: 10,000 د.ع", "المندوب: مندوب هاتف", "شكرا لتعاملكم معنا"
+        }, receipt.TextLines());
         var credit = work.CheckSale("CreditSale", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 4) });
         Assert.Null(credit.Warning);
         work.SaveSale("CreditSale", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 4) });
@@ -101,7 +110,7 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         Assert.True(over.Ok);                                                       // مسموح بتنبيه (إعداد المعمل)
         Assert.Contains("يتجاوز حد دينه", over.Warning);
         Assert.Contains("سببًا", work.CheckSale("Free", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 1) }).Error);
-        work.SaveCollection(seed.CustomerId, 5_000);
+        Assert.Null(work.ReceiptFor(work.SaveCollection(seed.CustomerId, 5_000)));    // التحصيل بلا وصل بيع
         // «حركاتي»: الوصل التالي برقم 2، والتحصيل بلا وصل بيع، ومجموع مواد اليوم
         Assert.Equal(new int?[] { null, 2, 1 }, store.Outbox().Select(i => i.ReceiptNo));
         Assert.Equal(4m, store.Outbox()[1].Lines!.Single().Quantity);
@@ -277,6 +286,27 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         await using (var db = NewDb())
             Assert.Equal((CustomerType.SubCustomer, (int?)customerId), await db.Customers.Where(x => x.Name == "كشك الجسر").Select(x => new ValueTuple<CustomerType, int?>(x.CustomerType, x.ParentAgentId)).SingleAsync());
         Assert.Single(work.Customers(), c => c.Name == "كشك الجسر");
+    }
+
+    [Fact]
+    public void EscPos_raster_bands_feed_and_cut_with_dithered_logo()
+    {
+        Assert.Equal((384, 576), (EscPos.DotsFor(58), EscPos.DotsFor(80)));
+        // 10×3: الصف الأول أسود كله، والثاني النقطة الأولى والأخيرة، والثالث أبيض
+        var black = new bool[30];
+        for (var x = 0; x < 10; x++) black[x] = true;
+        black[10] = black[19] = true;
+        var bytes = EscPos.Raster(black, 10, 3, feedLines: 3, band: 2);
+        Assert.Equal(new byte[] { 0x1B, 0x40 }, bytes[..2]);
+        Assert.Equal(new byte[] { 0x1D, 0x76, 0x30, 0x00, 2, 0, 2, 0, 0xFF, 0xC0, 0x80, 0x40 }, bytes[2..14]);   // شريحة صفّين
+        Assert.Equal(new byte[] { 0x1D, 0x76, 0x30, 0x00, 2, 0, 1, 0, 0x00, 0x00 }, bytes[14..24]);              // الصف الباقي
+        Assert.Equal(new byte[] { 0x1B, 0x64, 3, 0x1D, 0x56, 0x42, 0x00 }, bytes[24..]);
+        Assert.Throws<ArgumentException>(() => EscPos.Raster(new bool[2], 10, 3));
+
+        // أبيض وشفاف ← أبيض، أسود ← أسود، والرمادي يتوزع نقاطًا (نصفها تقريبًا)
+        Assert.Equal(new[] { false, false, true }, EscPos.ToMono(new[] { unchecked((int)0xFFFFFFFF), 0x00000000, unchecked((int)0xFF000000) }, 3, 1));
+        var gray = Enumerable.Repeat(unchecked((int)0xFF808080), 100).ToArray();
+        Assert.InRange(EscPos.ToMono(gray, 10, 10).Count(b => b), 40, 60);
     }
 
     [Fact]

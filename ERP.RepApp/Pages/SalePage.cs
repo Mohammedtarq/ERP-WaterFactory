@@ -169,9 +169,9 @@ public class SalePage : ContentPage
         var details = string.Join("\n", check.Lines.Select(l => l.Text));
         var message = $"{label} — {customer.Name}\n{details}\nالإجمالي: {Formats.Money(check.Total)}" + (check.Warning is null ? "" : $"\n\n⚠ {check.Warning}");
         if (!await DisplayAlert("تأكيد البيع", message, "حفظ", "رجوع")) return;
-        _work.SaveSale(_kind, customer.Id, lines, _freeReason.Text);
+        var saved = _work.SaveSale(_kind, customer.Id, lines, _freeReason.Text);
         AppServices.Instance.SyncSoon();
-        await DisplayAlert("تم الحفظ", "حُفظ البيع في الهاتف ويُرسل للمعمل تلقائيًا", "حسنًا");
+        await ReceiptActions.OfferAsync(this, saved);           // يُرسل للمعمل تلقائيًا، والوصل يُطبع الآن أو لاحقًا من «حركاتي»
         await Navigation.PopAsync();
     }
 }

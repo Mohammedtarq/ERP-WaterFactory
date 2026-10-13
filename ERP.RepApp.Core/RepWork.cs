@@ -272,6 +272,27 @@ public class RepWork
                               new Effect(new(), Wallet: amount, CustomerId: customerId, Balance: -amount));
     }
 
+    // ============================ وصل البيع ============================
+
+    /// <summary>وصل حركة بيع (null لغير البيع). الرقم: رقم المندوب ثم تسلسل الوصل في الهاتف (مثل 7-15).</summary>
+    public Receipt? ReceiptFor(OutboxItem item)
+    {
+        if (item.ReceiptNo is not int no || item.Kind is not ("CashSale" or "CreditSale" or "Free")) return null;
+        var snap = Snapshot;
+        var sale = System.Text.Json.JsonSerializer.Deserialize<SalePayload>(item.Payload, JsonWeb);
+        var customers = Customers();
+        var customer = sale?.Customer switch
+        {
+            { NewCustomerClientId: Guid g } => customers.FirstOrDefault(c => c.NewClientId == g)?.Name
+                                               ?? customers.FirstOrDefault(c => c.Id == _store.Find(g)?.ResultId)?.Name,
+            { CustomerId: int id } => customers.FirstOrDefault(c => c.Id == id)?.Name,
+            _ => null
+        } ?? item.Summary.Split('—').ElementAtOrDefault(1)?.Split(':')[0].Trim() ?? "";
+        var kind = item.Kind switch { "CashSale" => "بيع نقدي", "CreditSale" => "بيع آجل", _ => "مجاني" };
+        return new Receipt(CompanyName, snap?.CompanyLogo, snap is null ? no.ToString() : $"{snap.RepEmployeeId}-{no}", item.OccurredAt, kind,
+                           customer, snap?.RepName ?? "", item.Lines ?? new(), item.Amount);
+    }
+
     // ============================ زبون جديد ============================
 
     /// <summary>فحص الزبون الجديد بقواعد شاشة «العملاء»: الاسم، والفرعي بوكيل، وحد دين غير سالب؛ وتنبيه إن تكرر الاسم.</summary>
