@@ -7,8 +7,8 @@ using Xunit;
 namespace ERP.Presentation.Tests;
 
 /// <summary>
-/// شاشة «المزامنة السحابية»: عنوان مشفّر إلزامًا، ومفتاح يُعرض مرة واحدة، ثم مؤشر الشريط الجانبي يعكس الحالة:
-/// «لم تتم أي مزامنة» بعد التفعيل، و«متعذّرة» حين لا يُوصل للخادم.
+/// شاشة «المزامنة»: الخادمان المحلي والسحابي، عنوان مشفّر إلزامًا للسحابي، ومفتاح المعمل يُولَّد تلقائيًا (لا نسخ ولا لصق)،
+/// وملفات نشر السحابي جاهزة، ثم مؤشر الشريط الجانبي يعكس الحالة: «لم يتصل بعد» بعد التفعيل، و«متعذّر» حين لا يُوصل للخادم.
 /// </summary>
 [Collection("app")]
 public class CloudSyncScreenTests
@@ -26,8 +26,10 @@ public class CloudSyncScreenTests
         settings.SelectedTab = screen;
         await settings.IdleAsync();
         await screen.IdleAsync();
-        Assert.Equal("المزامنة السحابية غير مفعّلة", screen.StateText);
+        Assert.Equal("المزامنة غير مفعّلة", screen.StateText);
         screen.ClientFactory = (url, key) => CloudSyncService.CreateClient("http://127.0.0.1:1", key);
+        var deploy = Path.Combine(Path.GetTempPath(), "erp-deploy-" + Guid.NewGuid().ToString("N"));
+        screen.CloudFilesFolder = () => deploy;
 
         try
         {
@@ -35,33 +37,56 @@ public class CloudSyncScreenTests
             screen.IsEnabled = true;
             await screen.SaveCommand.ExecuteAsync();
             Assert.Contains(dialogs.Errors, e => e.Contains("مشفّرًا"));
-
-            screen.ServerUrl = "https://api.example.com";
-            await screen.GenerateKeyCommand.ExecuteAsync();
-            Assert.Equal(64, screen.NewKey!.Length);
-            Assert.Equal(screen.NewKey, screen.KeyText);
+            screen.ServerUrl = "";
             await screen.SaveCommand.ExecuteAsync();
-            Assert.Null(screen.NewKey);
+            Assert.Contains(dialogs.Errors, e => e.Contains("فعّل الخادم المحلي أو اكتب عنوان الخادم السحابي"));
+
+            // الخادمان معًا، والمفتاح يُولَّد وحده عند أول تفعيل
+            Assert.StartsWith("يُولَّد تلقائيًا", screen.KeyText);
+            screen.ServerUrl = "https://api.example.com";
+            screen.LocalEnabled = true;
+            await screen.SaveCommand.ExecuteAsync();
             Assert.Contains("المزامنة مفعّلة", screen.StatusMessage);
-            Assert.StartsWith("مضبوط", screen.KeyText);                         // لا يُعرض بعد الحفظ وإعادة التحميل
+            Assert.True(screen.HasKey);
+            Assert.Null(screen.NewKey);
+            Assert.StartsWith("مضبوط", screen.KeyText);
             Assert.Equal(CloudSyncLevel.Warning, screen.Level);
+            Assert.Equal("لم يُعرف بعد", screen.LocalUrl);                      // تكتبه خدمة المزامنة على حاسبة السيرفر
+            Assert.Contains("لم يتصل بعد", screen.LocalText);
+            Assert.Contains("لم يتصل بعد", screen.CloudText);
 
             await shell.RefreshCloudStatusAsync();
-            Assert.Contains("لم تتم أي مزامنة", shell.CloudStatusText);
+            Assert.Contains("لم يتصل بعد", shell.CloudStatusText);
+
+            // ملفات نشر السحابي: النطاق والمفتاح جاهزان
+            await screen.CloudFilesCommand.ExecuteAsync();
+            Assert.Contains("RELAY_AGENT_KEY=", File.ReadAllText(Path.Combine(deploy, ".env")));
+            Assert.Contains("DOMAIN=api.example.com", File.ReadAllText(Path.Combine(deploy, ".env")));
+            Assert.Contains("لا تشاركها", screen.StatusMessage);
 
             var errors = dialogs.Errors.Count;
-            await screen.TestCommand.ExecuteAsync();
-            Assert.Contains("تعذّر الاتصال بالخادم السحابي", dialogs.Errors[errors]);
+            await screen.TestCommand.ExecuteAsync();                                // المحلي بلا عنوان بعد: يُختبر السحابي
+            Assert.Contains("الخادم السحابي (https://api.example.com): تعذّر الاتصال بالخادم", dialogs.Errors[errors]);
             await screen.SyncNowCommand.ExecuteAsync();
             Assert.Equal(CloudSyncLevel.Error, screen.Level);
-            Assert.Contains("آخر خطأ", screen.Details);
+            Assert.Equal(CloudSyncLevel.Error, screen.CloudLevel);
+            Assert.Contains("متعذّر", screen.CloudText);
             await shell.RefreshCloudStatusAsync();
             Assert.Equal("#F87171", shell.CloudStatusColor);
+
+            // مفتاح جديد: لا يُعرض للنسخ، والخادم المحلي يأخذه وحده
+            dialogs.ConfirmAnswer = true;
+            await screen.GenerateKeyCommand.ExecuteAsync();
+            Assert.Contains("الخادم المحلي يأخذه تلقائيًا", screen.StatusMessage);
+            Assert.Null(screen.NewKey);
         }
         finally
         {
             screen.IsEnabled = false;
+            screen.LocalEnabled = false;
+            screen.ServerUrl = "";
             await screen.SaveCommand.ExecuteAsync();
+            try { Directory.Delete(deploy, true); } catch (IOException) { }
         }
         await shell.RefreshCloudStatusAsync();
         Assert.False(shell.HasCloudStatus);

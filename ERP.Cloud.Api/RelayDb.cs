@@ -49,11 +49,29 @@ public class RelayAgentState
 {
     public int Id { get; set; } = 1;
     public DateTime LastSeenAt { get; set; }
+    /// <summary>هوية هذه القاعدة: عنوانان يصلانها (نفق إلى الخادم المحلي) تعاملهما خدمة المزامنة خادمًا واحدًا.</summary>
+    public Guid? RelayId { get; set; }
 }
 
 public class RelayDb : DbContext
 {
     public RelayDb(DbContextOptions<RelayDb> options) : base(options) { }
+
+    /// <summary>
+    /// إنشاء القاعدة أول تشغيل، وترقيات صغيرة آمنة للتكرار لقاعدة أُنشئت بإصدار أقدم (لا ترقيات يدوية).
+    /// SQLite للخادم المحلي وللاستضافة الصغيرة، وSQL Server إن ضُبطت سلسلة اتصاله.
+    /// </summary>
+    public async Task PrepareAsync()
+    {
+        await Database.EnsureCreatedAsync();
+        if (Database.IsSqlServer())
+            await Database.ExecuteSqlRawAsync("IF COL_LENGTH('AgentState', 'RelayId') IS NULL ALTER TABLE AgentState ADD RelayId UNIQUEIDENTIFIER NULL;");
+        else if (Database.IsSqlite())
+        {
+            // كتابة متزامنة من الهواتف وخدمة المزامنة دون قفل القراءة
+            await Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+        }
+    }
 
     public DbSet<RelayDevice> Devices => Set<RelayDevice>();
     public DbSet<RelayRequest> Requests => Set<RelayRequest>();

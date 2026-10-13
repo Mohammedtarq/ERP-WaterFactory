@@ -1,8 +1,11 @@
 namespace ERP.RepApp.Core;
 
 /// <summary>نتيجة مزامنة الهاتف.</summary>
-public record PhoneSyncResult(bool Online, int Sent, int Updated, bool SnapshotUpdated, string? Error, DateTime? FactoryLastSeenUtc = null)
+public record PhoneSyncResult(bool Online, int Sent, int Updated, bool SnapshotUpdated, string? Error, DateTime? FactoryLastSeenUtc = null, bool ViaLocal = false)
 {
+    /// <summary>عبر أي خادم: واي فاي المعمل أو الإنترنت.</summary>
+    public string Channel => !Online ? "" : ViaLocal ? "عبر واي فاي المعمل" : "عبر الإنترنت";
+
     public string Text => Error ?? (Online
         ? $"أُرسلت {Sent} حركة، وتحدّثت {Updated} حالة{(SnapshotUpdated ? "، ونسخة العمل محدّثة" : "")}"
         : "لا اتصال — الحركات محفوظة في الهاتف");
@@ -57,11 +60,16 @@ public class SyncEngine
                 }
 
             var snap = await client.SnapshotAsync(_store.SnapshotEtag, ct);
-            if (snap is { } s2) { _store.SaveSnapshot(s2.json, s2.etag); snapshot = true; }
+            if (snap is { } s2)
+            {
+                _store.SaveSnapshot(s2.json, s2.etag);
+                snapshot = true;
+                _store.ApplyServers(_store.Snapshot?.Servers);   // عناوين المعمل الجديدة تصل وحدها
+            }
 
             var ping = await client.PingAsync(ct);
             _store.Set("LastContactUtc", DateTime.UtcNow.ToString("O"));
-            return new(true, sent, updated, snapshot, null, ping.FactoryLastSeenUtc);
+            return new(true, sent, updated, snapshot, null, ping.FactoryLastSeenUtc, client.ViaLocal);
         }
         catch (OfflineException) { return new(false, sent, updated, snapshot, null); }
         catch (DeviceRejectedException ex) { return new(false, sent, updated, snapshot, ex.Message); }

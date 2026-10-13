@@ -76,12 +76,15 @@ public class CloudSyncTests : CloudTestBase
             (repId, customerId, waterId, shrinkId, vanId, fgId) = (rep.Id, customer.Id, water.Id, shrink.Id, van.Id, fg.Id);
         }
 
-        // ---- الإعداد: عنوان مشفّر إلزامًا، ومفتاح معمل قبل التفعيل ----
+        // ---- الإعداد: عنوان مشفّر إلزامًا، وخادم واحد على الأقل، ومفتاح المعمل يُولَّد تلقائيًا عند التفعيل ----
         await using (var db = NewDb())
         {
             var sync = new CloudSyncService(db);
             Assert.Contains("مشفّرًا", (await sync.SaveSettingsAsync("http://api.example.com", true, 20, AdminId)).ErrorMessage);
-            Assert.Contains("ولّد مفتاح المعمل", (await sync.SaveSettingsAsync("https://api.example.com", true, 20, AdminId)).ErrorMessage);
+            Assert.Contains("فعّل الخادم المحلي", (await sync.SaveSettingsAsync(null, true, 20, AdminId)).ErrorMessage);
+            Assert.Null((await sync.SettingsAsync()).AgentKey);
+            Assert.True((await sync.SaveSettingsAsync("https://api.example.com", true, 20, AdminId)).Success);
+            Assert.Equal(64, (await sync.SettingsAsync()).AgentKey!.Length);
         }
         string agentKey;
         await using (var db = NewDb()) agentKey = await new CloudSyncService(db).GenerateKeyAsync(AdminId);
@@ -205,7 +208,7 @@ public class CloudSyncTests : CloudTestBase
             using var offline = CloudSyncService.CreateClient("http://127.0.0.1:1", agentKey);
             var down = await new CloudSyncService(db).RunOnceAsync(offline, "SERVER-PC");
             Assert.False(down.Ok);
-            Assert.Contains("تعذّر الاتصال بالخادم السحابي", down.Error);
+            Assert.Contains("تعذّر الاتصال بالخادم", down.Error);
         }
         await using (var db = NewDb())
         {

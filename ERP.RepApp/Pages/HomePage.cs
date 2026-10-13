@@ -96,8 +96,8 @@ public class HomePage : ContentPage
             null => ("…", Ui.Muted),
             { Error: { } e } => (e, Ui.Red),
             { Online: false } => ("لا اتصال — الحركات محفوظة في الهاتف وتُرسل تلقائيًا", Ui.Amber),
-            { FactoryLastSeenUtc: { } seen } => ($"متصل — آخر اتصال للمعمل قبل {Ago(DateTime.UtcNow - seen)}", Ui.Green),
-            _ => ("متصل بالخادم — المعمل لم يتصل بعد", Ui.Amber)
+            { FactoryLastSeenUtc: { } seen } => ($"متصل {last.Channel} — آخر اتصال للمعمل قبل {Ago(DateTime.UtcNow - seen)}", Ui.Green),
+            _ => ($"متصل بالخادم {last.Channel} — المعمل لم يتصل بعد", Ui.Amber)
         };
     }
 

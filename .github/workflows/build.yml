@@ -164,6 +164,10 @@ jobs:
         run: |
           & "dist/ERP-WaterFactory-win-x64/SyncAgent/ERP.SyncAgent.exe" --help
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          # الخادم المحلي (يثبّته المثبّت) والخادم السحابي (لملفات النشر) داخل الحزمة
+          foreach ($f in 'LocalServer/ERP.Cloud.Api.exe', 'CloudServer/ERP.Cloud.Api.dll') {
+            if (-not (Test-Path "dist/ERP-WaterFactory-win-x64/$f")) { Write-Host "مفقود: $f"; exit 1 }
+          }
       - name: نشر الخادم السحابي (حزمة جاهزة للرفع على الاستضافة)
         shell: pwsh
         run: dotnet publish ERP.Cloud.Api/ERP.Cloud.Api.csproj -c Release -p:DebugType=none -o dist/ERP-Cloud-Api

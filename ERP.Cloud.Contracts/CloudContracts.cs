@@ -1,3 +1,6 @@
+using System.Net;
+using System.Text.Json;
+
 namespace ERP.Cloud.Contracts;
 
 /// <summary>أسماء الترويسات ومسارات الواجهة — مصدر واحد للهاتف والخادم وخدمة المزامنة.</summary>
@@ -53,11 +56,16 @@ public record AgentDevice(int DeviceId, int RepEmployeeId, string KeyHash, bool 
 
 public record AgentInboxItem(Guid ClientId, int DeviceId, string Kind, DateTime OccurredAt, string Payload, byte[]? Photo);
 
-public record AgentResult(Guid ClientId, bool Accepted, string Status, string Message, int? ResultId = null, string? Warning = null);
+/// <summary>
+/// نتيجة حركة. DeviceId يُرسل حين تُنسخ النتيجة إلى خادم آخر غير الذي استلم الحركة (النظامان معًا):
+/// فيعرف الهاتف نتيجته من أي خادم وصله لاحقًا.
+/// </summary>
+public record AgentResult(Guid ClientId, bool Accepted, string Status, string Message, int? ResultId = null, string? Warning = null, int? DeviceId = null);
 
 public record AgentSnapshot(int RepEmployeeId, string Hash, string Json);
 
-public record AgentPing(DateTime ServerTimeUtc, int Waiting, string Version);
+/// <summary>RelayId: هوية قاعدة الخادم (تُنشأ أول تشغيل) — عنوانان يصلان الخادم نفسه (نفق) يُعاملان خادمًا واحدًا.</summary>
+public record AgentPing(DateTime ServerTimeUtc, int Waiting, string Version, Guid RelayId = default);
 
 /// <summary>أنواع حركات الهاتف المقبولة (بنفس أسماء RepRequestKind في المعمل).</summary>
 public static class RepKinds
@@ -80,4 +88,52 @@ public static class CloudHash
 {
     public static string Of(string value) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)));
+}
+
+/// <summary>
+/// اكتشاف الخادم المحلي على واي فاي المعمل حين يتغيّر عنوان الحاسبة: الهاتف يبث سؤالًا على المنفذ <see cref="Port"/>،
+/// والخادم المحلي يرد بمنفذه وبصمة المعمل، والهاتف يأخذ العنوان من مصدر الرد. لا بيانات ولا مفاتيح في الرد.
+/// </summary>
+public static class LocalDiscovery
+{
+    public const int Port = 5081;
+    public const string Probe = "ERP-RELAY?1";
+
+    public record Reply(int V, int Port, string Fid);
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public static byte[] ReplyBytes(int httpPort, string factoryId) =>
+        JsonSerializer.SerializeToUtf8Bytes(new Reply(1, httpPort, factoryId), Json);
+
+    public static Reply? ParseReply(byte[] data)
+    {
+        try { return JsonSerializer.Deserialize<Reply>(data, Json) is { V: 1, Port: > 0 and < 65536, Fid.Length: FactoryIdentity.Length } r ? r : null; }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// يبث السؤال وينتظر ردًا من خادم المعمل نفسه (بالبصمة)، ويعيد عنوانه http://ip:port أو null.
+    /// target: عنوان البث (الافتراضي بث الشبكة كلها؛ الاختبارات تمرّر 127.0.0.1).
+    /// </summary>
+    public static async Task<string?> FindAsync(string factoryId, TimeSpan timeout, IPEndPoint? target = null, CancellationToken ct = default)
+    {
+        using var udp = new System.Net.Sockets.UdpClient(0) { EnableBroadcast = true };
+        var probe = System.Text.Encoding.ASCII.GetBytes(Probe);
+        target ??= new IPEndPoint(IPAddress.Broadcast, Port);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeout);
+        try
+        {
+            await udp.SendAsync(probe, target, cts.Token);
+            while (true)
+            {
+                var r = await udp.ReceiveAsync(cts.Token);
+                if (ParseReply(r.Buffer) is { } reply && string.Equals(reply.Fid, factoryId, StringComparison.OrdinalIgnoreCase))
+                    return $"http://{r.RemoteEndPoint.Address}:{reply.Port}";
+            }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return null; }
+        catch (System.Net.Sockets.SocketException) { return null; }
+    }
 }

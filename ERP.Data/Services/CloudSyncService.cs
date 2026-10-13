@@ -10,20 +10,32 @@ using Microsoft.EntityFrameworkCore;
 namespace ERP.Data.Services;
 
 /// <summary>نتيجة دورة مزامنة واحدة.</summary>
-public record CloudSyncReport(bool Ok, int Received, int Posted, int Pending, int Failed, int Updated, int Snapshots, string? Error)
+public record CloudSyncReport(bool Ok, int Received, int Posted, int Pending, int Failed, int Updated, int Snapshots, string? Error,
+                              IReadOnlyDictionary<SyncTargetKind, string?>? Targets = null)
 {
     public string Text => Ok
         ? $"تمت المزامنة: وصلت {Received} حركة (رُحّل {Posted}، بانتظار الاعتماد {Pending}، تعذّر {Failed})، وتحدّثت {Updated} حالة، و{Snapshots} نسخة عمل"
         : Error ?? "تعذّرت المزامنة";
 }
 
-/// <summary>ذاكرة خدمة المزامنة بين الدورات: آخر فحص لنسخ العمل (كل دقيقة، أو فورًا بعد حركات جديدة).</summary>
+/// <summary>
+/// ذاكرة خدمة المزامنة بين الدورات: آخر فحص لنسخ العمل (كل دقيقة، أو فورًا بعد حركات جديدة)،
+/// ونتائج تنتظر نسخها إلى خادم كان منقطعًا (كي يجد الهاتف نتيجته من أي خادم يصله).
+/// </summary>
 public class CloudSyncState
 {
-    public Dictionary<int, string>? SnapshotHashes { get; set; }
     public DateTime? LastSnapshotCheckUtc { get; set; }
     public static readonly TimeSpan SnapshotEvery = TimeSpan.FromSeconds(60);
+    internal Dictionary<string, List<AgentResult>> PendingMirrors { get; } = new();
 }
+
+/// <summary>خادم وسيط تتصل به خدمة المزامنة: المحلي (واي فاي المعمل) أو السحابي (الإنترنت).</summary>
+public record SyncTarget(SyncTargetKind Kind, HttpClient Http)
+{
+    public string Label => Kind == SyncTargetKind.Local ? "الخادم المحلي" : "الخادم السحابي";
+}
+
+public enum SyncTargetKind { Local, Cloud }
 
 /// <summary>خطأ من الخادم برسالة عربية جاهزة للعرض.</summary>
 public class CloudSyncException(string message) : Exception(message);
@@ -44,6 +56,7 @@ public class CloudSyncService
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private const int Batch = 20;
     private const int MaxBatchesPerRun = 5;
+    private const int MaxPendingMirrors = 2000;
 
     /// <summary>عميل اتصال بالخادم: العنوان ومفتاح المعمل ومهلة 30 ثانية.</summary>
     public static HttpClient CreateClient(string serverUrl, string agentKey, HttpMessageHandler? handler = null)
@@ -63,27 +76,41 @@ public class CloudSyncService
     /// <summary>عنوان https، أو http داخل شبكة المعمل للتجربة (القاعدة نفسها في الهاتف).</summary>
     public static string? ValidateUrl(string? url) => CloudUrl.Validate(url);
 
-    public async Task<FinanceOperationResult> SaveSettingsAsync(string? serverUrl, bool enabled, int intervalSeconds, int userId)
+    /// <summary>
+    /// حفظ الإعداد. cloudUrl: الخادم السحابي (اختياري)، localEnabled: الخادم المحلي على حاسبة السيرفر (null = كما هو).
+    /// مفتاح المعمل يُولَّد تلقائيًا عند أول تفعيل: الخادم المحلي يأخذه من خدمة المزامنة، والسحابي من ملفات النشر.
+    /// </summary>
+    public async Task<FinanceOperationResult> SaveSettingsAsync(string? cloudUrl, bool enabled, int intervalSeconds, int userId, bool? localEnabled = null)
     {
         if (intervalSeconds is < 5 or > 600) return FinanceOperationResult.Fail("فترة المزامنة بين 5 و600 ثانية");
-        var url = string.IsNullOrWhiteSpace(serverUrl) ? null : serverUrl.Trim().TrimEnd('/');
-        if ((enabled || url is not null) && ValidateUrl(url) is string bad) return FinanceOperationResult.Fail(bad);
+        var url = string.IsNullOrWhiteSpace(cloudUrl) ? null : cloudUrl.Trim().TrimEnd('/');
+        if (url is not null && ValidateUrl(url) is string bad) return FinanceOperationResult.Fail(bad);
         var s = await _db.CloudSyncSettings.FirstOrDefaultAsync();
         if (s is null) _db.CloudSyncSettings.Add(s = new CloudSyncSetting());
-        if (enabled && string.IsNullOrEmpty(s.AgentKey)) return FinanceOperationResult.Fail("ولّد مفتاح المعمل أولًا والصقه في إعدادات الخادم");
-        (s.ServerUrl, s.IsEnabled, s.IntervalSeconds) = (url, enabled, intervalSeconds);
+        var local = localEnabled ?? s.LocalEnabled;
+        if (enabled && url is null && !local) return FinanceOperationResult.Fail("فعّل الخادم المحلي أو اكتب عنوان الخادم السحابي");
+        var newKey = enabled && string.IsNullOrEmpty(s.AgentKey);
+        if (newKey) s.AgentKey = NewKey();
+        (s.ServerUrl, s.IsEnabled, s.IntervalSeconds, s.LocalEnabled) = (url, enabled, intervalSeconds, local);
+        if (!local) s.LocalUrl = null;
         await _db.SaveChangesAsync();
         await new AuditService(_db).LogAsync(userId, "Edit", "CloudSyncSettings", 1,
-            $"المزامنة السحابية: {(enabled ? "مفعّلة" : "موقوفة")} — {url ?? "بلا عنوان"} — كل {intervalSeconds} ثانية");
+            $"المزامنة: {(enabled ? "مفعّلة" : "موقوفة")} — المحلي {(local ? "يعمل" : "موقوف")} — السحابي {url ?? "بلا عنوان"} — كل {intervalSeconds} ثانية"
+            + (newKey ? " — وُلّد مفتاح المعمل تلقائيًا" : ""));
         return FinanceOperationResult.Ok();
     }
 
-    /// <returns>مفتاح المعمل الجديد: يُلصق في إعداد الخادم Relay:AgentKey (القديم يتوقف فورًا).</returns>
+    private static string NewKey() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+
+    /// <returns>
+    /// مفتاح المعمل الجديد (القديم يتوقف فورًا): الخادم المحلي يأخذه تلقائيًا من خدمة المزامنة،
+    /// والسحابي يحتاج ملفات نشر جديدة (أو Relay__AgentKey).
+    /// </returns>
     public async Task<string> GenerateKeyAsync(int userId)
     {
         var s = await _db.CloudSyncSettings.FirstOrDefaultAsync();
         if (s is null) _db.CloudSyncSettings.Add(s = new CloudSyncSetting());
-        s.AgentKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        s.AgentKey = NewKey();
         await _db.SaveChangesAsync();
         await new AuditService(_db).LogAsync(userId, "Edit", "CloudSyncSettings", 1, "توليد مفتاح معمل جديد للمزامنة السحابية");
         return s.AgentKey;
@@ -102,56 +129,121 @@ public class CloudSyncService
 
     // ============================ الدورة ============================
 
-    public async Task<CloudSyncReport> RunOnceAsync(HttpClient http, string machine, CloudSyncState? state = null, CancellationToken ct = default)
+    /// <summary>دورة مع خادم واحد (السحابي) — «مزامنة الآن» القديمة والاختبارات.</summary>
+    public Task<CloudSyncReport> RunOnceAsync(HttpClient http, string machine, CloudSyncState? state = null, CancellationToken ct = default) =>
+        RunOnceAsync(new[] { new SyncTarget(SyncTargetKind.Cloud, http) }, machine, state, ct);
+
+    /// <summary>
+    /// دورة مع الخادمين معًا: لكل خادم يُرفع الأجهزة، وتُسحب حركاته وتُرحّل، وتُحدّث معلّقاته، وتُرفع نسخ العمل إن تغيّرت.
+    /// نتيجة كل حركة تُنسخ إلى الخادم الآخر أيضًا، فيعرفها الهاتف أينما اتصل (واي فاي المعمل أو الإنترنت).
+    /// عنوانان يصلان الخادم نفسه (نفق إلى الحاسبة) يُعاملان خادمًا واحدًا. انقطاع أحدهما لا يوقف الآخر.
+    /// </summary>
+    public async Task<CloudSyncReport> RunOnceAsync(IReadOnlyList<SyncTarget> targets, string machine, CloudSyncState? state = null, CancellationToken ct = default)
     {
         state ??= new CloudSyncState();
         int received = 0, posted = 0, pending = 0, failed = 0, updated = 0, snapshots = 0;
-        string? error = null;
-        try
+        var errors = new Dictionary<SyncTargetKind, string?>();
+        var live = new List<SyncTarget>();
+        var relayIds = new HashSet<Guid>();
+        var duplicates = new HashSet<SyncTargetKind>();
+        foreach (var t in targets)
         {
-            await PushDevicesAsync(http, ct);
-
-            var app = new RepAppService(_db);
-            for (var round = 0; round < MaxBatchesPerRun; round++)
+            try
             {
-                var inbox = await SendAsync<List<AgentInboxItem>>(http, HttpMethod.Get, $"{CloudRoutes.AgentInbox}?max={Batch}", null, ct);
-                if (inbox.Count == 0) break;
-                var results = new List<AgentResult>();
-                foreach (var item in inbox)
-                {
-                    var r = await ReceiveOneAsync(app, item);
-                    received++;
-                    switch (r.Status)
-                    {
-                        case RepRequestStatus.Posted: posted++; break;
-                        case RepRequestStatus.Pending: pending++; break;
-                        case RepRequestStatus.Failed: failed++; break;
-                    }
-                    results.Add(new AgentResult(item.ClientId, r.Accepted, r.Status.ToString(), r.Message, r.ResultId, r.Warning));
-                }
-                await SendAsync<JsonElement>(http, HttpMethod.Post, CloudRoutes.AgentResults, results, ct);
-                if (inbox.Count < Batch) break;
+                var ping = await SendAsync<AgentPing>(t.Http, HttpMethod.Get, CloudRoutes.AgentPing, null, ct);
+                if (ping.RelayId != Guid.Empty && !relayIds.Add(ping.RelayId)) { errors[t.Kind] = null; duplicates.Add(t.Kind); continue; }   // الخادم نفسه بعنوان ثانٍ
+                live.Add(t);
             }
-
-            // المعلّقة في الخادم: ما اعتُمد أو رُفض في المعمل يعود للهاتف
-            var open = await SendAsync<List<Guid>>(http, HttpMethod.Get, CloudRoutes.AgentOpen, null, ct);
-            if (open.Count > 0)
-            {
-                var now = await app.StatusesAsync(open);
-                var changed = now.Where(kv => kv.Value.Status != RepRequestStatus.Pending)
-                                 .Select(kv => new AgentResult(kv.Key, kv.Value.Accepted, kv.Value.Status.ToString(), kv.Value.Message, kv.Value.ResultId, kv.Value.Warning))
-                                 .ToList();
-                if (changed.Count > 0) await SendAsync<JsonElement>(http, HttpMethod.Post, CloudRoutes.AgentResults, changed, ct);
-                updated = changed.Count;
-            }
-
-            var due = state.LastSnapshotCheckUtc is null || DateTime.UtcNow - state.LastSnapshotCheckUtc >= CloudSyncState.SnapshotEvery;
-            if (received > 0 || updated > 0 || due) snapshots = await PushSnapshotsAsync(http, state, ct);
+            catch (CloudSyncException ex) { errors[t.Kind] = ex.Message; }
         }
-        catch (CloudSyncException ex) { error = ex.Message; }
 
-        await RecordAsync(machine, error, received, snapshots > 0);
-        return new(error is null, received, posted, pending, failed, updated, snapshots, error);
+        var due = state.LastSnapshotCheckUtc is null || DateTime.UtcNow - state.LastSnapshotCheckUtc >= CloudSyncState.SnapshotEvery;
+        var snapshotsByTarget = new Dictionary<SyncTargetKind, List<AgentSnapshot>?>();
+        var app = new RepAppService(_db);
+        foreach (var t in live)
+        {
+            try
+            {
+                // نتائج تأخر نسخها إلى هذا الخادم (كان منقطعًا)
+                if (state.PendingMirrors.Remove(t.Kind.ToString(), out var late) && late.Count > 0)
+                    await SendAsync<JsonElement>(t.Http, HttpMethod.Post, CloudRoutes.AgentResults, late, ct);
+
+                await PushDevicesAsync(t.Http, ct);
+                for (var round = 0; round < MaxBatchesPerRun; round++)
+                {
+                    var inbox = await SendAsync<List<AgentInboxItem>>(t.Http, HttpMethod.Get, $"{CloudRoutes.AgentInbox}?max={Batch}", null, ct);
+                    if (inbox.Count == 0) break;
+                    var results = new List<AgentResult>();
+                    foreach (var item in inbox)
+                    {
+                        var r = await ReceiveOneAsync(app, item);
+                        received++;
+                        switch (r.Status)
+                        {
+                            case RepRequestStatus.Posted: posted++; break;
+                            case RepRequestStatus.Pending: pending++; break;
+                            case RepRequestStatus.Failed: failed++; break;
+                        }
+                        results.Add(new AgentResult(item.ClientId, r.Accepted, r.Status.ToString(), r.Message, r.ResultId, r.Warning, item.DeviceId));
+                    }
+                    await SendAsync<JsonElement>(t.Http, HttpMethod.Post, CloudRoutes.AgentResults, results, ct);
+                    foreach (var other in targets.Where(o => o.Kind != t.Kind && !duplicates.Contains(o.Kind)))
+                    {
+                        if (!state.PendingMirrors.TryGetValue(other.Kind.ToString(), out var list)) state.PendingMirrors[other.Kind.ToString()] = list = new();
+                        list.AddRange(results);
+                        if (list.Count > MaxPendingMirrors) list.RemoveRange(0, list.Count - MaxPendingMirrors);
+                    }
+                    if (inbox.Count < Batch) break;
+                }
+
+                // المعلّقة في الخادم: ما اعتُمد أو رُفض في المعمل يعود للهاتف
+                var open = await SendAsync<List<Guid>>(t.Http, HttpMethod.Get, CloudRoutes.AgentOpen, null, ct);
+                if (open.Count > 0)
+                {
+                    var now = await app.StatusesAsync(open);
+                    var changed = now.Where(kv => kv.Value.Status != RepRequestStatus.Pending)
+                                     .Select(kv => new AgentResult(kv.Key, kv.Value.Accepted, kv.Value.Status.ToString(), kv.Value.Message, kv.Value.ResultId, kv.Value.Warning))
+                                     .ToList();
+                    if (changed.Count > 0) await SendAsync<JsonElement>(t.Http, HttpMethod.Post, CloudRoutes.AgentResults, changed, ct);
+                    updated += changed.Count;
+                }
+                errors[t.Kind] = null;
+            }
+            catch (CloudSyncException ex) { errors[t.Kind] = ex.Message; }
+        }
+
+        // نسخ النتائج إلى الخادم الآخر الآن (وما تعذّر يبقى للدورة التالية)
+        foreach (var t in live.Where(t => errors.GetValueOrDefault(t.Kind) is null))
+        {
+            if (!state.PendingMirrors.Remove(t.Kind.ToString(), out var mirror) || mirror.Count == 0) continue;
+            try { await SendAsync<JsonElement>(t.Http, HttpMethod.Post, CloudRoutes.AgentResults, mirror, ct); }
+            catch (CloudSyncException ex) { state.PendingMirrors[t.Kind.ToString()] = mirror; errors[t.Kind] = ex.Message; }
+        }
+        // لا تُنسخ إلى خادم ليس ضمن هذه الدورة أصلًا
+        foreach (var key in state.PendingMirrors.Keys.Where(k => targets.All(t => t.Kind.ToString() != k) || duplicates.Any(d => d.ToString() == k)).ToList())
+            state.PendingMirrors.Remove(key);
+
+        if (received > 0 || updated > 0 || due)
+        {
+            List<AgentSnapshot>? built = null;
+            foreach (var t in live.Where(t => errors.GetValueOrDefault(t.Kind) is null))
+            {
+                try
+                {
+                    built ??= await BuildAllSnapshotsAsync();
+                    snapshots += await PushSnapshotsAsync(t.Http, built, ct);
+                }
+                catch (CloudSyncException ex) { errors[t.Kind] = ex.Message; }
+            }
+            state.LastSnapshotCheckUtc = DateTime.UtcNow;
+        }
+
+        var failedTargets = errors.Where(e => e.Value is not null).ToList();
+        string? error = failedTargets.Count == 0 ? null
+            : targets.Count == 1 ? failedTargets[0].Value
+            : string.Join(" — ", failedTargets.Select(e => $"{(e.Key == SyncTargetKind.Local ? "الخادم المحلي" : "الخادم السحابي")}: {e.Value}"));
+        await RecordAsync(machine, errors, received, snapshots > 0);
+        return new(error is null, received, posted, pending, failed, updated, snapshots, error, errors);
     }
 
     private async Task<RepIntakeResult> ReceiveOneAsync(RepAppService app, AgentInboxItem item)
@@ -180,31 +272,32 @@ public class CloudSyncService
         await SendAsync<JsonElement>(http, HttpMethod.Put, CloudRoutes.AgentDevices, devices, ct);
     }
 
-    private async Task<int> PushSnapshotsAsync(HttpClient http, CloudSyncState state, CancellationToken ct)
+    /// <summary>نسخ عمل كل المندوبين الفعّالين مرة واحدة لكل دورة (تُرفع لكل خادم ما تغيّر عنده فقط).</summary>
+    private async Task<List<AgentSnapshot>> BuildAllSnapshotsAsync()
     {
-        // البصمات من الخادم في كل فحص (طلب صغير): يبقى صحيحًا حتى لو أُعيد إنشاء قاعدة الخادم
-        state.SnapshotHashes = await SendAsync<Dictionary<int, string>>(http, HttpMethod.Get, CloudRoutes.AgentSnapshotHashes, null, ct);
         var reps = await _db.RepDevices.AsNoTracking().Where(d => d.IsActive).Select(d => d.RepEmployeeId).Distinct().ToListAsync();
-        var changed = new List<AgentSnapshot>();
+        var all = new List<AgentSnapshot>();
         foreach (var repId in reps)
         {
             var snap = await BuildSnapshotAsync(repId);
             if (snap is null) continue;
             // البصمة بلا وقت التوليد: لا يُرفع شيء ما لم يتغير المحتوى
             var hash = CloudHash.Of(JsonSerializer.Serialize(snap with { GeneratedAtUtc = default }, Json));
-            if (state.SnapshotHashes.TryGetValue(repId, out var known) && known == hash) continue;
-            changed.Add(new AgentSnapshot(repId, hash, JsonSerializer.Serialize(snap, Json)));
+            all.Add(new AgentSnapshot(repId, hash, JsonSerializer.Serialize(snap, Json)));
         }
-        if (changed.Count > 0)
-        {
-            await SendAsync<JsonElement>(http, HttpMethod.Put, CloudRoutes.AgentSnapshots, changed, ct);
-            foreach (var c in changed) state.SnapshotHashes[c.RepEmployeeId] = c.Hash;
-        }
-        state.LastSnapshotCheckUtc = DateTime.UtcNow;
+        return all;
+    }
+
+    private static async Task<int> PushSnapshotsAsync(HttpClient http, List<AgentSnapshot> all, CancellationToken ct)
+    {
+        // البصمات من الخادم في كل فحص (طلب صغير): يبقى صحيحًا حتى لو أُعيد إنشاء قاعدة الخادم
+        var known = await SendAsync<Dictionary<int, string>>(http, HttpMethod.Get, CloudRoutes.AgentSnapshotHashes, null, ct);
+        var changed = all.Where(s => !(known.TryGetValue(s.RepEmployeeId, out var h) && h == s.Hash)).ToList();
+        if (changed.Count > 0) await SendAsync<JsonElement>(http, HttpMethod.Put, CloudRoutes.AgentSnapshots, changed, ct);
         return changed.Count;
     }
 
-    private async Task RecordAsync(string machine, string? error, int received, bool snapshotPushed)
+    private async Task RecordAsync(string machine, IReadOnlyDictionary<SyncTargetKind, string?> errors, int received, bool snapshotPushed)
     {
         _db.ChangeTracker.Clear();
         var s = await _db.CloudSyncSettings.FirstOrDefaultAsync();
@@ -214,8 +307,20 @@ public class CloudSyncService
         s.AgentMachine = machine.Length > 100 ? machine[..100] : machine;
         s.ReceivedCount += received;
         if (snapshotPushed) s.LastSnapshotAt = now;
-        if (error is null) s.LastSuccessAt = now;
-        else { s.LastError = error.Length > 500 ? error[..500] : error; s.LastErrorAt = now; }
+        static string Cut(string e) => e.Length > 500 ? e[..500] : e;
+        foreach (var (kind, error) in errors)
+        {
+            if (kind == SyncTargetKind.Local)
+            {
+                if (error is null) s.LocalLastSuccessAt = now;
+                else (s.LocalLastError, s.LocalLastErrorAt) = (Cut(error), now);
+            }
+            else
+            {
+                if (error is null) s.LastSuccessAt = now;
+                else (s.LastError, s.LastErrorAt) = (Cut(error), now);
+            }
+        }
         await _db.SaveChangesAsync();
     }
 
@@ -275,11 +380,16 @@ public class CloudSyncService
             .Where(r => r.RepEmployeeId == rep.Id && r.Status == RepRequestStatus.Posted && r.ReceivedAt >= since)
             .OrderBy(r => r.Id).Select(r => r.ClientId).ToListAsync();
 
+        var sync = await SettingsAsync();
+        var servers = sync.IsEnabled
+            ? new SnapshotServers(sync.LocalEnabled ? sync.LocalUrl : null, sync.ServerUrl,
+                                  string.IsNullOrEmpty(sync.AgentKey) ? null : FactoryIdentity.Of(sync.AgentKey))
+            : null;
         var company = await new CompanyProfileService(_db).GetAsync();
         var logo = company?.Logo is { Length: > 0 and <= RepSnapshot.MaxLogoBytes } l ? l : null;
         return new RepSnapshot(rep.Id, rep.FullName, DateTime.UtcNow, settings.AllowCreditOverLimit, settings.CashAlertDays, wallet,
                                products, snapCustomers, agentPrices, stock, posted,
-                               string.IsNullOrWhiteSpace(company?.NameAr) ? null : company.NameAr.Trim(), logo);
+                               string.IsNullOrWhiteSpace(company?.NameAr) ? null : company.NameAr.Trim(), logo, servers);
     }
 
     // ============================ الاتصال ============================
@@ -295,7 +405,7 @@ public class CloudSyncService
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
         {
-            throw new CloudSyncException($"تعذّر الاتصال بالخادم السحابي — تحقق من الإنترنت وعنوان الخادم ({ex.Message})");
+            throw new CloudSyncException($"تعذّر الاتصال بالخادم — تحقق من الشبكة وعنوان الخادم ({ex.Message})");
         }
         using (response)
         {
@@ -307,7 +417,7 @@ public class CloudSyncService
                 throw new CloudSyncException(response.StatusCode switch
                 {
                     HttpStatusCode.Unauthorized => message ?? "مفتاح المعمل غير مقبول في الخادم",
-                    _ => $"الخادم السحابي رد بخطأ {(int)response.StatusCode}{(message is null ? "" : ": " + message)}"
+                    _ => $"الخادم رد بخطأ {(int)response.StatusCode}{(message is null ? "" : ": " + message)}"
                 });
             }
             try
@@ -316,7 +426,7 @@ public class CloudSyncService
             }
             catch (JsonException)
             {
-                throw new CloudSyncException("رد الخادم السحابي غير مفهوم — تحقق من العنوان");
+                throw new CloudSyncException("رد الخادم غير مفهوم — تحقق من العنوان");
             }
         }
     }
@@ -327,17 +437,39 @@ public enum CloudSyncLevel { Off, Ok, Warning, Error }
 /// <summary>وصف حالة المزامنة للمستخدم (الشاشة ومؤشر الشريط الجانبي).</summary>
 public static class CloudSyncStatus
 {
+    /// <summary>الحالة العامة (المؤشر في الشريط): الأسوأ بين الخادمين المفعّلين، مع وصف كل منهما.</summary>
     public static (CloudSyncLevel level, string text) Describe(CloudSyncSetting s, DateTime nowUtc)
     {
-        if (!s.IsEnabled) return (CloudSyncLevel.Off, "المزامنة السحابية غير مفعّلة");
-        if (s.LastErrorAt is DateTime errAt && (s.LastSuccessAt is null || errAt > s.LastSuccessAt))
-            return (CloudSyncLevel.Error, $"متعذّرة منذ {Ago(nowUtc - errAt)}: {s.LastError}");
-        if (s.LastSuccessAt is not DateTime ok)
-            return (CloudSyncLevel.Warning, "لم تتم أي مزامنة بعد — تأكد من تثبيت خدمة المزامنة على جهاز السيرفر");
+        if (!s.IsEnabled) return (CloudSyncLevel.Off, "المزامنة غير مفعّلة");
+        var parts = new List<(CloudSyncLevel level, string text)>();
+        if (s.LocalEnabled) parts.Add(DescribeLocal(s, nowUtc));
+        if (!string.IsNullOrEmpty(s.ServerUrl)) parts.Add(DescribeCloud(s, nowUtc));
+        if (parts.Count == 0) return (CloudSyncLevel.Warning, "لا خادم مفعّل — فعّل الخادم المحلي أو اكتب عنوان الخادم السحابي");
+        if (parts.Count == 1) return parts[0];
+        var level = parts.Max(p => p.level);
+        return (level, $"المحلي: {parts[0].text} — السحابي: {parts[1].text}");
+    }
+
+    public static (CloudSyncLevel level, string text) DescribeLocal(CloudSyncSetting s, DateTime nowUtc) =>
+        !s.LocalEnabled ? (CloudSyncLevel.Off, "غير مفعّل")
+        : One(s.LocalLastSuccessAt, s.LocalLastError, s.LocalLastErrorAt, s, nowUtc,
+              "لم يتصل بعد — يعمل تلقائيًا إن ثُبّت النظام على هذه الحاسبة بوضع «السيرفر»");
+
+    public static (CloudSyncLevel level, string text) DescribeCloud(CloudSyncSetting s, DateTime nowUtc) =>
+        string.IsNullOrEmpty(s.ServerUrl) ? (CloudSyncLevel.Off, "غير مضبوط")
+        : One(s.LastSuccessAt, s.LastError, s.LastErrorAt, s, nowUtc,
+              "لم يتصل بعد — تأكد من نشر الخادم السحابي بملفات النشر الجاهزة");
+
+    private static (CloudSyncLevel, string) One(DateTime? success, string? error, DateTime? errorAt, CloudSyncSetting s, DateTime nowUtc, string never)
+    {
+        if (!s.IsEnabled) return (CloudSyncLevel.Off, "المزامنة موقوفة");
+        if (errorAt is DateTime errAt && (success is null || errAt > success))
+            return (CloudSyncLevel.Error, $"متعذّر منذ {Ago(nowUtc - errAt)}: {error}");
+        if (success is not DateTime ok) return (CloudSyncLevel.Warning, never);
         var stale = TimeSpan.FromSeconds(Math.Max(120, s.IntervalSeconds * 3));
         return nowUtc - ok > stale
             ? (CloudSyncLevel.Warning, $"آخر مزامنة قبل {Ago(nowUtc - ok)} — هل خدمة المزامنة تعمل على {s.AgentMachine ?? "جهاز السيرفر"}؟")
-            : (CloudSyncLevel.Ok, $"متصلة — آخر مزامنة قبل {Ago(nowUtc - ok)}");
+            : (CloudSyncLevel.Ok, $"متصل — آخر مزامنة قبل {Ago(nowUtc - ok)}");
     }
 
     public static string Ago(TimeSpan t) => t.TotalSeconds < 60 ? "أقل من دقيقة"

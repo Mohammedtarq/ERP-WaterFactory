@@ -220,7 +220,7 @@ public class MainShellViewModel : ViewModelBase
             await using var db = Session.NewDb();
             var (level, text) = CloudSyncStatus.Describe(await new CloudSyncService(db).SettingsAsync(), DateTime.UtcNow);
             CloudStatusColor = level switch { CloudSyncLevel.Ok => "#4ADE80", CloudSyncLevel.Warning => "#FBBF24", _ => "#F87171" };
-            CloudStatusText = level == CloudSyncLevel.Off ? null : $"السحابة: {text}";
+            CloudStatusText = level == CloudSyncLevel.Off ? null : $"المزامنة: {text}";
         }
         catch (Exception ex) when (ex is Microsoft.Data.SqlClient.SqlException or InvalidOperationException)
         {

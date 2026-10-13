@@ -202,22 +202,34 @@ public class RepDevicesSectionViewModel : SectionViewModel
         {
             LastKey = key;
             await using var db2 = Session.NewDb();
-            var url = (await new CloudSyncService(db2).SettingsAsync()).ServerUrl;
-            if (url is null)
+            var sync = await new CloudSyncService(db2).SettingsAsync();
+            if (LinkFor(sync, key!) is not { } link)
             {
                 LinkQr = null;
-                LinkHint = "لعرض رمز الربط: اضبط عنوان الخادم في «الإعدادات ← المزامنة السحابية» ثم سجّل الجهاز";
+                LinkHint = "لعرض رمز الربط: فعّل المزامنة في «الإعدادات ← المزامنة السحابية» (الخادم المحلي أو السحابي) ثم سجّل الجهاز";
             }
             else
             {
                 using var qr = new QRCoder.QRCodeGenerator();
-                using var data = qr.CreateQrCode(new Cloud.Contracts.LinkCode(url, key!).Encode(), QRCoder.QRCodeGenerator.ECCLevel.M);
+                using var data = qr.CreateQrCode(link.Encode(), QRCoder.QRCodeGenerator.ECCLevel.M);
                 LinkQr = new QRCoder.PngByteQRCode(data).GetGraphic(8);
-                LinkHint = $"افتح تطبيق المندوب ← «ربط الجهاز» ← صوّر الرمز. الخادم: {url}";
+                LinkHint = "افتح تطبيق المندوب ← «ربط الجهاز» ← صوّر الرمز. الخادم: " + string.Join(" + ", link.Candidates);
             }
             NewName = "";
             await LoadAsync();
         }
+    }
+
+    /// <summary>
+    /// رمز الربط: الخادم السحابي (أو المحلي وحده)، والمحلي معه إن كان الاثنان، وبصمة المعمل لاكتشاف الخادم المحلي إن تغيّر عنوانه.
+    /// </summary>
+    public static Cloud.Contracts.LinkCode? LinkFor(ERP.Data.ProjectDb.Entities.CloudSyncSetting sync, string deviceKey)
+    {
+        var local = sync.LocalEnabled && !string.IsNullOrEmpty(sync.LocalUrl) ? sync.LocalUrl : null;
+        var primary = string.IsNullOrEmpty(sync.ServerUrl) ? local : sync.ServerUrl;
+        if (primary is null) return null;
+        var fid = string.IsNullOrEmpty(sync.AgentKey) ? null : Cloud.Contracts.FactoryIdentity.Of(sync.AgentKey);
+        return new Cloud.Contracts.LinkCode(primary, deviceKey, primary == local ? null : local, fid);
     }
 
     private async Task ToggleAsync()

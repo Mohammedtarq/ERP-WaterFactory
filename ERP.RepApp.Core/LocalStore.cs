@@ -107,19 +107,54 @@ public class LocalStore
         else Exec(c, "INSERT INTO Settings (Key, Value) VALUES ($k, $v) ON CONFLICT(Key) DO UPDATE SET Value = $v", ("$k", key), ("$v", value));
     }
 
-    public LinkCode? Link => Get("ServerUrl") is string u && Get("DeviceKey") is string k ? new LinkCode(u, k) : null;
+    public LinkCode? Link => Get("ServerUrl") is string u && Get("DeviceKey") is string k ? new LinkCode(u, k, Get("LocalUrl"), Get("FactoryId")) : null;
 
     public void SaveLink(LinkCode link)
     {
         Set("ServerUrl", link.ServerUrl);
         Set("DeviceKey", link.DeviceKey);
+        Set("LocalUrl", link.LocalUrl);
+        Set("FactoryId", link.FactoryId);
     }
+
+    /// <summary>
+    /// عناوين المعمل الحالية من نسخة العمل (تغيّر عنوان الحاسبة، أو أُضيف الخادم السحابي): تُحدَّث وحدها بلا كتابة يدوية.
+    /// لا يُقبل إلا عنوان صحيح، ولا يُمسح عنوان يعمل بقيمة فارغة.
+    /// </summary>
+    /// <returns>true إن تغيّر شيء.</returns>
+    public bool ApplyServers(SnapshotServers? servers)
+    {
+        if (servers is null || Link is not { } link) return false;
+        var cloud = servers.CloudUrl is { } c && CloudUrl.Validate(c) is null ? c.Trim().TrimEnd('/') : null;
+        var local = servers.LocalUrl is { } l && CloudUrl.Validate(l) is null ? l.Trim().TrimEnd('/') : null;
+        if (cloud is null && local is null) return false;
+        var updated = link with
+        {
+            ServerUrl = cloud ?? local!,
+            LocalUrl = cloud is null ? null : local,
+            FactoryId = servers.FactoryId is { Length: FactoryIdentity.Length } f ? f : link.FactoryId
+        };
+        if (updated == link) return false;
+        SaveLink(updated);
+        return true;
+    }
+
+    /// <summary>عنوان جديد للخادم المحلي وجده الهاتف على الشبكة (بصمة المعمل نفسها).</summary>
+    public void UpdateLocal(string url)
+    {
+        if (Link is not { } link || CloudUrl.Validate(url) is not null) return;
+        // خادم محلي فقط: هو العنوان الرئيسي؛ ومع السحابي يبقى السحابي رئيسيًا
+        var onlyLocal = link.LocalUrl is null && IsLan(link.ServerUrl);
+        SaveLink(onlyLocal ? link with { ServerUrl = url } : link with { LocalUrl = url });
+    }
+
+    private static bool IsLan(string url) => Uri.TryCreate(url, UriKind.Absolute, out var u) && (CloudUrl.IsPrivateLan(u.Host) || u.IsLoopback);
 
     /// <summary>فك الربط (جهاز جديد للمندوب، أو نقل الهاتف): يُرفض ما دامت حركات لم تصل المعمل.</summary>
     public string? Unlink()
     {
         if (Outbox().Any(i => i.State != OutboxState.Done)) return "توجد حركات لم تصل المعمل بعد — أرسلها أولًا";
-        foreach (var k in new[] { "ServerUrl", "DeviceKey", "Snapshot", "SnapshotEtag" }) Set(k, null);
+        foreach (var k in new[] { "ServerUrl", "DeviceKey", "LocalUrl", "FactoryId", "Snapshot", "SnapshotEtag" }) Set(k, null);
         return null;
     }
 

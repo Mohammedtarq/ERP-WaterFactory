@@ -105,6 +105,24 @@ public static class DatabaseInstaller
             ALTER TABLE GlobalUsers ADD FailedLoginCount INT NOT NULL CONSTRAINT DF_GlobalUsers_FailedLoginCount DEFAULT 0;
         IF COL_LENGTH('GlobalUsers', 'LockedUntilUtc') IS NULL
             ALTER TABLE GlobalUsers ADD LockedUntilUtc DATETIME2 NULL;
+        """ + ServiceAccessSql;
+
+    /// <summary>
+    /// وصول خدمة المزامنة (NT SERVICE\ERPCloudSync) لهذه القاعدة إن كان المثبّت قد أنشأ دخولها على هذا السيرفر:
+    /// قراءة وكتابة وتنفيذ فقط. يُنفَّذ مع كل ترقية فيشمل كل مشروع يُنشأ بعد التثبيت دون خطوة يدوية.
+    /// لا أثر له إن لم توجد الخدمة، أو لم تكفِ صلاحية المستخدم الحالي (تتولاه إعادة تشغيل المثبّت).
+    /// </summary>
+    public const string ServiceAccessSql = """
+
+        IF SUSER_ID(N'NT SERVICE\ERPCloudSync') IS NOT NULL
+        BEGIN TRY
+            IF USER_ID(N'NT SERVICE\ERPCloudSync') IS NULL CREATE USER [NT SERVICE\ERPCloudSync] FOR LOGIN [NT SERVICE\ERPCloudSync];
+            ALTER ROLE db_datareader ADD MEMBER [NT SERVICE\ERPCloudSync];
+            ALTER ROLE db_datawriter ADD MEMBER [NT SERVICE\ERPCloudSync];
+            GRANT EXECUTE TO [NT SERVICE\ERPCloudSync];
+        END TRY
+        BEGIN CATCH
+        END CATCH;
         """;
 
     private static readonly HashSet<string> UpgradedControls = new(StringComparer.OrdinalIgnoreCase);
@@ -175,6 +193,7 @@ public static class DatabaseInstaller
             up.Parameters.AddWithValue("@h", hash);
             await up.ExecuteNonQueryAsync();
         }
+        await ExecuteScriptAsync(conn, ServiceAccessSql);
         return applied;
     }
 }

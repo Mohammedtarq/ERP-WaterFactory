@@ -11,7 +11,7 @@ namespace ERP.Cloud.Api;
 /// </summary>
 public static class RelayEndpoints
 {
-    public const string Version = "1.0";
+    public const string Version = "1.1";
 
     public static string Hash(string value) => CloudHash.Of(value);
 
@@ -101,11 +101,12 @@ public static class RelayEndpoints
         });
 
         // ============================ خدمة المزامنة ============================
-        var agentKey = app.Configuration["Relay:AgentKey"] ?? "";
+        var keys = app.Services.GetRequiredService<AgentKeyProvider>();
         var keepDays = Math.Max(1, app.Configuration.GetValue("Relay:KeepDays", 30));
         var agent = app.MapGroup("").AddEndpointFilter(async (ctx, next) =>
         {
-            if (agentKey.Length < 32) return Problem(503, "مفتاح المعمل غير مضبوط في إعدادات الخادم (Relay:AgentKey)");
+            var agentKey = keys.Current;
+            if (agentKey.Length < 32) return Problem(503, "مفتاح المعمل لم يصل الخادم بعد (Relay:AgentKey أو ملف المفتاح)");
             var given = ctx.HttpContext.Request.Headers[CloudRoutes.AgentKeyHeader].ToString();
             if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(given)), SHA256.HashData(Encoding.UTF8.GetBytes(agentKey))))
                 return Problem(401, "مفتاح المعمل غير صحيح");
@@ -113,12 +114,14 @@ public static class RelayEndpoints
             var state = await db.AgentState.FirstOrDefaultAsync();
             if (state is null) db.AgentState.Add(state = new RelayAgentState());
             state.LastSeenAt = DateTime.UtcNow;
+            state.RelayId ??= Guid.NewGuid();
             await db.SaveChangesAsync();
             return await next(ctx);
         });
 
         agent.MapGet(CloudRoutes.AgentPing, async (RelayDb db) =>
-            Results.Ok(new AgentPing(DateTime.UtcNow, await db.Requests.CountAsync(r => r.State == RelayState.Waiting), Version)));
+            Results.Ok(new AgentPing(DateTime.UtcNow, await db.Requests.CountAsync(r => r.State == RelayState.Waiting), Version,
+                                     (await db.AgentState.AsNoTracking().Select(a => a.RelayId).FirstOrDefaultAsync()) ?? Guid.Empty)));
 
         // القائمة كاملة في كل مرة: ما ليس فيها يُوقف
         agent.MapPut(CloudRoutes.AgentDevices, async (RelayDb db, List<AgentDevice> devices) =>
@@ -155,9 +158,17 @@ public static class RelayEndpoints
             var now = DateTime.UtcNow;
             var ids = results.Select(r => r.ClientId).Distinct().ToList();
             var rows = await db.Requests.Where(r => ids.Contains(r.ClientId)).ToDictionaryAsync(r => r.ClientId);
+            var reps = await db.Devices.AsNoTracking().ToDictionaryAsync(d => d.Id, d => d.RepEmployeeId);
             foreach (var r in results)
             {
-                if (!rows.TryGetValue(r.ClientId, out var row)) continue;
+                if (!rows.TryGetValue(r.ClientId, out var row))
+                {
+                    // نتيجة حركة وصلت المعمل عبر خادم آخر: تُحفظ هنا كي يجدها الهاتف أينما اتصل
+                    if (r.DeviceId is not int deviceId || !reps.TryGetValue(deviceId, out var repId)) continue;
+                    db.Requests.Add(row = new RelayRequest { ClientId = r.ClientId, DeviceId = deviceId, RepEmployeeId = repId, Kind = "Mirror",
+                                                             OccurredAt = now, ReceivedAt = now, Payload = "" });
+                    rows[r.ClientId] = row;
+                }
                 (row.State, row.Accepted, row.ResultStatus, row.ResultId, row.UpdatedAt) = (RelayState.Done, r.Accepted, r.Status, r.ResultId, now);
                 row.ResultMessage = r.Message.Length > 500 ? r.Message[..500] : r.Message;
                 row.Warning = r.Warning is { Length: > 300 } w ? w[..300] : r.Warning;

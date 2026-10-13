@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -1323,7 +1323,7 @@ public class TutorialTests
     }
 
     /// <summary>
-    /// دليل تفعيل تطبيق المندوبين من الحاسوب (لقطات حقيقية من Windows): المزامنة السحابية (العنوان والتفعيل ومفتاح المعمل)
+    /// دليل تفعيل تطبيق المندوبين من الحاسوب (لقطات حقيقية من Windows): المزامنة (الخادم المحلي والتفعيل، والمفتاح التلقائي)
     /// ثم تسجيل هاتف المندوب فيظهر رمز الربط QR الذي يصوّره المندوب من هاتفه.
     /// </summary>
     [Fact]
@@ -1377,13 +1377,21 @@ public class TutorialTests
             await settings.IdleAsync();
             var cloud = settings.Section<CloudSyncSectionViewModel>();
             await Open(settings, cloud);
-            cloud.ServerUrl = "http://192.168.1.10:5080";      // عنوان خادم تجربة (مثال)
             cloud.IsEnabled = true;
+            cloud.LocalEnabled = true;                          // الخادم المحلي على حاسبة السيرفر (يثبّته المثبّت)
             await Shot("01-المزامنة-السحابية-العنوان-والتفعيل", cloud);
-            await cloud.GenerateKeyCommand.ExecuteAsync();
-            Assert.False(string.IsNullOrEmpty(cloud.NewKey));
-            await Shot("02-توليد-مفتاح-المعمل", cloud);
             await cloud.SaveCommand.ExecuteAsync();
+            Assert.True(cloud.HasKey);                          // مفتاح المعمل وُلّد تلقائيًا
+            await Shot("02-توليد-مفتاح-المعمل", cloud);
+            // ما تكتبه خدمة المزامنة على حاسبة السيرفر: عنوانها للهواتف (مثال)
+            await using (var db = shell.Session.NewDb())
+            {
+                var row = await db.CloudSyncSettings.SingleAsync();
+                row.LocalUrl = "http://192.168.1.10:5080";
+                await db.SaveChangesAsync();
+            }
+            await cloud.LoadAsync();
+            Assert.Equal("http://192.168.1.10:5080", cloud.LocalUrl);
             await Shot("03-بعد-الحفظ-المزامنة-مفعّلة", cloud);
 
             step = "تسجيل الجهاز";

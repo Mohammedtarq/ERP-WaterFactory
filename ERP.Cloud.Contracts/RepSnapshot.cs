@@ -20,11 +20,18 @@ public record RepSnapshot(
     List<SnapshotStock> VanStock,
     List<Guid>? PostedClientIds = null,
     string? CompanyName = null,
-    byte[]? CompanyLogo = null)
+    byte[]? CompanyLogo = null,
+    SnapshotServers? Servers = null)
 {
     /// <summary>الشعار ينتقل مع كل نسخة عمل، فيبقى صغيرًا.</summary>
     public const int MaxLogoBytes = 200 * 1024;
 }
+
+/// <summary>
+/// عناوين خوادم المعمل الحالية: الهاتف يحدّث بها رمز ربطه تلقائيًا (تغيّر عنوان الحاسبة أو أُضيف الخادم السحابي)
+/// فلا يُكتب عنوان يدويًا.
+/// </summary>
+public record SnapshotServers(string? LocalUrl, string? CloudUrl, string? FactoryId);
 
 /// <summary>صنف قابل للبيع: سعر القطعة العادي، وعبواته (الأكبر أولًا).</summary>
 public record SnapshotProduct(int ItemId, string Code, string Name, decimal PiecePrice, List<SnapshotLevel> Levels);

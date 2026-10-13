@@ -19,7 +19,8 @@ public sealed class AppServices
     {
         Store = new LocalStore(Path.Combine(FileSystem.AppDataDirectory, "rep.db"));
         Work = new RepWork(Store);
-        _sync = new SyncEngine(Store, () => _client ??= new RepCloudClient(Store.Link!));
+        // الرمز يُقرأ عند كل طلب: عناوين المعمل الجديدة (من نسخة العمل أو الاكتشاف على الشبكة) تُستعمل فورًا
+        _sync = new SyncEngine(Store, () => _client ??= new RepCloudClient(() => Store.Link!, Store.UpdateLocal));
     }
 
     /// <summary>بعد ربط جديد: اتصال جديد بالعنوان والمفتاح الجديدين.</summary>

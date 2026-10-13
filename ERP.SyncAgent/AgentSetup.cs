@@ -16,15 +16,17 @@ public static class AgentSetup
     public const string ServiceAccount = @"NT SERVICE\" + ServiceName;
 
     public const string Usage = """
-        خدمة المزامنة السحابية — نظام معمل المياه
+        خدمة المزامنة — نظام معمل المياه
           ERP.SyncAgent.exe                         تشغيل (كخدمة Windows أو في نافذة للتجربة)
           ERP.SyncAgent.exe --once                  دورة مزامنة واحدة وطباعة النتيجة
-          ERP.SyncAgent.exe --install --control "<سلسلة اتصال قاعدة التحكم>"   تثبيت الخدمة (كمسؤول)
-          ERP.SyncAgent.exe --uninstall             إزالة الخدمة (كمسؤول)
-        الأسهل: شاشة «الإعدادات ← المزامنة السحابية» ← «تثبيت الخدمة على هذا الجهاز».
+          ERP.SyncAgent.exe --install-server [--sql "localhost\SQLEXPRESS"]   الخادم المحلي + خدمة المزامنة (كمسؤول)
+          ERP.SyncAgent.exe --uninstall-server      إزالتهما (كمسؤول)
+          ERP.SyncAgent.exe --install --control "<سلسلة اتصال قاعدة التحكم>"   خدمة المزامنة وحدها (كمسؤول)
+          ERP.SyncAgent.exe --uninstall             إزالتها (كمسؤول)
+        الأسهل: المثبّت بوضع «السيرفر» يفعل كل هذا تلقائيًا.
         """;
 
-    private static bool IsAdmin() =>
+    internal static bool IsAdmin() =>
         OperatingSystem.IsWindows() && new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
 
     public static async Task<int> InstallAsync(string? controlCs)
@@ -70,7 +72,7 @@ public static class AgentSetup
     }
 
     /// <summary>حساب الخدمة: قراءة وكتابة وتنفيذ في قاعدة التحكم وكل قاعدة مشروع على هذا السيرفر.</summary>
-    private static async Task GrantAsync(string controlCs)
+    internal static async Task GrantAsync(string controlCs)
     {
         var databases = new List<string> { new SqlConnectionStringBuilder(controlCs).InitialCatalog };
         await using (var control = new ControlDbContext(new DbContextOptionsBuilder<ControlDbContext>().UseSqlServer(controlCs).Options))
@@ -108,7 +110,7 @@ public static class AgentSetup
         return 0;
     }
 
-    private static int Run(string file, string arguments, bool required = false)
+    internal static int Run(string file, string arguments, bool required = false)
     {
         using var p = Process.Start(new ProcessStartInfo(file, arguments) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })!;
         var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();

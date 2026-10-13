@@ -8,10 +8,10 @@
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="380"/>
+            <ColumnDefinition Width="400"/>
         </Grid.ColumnDefinitions>
 
-        <!-- الحالة -->
+        <!-- الحالة: الخادمان معًا -->
         <StackPanel>
             <Border Style="{StaticResource Card}">
                 <StackPanel>
@@ -23,6 +23,31 @@
                         <Ellipse Width="14" Height="14" Fill="{Binding LevelColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding StateText}" FontSize="15" FontWeight="SemiBold" Margin="10,0,0,0" TextWrapping="Wrap" MaxWidth="560"/>
                     </StackPanel>
+
+                    <!-- الخادم المحلي -->
+                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,14,0,0">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="10" Height="10" Fill="{Binding LocalColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
+                                <TextBlock Text="الخادم المحلي — واي فاي المعمل" FontWeight="SemiBold" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding LocalText}" TextWrapping="Wrap" Margin="18,4,0,0"/>
+                            <TextBlock Margin="18,4,0,0" FlowDirection="LeftToRight" HorizontalAlignment="Right" Foreground="#475569"
+                                       Text="{Binding LocalUrl, StringFormat='العنوان للهواتف: {0}'}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- الخادم السحابي -->
+                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="10" Height="10" Fill="{Binding CloudColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
+                                <TextBlock Text="الخادم السحابي — الإنترنت" FontWeight="SemiBold" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding CloudText}" TextWrapping="Wrap" Margin="18,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
                     <TextBlock Text="{Binding Details}" Margin="0,12,0,0" TextWrapping="Wrap" LineHeight="22"/>
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
                         <Button Content="اختبار الاتصال" Style="{StaticResource SecondaryButton}" Command="{Binding TestCommand}"/>
@@ -35,7 +60,7 @@
                 <StackPanel>
                     <TextBlock Text="كيف تعمل" Style="{StaticResource SectionTitle}"/>
                     <TextBlock TextWrapping="Wrap" LineHeight="22"
-                               Text="الهاتف يرسل الحركة إلى الخادم السحابي، وخدمة المزامنة على جهاز السيرفر تسحبها وترحّلها هنا بنفس قواعد النظام (الصلاحيات، قفل الشهر، حد الدين)، ثم تعيد نتيجتها للهاتف مع «نسخة عمل» المندوب: زبائنه وأسعاره ورصيد سيارته. لا يُفتح أي منفذ في المعمل، وإذا انقطع الإنترنت تنتظر الحركات في الخادم بلا ضياع ولا تكرار. «مزامنة الآن» تجري دورة واحدة من هذا الجهاز للتجربة."/>
+                               Text="الهاتف يرسل الحركة إلى الخادم المحلي إن كان على واي فاي المعمل، وإلا إلى الخادم السحابي عبر الإنترنت. خدمة المزامنة على حاسبة السيرفر تسحب من الخادمين وترحّل هنا بنفس قواعد النظام، وتعيد النتيجة إلى الخادمين معًا فيعرفها الهاتف أينما اتصل. المثبّت (وضع «السيرفر») يثبّت الخادم المحلي وخدمة المزامنة خدمتين تبدآن مع الحاسبة، ويُكتب عنوان الحاسبة ويصل الهواتف تلقائيًا إن تغيّر. لا ضياع ولا تكرار عند انقطاع أي منهما."/>
                 </StackPanel>
             </Border>
         </StackPanel>
@@ -44,15 +69,24 @@
         <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0" VerticalAlignment="Top">
             <StackPanel>
                 <TextBlock Text="الإعداد" Style="{StaticResource SectionTitle}"/>
-                <TextBlock Text="عنوان الخادم السحابي" Style="{StaticResource FieldLabel}"/>
+                <CheckBox Content="تفعيل المزامنة" IsChecked="{Binding IsEnabled}" FontWeight="SemiBold"/>
+                <CheckBox Content="الخادم المحلي على حاسبة السيرفر (واي فاي المعمل)" IsChecked="{Binding LocalEnabled}" Margin="0,10,0,0"/>
+                <TextBlock Text="عنوان الخادم السحابي (اختياري — نطاق https)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
                 <TextBox Text="{Binding ServerUrl, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
-                <TextBlock Text="مفتاح المعمل (يُلصق في إعداد الخادم Relay__AgentKey)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
-                <TextBox Text="{Binding KeyText, Mode=OneWay}" IsReadOnly="True" FlowDirection="LeftToRight" FontFamily="Consolas" TextWrapping="Wrap"/>
-                <Button Content="توليد مفتاح جديد" Style="{StaticResource SecondaryButton}" Command="{Binding GenerateKeyCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
                 <TextBlock Text="المزامنة كل (ثانية)" Style="{StaticResource FieldLabel}"/>
                 <TextBox Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Width="80" HorizontalAlignment="Left" FlowDirection="LeftToRight"/>
-                <CheckBox Content="تفعيل المزامنة السحابية" IsChecked="{Binding IsEnabled}" Margin="0,12,0,0"/>
                 <Button Content="حفظ" Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+
+                <Separator Margin="0,16,0,8"/>
+                <TextBlock Text="الخادم السحابي" Style="{StaticResource SectionTitle}"/>
+                <TextBlock TextWrapping="Wrap" Foreground="#475569"
+                           Text="ملفات نشر جاهزة (الخادم ومفتاح المعمل وشهادة https تلقائية): تُرفع إلى أي خادم Linux عليه Docker ثم أمر واحد. التفاصيل في ملف «اقرأني» معها."/>
+                <Button Content="ملفات نشر الخادم السحابي" Style="{StaticResource SecondaryButton}" Command="{Binding CloudFilesCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+
+                <Separator Margin="0,16,0,8"/>
+                <TextBlock Text="مفتاح المعمل" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding KeyText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"/>
+                <Button Content="توليد مفتاح جديد" Style="{StaticResource SecondaryButton}" Command="{Binding GenerateKeyCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
             </StackPanel>
         </Border>
     </Grid>

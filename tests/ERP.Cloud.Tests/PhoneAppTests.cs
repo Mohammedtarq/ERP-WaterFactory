@@ -166,7 +166,7 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         // ---- تغيّرت شبكة المعمل: تغيير العنوان فقط، والمفتاح والحركات باقية ----
         Assert.Contains("مشفّرًا", store.ChangeServer("http://example.com"));
         Assert.Null(store.ChangeServer("http://192.168.0.191:5080/"));
-        Assert.Equal(new LinkCode("http://192.168.0.191:5080", deviceKey), store.Link);
+        Assert.Equal(("http://192.168.0.191:5080", deviceKey), (store.Link!.ServerUrl, store.Link.DeviceKey));
         Assert.Single(store.Queued());
         Assert.Equal(4, store.Outbox().Count);
         Assert.Null(store.ChangeServer(baseUrl));

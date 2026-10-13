@@ -1,5 +1,6 @@
 ﻿# مثبّت نظام إدارة معمل المياه — ثلاثة أوضاع:
-#   Server      : SQL Server 2022 Express (يُنزَّل ويُثبَّت بصمت إن لم يكن موجودًا) + البرنامج + اختصار، ثم معالج الإعداد
+#   Server      : SQL Server 2022 Express (يُنزَّل ويُثبَّت بصمت إن لم يكن موجودًا) + البرنامج + اختصار
+#                 + الخادم المحلي لتطبيق المندوبين وخدمة المزامنة (خدمتان تبدآن مع الحاسبة)، ثم معالج الإعداد
 #   Workstation : البرنامج + اختصار فقط (جهاز مستخدم يتصل بالسيرفر)
 #   Trainee     : SQL Server LocalDB (نسخة مصغّرة) + البرنامج + قاعدة تدريب ببيانات تجريبية تلقائيًا — بلا سيرفر
 # الاستخدام: انقر مرتين على «تثبيت - ….cmd» في مجلد البرنامج، أو:
@@ -91,9 +92,13 @@ function Install-LocalDb {
 }
 
 function Install-App {
+    # تحديث فوق نسخة سابقة: الخدمتان تُوقفان كي لا تُقفل ملفاتهما (يعيد تشغيلهما تجهيز المزامنة)
+    foreach ($svc in 'ERPCloudSync', 'ERPLocalRelay') {
+        if (Get-Service -Name $svc -ErrorAction SilentlyContinue) { Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue }
+    }
     Write-Host "  نسخ البرنامج إلى $InstallDir ..."
     New-Item $InstallDir -ItemType Directory -Force | Out-Null
-    & robocopy $source $InstallDir /E /NFL /NDL /NJH /NJS /NP /XF 'Install-ERP.ps1' '*.cmd' | Out-Null
+    & robocopy $source $InstallDir /E /R:3 /W:2 /NFL /NDL /NJH /NJS /NP /XF 'Install-ERP.ps1' '*.cmd' | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "تعذّر نسخ ملفات البرنامج (robocopy $LASTEXITCODE)" }
     $exe = Join-Path $InstallDir 'ERP.Desktop.exe'
     $shell = New-Object -ComObject WScript.Shell
@@ -130,7 +135,17 @@ try {
     Step "2) البرنامج"
     $exe = Install-App
 
-    Step "3) التشغيل الأول"
+    if ($Mode -eq 'Server') {
+        Step "3) المزامنة: الخادم المحلي لتطبيق المندوبين + خدمة المزامنة"
+        $agent = Join-Path $InstallDir 'SyncAgent\ERP.SyncAgent.exe'
+        if (Test-Path $agent) {
+            & $agent --install-server --sql 'localhost\SQLEXPRESS'
+            if ($LASTEXITCODE -ne 0) { Warn "لم تكتمل تهيئة المزامنة (السجل أعلاه). البرنامج يعمل؛ أعد تشغيل المثبّت لاحقًا لإكمالها." }
+            else { Ok "المزامنة جاهزة: فعّلها من «الإعدادات ← المزامنة السحابية» (الخادم المحلي)، ثم سجّل هواتف المندوبين" }
+        } else { Warn "خدمة المزامنة غير موجودة في الحزمة" }
+    }
+
+    Step "التشغيل الأول"
     switch ($Mode) {
         'Server'      { Write-Host "  في معالج الإعداد: السيرفر localhost\SQLEXPRESS، مصادقة Windows، ثم «تثبيت جديد»." }
         'Workstation' { Write-Host "  في معالج الإعداد: اسم جهاز السيرفر (مثل SERVER-PC\SQLEXPRESS) ثم «الاتصال بنظام مثبّت مسبقًا»." }

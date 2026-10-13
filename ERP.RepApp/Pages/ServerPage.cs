@@ -37,7 +37,7 @@ public class ServerPage : ContentPage
         if (CloudUrl.Validate(url) is string bad) { Show(bad, Ui.Red); return; }
         Show("جارٍ الاتصال بالعنوان الجديد…", Ui.Muted);
         string? problem = null;
-        try { await new RepCloudClient(link with { ServerUrl = url }).PingAsync(); }
+        try { await new RepCloudClient(link with { ServerUrl = url, LocalUrl = null, FactoryId = null }).PingAsync(); }
         catch (DeviceRejectedException ex) { problem = ex.Message; }
         catch (OfflineException ex) { problem = $"لا يرد الخادم على هذا العنوان: {ex.Message}"; }
         if (problem is not null
