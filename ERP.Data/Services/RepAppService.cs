@@ -350,7 +350,29 @@ public class RepAppService
     {
         var name = (p.Name ?? "").Trim();
         if (name.Length == 0) { Fail(r, "اكتب اسم الزبون"); return; }
-        var customer = new Customer { Name = name.Length > 200 ? name[..200] : name, Phone = p.Phone?.Trim(), Address = p.Address?.Trim(), Province = p.Province?.Trim() };
+        var type = p.Type switch
+        {
+            null or "" or nameof(CustomerType.Direct) => CustomerType.Direct,
+            nameof(CustomerType.Agent) => CustomerType.Agent,
+            nameof(CustomerType.SubCustomer) => CustomerType.SubCustomer,
+            _ => (CustomerType?)null
+        };
+        if (type is null) { Fail(r, "نوع الزبون غير معروف — حدّث التطبيق"); return; }
+        Customer? agent = null;
+        if (type == CustomerType.SubCustomer)
+        {
+            agent = p.ParentAgentId is int a
+                ? await _db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == a && c.IsActive && c.CustomerType == CustomerType.Agent)
+                : null;
+            if (agent is null) { Fail(r, "العميل الفرعي يجب ربطه بوكيل فعّال"); return; }
+        }
+        if (p.CreditLimit < 0) { Fail(r, "حد الدين لا يكون سالبًا"); return; }
+        static string? Clean(string? v, int max) => string.IsNullOrWhiteSpace(v) ? null : v.Trim() is var t && t.Length > max ? t[..max] : v.Trim();
+        var customer = new Customer
+        {
+            Name = name.Length > 200 ? name[..200] : name, CustomerType = type.Value, ParentAgentId = agent?.Id,
+            Phone = Clean(p.Phone, 30), Address = Clean(p.Address, 300), Province = Clean(p.Province, 100) ?? "البصرة", CreditLimit = p.CreditLimit
+        };
         _db.Customers.Add(customer);
         await _db.SaveChangesAsync();
         _db.RepCustomerAssignments.Add(new RepCustomerAssignment { EmployeeId = r.RepEmployeeId, CustomerId = customer.Id });
@@ -358,7 +380,11 @@ public class RepAppService
         r.Status = RepRequestStatus.Posted;
         r.ResultTable = "Customers";
         r.ResultId = customer.Id;
-        r.Summary = $"زبون جديد: {customer.Name}{(string.IsNullOrWhiteSpace(customer.Phone) ? "" : " — " + customer.Phone)}";
+        r.NeedsReview = true;                     // الإدارة تراجع الزبائن الجدد (النوع وحد الدين)
+        var typeText = type switch { CustomerType.Agent => "وكيل", CustomerType.SubCustomer => $"فرعي لـ {agent!.Name}", _ => "مباشر" };
+        r.Summary = $"زبون جديد: {customer.Name} ({typeText}){(customer.Phone is null ? "" : " — " + customer.Phone)}"
+                    + (customer.CreditLimit is decimal cap ? $" — حد الدين {cap:#,0}" : "");
+        if (r.Summary.Length > 300) r.Summary = r.Summary[..300];
         if (await _db.Customers.AnyAsync(c => c.Id != customer.Id && c.Name == customer.Name)) r.Warning = "يوجد زبون آخر بالاسم نفسه";
         await new AuditService(_db).LogAsync(device.RegisteredByUserId, "Add", "Customers", customer.Id, $"زبون جديد من تطبيق المندوب: {customer.Name}");
     }

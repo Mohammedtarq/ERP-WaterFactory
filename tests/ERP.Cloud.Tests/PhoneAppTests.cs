@@ -194,6 +194,92 @@ public class PhoneAppTests : CloudTestBase, IDisposable
     }
 
     [Fact]
+    public async Task New_customer_from_phone_sells_offline_then_reaches_factory_with_desktop_fields()
+    {
+        var seed = await SeedRepAsync("زبون-جديد");
+        const string baseUrl = "http://localhost/";
+        var agentKey = await EnableSyncAsync(baseUrl);
+        await using var cloud = Cloud(agentKey);
+        using var agent = CloudSyncService.CreateClient(baseUrl, agentKey, cloud.Server.CreateHandler());
+        var agentState = new CloudSyncState();
+        async Task Factory()
+        {
+            await using var db = NewDb();
+            Assert.True((await new CloudSyncService(db).RunOnceAsync(agent, "SERVER-PC", agentState)).Ok);
+        }
+        string deviceKey;
+        await using (var db = NewDb()) deviceKey = (await new RepAppService(db).RegisterDeviceAsync(seed.RepId, "هاتف الزبائن", AdminId)).deviceKey!;
+        var store = new LocalStore(Path.Combine(_dir, "new-customer.db"));
+        store.SaveLink(new LinkCode(baseUrl, deviceKey));
+        var online = true;
+        var sync = new SyncEngine(store, () => new RepCloudClient(store.Link!, online ? cloud.Server.CreateHandler() : new OfflineHandler()));
+        var work = new RepWork(store);
+        await Factory();
+        Assert.True((await sync.RunAsync()).SnapshotUpdated);
+
+        // ---- بلا إنترنت: زبون جديد بحقول شاشة العملاء، ويُباع له آجلًا فورًا ----
+        online = false;
+        Assert.Contains("اسم الزبون", work.CheckNewCustomer(new NewCustomerPayload(" ")).Error);
+        Assert.Contains("بوكيل", work.CheckNewCustomer(new NewCustomerPayload("فرعي", Type: "SubCustomer")).Error);
+        Assert.Contains("سالبًا", work.CheckNewCustomer(new NewCustomerPayload("س", CreditLimit: -1)).Error);
+        Assert.Contains("بالاسم نفسه", work.CheckNewCustomer(new NewCustomerPayload("زبون زبون-جديد")).Warning);
+        var added = work.SaveNewCustomer(new NewCustomerPayload(" أسواق النخيل ", "07801112222", "العشار", null, "Direct", null, 50_000));
+        Assert.True(added.IsNew);
+        Assert.True(added.Id < 0);
+        Assert.Equal(2, work.Customers().Count);
+        Assert.Equal(added.Id, RepWork.PendingId(added.NewClientId!.Value));
+        var sale = work.SaveSale("CreditSale", added.Id, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 2) });
+        Assert.Equal(new CustomerRef(NewCustomerClientId: added.NewClientId), System.Text.Json.JsonSerializer.Deserialize<SalePayload>(sale.Payload,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!.Customer);
+        Assert.Equal(10_000m, work.Customer(added.Id)!.Balance);
+
+        // ---- عادت الشبكة: الزبون ثم البيع يصلان المعمل بالترتيب ----
+        online = true;
+        Assert.Equal(2, (await sync.RunAsync()).Sent);
+        await Factory();
+        var back = await sync.RunAsync();
+        Assert.Equal(2, back.Updated);
+        Assert.All(store.Outbox(), i => Assert.Equal("رُحّلت", i.StateText));
+        int customerId;
+        await using (var db = NewDb())
+        {
+            var c = await db.Customers.SingleAsync(x => x.Name == "أسواق النخيل");
+            customerId = c.Id;
+            Assert.Equal((CustomerType.Direct, "07801112222", "العشار", "البصرة", (decimal?)50_000), (c.CustomerType, c.Phone, c.Address, c.Province, c.CreditLimit));
+            Assert.True(await db.RepCustomerAssignments.AnyAsync(a => a.EmployeeId == seed.RepId && a.CustomerId == c.Id));
+            var request = await db.RepRequests.SingleAsync(r => r.Kind == RepRequestKind.NewCustomer && r.RepEmployeeId == seed.RepId);
+            Assert.True(request.NeedsReview);                                      // الإدارة تراجع الزبائن الجدد
+            Assert.Contains("(مباشر)", request.Summary);
+            Assert.Contains("حد الدين 50,000", request.Summary);
+            Assert.True(await db.RepRequests.AnyAsync(r => r.Kind == RepRequestKind.CreditSale && r.RepEmployeeId == seed.RepId && r.Status == RepRequestStatus.Posted));
+        }
+        // بعد نسخة العمل الجديدة: الزبون مرة واحدة برقمه في المعمل ورصيده دون طرح مزدوج
+        var live = Assert.Single(work.Customers(), c => c.Name == "أسواق النخيل");
+        Assert.False(live.IsNew);
+        Assert.Equal((customerId, 10_000m), (live.Id, live.Balance));
+
+        // ---- عميل فرعي لوكيل من زبائن المندوب ----
+        await using (var db = NewDb())
+        {
+            var c = await db.Customers.SingleAsync(x => x.Id == customerId);
+            c.CustomerType = CustomerType.Agent;
+            await db.SaveChangesAsync();
+        }
+        agentState.LastSnapshotCheckUtc = null;                                    // تعديل من الشاشة: نسخة العمل في الفحص الدوري التالي
+        await Factory();
+        await sync.RunAsync();
+        var agentRow = Assert.Single(work.Agents());
+        var sub = work.SaveNewCustomer(new NewCustomerPayload("كشك الجسر", Type: "SubCustomer", ParentAgentId: agentRow.Id));
+        Assert.Equal(agentRow.Id, sub.Customer.PriceAgentId);
+        await sync.RunAsync();
+        await Factory();
+        await sync.RunAsync();
+        await using (var db = NewDb())
+            Assert.Equal((CustomerType.SubCustomer, (int?)customerId), await db.Customers.Where(x => x.Name == "كشك الجسر").Select(x => new ValueTuple<CustomerType, int?>(x.CustomerType, x.ParentAgentId)).SingleAsync());
+        Assert.Single(work.Customers(), c => c.Name == "كشك الجسر");
+    }
+
+    [Fact]
     public void Old_phone_database_is_upgraded_without_losing_movements()
     {
         var path = Path.Combine(_dir, "old.db");

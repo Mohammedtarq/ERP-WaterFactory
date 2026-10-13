@@ -13,7 +13,12 @@ public record SalePayload(CustomerRef Customer, List<SaleLinePayload> Lines, str
 
 public record CollectionPayload(CustomerRef Customer, decimal Amount);
 
-public record NewCustomerPayload(string Name, string? Phone = null, string? Address = null, string? Province = null);
+/// <summary>
+/// زبون جديد من الهاتف بحقول شاشة «العملاء» نفسها: النوع Direct أو Agent أو SubCustomer (الفرعي يُربط بوكيل)،
+/// وحد الدين اختياري. يُسند للمندوب، ويظهر «للاطلاع» في طلبات المندوبين.
+/// </summary>
+public record NewCustomerPayload(string Name, string? Phone = null, string? Address = null, string? Province = null,
+                                 string? Type = null, int? ParentAgentId = null, decimal? CreditLimit = null);
 
 public record ExpensePayload(decimal Amount, string Category, string? Notes = null, int? VehicleId = null);
 

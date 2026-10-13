@@ -35,6 +35,7 @@ public class HomePage : ContentPage
                 Ui.Card(new VerticalStackLayout { Spacing = 4, Children = { _today, _waiting } }),
                 Ui.Big("بيع", Ui.Primary, () => Navigation.PushAsync(new SalePage())),
                 Ui.Big("تحصيل دين", Ui.Blue, () => Navigation.PushAsync(new CollectionPage())),
+                Ui.Big("زبون جديد", Ui.Blue, () => Navigation.PushAsync(new NewCustomerPage())),
                 Ui.Big("رصيد السيارة", Ui.Amber, () => Navigation.PushAsync(new VanStockPage())),
                 Ui.Big("حركاتي", Ui.Muted, () => Navigation.PushAsync(new OutboxPage())),
                 Ui.Big("مزامنة الآن", Ui.Ink, SyncAsync),

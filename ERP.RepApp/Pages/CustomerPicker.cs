@@ -16,7 +16,14 @@ public class CustomerPicker : ContentView
     {
         _work = work;
         _search.TextChanged += (_, _) => Fill();
-        Content = new VerticalStackLayout { Spacing = 6, Children = { _selected, _search, _list } };
+        var add = Ui.Small("+ زبون جديد", Ui.Blue, async () =>
+        {
+            if (Application.Current?.Windows.FirstOrDefault()?.Page is not NavigationPage nav) return;
+            var page = new NewCustomerPage();
+            await nav.PushAsync(page);
+            if (await page.Result is { } c) Select(c.Id);
+        });
+        Content = new VerticalStackLayout { Spacing = 6, Children = { _selected, _search, _list, add } };
         Fill();
     }
 
@@ -43,7 +50,7 @@ public class CustomerPicker : ContentView
             var id = c.Id;
             var b = new Button
             {
-                Text = $"{c.Name}   ({Formats.Money(c.Balance)})", FontSize = 16, HeightRequest = 50, CornerRadius = 10,
+                Text = $"{c.Name}{(c.IsNew ? " (جديد)" : "")}   ({Formats.Money(c.Balance)})", FontSize = 16, HeightRequest = 50, CornerRadius = 10,
                 BackgroundColor = Colors.White, TextColor = c.OverLimit ? Ui.Red : Ui.Ink, BorderColor = Color.FromArgb("#CBD5E1"), BorderWidth = 1
             };
             b.Clicked += (_, _) => Select(id);
