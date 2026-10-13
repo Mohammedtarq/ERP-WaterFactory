@@ -275,8 +275,11 @@ public class CloudSyncService
             .Where(r => r.RepEmployeeId == rep.Id && r.Status == RepRequestStatus.Posted && r.ReceivedAt >= since)
             .OrderBy(r => r.Id).Select(r => r.ClientId).ToListAsync();
 
+        var company = await new CompanyProfileService(_db).GetAsync();
+        var logo = company?.Logo is { Length: > 0 and <= RepSnapshot.MaxLogoBytes } l ? l : null;
         return new RepSnapshot(rep.Id, rep.FullName, DateTime.UtcNow, settings.AllowCreditOverLimit, settings.CashAlertDays, wallet,
-                               products, snapCustomers, agentPrices, stock, posted);
+                               products, snapCustomers, agentPrices, stock, posted,
+                               string.IsNullOrWhiteSpace(company?.NameAr) ? null : company.NameAr.Trim(), logo);
     }
 
     // ============================ الاتصال ============================

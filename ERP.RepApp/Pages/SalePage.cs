@@ -4,14 +4,19 @@ using ERP.RepApp.Core;
 namespace ERP.RepApp.Pages;
 
 /// <summary>
-/// البيع: نقدي أو آجل أو مجاني ← الزبون ← الأصناف بالعبوة (+ / −) ← الإجمالي والتنبيهات ← حفظ.
-/// السعر من نسخة العمل (للعرض)، والمعمل يسعّر بنفسه عند الترحيل — لا خصم من الهاتف.
+/// البيع: نقدي أو آجل أو مجاني ← الزبون ← اختيار صنف من المحمّل في السيارة (بعبوته، مثل «330 مل — كارتون 40») ← العدد ← إضافة
+/// ← الإجمالي والتنبيهات ← حفظ. السعر من نسخة العمل (للعرض)، والمعمل يسعّر بنفسه عند الترحيل — لا خصم من الهاتف.
 /// </summary>
 public class SalePage : ContentPage
 {
     private readonly RepWork _work = AppServices.Instance.Work;
     private readonly CustomerPicker _customer;
-    private readonly Dictionary<int, (Picker level, Entry qty, Label price)> _rows = new();
+    private readonly Picker _item = new() { Title = "اختر المادة من السيارة", FontSize = 17 };
+    private readonly Entry _qty = new() { Text = "1", Keyboard = Keyboard.Numeric, FontSize = 22, WidthRequest = 80, HorizontalTextAlignment = TextAlignment.Center };
+    private readonly Label _itemPrice = Ui.Text("", 14, Ui.Muted);
+    private readonly VerticalStackLayout _cart = new() { Spacing = 4 };
+    private readonly List<SaleLine> _lines = new();
+    private List<LoadedOption> _options = new();
     private readonly Entry _freeReason = new() { Placeholder = "سبب المجاني (مثل: عينة، هدية للمحل)", FontSize = 16, IsVisible = false };
     private readonly Label _total = Ui.Text("", 22);
     private readonly Label _warning = Ui.Text("", 15, Ui.Amber);
@@ -24,11 +29,21 @@ public class SalePage : ContentPage
         _customer.SelectionChanged += Recalc;
         _total.FontAttributes = FontAttributes.Bold;
         _kinds = new[] { KindButton("نقدي", "CashSale"), KindButton("آجل", "CreditSale"), KindButton("مجاني", "Free") };
-        var products = new VerticalStackLayout { Spacing = 4 };
+        _item.SelectedIndexChanged += (_, _) => ShowItemPrice();
         var snap = _work.Snapshot;
-        var van = _work.VanStock();
-        foreach (var p in snap?.Products ?? new())
-            products.Children.Add(ProductRow(p, van.GetValueOrDefault(p.ItemId)));
+        var minus = Ui.Small("−", Ui.Muted, () => _qty.Text = Math.Max(1, (Ui.Number(_qty.Text) ?? 1) - 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var plus = Ui.Small("+", Ui.Primary, () => _qty.Text = ((Ui.Number(_qty.Text) ?? 0) + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var picking = Ui.Card(new VerticalStackLayout
+        {
+            Spacing = 6,
+            Children =
+            {
+                _item, _itemPrice,
+                new HorizontalStackLayout { Spacing = 6, Children = { Ui.Text("العدد", 17), minus, _qty, plus } },
+                Ui.Small("إضافة للفاتورة", Ui.Primary, Add)
+            }
+        });
+        FillOptions();
 
         Ui.Setup(this, "بيع", new VerticalStackLayout
         {
@@ -38,14 +53,72 @@ public class SalePage : ContentPage
                 new HorizontalStackLayout { Spacing = 8, Children = { _kinds[0], _kinds[1], _kinds[2] } },
                 Ui.Card(_customer),
                 _freeReason,
-                Ui.Text("الأصناف", 18),
-                snap is null ? Ui.Text("لم تصل نسخة العمل بعد — زامن أولًا", 16, Ui.Red) : products,
+                Ui.Text("المواد", 18),
+                snap is null ? Ui.Text("لم تصل نسخة العمل بعد — زامن أولًا", 16, Ui.Red)
+                    : _options.Count == 0 ? Ui.Text("لا توجد مواد محمّلة في السيارة", 16, Ui.Red) : picking,
+                _cart,
                 Ui.Card(new VerticalStackLayout { Children = { _total, _warning } }, Ui.Primary),
                 Ui.Big("حفظ البيع", Ui.Primary, SaveAsync)
             }
         });
         SetKind("CashSale");
     }
+
+    /// <summary>المحمّل في السيارة الآن بعد ما أُضيف للفاتورة.</summary>
+    private void FillOptions()
+    {
+        var keep = _item.SelectedItem as LoadedOption;
+        _options = _work.LoadedOptions();
+        _item.ItemsSource = _options;
+        _item.SelectedIndex = keep is null ? (_options.Count > 0 ? 0 : -1)
+            : _options.FindIndex(o => o.Product.ItemId == keep.Product.ItemId && o.Level.LevelId == keep.Level.LevelId);
+        ShowItemPrice();
+    }
+
+    private void ShowItemPrice()
+    {
+        var snap = _work.Snapshot;
+        if (snap is null || _item.SelectedItem is not LoadedOption o) { _itemPrice.Text = ""; return; }
+        var inCart = _lines.Where(l => l.ItemId == o.Product.ItemId).Sum(l => l.Quantity * (o.Product.Levels.FirstOrDefault(x => x.LevelId == l.LevelId)?.Units ?? 0));
+        var left = Formats.Packs(o.VanPieces - inCart, o.Product.Levels);
+        _itemPrice.Text = (_kind == "Free" ? "مجاني"
+            : _customer.Selected is { } c ? $"سعر ال{o.Level.Name}: {Formats.Money(Math.Round(RepWork.PiecePrice(snap, c.Customer, o.Product) * o.Level.Units, 2))}"
+            : "اختر الزبون لعرض السعر") + $" — الباقي في السيارة: {left}";
+    }
+
+    private void Add()
+    {
+        if (_item.SelectedItem is not LoadedOption o) return;
+        var q = Ui.Number(_qty.Text) ?? 0;
+        if (q <= 0) { _warning.Text = "اكتب العدد"; _warning.TextColor = Ui.Red; return; }
+        var i = _lines.FindIndex(l => l.ItemId == o.Product.ItemId && l.LevelId == o.Level.LevelId);
+        if (i >= 0) _lines[i] = _lines[i] with { Quantity = _lines[i].Quantity + q };
+        else _lines.Add(new SaleLine(o.Product.ItemId, o.Level.LevelId, q));
+        _qty.Text = "1";
+        Recalc();
+    }
+
+    private void FillCart(DraftCheck? check)
+    {
+        _cart.Children.Clear();
+        var snap = _work.Snapshot;
+        if (snap is null) return;
+        foreach (var line in _lines.ToList())
+        {
+            var p = snap.Products.First(x => x.ItemId == line.ItemId);
+            var lvl = p.Levels.First(x => x.LevelId == line.LevelId);
+            var priced = check?.Lines.FirstOrDefault(x => x.Product.ItemId == line.ItemId && x.Level.LevelId == line.LevelId);
+            var text = $"{Formats.Qty(line.Quantity)} {lvl.Name} {p.Name}" + (priced is null ? "" : $" = {Formats.Money(priced.Total)}");
+            var remove = Ui.Small("حذف", Ui.Red, () => { _lines.Remove(line); Recalc(); });
+            _cart.Children.Add(Ui.Card(new Grid
+            {
+                ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto) },
+                Children = { Ui.Text(text, 17), WithColumn(remove, 1) }
+            }));
+        }
+    }
+
+    private static View WithColumn(View v, int column) { Grid.SetColumn(v, column); return v; }
 
     private Button KindButton(string text, string kind)
     {
@@ -68,68 +141,28 @@ public class SalePage : ContentPage
         Recalc();
     }
 
-    private View ProductRow(SnapshotProduct p, decimal vanPieces)
-    {
-        var level = new Picker { FontSize = 16, WidthRequest = 110, ItemsSource = p.Levels.Select(l => l.Name).ToList(), SelectedIndex = 0 };
-        var qty = new Entry { Text = "0", Keyboard = Keyboard.Numeric, FontSize = 20, WidthRequest = 70, HorizontalTextAlignment = TextAlignment.Center };
-        var price = Ui.Text("", 14, Ui.Muted);
-        var minus = Ui.Small("−", Ui.Muted, () => qty.Text = Math.Max(0, (Ui.Number(qty.Text) ?? 0) - 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
-        var plus = Ui.Small("+", Ui.Primary, () => qty.Text = ((Ui.Number(qty.Text) ?? 0) + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
-        qty.TextChanged += (_, _) => Recalc();
-        level.SelectedIndexChanged += (_, _) => Recalc();
-        _rows[p.ItemId] = (level, qty, price);
-        return Ui.Card(new VerticalStackLayout
-        {
-            Spacing = 6,
-            Children =
-            {
-                Ui.Text(p.Name, 18),
-                Ui.Text($"في السيارة: {Formats.Packs(vanPieces, p.Levels)}", 14, Ui.Muted),
-                new HorizontalStackLayout { Spacing = 6, Children = { level, minus, qty, plus } },
-                price
-            }
-        });
-    }
-
-    private List<SaleLine> Lines()
-    {
-        var snap = _work.Snapshot;
-        if (snap is null) return new();
-        var lines = new List<SaleLine>();
-        foreach (var p in snap.Products)
-        {
-            if (!_rows.TryGetValue(p.ItemId, out var r)) continue;
-            var q = Ui.Number(r.qty.Text) ?? 0;
-            if (q == 0 || r.level.SelectedIndex < 0) continue;
-            lines.Add(new SaleLine(p.ItemId, p.Levels[r.level.SelectedIndex].LevelId, q));
-        }
-        return lines;
-    }
-
     private void Recalc()
     {
-        var snap = _work.Snapshot;
-        if (snap is null) return;
-        // سعر العبوة المختارة لهذا الزبون
-        foreach (var p in snap.Products)
+        ShowItemPrice();
+        if (_work.Snapshot is null) return;
+        if (_customer.Selected is null)
         {
-            if (!_rows.TryGetValue(p.ItemId, out var r) || r.level.SelectedIndex < 0) continue;
-            var lvl = p.Levels[r.level.SelectedIndex];
-            r.price.Text = _kind == "Free" ? "مجاني"
-                : _customer.Selected is { } c ? $"سعر ال{lvl.Name}: {Formats.Money(Math.Round(RepWork.PiecePrice(snap, c.Customer, p) * lvl.Units, 2))}"
-                : "اختر الزبون لعرض السعر";
+            FillCart(null);
+            _total.Text = "الإجمالي: —";
+            (_warning.Text, _warning.TextColor) = (_lines.Count > 0 ? "اختر الزبون" : "", Ui.Amber);
+            return;
         }
-        if (_customer.Selected is null) { _total.Text = "الإجمالي: —"; _warning.Text = ""; return; }
-        var check = _work.CheckSale(_kind, _customer.Selected.Id, Lines(), _freeReason.Text);
+        var check = _work.CheckSale(_kind, _customer.Selected.Id, _lines, _freeReason.Text);
+        FillCart(check);
         _total.Text = $"الإجمالي: {Formats.Money(check.Total)}";
-        _warning.Text = check.Error ?? check.Warning ?? "";
+        _warning.Text = _lines.Count == 0 ? "" : check.Error ?? check.Warning ?? "";
         _warning.TextColor = check.Error is null ? Ui.Amber : Ui.Red;
     }
 
     private async Task SaveAsync()
     {
         if (_customer.Selected is not { } customer) { await DisplayAlert("بيع", "اختر الزبون", "حسنًا"); return; }
-        var lines = Lines();
+        var lines = _lines.ToList();
         var check = _work.CheckSale(_kind, customer.Id, lines, _freeReason.Text);
         if (!check.Ok) { await DisplayAlert("لا يمكن الحفظ", check.Error, "حسنًا"); return; }
         var label = _kind switch { "CashSale" => "بيع نقدي", "CreditSale" => "بيع آجل", _ => "مجاني" };

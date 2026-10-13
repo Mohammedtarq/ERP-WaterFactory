@@ -149,6 +149,7 @@ public class RepDevicesSectionViewModel : SectionViewModel
     {
         RegisterCommand = new AsyncRelayCommand(RegisterAsync);
         ToggleCommand = new AsyncRelayCommand(ToggleAsync);
+        DeleteCommand = new AsyncRelayCommand(DeleteAsync);
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
     }
 
@@ -169,6 +170,7 @@ public class RepDevicesSectionViewModel : SectionViewModel
     public int CashAlertDays { get => _cashAlertDays; set => SetProperty(ref _cashAlertDays, value); }
     public AsyncRelayCommand RegisterCommand { get; }
     public AsyncRelayCommand ToggleCommand { get; }
+    public AsyncRelayCommand DeleteCommand { get; }
     public AsyncRelayCommand SaveSettingsCommand { get; }
 
     public override async Task LoadAsync()
@@ -227,6 +229,20 @@ public class RepDevicesSectionViewModel : SectionViewModel
         if (await RunOperationAsync(() => new RepAppService(db).SetDeviceActiveAsync(row.Id, !row.IsActive, Session.UserId),
                                     row.IsActive ? $"أُوقف جهاز {row.DeviceName}" : $"فُعّل جهاز {row.DeviceName}"))
             await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!Require(CanDelete, "حذف جهاز")) return;
+        if (Selected is not { } row) { Dialogs.Error("اختر الجهاز من الجدول"); return; }
+        if (!Dialogs.Confirm($"حذف جهاز «{row.DeviceName}» للمندوب {row.RepName}؟\n" +
+                             "يُرفض الهاتف فورًا، ولإعادته يُسجَّل من جديد برمز جديد. إن كانت له حركات فتبقى في «طلبات المندوبين».")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new RepAppService(db).DeleteDeviceAsync(row.Id, Session.UserId), $"حُذف جهاز {row.DeviceName}"))
+        {
+            Selected = null;
+            await LoadAsync();
+        }
     }
 
     private async Task SaveSettingsAsync()

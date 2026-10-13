@@ -37,6 +37,18 @@ public record PricedLine(SnapshotProduct Product, SnapshotLevel Level, decimal Q
     public string Text => $"{Formats.Qty(Quantity)} {Level.Name} {Product.Name} × {Formats.Money(UnitPrice)} = {Formats.Money(Total)}";
 }
 
+/// <summary>خيار في قائمة البيع: صنف محمّل في السيارة بعبوة معيّنة (مثل «ماء 330 مل — كارتون 40»).</summary>
+public record LoadedOption(SnapshotProduct Product, SnapshotLevel Level, decimal VanPieces)
+{
+    public string Text => $"{Product.Name} — {Level.Name}";
+    /// <summary>كم عبوة كاملة من هذا النوع في السيارة.</summary>
+    public decimal Available => Level.Units > 0 ? Math.Floor(VanPieces / Level.Units) : 0;
+    public override string ToString() => $"{Text}  (في السيارة {Formats.Qty(Available)})";
+}
+
+/// <summary>مجموع ما خرج من السيارة اليوم لكل صنف وعبوة.</summary>
+public record DayItemTotal(string Item, string Pack, decimal Quantity);
+
 /// <summary>فحص الحركة قبل حفظها: خطأ يمنع الحفظ، أو تنبيه يُعرض ويُسمح بالمتابعة.</summary>
 public record DraftCheck(string? Error, string? Warning, decimal Total, List<PricedLine> Lines)
 {
@@ -109,6 +121,30 @@ public class RepWork
     public decimal TodaySales() => _store.Outbox(days: 2)
         .Where(i => i.Kind is "CashSale" or "CreditSale" && i.OccurredAt.Date == DateTime.Today && i.Status is not ("Failed" or "Rejected"))
         .Sum(i => i.Amount);
+
+    /// <summary>ما يُعرض في قائمة البيع: كل عبوة لكل صنف في السيارة الآن (الأكبر أولًا).</summary>
+    public List<LoadedOption> LoadedOptions()
+    {
+        var snap = Snapshot;
+        if (snap is null) return new();
+        var van = VanStock();
+        return snap.Products
+            .Where(p => van.GetValueOrDefault(p.ItemId) > 0)
+            .SelectMany(p => p.Levels.OrderByDescending(l => l.Units).Select(l => new LoadedOption(p, l, van[p.ItemId])))
+            .Where(o => o.Available > 0)
+            .ToList();
+    }
+
+    /// <summary>مجموع المواد في بيع اليوم (نقدي وآجل ومجاني) ما لم يُرفض أو يتعذّر.</summary>
+    public List<DayItemTotal> TodayItems() => _store.Outbox(days: 2)
+        .Where(i => i.Kind is "CashSale" or "CreditSale" or "Free" && i.OccurredAt.Date == DateTime.Today && i.Status is not ("Failed" or "Rejected"))
+        .SelectMany(i => i.Lines ?? new())
+        .GroupBy(l => (l.Item, l.Pack))
+        .Select(g => new DayItemTotal(g.Key.Item, g.Key.Pack, g.Sum(l => l.Quantity)))
+        .OrderBy(t => t.Item).ThenBy(t => t.Pack).ToList();
+
+    /// <summary>اسم المعمل في رأس التطبيق والوصل.</summary>
+    public string CompanyName => Snapshot?.CompanyName ?? "مندوب المبيعات";
 
     public int WaitingCount() => _store.Outbox(days: 30).Count(i => i.State != OutboxState.Done);
 
@@ -183,7 +219,8 @@ public class RepWork
         };
         var label = kind switch { "CashSale" => "بيع نقدي", "CreditSale" => "بيع آجل", _ => "مجاني" };
         var summary = $"{label} — {customer.Name}: {string.Join("، ", check.Lines.Select(l => $"{Formats.Qty(l.Quantity)} {l.Level.Name} {l.Product.Name}"))}";
-        return _store.Enqueue(kind, payload, summary, check.Total, effect);
+        var lines2 = check.Lines.Select(l => new ReceiptLine(l.Product.Name, l.Level.Name, l.Quantity, l.UnitPrice, l.Total)).ToList();
+        return _store.Enqueue(kind, payload, summary, check.Total, effect, lines: lines2, receipt: true);
     }
 
     // ============================ التحصيل ============================

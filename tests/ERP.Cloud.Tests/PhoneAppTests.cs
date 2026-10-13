@@ -65,6 +65,11 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         var sync = new SyncEngine(store, () => new RepCloudClient(store.Link!, online ? cloudWithKey.Server.CreateHandler() : new OfflineHandler()));
         var work = new RepWork(store);
 
+        // هوية المعمل (الاسم والشعار) تصل الهاتف مع نسخة العمل
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+        await using (var db = NewDb())
+            Assert.True((await new CompanyProfileService(db).SaveAsync(new CompanyProfile { NameAr = "معمل الرحمة للمياه", BrandColor = "#1D4ED8", Logo = png })).Success);
+
         // قبل أن يرى الخادم الجهاز: مرفوض برسالة واضحة
         Assert.Contains("غير مسجّل", (await sync.RunAsync()).Error);
         await Factory();
@@ -74,12 +79,21 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         Assert.NotNull(first.FactoryLastSeenUtc);
         Assert.Equal(200m, work.VanStock()[seed.WaterId]);
         Assert.Equal("زبون هاتف", Assert.Single(work.Customers()).Name);
+        Assert.Equal("معمل الرحمة للمياه", work.CompanyName);
+        Assert.Equal(png, work.Snapshot!.CompanyLogo);
+
+        // قائمة البيع: ما في السيارة فقط بكل عبوة (الأكبر أولًا)
+        var options = work.LoadedOptions();
+        Assert.Equal(new[] { "ماء هاتف شرنك — شرنك", "ماء هاتف شرنك — قطعة" }, options.Select(o => o.Text));
+        Assert.Equal(new[] { 10m, 200m }, options.Select(o => o.Available));
 
         // ---- يوم بلا إنترنت: كل شيء يُحفظ في الهاتف والأرصدة تتحرك ----
         online = false;
         Assert.Contains("رصيد السيارة", work.CheckSale("CashSale", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 11) }).Error);
         var cash = work.SaveSale("CashSale", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 2) });
         Assert.Equal(10_000m, cash.Amount);                                         // 250 × 20 × 2
+        Assert.Equal(1, cash.ReceiptNo);
+        Assert.Equal(new ReceiptLine("ماء هاتف شرنك", "شرنك", 2, 5_000, 10_000), Assert.Single(cash.Lines!));
         var credit = work.CheckSale("CreditSale", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 4) });
         Assert.Null(credit.Warning);
         work.SaveSale("CreditSale", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 4) });
@@ -88,6 +102,11 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         Assert.Contains("يتجاوز حد دينه", over.Warning);
         Assert.Contains("سببًا", work.CheckSale("Free", seed.CustomerId, new[] { new SaleLine(seed.WaterId, seed.ShrinkId, 1) }).Error);
         work.SaveCollection(seed.CustomerId, 5_000);
+        // «حركاتي»: الوصل التالي برقم 2، والتحصيل بلا وصل بيع، ومجموع مواد اليوم
+        Assert.Equal(new int?[] { null, 2, 1 }, store.Outbox().Select(i => i.ReceiptNo));
+        Assert.Equal(4m, store.Outbox()[1].Lines!.Single().Quantity);
+        Assert.Equal(new DayItemTotal("ماء هاتف شرنك", "شرنك", 6), Assert.Single(work.TodayItems()));
+        Assert.Equal(new[] { 4m, 80m }, work.LoadedOptions().Select(o => o.Available));
 
         Assert.Equal(80m, work.VanStock()[seed.WaterId]);                           // 200 − 6 شرنك
         Assert.Equal(15_000m, work.Wallet());                                       // 10,000 نقدي + 5,000 تحصيل
@@ -135,6 +154,14 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         work.SaveCollection(seed.CustomerId, 1_000);
         Assert.Contains("لم تصل المعمل", store.Unlink());
 
+        // ---- تغيّرت شبكة المعمل: تغيير العنوان فقط، والمفتاح والحركات باقية ----
+        Assert.Contains("مشفّرًا", store.ChangeServer("http://example.com"));
+        Assert.Null(store.ChangeServer("http://192.168.0.191:5080/"));
+        Assert.Equal(new LinkCode("http://192.168.0.191:5080", deviceKey), store.Link);
+        Assert.Single(store.Queued());
+        Assert.Equal(4, store.Outbox().Count);
+        Assert.Null(store.ChangeServer(baseUrl));
+
         // ---- جهاز موقوف ----
         online = true;
         await using (var db = NewDb())
@@ -146,6 +173,53 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         var rejected = await sync.RunAsync();
         Assert.Contains("موقوف", rejected.Error);
         Assert.Equal(OutboxState.Queued, store.Queued().Single().State);            // تبقى محفوظة
+
+        // ---- حذف الجهاز: له حركات ← يُخفى وتبقى حركاته؛ بلا حركات ← يُحذف نهائيًا ----
+        await using (var db = NewDb())
+        {
+            var app = new RepAppService(db);
+            var id = await db.RepDevices.Where(d => d.DeviceKey == deviceKey).Select(d => d.Id).SingleAsync();
+            Assert.True((await app.DeleteDeviceAsync(id, AdminId)).Success);
+            Assert.DoesNotContain(await app.DevicesAsync(), d => d.Id == id);
+            Assert.Equal(3, await db.RepRequests.CountAsync(r => r.DeviceId == id));
+            Assert.Contains("غير موجود", (await app.DeleteDeviceAsync(id, AdminId)).ErrorMessage);
+            Assert.Contains("غير موجود", (await app.SetDeviceActiveAsync(id, true, AdminId)).ErrorMessage);
+            var spareKey = (await app.RegisterDeviceAsync(seed.RepId, "هاتف احتياط", AdminId)).deviceKey;
+            var spare = await db.RepDevices.Where(d => d.DeviceKey == spareKey).Select(d => d.Id).SingleAsync();
+            Assert.True((await app.DeleteDeviceAsync(spare, AdminId)).Success);
+            Assert.False(await db.RepDevices.AnyAsync(d => d.Id == spare));
+        }
+        await Factory();
+        Assert.Contains("موقوف", (await sync.RunAsync()).Error);
+    }
+
+    [Fact]
+    public void Old_phone_database_is_upgraded_without_losing_movements()
+    {
+        var path = Path.Combine(_dir, "old.db");
+        using (var c = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path}"))
+        {
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE Settings (Key TEXT PRIMARY KEY, Value TEXT NOT NULL);
+                CREATE TABLE Outbox (
+                    ClientId TEXT PRIMARY KEY, Kind TEXT NOT NULL, OccurredAt TEXT NOT NULL, Payload TEXT NOT NULL, Photo BLOB,
+                    Summary TEXT NOT NULL, Amount TEXT NOT NULL, Effect TEXT NOT NULL, CreatedAt TEXT NOT NULL,
+                    State INTEGER NOT NULL, Status TEXT, Message TEXT, ResultId INTEGER, Warning TEXT, UpdatedAt TEXT NOT NULL);
+                """;
+            cmd.ExecuteNonQuery();
+            cmd.CommandText = $"INSERT INTO Outbox VALUES ('{Guid.NewGuid()}', 'Collection', '{DateTime.Now:O}', '{{}}', NULL, 'تحصيل قديم', '1000', '{{\"stock\":[]}}', '{DateTime.UtcNow:O}', 0, NULL, NULL, NULL, NULL, '{DateTime.UtcNow:O}')";
+            cmd.ExecuteNonQuery();
+        }
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        var store = new LocalStore(path);
+        var old = Assert.Single(store.Outbox());
+        Assert.Equal(("تحصيل قديم", (int?)null, (List<ReceiptLine>?)null), (old.Summary, old.ReceiptNo, old.Lines));
+        var sale = store.Enqueue("CashSale", new { }, "بيع", 5, Effect.None, lines: new() { new("ماء", "كارتون", 1, 5, 5) }, receipt: true);
+        Assert.Equal(1, sale.ReceiptNo);
+        Assert.Equal(2, store.Enqueue("CashSale", new { }, "بيع", 5, Effect.None, receipt: true).ReceiptNo);
+        Assert.Equal("ماء", store.Find(sale.ClientId)!.Lines!.Single().Item);
     }
 
     /// <summary>هاتف بلا شبكة.</summary>

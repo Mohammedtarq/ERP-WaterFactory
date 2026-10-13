@@ -106,6 +106,15 @@ public class RepAppScreenTests
         devices.Selected = devices.Devices.Single(d => d.DeviceName == "هاتف احتياطي");
         await devices.ToggleCommand.ExecuteAsync();
         Assert.False(devices.Devices.Single(d => d.DeviceName == "هاتف احتياطي").IsActive);
+        // حذف الجهاز (بلا حركات): يختفي من الجدول، والإلغاء لا يحذف
+        devices.Selected = devices.Devices.Single(d => d.DeviceName == "هاتف احتياطي");
+        dialogs.ConfirmAnswer = false;
+        await devices.DeleteCommand.ExecuteAsync();
+        Assert.Contains(devices.Devices, d => d.DeviceName == "هاتف احتياطي");
+        dialogs.ConfirmAnswer = true;
+        await devices.DeleteCommand.ExecuteAsync();
+        Assert.DoesNotContain(devices.Devices, d => d.DeviceName == "هاتف احتياطي");
+        Assert.Null(devices.Selected);
         devices.CashAlertDays = 3;
         await devices.SaveSettingsCommand.ExecuteAsync();
         await using (var check = _f.NewDb())

@@ -5,8 +5,9 @@ namespace ERP.RepApp;
 /// <summary>ألوان وعناصر الواجهة الموحّدة: خط كبير وأزرار كبيرة تناسب العمل في الشارع.</summary>
 public static class Ui
 {
-    public static readonly Color Primary = Color.FromArgb("#0F766E");
-    public static readonly Color Blue = Color.FromArgb("#1D4ED8");
+    /// <summary>أزرق التطبيق (الشريط والأزرار الرئيسية)، وأزرق سماوي للتحصيل.</summary>
+    public static readonly Color Primary = Color.FromArgb("#1D4ED8");
+    public static readonly Color Blue = Color.FromArgb("#0369A1");
     public static readonly Color Amber = Color.FromArgb("#B45309");
     public static readonly Color Red = Color.FromArgb("#B91C1C");
     public static readonly Color Green = Color.FromArgb("#15803D");

@@ -96,7 +96,7 @@
                             </Grid>
                         </Border>
                         <TextBlock Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   Text="PNG أو JPG حتى 2 ميغابايت، ويفضّل بخلفية شفافة."/>
+                                   Text="PNG أو JPG حتى 2 ميغابايت، ويفضّل بخلفية شفافة. يظهر في تطبيق المندوبين ووصل البيع إن كان حتى 200 كيلوبايت."/>
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Style="{StaticResource PrimaryButton}" Command="{Binding ChooseLogoCommand}" Content="اختيار صورة"/>
                             <Button Style="{StaticResource SecondaryButton}" Command="{Binding RemoveLogoCommand}" Content="إزالة"/>

@@ -13,10 +13,14 @@ public record Effect(List<SnapshotStock> Stock, decimal Wallet = 0, int? Custome
     public static readonly Effect None = new(new List<SnapshotStock>());
 }
 
-/// <summary>حركة في صندوق الإرسال بالهاتف.</summary>
+/// <summary>سطر مادة في الحركة كما يُعرض في «حركاتي» ويُطبع على الوصل.</summary>
+public record ReceiptLine(string Item, string Pack, decimal Quantity, decimal UnitPrice, decimal Total);
+
+/// <summary>حركة في صندوق الإرسال بالهاتف. ReceiptNo: رقم وصل البيع المتسلسل في هذا الهاتف.</summary>
 public record OutboxItem(
     Guid ClientId, string Kind, DateTime OccurredAt, string Payload, byte[]? Photo, string Summary, decimal Amount,
-    Effect Effect, DateTime CreatedAtUtc, OutboxState State, string? Status, string? Message, int? ResultId, string? Warning, DateTime UpdatedAtUtc)
+    Effect Effect, DateTime CreatedAtUtc, OutboxState State, string? Status, string? Message, int? ResultId, string? Warning, DateTime UpdatedAtUtc,
+    List<ReceiptLine>? Lines = null, int? ReceiptNo = null)
 {
     /// <summary>الحالة كما يقرؤها المندوب.</summary>
     public string StateText => State switch
@@ -57,6 +61,17 @@ public class LocalStore
                 State INTEGER NOT NULL, Status TEXT, Message TEXT, ResultId INTEGER, Warning TEXT, UpdatedAt TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS IX_Outbox_State ON Outbox (State, CreatedAt);
             """);
+        // أعمدة أُضيفت بعد الإصدار الأول (الهواتف المثبّت عليها تطبيق قديم تُرقّى هنا)
+        foreach (var (column, type) in new[] { ("Lines", "TEXT"), ("ReceiptNo", "INTEGER") })
+            if (!HasColumn(c, "Outbox", column)) Exec(c, $"ALTER TABLE Outbox ADD COLUMN {column} {type}");
+    }
+
+    private static bool HasColumn(SqliteConnection c, string table, string column)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = $n";
+        cmd.Parameters.AddWithValue("$n", column);
+        return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
     }
 
     private SqliteConnection Open()
@@ -108,6 +123,18 @@ public class LocalStore
         return null;
     }
 
+    /// <summary>
+    /// تغيير عنوان الخادم فقط (تغيّرت شبكة المعمل أو انتقل الخادم): يبقى مفتاح الجهاز ونسخة العمل وكل الحركات،
+    /// وما لم يُرسل يُرسل إلى العنوان الجديد.
+    /// </summary>
+    public string? ChangeServer(string? url)
+    {
+        if (Link is null) return "الهاتف غير مربوط — صوّر رمز الربط";
+        if (CloudUrl.Validate(url) is string bad) return bad;
+        Set("ServerUrl", url!.Trim().TrimEnd('/'));
+        return null;
+    }
+
     public RepSnapshot? Snapshot => Get("Snapshot") is string s ? JsonSerializer.Deserialize<RepSnapshot>(s, Json) : null;
     public string? SnapshotEtag => Get("SnapshotEtag");
 
@@ -120,36 +147,57 @@ public class LocalStore
 
     // ============================ صندوق الإرسال ============================
 
-    public OutboxItem Enqueue(string kind, object payload, string summary, decimal amount, Effect effect, byte[]? photo = null, DateTime? occurredAt = null)
+    /// <param name="receipt">true للبيع: يأخذ رقم الوصل التالي في هذا الهاتف.</param>
+    public OutboxItem Enqueue(string kind, object payload, string summary, decimal amount, Effect effect, byte[]? photo = null, DateTime? occurredAt = null,
+                              List<ReceiptLine>? lines = null, bool receipt = false)
     {
         var now = DateTime.UtcNow;
-        var item = new OutboxItem(Guid.NewGuid(), kind, occurredAt ?? DateTime.Now, JsonSerializer.Serialize(payload, payload.GetType(), Json), photo,
-                                  summary, amount, effect, now, OutboxState.Queued, null, null, null, null, now);
         using var c = Open();
+        Exec(c, "BEGIN IMMEDIATE");   // رقم الوصل والحركة معًا
+        int? receiptNo = null;
+        if (receipt)
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT COALESCE(MAX(ReceiptNo), 0) + 1 FROM Outbox";
+            receiptNo = Math.Max(Convert.ToInt32(cmd.ExecuteScalar()), int.TryParse(Get(c, "ReceiptSeq"), out var seq) ? seq + 1 : 1);
+            Exec(c, "INSERT INTO Settings (Key, Value) VALUES ('ReceiptSeq', $v) ON CONFLICT(Key) DO UPDATE SET Value = $v", ("$v", receiptNo.Value.ToString()));
+        }
+        var item = new OutboxItem(Guid.NewGuid(), kind, occurredAt ?? DateTime.Now, JsonSerializer.Serialize(payload, payload.GetType(), Json), photo,
+                                  summary, amount, effect, now, OutboxState.Queued, null, null, null, null, now, lines, receiptNo);
         Exec(c, """
-            INSERT INTO Outbox (ClientId, Kind, OccurredAt, Payload, Photo, Summary, Amount, Effect, CreatedAt, State, UpdatedAt)
-            VALUES ($id, $kind, $at, $payload, $photo, $summary, $amount, $effect, $created, 0, $created)
+            INSERT INTO Outbox (ClientId, Kind, OccurredAt, Payload, Photo, Summary, Amount, Effect, CreatedAt, State, UpdatedAt, Lines, ReceiptNo)
+            VALUES ($id, $kind, $at, $payload, $photo, $summary, $amount, $effect, $created, 0, $created, $lines, $receipt)
             """,
             ("$id", item.ClientId.ToString()), ("$kind", kind), ("$at", item.OccurredAt.ToString("O")), ("$payload", item.Payload), ("$photo", photo),
             ("$summary", summary), ("$amount", amount.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-            ("$effect", JsonSerializer.Serialize(effect, Json)), ("$created", now.ToString("O")));
+            ("$effect", JsonSerializer.Serialize(effect, Json)), ("$created", now.ToString("O")),
+            ("$lines", lines is null ? null : JsonSerializer.Serialize(lines, Json)), ("$receipt", receiptNo));
+        Exec(c, "COMMIT");
         return item;
     }
 
+    private static string? Get(SqliteConnection c, string key)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT Value FROM Settings WHERE Key = $k";
+        cmd.Parameters.AddWithValue("$k", key);
+        return cmd.ExecuteScalar() as string;
+    }
+
     /// <summary>تصحيح حركة متعذّرة: محتوى جديد بالرقم نفسه، وتعود لصندوق الإرسال.</summary>
-    public string? Resubmit(Guid clientId, object payload, string summary, decimal amount, Effect effect)
+    public string? Resubmit(Guid clientId, object payload, string summary, decimal amount, Effect effect, List<ReceiptLine>? lines = null)
     {
         var item = Find(clientId);
         if (item is null) return "الحركة غير موجودة";
         if (!item.CanResubmit) return "تُعاد الحركة المتعذّرة فقط";
         using var c = Open();
         Exec(c, """
-            UPDATE Outbox SET Payload = $payload, Summary = $summary, Amount = $amount, Effect = $effect,
+            UPDATE Outbox SET Payload = $payload, Summary = $summary, Amount = $amount, Effect = $effect, Lines = COALESCE($lines, Lines),
                    State = 0, Status = NULL, Message = NULL, ResultId = NULL, Warning = NULL, UpdatedAt = $now WHERE ClientId = $id
             """,
             ("$id", clientId.ToString()), ("$payload", JsonSerializer.Serialize(payload, payload.GetType(), Json)), ("$summary", summary),
             ("$amount", amount.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("$effect", JsonSerializer.Serialize(effect, Json)),
-            ("$now", DateTime.UtcNow.ToString("O")));
+            ("$lines", lines is null ? null : JsonSerializer.Serialize(lines, Json)), ("$now", DateTime.UtcNow.ToString("O")));
         return null;
     }
 
@@ -189,7 +237,7 @@ public class LocalStore
     {
         using var c = Open();
         using var cmd = c.CreateCommand();
-        cmd.CommandText = $"SELECT ClientId, Kind, OccurredAt, Payload, Photo, Summary, Amount, Effect, CreatedAt, State, Status, Message, ResultId, Warning, UpdatedAt FROM Outbox {where}";
+        cmd.CommandText = $"SELECT ClientId, Kind, OccurredAt, Payload, Photo, Summary, Amount, Effect, CreatedAt, State, Status, Message, ResultId, Warning, UpdatedAt, Lines, ReceiptNo FROM Outbox {where}";
         foreach (var (name, value) in args) cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
         using var r = cmd.ExecuteReader();
         var list = new List<OutboxItem>();
@@ -201,7 +249,8 @@ public class LocalStore
                 JsonSerializer.Deserialize<Effect>(r.GetString(7), Json) ?? Effect.None,
                 DateTime.Parse(r.GetString(8), inv, System.Globalization.DateTimeStyles.RoundtripKind), (OutboxState)r.GetInt32(9),
                 r.IsDBNull(10) ? null : r.GetString(10), r.IsDBNull(11) ? null : r.GetString(11), r.IsDBNull(12) ? null : r.GetInt32(12),
-                r.IsDBNull(13) ? null : r.GetString(13), DateTime.Parse(r.GetString(14), inv, System.Globalization.DateTimeStyles.RoundtripKind)));
+                r.IsDBNull(13) ? null : r.GetString(13), DateTime.Parse(r.GetString(14), inv, System.Globalization.DateTimeStyles.RoundtripKind),
+                r.IsDBNull(15) ? null : JsonSerializer.Deserialize<List<ReceiptLine>>(r.GetString(15), Json), r.IsDBNull(16) ? null : r.GetInt32(16)));
         return list;
     }
 }

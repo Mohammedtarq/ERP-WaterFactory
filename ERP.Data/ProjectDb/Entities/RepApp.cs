@@ -15,6 +15,8 @@ public class RepDevice
     public DateTime RegisteredAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastSeenAt { get; set; }
     public DateTime? DeactivatedAt { get; set; }
+    /// <summary>حُذف من القائمة وله حركات (46_rep_device_removed.sql): موقوف ومخفي، وحركاته باقية.</summary>
+    public DateTime? RemovedAt { get; set; }
 }
 
 public enum RepRequestKind { CashSale, CreditSale, Free, Collection, NewCustomer, Expense, Return }

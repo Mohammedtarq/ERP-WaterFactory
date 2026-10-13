@@ -75,7 +75,7 @@ public class RepAppService
 
     public async Task<FinanceOperationResult> SetDeviceActiveAsync(int deviceId, bool active, int userId)
     {
-        var device = await _db.RepDevices.Include(d => d.RepEmployee).FirstOrDefaultAsync(d => d.Id == deviceId);
+        var device = await _db.RepDevices.Include(d => d.RepEmployee).FirstOrDefaultAsync(d => d.Id == deviceId && d.RemovedAt == null);
         if (device is null) return FinanceOperationResult.Fail("الجهاز غير موجود");
         if (device.IsActive == active) return FinanceOperationResult.Fail(active ? "الجهاز مفعّل أصلًا" : "الجهاز موقوف أصلًا");
         device.IsActive = active;
@@ -86,8 +86,30 @@ public class RepAppService
         return FinanceOperationResult.Ok();
     }
 
+    /// <summary>
+    /// حذف الجهاز: بلا حركات يُحذف نهائيًا، وله حركات يُوقف ويُخفى من القائمة (حركاته وسجلها باقية).
+    /// في الحالتين يُرفض الهاتف في الدورة التالية، ولإعادته يُسجَّل من جديد برمز جديد.
+    /// </summary>
+    public async Task<FinanceOperationResult> DeleteDeviceAsync(int deviceId, int userId)
+    {
+        var device = await _db.RepDevices.Include(d => d.RepEmployee).FirstOrDefaultAsync(d => d.Id == deviceId && d.RemovedAt == null);
+        if (device is null) return FinanceOperationResult.Fail("الجهاز غير موجود");
+        var text = $"حذف جهاز {device.DeviceName} للمندوب {device.RepEmployee.FullName}";
+        if (await _db.RepRequests.AnyAsync(r => r.DeviceId == deviceId))
+        {
+            device.IsActive = false;
+            device.DeactivatedAt ??= DateTime.UtcNow;
+            device.RemovedAt = DateTime.UtcNow;
+            text += " (له حركات: أُوقف وأُخفي وبقيت حركاته)";
+        }
+        else _db.RepDevices.Remove(device);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Delete", "RepDevices", deviceId, text);
+        return FinanceOperationResult.Ok();
+    }
+
     public async Task<List<RepDeviceRow>> DevicesAsync() =>
-        (await _db.RepDevices.AsNoTracking().OrderByDescending(d => d.IsActive).ThenBy(d => d.RepEmployee.FullName)
+        (await _db.RepDevices.AsNoTracking().Where(d => d.RemovedAt == null).OrderByDescending(d => d.IsActive).ThenBy(d => d.RepEmployee.FullName)
             .Select(d => new { d.Id, Rep = d.RepEmployee.FullName, d.DeviceName, d.IsActive, d.RegisteredAt, d.LastSeenAt, By = d.RegisteredByUser.Username })
             .ToListAsync())
         .Select(d => new RepDeviceRow(d.Id, d.Rep, d.DeviceName, d.IsActive, d.RegisteredAt.ToLocalTime(), d.LastSeenAt?.ToLocalTime(), d.By)).ToList();

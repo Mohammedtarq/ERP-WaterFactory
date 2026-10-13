@@ -5,6 +5,7 @@ namespace ERP.Cloud.Contracts;
 /// ورصيد سيارته ومحفظته، وإعدادات التطبيق. لا حسابات ولا قيود ولا بيانات مندوب آخر.
 /// السعر هنا للعرض فقط؛ المعمل يسعّر الحركة بنفسه عند ترحيلها.
 /// PostedClientIds: حركات الهاتف المرحّلة (آخر 7 أيام) الداخلة في هذه الأرصدة — الهاتف لا يطرحها مرة ثانية.
+/// CompanyName و CompanyLogo: من «هوية الطباعة» يظهران في رأس التطبيق وعلى وصل البيع (الشعار حتى MaxLogoBytes وإلا يُترك).
 /// </summary>
 public record RepSnapshot(
     int RepEmployeeId,
@@ -17,7 +18,13 @@ public record RepSnapshot(
     List<SnapshotCustomer> Customers,
     List<SnapshotAgentPrice> AgentPrices,
     List<SnapshotStock> VanStock,
-    List<Guid>? PostedClientIds = null);
+    List<Guid>? PostedClientIds = null,
+    string? CompanyName = null,
+    byte[]? CompanyLogo = null)
+{
+    /// <summary>الشعار ينتقل مع كل نسخة عمل، فيبقى صغيرًا.</summary>
+    public const int MaxLogoBytes = 200 * 1024;
+}
 
 /// <summary>صنف قابل للبيع: سعر القطعة العادي، وعبواته (الأكبر أولًا).</summary>
 public record SnapshotProduct(int ItemId, string Code, string Name, decimal PiecePrice, List<SnapshotLevel> Levels);
