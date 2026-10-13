@@ -103,9 +103,9 @@ public class RepAppTests
         Assert.Equal(16_000m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));
         Assert.Equal(new byte[] { 1, 2, 3 }, await app.PhotoAsync(expense.RequestId.Value));
 
-        // 7) قائمة الاطلاع: الآجل والمجاني، ثم «تمت المراجعة»
+        // 7) قائمة الاطلاع: الآجل والمجاني والزبون الجديد (نوعه وحد دينه)، ثم «تمت المراجعة»
         var toReview = await app.ListAsync(RepRequestFilter.ToReview, DateTime.Today, DateTime.Today, rep.Id);
-        Assert.Equal(new[] { RepRequestKind.Free, RepRequestKind.CreditSale }, toReview.Select(r => r.Kind));
+        Assert.Equal(new[] { RepRequestKind.Free, RepRequestKind.CreditSale, RepRequestKind.NewCustomer }, toReview.Select(r => r.Kind));
         Assert.True((await app.MarkReviewedAsync(toReview.Select(r => r.Id).ToList(), _f.AdminId)).Success);
         Assert.Empty(await app.ListAsync(RepRequestFilter.ToReview, DateTime.Today, DateTime.Today, rep.Id));
         Assert.Empty(await app.ListAsync(RepRequestFilter.Pending, DateTime.Today, DateTime.Today, rep.Id));
