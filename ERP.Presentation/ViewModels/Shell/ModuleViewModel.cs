@@ -186,6 +186,8 @@ public class HomeSectionViewModel : ObservableObject
     public string DisplayTitle => Title;
     public string Glyph => Icons.Home;
     public string Color => Owner.Color;
+    /// <summary>للمربع في اللوحة المنبثقة («الواجهة الجديدة»).</summary>
+    public string Description => "لوحة الوحدة: مؤشرات اليوم وبطاقات كل أقسامها";
     public IEnumerable<SectionViewModel> Sections => Owner.Tabs.OfType<SectionViewModel>();
     /// <summary>بطاقات الأقسام مقسّمة بنفس مجموعات القائمة الجانبية وألوانها.</summary>
     public ObservableCollection<SectionGroup> Groups => Owner.Groups;

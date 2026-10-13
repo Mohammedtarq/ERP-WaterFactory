@@ -17,6 +17,16 @@ public class UserPreferencesService
         return (u?.ThemeKey, Split(u?.Favorites));
     }
 
+    public async Task<bool> UsesNewUiAsync(int userId) =>
+        await _db.Users.AsNoTracking().Where(x => x.Id == userId).Select(x => x.UseNewUi).FirstOrDefaultAsync();
+
+    public async Task SetNewUiAsync(int userId, bool on)
+    {
+        var u = await _db.Users.FirstAsync(x => x.Id == userId);
+        u.UseNewUi = on;
+        await _db.SaveChangesAsync();
+    }
+
     public async Task SetThemeAsync(int userId, string themeKey)
     {
         var u = await _db.Users.FirstAsync(x => x.Id == userId);

@@ -52,4 +52,9 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainShellViewModel vm) vm.IsSearchOpen = false;
     }
+
+    private void OnFlyoutBackdrop(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is MainShellViewModel vm) vm.IsFlyoutOpen = false;
+    }
 }

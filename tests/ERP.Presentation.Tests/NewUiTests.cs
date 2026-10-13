@@ -109,6 +109,33 @@ public class NewUiTests
             Assert.Equal(new[] { "b", "a" }, RecentUsers.Merge(new[] { new RecentUser("a", "A", null, null, null, null, DateTime.UtcNow) },
                                                                 new RecentUser("b", "B", null, null, null, null, DateTime.UtcNow)).Select(u => u.Username));
 
+            // ---- «الواجهة الجديدة»: مفتاح لكل مستخدم، والوحدة تفتح لوحة مربعات أقسامها ----
+            Assert.False(shell.UseNewUi);                                      // المعتادة افتراضيًا
+            await shell.ToggleNewUiCommand.ExecuteAsync();
+            Assert.True(shell.UseNewUi);
+            await using (var db = shell.Session.NewDb())
+                Assert.True(await new UserPreferencesService(db).UsesNewUiAsync(shell.Session.UserId));
+            var hrNav = shell.NavItems.Single(n => n.ModuleCode == ModuleCode.HR);
+            shell.NavigateCommand.Execute(shell.NavItems.Single(n => n.ModuleCode == ModuleCode.Sales));
+            shell.NavigateCommand.Execute(hrNav);
+            Assert.True(shell.IsFlyoutOpen);
+            Assert.Equal("نظرة عامة", shell.FlyoutGroups[0].Name);
+            Assert.Equal(new[] { "نظرة عامة", "الموظفون", "الحضور والإجازات", "الحوافز", "الرواتب", "التقارير" }, shell.FlyoutGroups.Select(g => g.Name));
+            shell.FlyoutFilter = "تقارير";
+            var tile = Assert.Single(Assert.Single(shell.FlyoutGroups).Items);
+            Assert.Equal("تقارير الموارد البشرية", ((SectionViewModel)tile).Title);
+            shell.OpenTileCommand.Execute(tile);
+            Assert.False(shell.IsFlyoutOpen);
+            Assert.Same(tile, hr.SelectedTab);
+            shell.NavigateCommand.Execute(hrNav);
+            Assert.Equal("", shell.FlyoutFilter);                              // اللوحة تُفتح نظيفة
+            shell.OpenTileCommand.Execute(shell.FlyoutGroups[0].Items[0]);      // «نظرة عامة»
+            Assert.IsType<HomeSectionViewModel>(hr.SelectedTab);
+            await shell.ToggleNewUiCommand.ExecuteAsync();
+            Assert.False(shell.UseNewUi);
+            shell.NavigateCommand.Execute(shell.NavItems.Single(n => n.ModuleCode == ModuleCode.Sales));
+            Assert.False(shell.IsFlyoutOpen);
+
             // إعادة المظهر الافتراضي لبقية الاختبارات
             await shell.SetThemeCommand.ExecuteAsync(Themes.Get("rahma"));
             Assert.Empty(_f.Unhandled);

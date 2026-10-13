@@ -98,6 +98,8 @@
                                     </Style>
                                 </MenuItem.ItemContainerStyle>
                             </MenuItem>
+                            <MenuItem Header="الواجهة الجديدة (لوحة مربعات لكل وحدة)" IsCheckable="False"
+                                      IsChecked="{Binding UseNewUi, Mode=OneWay}" Command="{Binding ToggleNewUiCommand}"/>
                             <Separator/>
                             <MenuItem Header="تبديل المستخدم (تسجيل الخروج)" Command="{Binding LogoutCommand}"/>
                             <MenuItem Header="إغلاق البرنامج" Click="OnExitClick" Foreground="#DC2626"/>
@@ -197,7 +199,9 @@
                                     </StackPanel>
                                 </Button>
 
-                                <!-- أقسام الوحدة المفتوحة: «الرئيسية» ثم مجموعات ملوّنة، وتفتح مجموعة واحدة فقط بأقسامها -->
+                                <!-- أقسام الوحدة المفتوحة: «الرئيسية» ثم مجموعات ملوّنة، وتفتح مجموعة واحدة فقط بأقسامها
+                                     (في «الواجهة الجديدة» تظهر في اللوحة المنبثقة بدلها) -->
+                                <StackPanel Visibility="{Binding DataContext.UseNewUi, ElementName=Root, Converter={StaticResource InverseBoolToVisibility}}">
                                 <StackPanel Margin="0,0,22,6" Visibility="{Binding IsSelected, Converter={StaticResource BoolToVisibility}}">
                                     <StackPanel.Resources>
                                         <Style x:Key="SideLink" TargetType="Button">
@@ -264,6 +268,7 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </StackPanel>
+                                </StackPanel>
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -273,6 +278,79 @@
 
         <!-- ================= محتوى الوحدة المختارة ================= -->
         <ContentControl Grid.Column="1" Content="{Binding CurrentModule}" Margin="22,18,22,14"/>
+
+        <!-- ================= «الواجهة الجديدة»: لوحة الوحدة المنبثقة ================= -->
+        <Grid Grid.Column="1" Visibility="{Binding IsFlyoutOpen, Converter={StaticResource BoolToVisibility}}">
+            <Border Background="#33000000" MouseLeftButtonDown="OnFlyoutBackdrop"/>
+            <Border HorizontalAlignment="Left" Width="700" Background="{DynamicResource BackgroundBrush}" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0" Padding="18">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.25"/>
+                </Border.Effect>
+                <DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="إغلاق" Style="{StaticResource RowIconButton}" Tag="#64748B" Command="{Binding CloseFlyoutCommand}"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="36" Height="36" CornerRadius="9" Background="{Binding SelectedItem.Color, Converter={StaticResource HexBrush}}">
+                                <TextBlock Text="{Binding SelectedItem.Glyph}" Style="{StaticResource Icon}" FontSize="17" Foreground="White"/>
+                            </Border>
+                            <TextBlock Text="{Binding SelectedItem.Title}" FontSize="20" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </DockPanel>
+                    <TextBox x:Name="FlyoutSearch" DockPanel.Dock="Top" Text="{Binding FlyoutFilter, UpdateSourceTrigger=PropertyChanged}" FontSize="14" Padding="8,5" Margin="0,0,0,10"
+                             ToolTip="ابحث داخل الوحدة">
+                        <TextBox.InputBindings>
+                            <KeyBinding Key="Escape" Command="{Binding CloseFlyoutCommand}"/>
+                        </TextBox.InputBindings>
+                    </TextBox>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding FlyoutGroups}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,12">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                            <Border Width="5" Height="18" CornerRadius="3" Background="{Binding Color, Converter={StaticResource HexBrush}}"/>
+                                            <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="Bold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <ItemsControl ItemsSource="{Binding Items}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Command="{Binding DataContext.OpenTileCommand, ElementName=Root}" CommandParameter="{Binding}" Cursor="Hand"
+                                                            Width="208" Margin="0,0,8,8" ToolTip="{Binding Description}">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="Bd" CornerRadius="10" Padding="10" Background="White" BorderBrush="#E2E8F0" BorderThickness="1"><ContentPresenter/></Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                        <DockPanel>
+                                                            <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="8" VerticalAlignment="Top"
+                                                                    Background="{Binding Color, Converter={StaticResource HexBrush}}">
+                                                                <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="15" Foreground="White"/>
+                                                            </Border>
+                                                            <StackPanel Margin="8,0,0,0">
+                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5" TextWrapping="Wrap"/>
+                                                                <TextBlock Text="{Binding Description}" Foreground="#64748B" FontSize="11.5" TextWrapping="Wrap" MaxHeight="32" TextTrimming="CharacterEllipsis"/>
+                                                            </StackPanel>
+                                                        </DockPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
 
         <!-- ================= البحث السريع (Ctrl+K) ================= -->
         <Grid x:Name="SearchOverlay" Grid.ColumnSpan="2" Visibility="{Binding IsSearchOpen, Converter={StaticResource BoolToVisibility}}"

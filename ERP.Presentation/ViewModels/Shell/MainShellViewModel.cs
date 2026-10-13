@@ -85,7 +85,16 @@ public class MainShellViewModel : ViewModelBase
         // مستخدم عمله في وحدة واحدة (مثل مسؤول الموارد البشرية): لا حاجة للوحة المعلومات العامة، يفتح على وحدته مباشرة
         if (visible.Count(n => n.ModuleCode != ModuleCode.Dashboard) == 1) visible.RemoveAll(n => n.ModuleCode == ModuleCode.Dashboard);
         NavItems = visible;
-        NavigateCommand = new RelayCommand(p => { if (p is NavItem n) SelectedItem = n; });
+        NavigateCommand = new RelayCommand(p =>
+        {
+            if (p is not NavItem n) return;
+            SelectedItem = n;
+            // الواجهة الجديدة: الوحدة تفتح لوحة أقسامها المنبثقة (لوحة المعلومات تُفتح مباشرة)
+            if (UseNewUi && CurrentModule is ModuleViewModel) OpenFlyout();
+        });
+        ToggleNewUiCommand = new AsyncRelayCommand(ToggleNewUiAsync);
+        CloseFlyoutCommand = new RelayCommand(() => IsFlyoutOpen = false);
+        OpenTileCommand = new RelayCommand(OpenTile);
         LogoutCommand = new RelayCommand(Logout);
         ToggleAlertsCommand = new RelayCommand(() => IsAlertsOpen = !IsAlertsOpen);
         OpenAlertCommand = new RelayCommand(p => { if (p is AlertItem a) OpenAlert(a); });
@@ -208,6 +217,7 @@ public class MainShellViewModel : ViewModelBase
             var (theme, favorites) = await new UserPreferencesService(db).GetAsync(Session.UserId);
             ThemeKey = Themes.Get(theme).Key;
             ThemeHost.Apply(Themes.Get(theme));
+            UseNewUi = await new UserPreferencesService(db).UsesNewUiAsync(Session.UserId);
             SetFavorites(favorites);
             await RememberUserAsync();
         }
@@ -267,6 +277,62 @@ public class MainShellViewModel : ViewModelBase
             }
         }
         return null;
+    }
+
+    // ============================ «الواجهة الجديدة»: اللوحة المنبثقة ============================
+
+    private bool _useNewUi;
+    private bool _isFlyoutOpen;
+    private string _flyoutFilter = "";
+
+    /// <summary>«الواجهة الجديدة» لهذا المستخدم: الوحدة تفتح لوحة منبثقة بمربعات أقسامها بدل القائمة داخل الشريط.</summary>
+    public bool UseNewUi { get => _useNewUi; private set => SetProperty(ref _useNewUi, value); }
+    public AsyncRelayCommand ToggleNewUiCommand { get; }
+    public bool IsFlyoutOpen { get => _isFlyoutOpen; set => SetProperty(ref _isFlyoutOpen, value); }
+    /// <summary>بحث داخل لوحة الوحدة.</summary>
+    public string FlyoutFilter { get => _flyoutFilter; set { if (SetProperty(ref _flyoutFilter, value ?? "")) BuildFlyout(); } }
+    /// <summary>مجموعات الوحدة بمربعاتها (بعد البحث)، و«نظرة عامة» أولًا.</summary>
+    public ObservableCollection<FlyoutGroup> FlyoutGroups { get; } = new();
+    public RelayCommand CloseFlyoutCommand { get; }
+    public RelayCommand OpenTileCommand { get; }
+
+    private async Task ToggleNewUiAsync()
+    {
+        await using var db = Session.NewDb();
+        await new UserPreferencesService(db).SetNewUiAsync(Session.UserId, !UseNewUi);
+        UseNewUi = !UseNewUi;
+        IsFlyoutOpen = false;
+    }
+
+    public void OpenFlyout()
+    {
+        _flyoutFilter = "";
+        OnPropertyChanged(nameof(FlyoutFilter));
+        BuildFlyout();
+        IsFlyoutOpen = true;
+    }
+
+    private void BuildFlyout()
+    {
+        FlyoutGroups.Clear();
+        if (CurrentModuleVm is not { } m) return;
+        var q = SectionCatalog.Normalize(FlyoutFilter.Trim());
+        bool Match(SectionViewModel s) => q.Length == 0 || SectionCatalog.Normalize(s.Title).Contains(q) || SectionCatalog.Normalize(s.Description).Contains(q);
+        if (q.Length == 0) FlyoutGroups.Add(new FlyoutGroup("نظرة عامة", m.Color, new List<object> { m.Home }));
+        foreach (var g in m.Groups)
+        {
+            var items = g.Items.Where(Match).Cast<object>().ToList();
+            if (items.Count > 0) FlyoutGroups.Add(new FlyoutGroup(g.Name, g.Color, items));
+        }
+    }
+
+    /// <summary>مربع في اللوحة: القسم (أو «نظرة عامة») يُفتح وتُغلق اللوحة.</summary>
+    private void OpenTile(object? p)
+    {
+        if (CurrentModuleVm is not { } m) return;
+        if (p is SectionViewModel s) m.SelectedTab = s;
+        else if (p is HomeSectionViewModel) m.GoHomeCommand.Execute(null);
+        IsFlyoutOpen = false;
     }
 
     // ============================ التنبيهات ============================
@@ -451,3 +517,6 @@ public class MainShellViewModel : ViewModelBase
             _navigator.ShowLogin();
     }
 }
+
+/// <summary>مجموعة في اللوحة المنبثقة: اسمها ولونها ومربعاتها (أقسام، أو «نظرة عامة»).</summary>
+public sealed record FlyoutGroup(string Name, string Color, List<object> Items);
