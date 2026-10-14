@@ -67,6 +67,12 @@ public class StockBalanceRow
     /// <summary>الكمية بوحدات التعبئة: "10 كارتون + 3 قطعة".</summary>
     public string Breakdown { get; set; } = "";
     public bool BelowAlert { get; set; }
+    /// <summary>أجزاء الاسم الموحد للأعمدة المنفصلة: العبوة | المحتوى | المتغير.</summary>
+    public string Pack { get; set; } = "";
+    public string Content { get; set; } = "";
+    public string VariantName { get; set; } = "";
+    /// <summary>رأس المجموعة «الصنف · الرمز».</summary>
+    public string Group => $"{ItemName} · {ItemCode}";
 }
 
 public class StockDocumentRow
@@ -381,12 +387,15 @@ public class WarehouseDocumentService
         // حد التنبيه لهذا المخزن وحده (المضبوط من داخله، أو حد بطاقة الصنف إن كان مخزنه الرئيسي)
         var mins = await new StockAlertService(_db).TotalsAsync(new[] { warehouseId }, items.Values.ToList());
 
+        var names = await ProductNames.LoadAsync(_db, itemIds);
         return raw.Select(r =>
         {
             var item = items[r.ItemId];
             var b = r.BatchId is null ? null : batches.GetValueOrDefault(r.BatchId.Value);
+            var (pack, content, variant) = names.Parts(r.ItemId, b?.CustomRecipeId);
             return new StockBalanceRow
             {
+                Pack = pack, Content = content, VariantName = variant.Length > 0 ? variant : "أساسي",
                 ItemId = r.ItemId, ItemCode = item.ItemCode, ItemName = item.ItemName, BatchNumber = b?.BatchNumber, ExpiryDate = b?.ExpiryDate,
                 Variant = b?.CustomRecipe?.Name,
                 Quantity = r.Qty, Breakdown = Breakdown(r.Qty, levels.GetValueOrDefault(r.ItemId)),

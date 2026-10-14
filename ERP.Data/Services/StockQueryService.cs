@@ -16,6 +16,13 @@ public class CurrentStockRow
     public DateTime? ExpiryDate { get; set; }
     /// <summary>الكمية بالعبوات: "50 شرنك" (المنتج المصنَّع بعبوة واحدة فالعدد دقيق).</summary>
     public string Breakdown { get; set; } = "";
+    public int? RecipeId { get; set; }
+    /// <summary>أجزاء الاسم الموحد للأعمدة المنفصلة: العبوة | المحتوى | المتغير.</summary>
+    public string Pack { get; set; } = "";
+    public string Content { get; set; } = "";
+    public string Variant { get; set; } = "";
+    /// <summary>رأس المجموعة «الصنف · الرمز».</summary>
+    public string Group => $"{ItemName} · {ItemCode}";
 }
 
 /// <summary>
@@ -53,7 +60,8 @@ public class StockQueryService
                 t.Warehouse.Name,
                 t.BatchId,
                 BatchNumber = t.Batch != null ? t.Batch.BatchNumber : null,
-                ExpiryDate = t.Batch != null ? t.Batch.ExpiryDate : null
+                ExpiryDate = t.Batch != null ? t.Batch.ExpiryDate : null,
+                RecipeId = t.Batch != null ? t.Batch.CustomRecipeId : null
             })
             .Select(g => new CurrentStockRow
             {
@@ -64,6 +72,7 @@ public class StockQueryService
                 UnitPrice = g.Key.SalePrice,
                 BatchNumber = g.Key.BatchNumber,
                 ExpiryDate = g.Key.ExpiryDate,
+                RecipeId = g.Key.RecipeId,
                 QuantityBaseUnits = g.Sum(t => t.QuantityBaseUnits)
             })
             .ToListAsync();
@@ -74,6 +83,8 @@ public class StockQueryService
         var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
             .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
         foreach (var r in rows) r.Breakdown = WarehouseDocumentService.Breakdown(r.QuantityBaseUnits, levels.GetValueOrDefault(r.ItemId));
-        return rows;
+        var names = await ProductNames.LoadAsync(_db, itemIds);
+        foreach (var r in rows) (r.Pack, r.Content, r.Variant) = names.Parts(r.ItemId, r.RecipeId);
+        return rows.OrderBy(r => r.ItemName).ThenBy(r => r.WarehouseName).ThenBy(r => r.Variant).ThenBy(r => r.ExpiryDate).ToList();
     }
 }

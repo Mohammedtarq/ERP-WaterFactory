@@ -372,4 +372,15 @@
             </Trigger>
         </Style.Triggers>
     </Style>
+
+    <!-- رأس مجموعة الصنف في جداول الأرصدة: «الصنف · الرمز» فوق أعمدة العبوة والمحتوى والمتغير -->
+    <GroupStyle x:Key="ItemGroupStyle">
+        <GroupStyle.HeaderTemplate>
+            <DataTemplate>
+                <Border Background="#EEF4FA" Padding="10,6">
+                    <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="#1E3A5F"/>
+                </Border>
+            </DataTemplate>
+        </GroupStyle.HeaderTemplate>
+    </GroupStyle>
 </ResourceDictionary>

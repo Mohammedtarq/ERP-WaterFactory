@@ -21,6 +21,17 @@ public static partial class ProductName
     }
 
     /// <summary>
+    /// أجزاء الاسم الموحد للأعمدة المنفصلة (العبوة | المحتوى | المتغير) — تمنع تكسّر الاسم الطويل في الجداول.
+    /// المحتوى «20×330» أو «330» للقطعة؛ والحجم المجهول يُعرض «20».
+    /// </summary>
+    public static (string Pack, string Content, string Variant) Parts(string levelName, decimal piecesPerPack, decimal? sizeMl, string? variant)
+    {
+        var size = sizeMl is decimal ml && ml > 0 ? Size(ml) : "";
+        var content = piecesPerPack > 1 ? (size.Length > 0 ? $"{Num(piecesPerPack)}×{size}" : Num(piecesPerPack)) : size;
+        return (levelName.Trim(), content, variant?.Trim() ?? "");
+    }
+
+    /// <summary>
     /// اسم المتغير: المختصر، ثم اسم الزبون (المحجوز له)، ثم اسم الطلب الخاص؛ والأساسي باسمه المضبوط في «هوية الطباعة»
     /// (مثل «الرحمة»)، أو بلا اسم إن لم يُضبط.
     /// </summary>

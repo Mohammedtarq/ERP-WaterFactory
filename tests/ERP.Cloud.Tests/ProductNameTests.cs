@@ -18,6 +18,15 @@ public class ProductNameTests
     }
 
     [Fact]
+    public void Name_parts_split_into_pack_content_and_variant_columns()
+    {
+        Assert.Equal(("كارتون", "40×330", "مطعم داون تاون"), ProductName.Parts("كارتون", 40, 330, "مطعم داون تاون"));
+        Assert.Equal(("قطعة", "330", ""), ProductName.Parts("قطعة", 1, 330, null));
+        Assert.Equal(("كارتون", "6×1.5 لتر", "الرحمة"), ProductName.Parts("كارتون", 6, 1500, "الرحمة"));
+        Assert.Equal(("كارتون", "40", ""), ProductName.Parts("كارتون", 40, null, null));   // الحجم مجهول
+    }
+
+    [Fact]
     public void Variant_and_size_are_found_without_extra_typing()
     {
         Assert.Equal("داون تاون", ProductName.Variant("داون تاون", "مطعم داون تاون", "وصفة داون تاون", false, "الرحمة"));

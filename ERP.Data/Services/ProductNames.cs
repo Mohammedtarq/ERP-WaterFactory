@@ -60,6 +60,15 @@ public sealed class ProductNames
         return ProductName.Of(level.LevelName, level.EquivalentBaseUnits, SizeOf(itemId), item.Item1, Variant(recipeId));
     }
 
+    /// <summary>أجزاء الاسم (العبوة، المحتوى، المتغير) للأعمدة المنفصلة؛ صنف بلا عبوات: العبوة «قطعة».</summary>
+    public (string Pack, string Content, string Variant) Parts(int itemId, int? recipeId = null, int? levelId = null)
+    {
+        var level = levelId is int l ? _levels.GetValueOrDefault(itemId)?.FirstOrDefault(x => x.Id == l) : TopLevel(itemId);
+        return level is null
+            ? ProductName.Parts("قطعة", 1, SizeOf(itemId), Variant(recipeId))
+            : ProductName.Parts(level.LevelName, level.EquivalentBaseUnits, SizeOf(itemId), Variant(recipeId));
+    }
+
     /// <summary>الاسم الموحد بعبوة معروفة باسمها وعدد قطعها (كما في سطر مستند).</summary>
     public string Name(int itemId, int? recipeId, string levelName, decimal piecesPerPack) =>
         ProductName.Of(levelName, piecesPerPack, SizeOf(itemId), _items.GetValueOrDefault(itemId, ("؟", null)).Item1, Variant(recipeId));
