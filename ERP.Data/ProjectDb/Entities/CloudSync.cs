@@ -20,6 +20,8 @@ public class CloudSyncSetting
     public string? AgentMachine { get; set; }
 
     public bool LocalEnabled { get; set; }
+    /// <summary>فُعّل الخادم المحلي تلقائيًا من خدمة المزامنة (52_sync_auto_setup.sql)، أو حسم المستخدم الأمر: لا يتكرر التفعيل.</summary>
+    public bool AutoSetupDone { get; set; }
     /// <summary>عنوان الخادم المحلي للهواتف — تكتبه خدمة المزامنة من عنوان الحاسبة الحالي.</summary>
     public string? LocalUrl { get; set; }
     public DateTime? LocalLastSuccessAt { get; set; }

@@ -4,11 +4,11 @@ namespace ERP.SyncAgent;
 
 /// <summary>
 /// الحلقة الدائمة: دورة مزامنة لكل مشروع مفعّل في كل قاعدة تحكم، ثم انتظار الفترة المضبوطة. لا يوقفها خطأ.
-/// قواعد التحكم تُكتشف من جديد كل خمس دقائق (مشروع أو نظام جديد يدخل دون إعادة تشغيل).
+/// قواعد التحكم تُكتشف من جديد كل دقيقة (مشروع أو نظام جديد يدخل دون إعادة تشغيل).
 /// </summary>
 public class SyncWorker(AgentConfig config, ILogger<SyncWorker> logger) : BackgroundService
 {
-    private static readonly TimeSpan Rediscover = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan Rediscover = TimeSpan.FromMinutes(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

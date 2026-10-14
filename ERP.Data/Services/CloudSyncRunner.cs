@@ -139,6 +139,9 @@ public class CloudSyncRunner
             {
                 await using var db = new ProjectDbContext(new DbContextOptionsBuilder<ProjectDbContext>()
                     .UseSqlServer(auth.BuildProjectConnectionString(project)).Options);
+                // على حاسبة السيرفر (الخادم المحلي مثبّت): المزامنة المحلية تُفعَّل وحدها مرة واحدة، بلا تدخل من المستخدم
+                if (_local is not null && await new CloudSyncService(db).AutoEnableLocalAsync())
+                    log?.Invoke($"{project.ProjectName}: فُعّلت المزامنة المحلية تلقائيًا");
                 var settings = await db.CloudSyncSettings.AsNoTracking().FirstOrDefaultAsync(ct);
                 if (settings is not { IsEnabled: true } || string.IsNullOrEmpty(settings.AgentKey)) continue;
 

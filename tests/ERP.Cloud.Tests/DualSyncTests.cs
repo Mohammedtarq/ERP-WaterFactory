@@ -275,6 +275,37 @@ public class DualSyncTests : CloudTestBase, IDisposable
     }
 
     [Fact]
+    public async Task Server_pc_enables_local_sync_by_itself_once_and_respects_the_user_afterwards()
+    {
+        // إعداد كما تركه المستخدم بالخطأ: عنوان الخادم المحلي في خانة السحابي، والمحلي غير مفعّل
+        await using (var db = NewDb())
+        {
+            var s = await db.CloudSyncSettings.SingleAsync();
+            (s.ServerUrl, s.IsEnabled, s.LocalEnabled, s.AutoSetupDone, s.AgentKey) = ("http://192.168.0.191:5080", false, false, false, null);
+            await db.SaveChangesAsync();
+        }
+        var keyFile = Path.Combine(_dir, "LocalServer", "agent-key.txt");
+        var runner = new CloudSyncRunner(ControlCs, "SERVER-PC", (url, key) => new HttpClient(new HttpClientHandler()) { BaseAddress = new Uri("http://127.0.0.1:1/"), Timeout = TimeSpan.FromMilliseconds(300) },
+            new LocalRelayOptions("http://127.0.0.1:5080", 5080, keyFile)) { LanAddress = () => "192.168.0.191" };
+        var log = new List<string>();
+        await runner.RunAllAsync(log.Add);
+        Assert.Contains(log, l => l.Contains("فُعّلت المزامنة المحلية تلقائيًا"));
+        await using (var db = NewDb())
+        {
+            var s = await new CloudSyncService(db).SettingsAsync();
+            Assert.Equal((true, true, true, null), (s.IsEnabled, s.LocalEnabled, s.AutoSetupDone, s.ServerUrl));
+            Assert.Equal(64, s.AgentKey!.Length);                                 // المفتاح وُلّد وحده
+            Assert.Equal(s.AgentKey, File.ReadAllText(keyFile).Trim());            // ووصل الخادم المحلي وحده
+            Assert.Equal("http://192.168.0.191:5080", s.LocalUrl);                 // العنوان الذي كُتب بالخطأ صار للمحلي
+        }
+
+        // المستخدم يوقف المزامنة: لا تُفعَّل من جديد
+        await using (var db = NewDb()) Assert.True((await new CloudSyncService(db).SaveSettingsAsync(null, false, 20, AdminId)).Success);
+        await runner.RunAllAsync(log.Add);
+        await using (var db = NewDb()) Assert.False((await new CloudSyncService(db).SettingsAsync()).IsEnabled);
+    }
+
+    [Fact]
     public async Task Upgrade_moves_wifi_trial_address_to_local_server_and_service_finds_control_db()
     {
         await using (var db = NewDb())

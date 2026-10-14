@@ -92,12 +92,34 @@ public class CloudSyncService
         var newKey = enabled && string.IsNullOrEmpty(s.AgentKey);
         if (newKey) s.AgentKey = NewKey();
         (s.ServerUrl, s.IsEnabled, s.IntervalSeconds, s.LocalEnabled) = (url, enabled, intervalSeconds, local);
+        s.AutoSetupDone = true;   // حسم المستخدم الأمر: لا تفعيل تلقائي بعده
         if (!local) s.LocalUrl = null;
         await _db.SaveChangesAsync();
         await new AuditService(_db).LogAsync(userId, "Edit", "CloudSyncSettings", 1,
             $"المزامنة: {(enabled ? "مفعّلة" : "موقوفة")} — المحلي {(local ? "يعمل" : "موقوف")} — السحابي {url ?? "بلا عنوان"} — كل {intervalSeconds} ثانية"
             + (newKey ? " — وُلّد مفتاح المعمل تلقائيًا" : ""));
         return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>
+    /// تفعيل المزامنة المحلية تلقائيًا (تستدعيه خدمة المزامنة على حاسبة السيرفر): مرة واحدة لكل مشروع، فلا يحتاج المستخدم إلى تحديد أي خيار.
+    /// المفتاح يُولَّد، والخادم المحلي يُفعَّل، وعنوان داخل شبكة المعمل كُتب خطأً في خانة السحابي يُنقل إلى المحلي.
+    /// بعدها يُحترم اختيار المستخدم (إيقاف المزامنة مثلًا لا يُلغى).
+    /// </summary>
+    /// <returns>هل غُيّر شيء.</returns>
+    public async Task<bool> AutoEnableLocalAsync()
+    {
+        var s = await _db.CloudSyncSettings.FirstOrDefaultAsync();
+        if (s is null) _db.CloudSyncSettings.Add(s = new CloudSyncSetting());
+        if (s.AutoSetupDone) return false;
+        s.IsEnabled = true;
+        s.LocalEnabled = true;
+        if (string.IsNullOrEmpty(s.AgentKey)) s.AgentKey = NewKey();
+        if (Uri.TryCreate(s.ServerUrl, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttp && CloudUrl.IsPrivateLan(u.Host))
+            (s.LocalUrl, s.ServerUrl) = (s.ServerUrl!.TrimEnd('/'), null);
+        s.AutoSetupDone = true;
+        await _db.SaveChangesAsync();
+        return true;
     }
 
     private static string NewKey() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
