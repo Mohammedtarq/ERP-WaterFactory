@@ -41,7 +41,7 @@
                     <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,10,0,0">
                         <StackPanel>
                             <TextBlock Text="1) المرتجع" FontWeight="SemiBold"/>
-                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" DisplayMemberPath="ItemName" Margin="0,4,0,0"/>
+                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}" Margin="0,4,0,0"/>
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                 <ComboBox ItemsSource="{Binding LevelOptions}" SelectedItem="{Binding LineLevel}" DisplayMemberPath="LevelName" Width="110"/>
                                 <TextBox Text="{Binding LineQuantity}" Width="70" Margin="6,0" FlowDirection="LeftToRight" ToolTip="الكمية"/>
@@ -69,7 +69,7 @@
                     <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,8,0,0">
                         <StackPanel>
                             <TextBlock Text="2) مجاني المندوب (لمن ولماذا)" FontWeight="SemiBold"/>
-                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding FreeItem}" DisplayMemberPath="ItemName" Margin="0,4,0,0"/>
+                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding FreeItem}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}" Margin="0,4,0,0"/>
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                 <ComboBox ItemsSource="{Binding FreeLevelOptions}" SelectedItem="{Binding FreeLevel}" DisplayMemberPath="LevelName" Width="110"/>
                                 <TextBox Text="{Binding FreeQuantity}" Width="70" Margin="6,0" FlowDirection="LeftToRight" ToolTip="الكمية"/>

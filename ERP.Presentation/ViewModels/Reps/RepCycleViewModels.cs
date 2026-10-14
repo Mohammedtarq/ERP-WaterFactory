@@ -238,6 +238,10 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         if (Store is null) { _available = new(); RaiseTotals(); return; }
         await using var db = Session.NewDb();
         _available = await LoadOrderTools.StockAsync(db, Store.Id);
+        // المتاح في المخزن المختار بجانب كل صنف في قائمة المنتج
+        foreach (var i in Products)
+            (i.StockHint, i.StockState) = StockHint.Of(_available.GetValueOrDefault(i.Id),
+                _levels.Where(l => l.ItemId == i.Id).Select(l => l.EquivalentBaseUnits).DefaultIfEmpty(1).Max(), i.MinStockAlertLevel);
         RaiseTotals();
     }
 
@@ -488,6 +492,15 @@ public class RepSettlementSectionViewModel : SectionViewModel
     public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<Vehicle> Vehicles { get; } = new();
     public ObservableCollection<CurrentStockRow> VanStock { get; } = new();
+    private Dictionary<int, decimal> _topPack = new();
+
+    /// <summary>المتوفر في السيارة بجانب كل صنف في قوائم المرتجع والمجاني (العدد فقط).</summary>
+    private void RefreshItemHints()
+    {
+        var van = VanStock.GroupBy(r => r.ItemId).ToDictionary(g => g.Key, g => g.Sum(r => r.QuantityBaseUnits));
+        foreach (var i in ItemsLookup)
+            (i.StockHint, i.StockState) = StockHint.Of(van.GetValueOrDefault(i.Id), _topPack.GetValueOrDefault(i.Id, 1), i.MinStockAlertLevel);
+    }
     public ObservableCollection<RepLineDraft> Returns { get; } = new();
     public ObservableCollection<FreeLineDraft> FreeGoods { get; } = new();
     public ObservableCollection<ExpenseDraft> Expenses { get; } = new();
@@ -573,8 +586,14 @@ public class RepSettlementSectionViewModel : SectionViewModel
                                  && w.WarehouseType != WarehouseType.RawMaterial).ToListAsync())
                      .OrderBy(w => w.WarehouseType != WarehouseType.FinishedGoods).ThenBy(w => w.Name)) Stores.Add(w);
         if (ItemsLookup.Count == 0)
+        {
             foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync())
                 ItemsLookup.Add(i);
+            var ids = ItemsLookup.Select(i => i.Id).ToList();
+            _topPack = (await db.ItemPackagingLevels.AsNoTracking().Where(l => ids.Contains(l.ItemId) && l.EquivalentBaseUnits > 0)
+                    .Select(l => new { l.ItemId, l.EquivalentBaseUnits }).ToListAsync())
+                .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.Max(l => l.EquivalentBaseUnits));
+        }
         Customers.ReplaceAll(await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
         Vehicles.Clear();
         foreach (var v in await db.Vehicles.AsNoTracking().Where(v => v.IsActive).OrderBy(v => v.VehicleName).ToListAsync()) Vehicles.Add(v);
@@ -603,8 +622,10 @@ public class RepSettlementSectionViewModel : SectionViewModel
             if (!ReferenceEquals(Van, van)) return;
             VanStock.Clear();
             foreach (var r in stock) VanStock.Add(r);
+            RefreshItemHints();
             ExpenseVehicle = Vehicles.FirstOrDefault(v => v.AssignedEmployeeId == van.OwnerEmployeeId);
         }
+        if (Van is null) RefreshItemHints();
         WalletBalance = wallet;
         OnPropertyChanged(nameof(VanPieces));
         OnPropertyChanged(nameof(VanText));
