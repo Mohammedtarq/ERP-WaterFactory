@@ -290,6 +290,32 @@ public class RepWork
                               new Effect(new(), Wallet: amount, CustomerId: customerId, Balance: -amount));
     }
 
+    // ============================ المصروفات ============================
+
+    /// <summary>أنواع مصاريف سيارة المندوب (ما يصرفه من نقده): تدخل في المالية تحت «سيارة المندوب» باسم المندوب بعد اعتماد المعمل.</summary>
+    public static readonly string[] ExpenseKinds = { "وقود", "صيانة وتصليح", "غسيل", "إطارات", "موقف ورسوم طريق", "أخرى" };
+
+    public DraftCheck CheckExpense(string? category, decimal amount)
+    {
+        if (Snapshot is null) return Fail("لم تصل نسخة العمل من المعمل بعد — اتصل بالشبكة وزامن");
+        if (string.IsNullOrWhiteSpace(category)) return Fail("اختر نوع المصروف");
+        if (amount <= 0) return Fail("مبلغ المصروف يجب أن يكون أكبر من صفر");
+        var warning = amount > Wallet()
+            ? $"المبلغ أكبر من النقد الذي معك ({Formats.Money(Wallet())}) — قد يرفضه المعمل عند الاعتماد"
+            : null;
+        return new(null, warning, amount, new());
+    }
+
+    /// <summary>مصروف سيارة: يُحفظ في الهاتف ويُرسل للمعمل بانتظار الاعتماد، وصورة الوصل اختيارية.</summary>
+    public OutboxItem SaveExpense(string category, decimal amount, string? notes = null, byte[]? photo = null)
+    {
+        var check = CheckExpense(category, amount);
+        if (!check.Ok) throw new InvalidOperationException(check.Error);
+        var note = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        return _store.Enqueue("Expense", new ExpensePayload(amount, category.Trim(), note), $"مصروف — {category.Trim()}", amount,
+                              new Effect(new(), Wallet: -amount), photo);
+    }
+
     // ============================ وصل البيع ============================
 
     /// <summary>وصل حركة بيع (null لغير البيع). الرقم: رقم المندوب ثم تسلسل الوصل في الهاتف (مثل 7-15).</summary>

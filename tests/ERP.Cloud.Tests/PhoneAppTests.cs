@@ -25,6 +25,16 @@ public class PhoneAppTests : CloudTestBase, IDisposable
     }
 
     [Fact]
+    public void Expense_draft_needs_the_factory_copy_a_kind_and_an_amount()
+    {
+        var work = new RepWork(new LocalStore(Path.Combine(_dir, "expense.db")));
+        Assert.Contains("لم تصل نسخة العمل", work.CheckExpense("وقود", 1_000).Error);        // قبل أن تصل نسخة العمل لا حفظ
+        Assert.Throws<InvalidOperationException>(() => work.SaveExpense("وقود", 1_000));
+        Assert.Contains("وقود", RepWork.ExpenseKinds);
+        Assert.Equal("أخرى", RepWork.ExpenseKinds[^1]);
+    }
+
+    [Fact]
     public void Link_code_round_trip_and_url_rules()
     {
         var key = new string('A', 64);

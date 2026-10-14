@@ -156,7 +156,9 @@ public class FinalAccountsService
         products = products.OrderByDescending(p => p.Revenue).ToList();
 
         // ---- المصروفات من شاشة المصروف ----
-        var entries = await _db.FinanceEntries.AsNoTracking().Where(e => !e.IsVoided && e.EntryDate >= from && e.EntryDate < to)
+        // مصاريف سيارات المندوبين من محافظهم تُحسب من الدفتر (حساب 5103) فلا تُجمع هنا مرة ثانية
+        var entries = await _db.FinanceEntries.AsNoTracking().Where(e => !e.IsVoided && e.EntryDate >= from && e.EntryDate < to
+                                                                         && (e.JournalEntry == null || e.JournalEntry.SourceTable != "RepWalletTransactions"))
             .GroupBy(e => new { e.Category.Name, e.Category.Kind })
             .Select(g => new { g.Key.Name, g.Key.Kind, Amount = g.Sum(e => e.Amount) }).ToListAsync();
 

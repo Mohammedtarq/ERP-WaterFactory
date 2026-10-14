@@ -154,8 +154,50 @@ public class RepsService
         return FinanceOperationResult.Ok();
     }
 
-    public Task<FinanceOperationResult> RecordFieldExpenseAsync(int repId, decimal amount, string description, DateTime date, int userId, int? vehicleId = null) =>
-        WalletOutAsync(repId, amount, date, $"مصروف ميداني: {description}", FieldExpenseRule, userId, vehicleId);
+    /// <summary>اسم نوع المصروف الذي تدخل تحته مصاريف المندوبين الميدانية في «المصروفات» بالمالية.</summary>
+    public const string RepVanCategory = "سيارة المندوب";
+
+    /// <summary>
+    /// مصروف ميداني (وقود، صيانة…) من محفظة المندوب: قيده وحركة محفظته كما كان، ويظهر أيضًا في مجموعة المصروفات بالمالية
+    /// تحت «سيارة المندوب» باسم المندوب وسيارته، دون قيد ثانٍ ودون المساس بصندوق أي مستخدم (ولا يُحسب مرتين في الحسابات الختامية).
+    /// </summary>
+    public async Task<FinanceOperationResult> RecordFieldExpenseAsync(int repId, decimal amount, string description, DateTime date, int userId, int? vehicleId = null)
+    {
+        var own = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        try
+        {
+            var result = await WalletOutAsync(repId, amount, date, $"مصروف ميداني: {description}", FieldExpenseRule, userId, vehicleId);
+            if (!result.Success) return result;
+
+            var walletTx = await _db.RepWalletTransactions.Where(w => w.EmployeeId == repId && w.AmountOut == amount && w.ReferenceTable == "Wallet")
+                                                          .OrderByDescending(w => w.Id).FirstAsync();
+            var category = await _db.FinanceCategories.FirstOrDefaultAsync(c => c.Name == RepVanCategory);
+            if (category is null)
+            {
+                category = new FinanceCategory { Name = RepVanCategory, Kind = FinanceCategoryKind.Operating, SortOrder = 90 };
+                _db.FinanceCategories.Add(category);
+                await _db.SaveChangesAsync();
+            }
+            var repName = await _db.Employees.Where(e => e.Id == repId).Select(e => e.FullName).FirstAsync();
+            vehicleId ??= await _db.Vehicles.Where(v => v.IsActive && v.AssignedEmployeeId == repId).OrderBy(v => v.Id).Select(v => (int?)v.Id).FirstOrDefaultAsync();
+            var count = await _db.FinanceEntries.CountAsync(e => e.EntryDate.Year == date.Year);
+            var entry = new FinanceEntry
+            {
+                EntryNumber = $"EX-{date.Year}-{count + 1:D5}", EntryDate = date.Date, CategoryId = category.Id, Amount = amount, VehicleId = vehicleId,
+                PartyName = repName, Notes = description, JournalEntryId = walletTx.JournalEntryId, CreatedByUserId = userId
+            };
+            _db.FinanceEntries.Add(entry);
+            await _db.SaveChangesAsync();
+            (walletTx.ReferenceTable, walletTx.ReferenceId, walletTx.VehicleId) = ("FinanceEntries", entry.Id, vehicleId);
+            await _db.SaveChangesAsync();
+            if (own is not null) await own.CommitAsync();
+            return FinanceOperationResult.Ok();
+        }
+        finally
+        {
+            if (own is not null) await own.DisposeAsync();
+        }
+    }
 
     public Task<FinanceOperationResult> RecordCashHandoverAsync(int repId, decimal amount, DateTime date, int userId) =>
         WalletOutAsync(repId, amount, date, "تسليم نقد للخزينة", CashHandoverRule, userId);

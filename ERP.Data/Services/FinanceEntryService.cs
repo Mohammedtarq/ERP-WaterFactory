@@ -148,6 +148,15 @@ public class FinanceEntryService
                 t.ModifiedByUserId = userId;
                 t.ModifiedAt = DateTime.UtcNow;
             }
+            // مصروف سيارة مندوب من محفظته: يعود المبلغ لمحفظته بحركة عكسية
+            var walletOut = await _db.RepWalletTransactions.AsNoTracking()
+                .FirstOrDefaultAsync(w => w.ReferenceTable == "FinanceEntries" && w.ReferenceId == e.Id && w.AmountOut > 0);
+            if (walletOut is not null)
+                _db.RepWalletTransactions.Add(new RepWalletTransaction
+                {
+                    EmployeeId = walletOut.EmployeeId, TransactionDate = e.EntryDate, Description = $"إلغاء {e.EntryNumber} — {reason.Trim()}",
+                    AmountIn = walletOut.AmountOut, ReferenceTable = "FinanceEntriesVoid", ReferenceId = e.Id
+                });
             e.IsVoided = true;
             e.VoidReason = reason.Trim();
             e.VoidedByUserId = userId;

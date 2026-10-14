@@ -101,6 +101,19 @@ public class RepAppTests
         Assert.False((await app.RejectAsync(credit.RequestId!.Value, "خطأ", _f.AdminId)).Success);    // الآجل لا يُرفض
         Assert.True((await app.ApproveAsync(expense.RequestId.Value, _f.AdminId)).Success);
         Assert.Equal(16_000m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));
+
+        // المصروف يدخل مجموعة المصروفات بالمالية تحت «سيارة المندوب» باسم المندوب، دون قيد ثانٍ ودون صندوق، ولا يُحسب مرتين
+        var van3 = await db.FinanceEntries.Include(e => e.Category).SingleAsync(e => e.Category.Name == RepsService.RepVanCategory);
+        Assert.Equal((3_000m, rep.FullName, "وقود"), (van3.Amount, van3.PartyName, van3.Notes));
+        Assert.Equal(FinanceCategoryKind.Operating, van3.Category.Kind);
+        Assert.Contains(await new FinanceEntryService(db).ListAsync(DateTime.Today, DateTime.Today, van3.CategoryId), r => r.EntryNumber == van3.EntryNumber);
+        Assert.Equal(1, await db.JournalEntries.CountAsync(j => j.Id == van3.JournalEntryId));
+        Assert.False(await db.CashBoxTransactions.AnyAsync(t => t.ReferenceTable == "FinanceEntries" && t.ReferenceId == van3.Id));
+        // إلغاء المصروف يعيد المبلغ لمحفظة المندوب
+        Assert.True((await new FinanceEntryService(db).VoidAsync(van3.Id, "خطأ في المبلغ", _f.AdminId)).Success);
+        Assert.Equal(19_000m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));
+        Assert.True((await new RepsService(db).RecordFieldExpenseAsync(rep.Id, 3_000, "وقود", DateTime.Today, _f.AdminId)).Success);   // يعود كما كان لبقية الاختبار
+        Assert.Equal(16_000m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));
         Assert.Equal(new byte[] { 1, 2, 3 }, await app.PhotoAsync(expense.RequestId.Value));
 
         // 7) قائمة الاطلاع: الآجل والمجاني والزبون الجديد (نوعه وحد دينه)، ثم «تمت المراجعة»
