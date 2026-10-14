@@ -334,7 +334,13 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
             if (WarehouseType == WarehouseType.RawMaterial) items = items.Where(i => i.SourcingMethod != SourcingMethod.Manufactured);
             else if (WarehouseType is WarehouseType.FinishedGoods or WarehouseType.RepVan) items = items.Where(i => i.SourcingMethod != SourcingMethod.Purchased);
         }
-        foreach (var i in items) ItemsLookup.Add(i);
+        var stock = Balances.GroupBy(b => b.ItemId).ToDictionary(g => g.Key, g => g.Sum(b => b.Quantity));
+        foreach (var i in items)
+        {
+            var top = _packs.LevelsOf(i.Id).Select(l => l.EquivalentBaseUnits).DefaultIfEmpty(1).Max();
+            (i.StockHint, i.StockState) = StockHint.Of(stock.GetValueOrDefault(i.Id), top, i.MinStockAlertLevel);
+            ItemsLookup.Add(i);
+        }
         if (selected is not null && ItemsLookup.All(i => i.Id != selected)) LineItem = null;
     }
 
@@ -346,6 +352,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         ApplyBalanceFilter();
         ItemsCount = balances.Select(b => b.ItemId).Distinct().Count();
         _packs = await PackFormatter.LoadAsync(db);
+        FillItems();   // المتوفر بجانب كل صنف في قائمة الاختيار
         TotalPieces = balances.Sum(b => b.Quantity);
         TotalText = _packs.Total(balances.Select(b => (b.ItemId, b.Quantity)));
         LowCount = balances.Where(b => b.BelowAlert).Select(b => b.ItemId).Distinct().Count();

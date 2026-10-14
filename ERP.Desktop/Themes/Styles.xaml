@@ -383,4 +383,21 @@
             </DataTemplate>
         </GroupStyle.HeaderTemplate>
     </GroupStyle>
+
+    <!-- صنف في قائمة اختيار مع المتوفر بجانبه (العدد فقط؛ «قليل» برتقالي و«نفد» أحمر) -->
+    <DataTemplate x:Key="ItemWithStockTemplate">
+        <DockPanel LastChildFill="True">
+            <TextBlock DockPanel.Dock="Left" Text="{Binding StockHint}" Margin="14,0,0,0" FontWeight="Bold" Foreground="#0F766E">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding StockState}" Value="low"><Setter Property="Foreground" Value="#B45309"/></DataTrigger>
+                            <DataTrigger Binding="{Binding StockState}" Value="out"><Setter Property="Foreground" Value="#B91C1C"/></DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+            <TextBlock Text="{Binding ItemName}"/>
+        </DockPanel>
+    </DataTemplate>
 </ResourceDictionary>

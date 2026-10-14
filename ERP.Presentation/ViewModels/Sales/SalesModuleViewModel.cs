@@ -220,6 +220,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     private readonly List<Item> _allItems = new();
     private Dictionary<(int wh, int item), decimal> _stock = new();
     private Dictionary<int, HashSet<string>> _itemLevels = new();
+    private Dictionary<int, decimal> _topPack = new();   // قطع العبوة الكبرى لكل صنف (لعرض المتوفر بعددها)
     private Option<SaleMode>? _saleMode;
     private string _packFilter = AllPacks;
     private const string AllPacks = "الكل";
@@ -278,6 +279,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
                 var inStock = _stock.GetValueOrDefault((Warehouse.Id, i.Id)) > 0;
                 if (!inStock && !(pending && i.SourcingMethod == SourcingMethod.Manufactured)) continue;
                 if (PackFilter != AllPacks && !(_itemLevels.TryGetValue(i.Id, out var lv) && lv.Contains(PackFilter))) continue;
+                (i.StockHint, i.StockState) = StockHint.Of(_stock.GetValueOrDefault((Warehouse.Id, i.Id)), _topPack.GetValueOrDefault(i.Id, 1), i.MinStockAlertLevel);
                 ItemsLookup.Add(i);
             }
         }
@@ -431,6 +433,8 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         var keepFilter = PackFilter;
         PackFilters.Clear();
         PackFilters.Add(AllPacks);
+        _topPack = (await db.ItemPackagingLevels.AsNoTracking().Where(l => l.EquivalentBaseUnits > 0).Select(l => new { l.ItemId, l.EquivalentBaseUnits }).ToListAsync())
+            .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.Max(l => l.EquivalentBaseUnits));
         foreach (var name in _itemLevels.Values.SelectMany(v => v).Distinct().OrderBy(n => n)) PackFilters.Add(name);
         _packFilter = PackFilters.Contains(keepFilter) ? keepFilter : AllPacks;
         OnPropertyChanged(nameof(PackFilter));
