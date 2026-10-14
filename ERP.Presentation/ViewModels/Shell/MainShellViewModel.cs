@@ -215,6 +215,13 @@ public class MainShellViewModel : ViewModelBase
         {
             await using var db = Session.NewDb();
             var (theme, favorites) = await new UserPreferencesService(db).GetAsync(Session.UserId);
+            if (ThemeHost.LoginChoice is { } chosen)
+            {
+                // اختاره في شاشة الدخول: يصبح مظهره
+                await new UserPreferencesService(db).SetThemeAsync(Session.UserId, chosen);
+                theme = chosen;
+                ThemeHost.LoginChoice = null;
+            }
             ThemeKey = Themes.Get(theme).Key;
             ThemeHost.Apply(Themes.Get(theme));
             UseNewUi = await new UserPreferencesService(db).UsesNewUiAsync(Session.UserId);

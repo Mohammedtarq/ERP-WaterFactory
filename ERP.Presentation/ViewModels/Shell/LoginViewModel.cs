@@ -19,23 +19,57 @@ public class LoginViewModel : ViewModelBase
         _dialogs = dialogs;
         _navigator = navigator;
         LoginCommand = new AsyncRelayCommand(LoginAsync);
-        PickUserCommand = new RelayCommand(p => { if (p is RecentUser u) { Username = u.Username; PickedUser = u; } });
-        OtherUserCommand = new RelayCommand(() => { Username = ""; PickedUser = null; });
+        PickUserCommand = new RelayCommand(p => { if (p is RecentUser u) PickedUser = u; });
+        OtherUserCommand = new RelayCommand(() => PickedUser = null);
         foreach (var u in RecentUsers.Store?.Load() ?? new()) Recent.Add(u);
         // شاشة الدخول بمظهر آخر من دخل، وشعار معمله واسمه
         if (Recent.FirstOrDefault() is { } last)
         {
-            ThemeHost.Apply(Themes.Get(last.Theme));
+            _theme = Themes.Get(last.Theme);
+            ThemeHost.Apply(_theme);
             CompanyName = last.CompanyName;
             CompanyLogo = last.CompanyLogo;
         }
+        else _theme = ThemeHost.Active;
+        ThemeHost.LoginChoice = null;
     }
 
     /// <summary>المستخدمون الأخيرون على هذا الجهاز بصورهم (الأحدث أولًا): الضغط يملأ الاسم ويبقى إدخال كلمة المرور.</summary>
     public System.Collections.ObjectModel.ObservableCollection<RecentUser> Recent { get; } = new();
     public bool HasRecent => Recent.Count > 0;
     private RecentUser? _picked;
-    public RecentUser? PickedUser { get => _picked; private set => SetProperty(ref _picked, value); }
+    /// <summary>المستخدم المختار من الصور: يُملأ اسمه ويظهر بمظهره، ويبقى حقل كلمة المرور وحده. لا أحد = «مستخدم آخر» (اسم + كلمة مرور).</summary>
+    public RecentUser? PickedUser
+    {
+        get => _picked;
+        set
+        {
+            if (!SetProperty(ref _picked, value)) return;
+            Username = value?.Username ?? "";
+            if (value?.Theme is { } t) { _theme = Themes.Get(t); ThemeHost.Apply(_theme); ThemeHost.LoginChoice = null; OnPropertyChanged(nameof(SelectedTheme)); }
+            OnPropertyChanged(nameof(IsOtherUser));
+            OnPropertyChanged(nameof(PasswordHint));
+        }
+    }
+    public bool IsOtherUser => PickedUser is null;
+    public string PasswordHint => PickedUser is { } u ? $"كلمة مرور {u.FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? u.FullName}" : "كلمة المرور";
+
+    // ---- المظهر قبل الدخول (الألوان الستة): يُطبَّق فورًا ويُحفظ لهذا المستخدم بعد دخوله ----
+    private ThemeInfo _theme;
+    public IReadOnlyList<ThemeInfo> ThemeOptions => Themes.All;
+    public ThemeInfo SelectedTheme
+    {
+        get => _theme;
+        set
+        {
+            if (value is null || ReferenceEquals(value, _theme)) return;
+            _theme = value;
+            ThemeHost.Apply(value);
+            ThemeHost.LoginChoice = value.Key;
+            OnPropertyChanged();
+        }
+    }
+    public string VersionText => $"صناعة عراقية · v{typeof(LoginViewModel).Assembly.GetName().Version?.ToString(2) ?? "1.0"}";
     public string? CompanyName { get; }
     public byte[]? CompanyLogo { get; }
     public string Title => CompanyName ?? "نظام إدارة الأعمال المتكامل";

@@ -21,8 +21,8 @@ public class User
     public string? ThemeKey { get; set; }
     /// <summary>أقسامه المفضلة: مفاتيح مفصولة بفواصل.</summary>
     public string? Favorites { get; set; }
-    /// <summary>«الواجهة الجديدة»: لوحة منبثقة بمربعات أقسام الوحدة (50_user_new_ui.sql).</summary>
-    public bool UseNewUi { get; set; }
+    /// <summary>«الواجهة الجديدة»: لوحة منبثقة بمربعات أقسام الوحدة وشريط علوي (50، والافتراضية من 51_new_ui_default.sql).</summary>
+    public bool UseNewUi { get; set; } = true;
 
     /// <summary>الصورة الظاهرة في القوائم: صورته الخاصة وإلا صورة موظفه (تُملأ عند الحاجة — ليست عمودًا).</summary>
     [NotMapped] public byte[]? PhotoPreview { get; set; }

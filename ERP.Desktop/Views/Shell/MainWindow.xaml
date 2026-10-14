@@ -21,9 +21,79 @@
             <ColumnDefinition Width="260"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ================= الشريط العلوي («الواجهة الجديدة»): المستخدم، المعمل، البحث، التنبيهات، الخروج ================= -->
+        <Border Grid.Row="0" Grid.ColumnSpan="2" Background="{DynamicResource SidebarDeepBrush}" Padding="16,9"
+                Visibility="{Binding UseNewUi, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel LastChildFill="False">
+                <c:Avatar DockPanel.Dock="Left" Photo="{Binding MyPhoto}" DisplayName="{Binding Session.FullName}" Size="38" VerticalAlignment="Center"/>
+                <StackPanel DockPanel.Dock="Left" Margin="10,0,28,0" VerticalAlignment="Center">
+                    <TextBlock Text="المستخدم" Foreground="#94A3B8" FontSize="11"/>
+                    <TextBlock Text="{Binding Session.FullName}" Foreground="White" FontWeight="SemiBold" FontSize="14" MaxWidth="180" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Left" Text="{Binding Session.ProjectName}" Foreground="White" FontSize="18" FontWeight="Bold"
+                           VerticalAlignment="Center" Margin="0,0,28,0" MaxWidth="320" TextTrimming="CharacterEllipsis"/>
+                <Button DockPanel.Dock="Left" Width="340" Command="{Binding OpenSearchCommand}" Cursor="Hand" HorizontalContentAlignment="Stretch"
+                        VerticalAlignment="Center" ToolTip="ابحث عن أي شاشة باسمها (Ctrl+K)">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border CornerRadius="10" Padding="12,8" Background="{DynamicResource SidebarHoverBrush}"><ContentPresenter/></Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="Ctrl+K" Foreground="#94A3B8" FontSize="12" VerticalAlignment="Center" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" FontSize="14" Foreground="#CBD5E1" VerticalAlignment="Center"/>
+                        <TextBlock Text="بحث في النظام…" Foreground="#CBD5E1" FontSize="13.5" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Button>
+
+                <!-- تسجيل الخروج ظاهر دائمًا -->
+                <Button DockPanel.Dock="Right" Command="{Binding LogoutCommand}" Cursor="Hand" ToolTip="تسجيل الخروج (تبديل المستخدم)" VerticalAlignment="Center" Margin="10,0,0,0">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" CornerRadius="10" Padding="10,7" Background="Transparent"><ContentPresenter/></Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#7F1D1D"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE7E8;" Style="{StaticResource Icon}" FontSize="17" Foreground="#FCA5A5" VerticalAlignment="Center"/>
+                        <TextBlock Text="خروج" Foreground="#FCA5A5" FontSize="13.5" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <!-- الجرس بعدد التنبيهات: يفتح قائمة التنبيهات نفسها -->
+                <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding IsAlertsOpen, Mode=TwoWay}" ClickMode="Press" Cursor="Hand" VerticalAlignment="Center"
+                              IsHitTestVisible="{Binding IsOpen, ElementName=AlertsPopup, Converter={StaticResource InverseBool}}" ToolTip="{Binding AlertsText}">
+                    <ToggleButton.Template>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border x:Name="Bd" CornerRadius="10" Padding="10,7" Background="Transparent"><ContentPresenter/></Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </ToggleButton.Template>
+                    <Grid>
+                        <TextBlock Text="&#xEA8F;" Style="{StaticResource Icon}" FontSize="19" Foreground="White"/>
+                        <Border Background="#EF4444" CornerRadius="8" MinWidth="16" Height="16" Padding="4,0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Margin="0,-8,-10,0" Visibility="{Binding HasAlerts, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{Binding Alerts.Count}" Foreground="White" FontSize="10.5" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </ToggleButton>
+            </DockPanel>
+        </Border>
 
         <!-- ================= الشريط الجانبي ================= -->
-        <DockPanel Grid.Column="0" Background="{DynamicResource SidebarBrush}">
+        <DockPanel Grid.Column="0" Grid.Row="1" Background="{DynamicResource SidebarBrush}">
             <StackPanel DockPanel.Dock="Top" Margin="18,22,18,18" Orientation="Horizontal">
                 <Image Source="pack://application:,,,/Assets/app-256.png" Width="42" Height="42" RenderOptions.BitmapScalingMode="HighQuality"/>
                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
@@ -105,6 +175,8 @@
                             <MenuItem Header="إغلاق البرنامج" Click="OnExitClick" Foreground="#DC2626"/>
                         </MenuItem>
                     </Menu>
+                    <Button DockPanel.Dock="Right" Content="&#xE7E8;" Command="{Binding LogoutCommand}" ToolTip="تسجيل الخروج (تبديل المستخدم)"
+                            Style="{StaticResource RowIconButton}" Tag="#FCA5A5" VerticalAlignment="Center"/>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="{Binding Session.GlobalUsername}" Foreground="White" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Session.FullName}"/>
                         <TextBlock Text="{Binding Session.RoleName}" Foreground="#94A3B8" FontSize="12.5"/>
@@ -277,10 +349,10 @@
         </DockPanel>
 
         <!-- ================= محتوى الوحدة المختارة ================= -->
-        <ContentControl Grid.Column="1" Content="{Binding CurrentModule}" Margin="22,18,22,14"/>
+        <ContentControl Grid.Column="1" Grid.Row="1" Content="{Binding CurrentModule}" Margin="22,18,22,14"/>
 
         <!-- ================= «الواجهة الجديدة»: لوحة الوحدة المنبثقة ================= -->
-        <Grid Grid.Column="1" Visibility="{Binding IsFlyoutOpen, Converter={StaticResource BoolToVisibility}}">
+        <Grid Grid.Column="1" Grid.Row="1" Visibility="{Binding IsFlyoutOpen, Converter={StaticResource BoolToVisibility}}">
             <Border Background="#33000000" MouseLeftButtonDown="OnFlyoutBackdrop"/>
             <Border HorizontalAlignment="Left" Width="700" Background="{DynamicResource BackgroundBrush}" BorderBrush="#CBD5E1" BorderThickness="0,0,1,0" Padding="18">
                 <Border.Effect>
@@ -318,27 +390,30 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Button Command="{Binding DataContext.OpenTileCommand, ElementName=Root}" CommandParameter="{Binding}" Cursor="Hand"
-                                                            Width="208" Margin="0,0,8,8" ToolTip="{Binding Description}">
+                                                            Width="112" Height="112" Margin="0,0,10,10" ToolTip="{Binding Description}">
                                                         <Button.Template>
                                                             <ControlTemplate TargetType="Button">
-                                                                <Border x:Name="Bd" CornerRadius="10" Padding="10" Background="White" BorderBrush="#E2E8F0" BorderThickness="1"><ContentPresenter/></Border>
+                                                                <Border x:Name="Bd" CornerRadius="14" Padding="8,12,8,8" Background="White" BorderBrush="#E2E8F0" BorderThickness="1">
+                                                                    <Border.Effect><DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.08"/></Border.Effect>
+                                                                    <ContentPresenter/>
+                                                                </Border>
                                                                 <ControlTemplate.Triggers>
                                                                     <Trigger Property="IsMouseOver" Value="True">
                                                                         <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}"/>
+                                                                        <Setter TargetName="Bd" Property="Background" Value="#F8FBFF"/>
                                                                     </Trigger>
                                                                 </ControlTemplate.Triggers>
                                                             </ControlTemplate>
                                                         </Button.Template>
-                                                        <DockPanel>
-                                                            <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="8" VerticalAlignment="Top"
-                                                                    Background="{Binding Color, Converter={StaticResource HexBrush}}">
-                                                                <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="15" Foreground="White"/>
-                                                            </Border>
-                                                            <StackPanel Margin="8,0,0,0">
-                                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13.5" TextWrapping="Wrap"/>
-                                                                <TextBlock Text="{Binding Description}" Foreground="#64748B" FontSize="11.5" TextWrapping="Wrap" MaxHeight="32" TextTrimming="CharacterEllipsis"/>
-                                                            </StackPanel>
-                                                        </DockPanel>
+                                                        <StackPanel>
+                                                            <Grid Width="48" Height="48" HorizontalAlignment="Center">
+                                                                <Border CornerRadius="13" Background="{Binding Color, Converter={StaticResource HexBrush}}" Opacity="0.15"/>
+                                                                <Border CornerRadius="13" BorderThickness="1.5" BorderBrush="{Binding Color, Converter={StaticResource HexBrush}}" Opacity="0.35"/>
+                                                                <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="21" Foreground="{Binding Color, Converter={StaticResource HexBrush}}"/>
+                                                            </Grid>
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" TextAlignment="Center" TextWrapping="Wrap"
+                                                                       MaxHeight="36" TextTrimming="CharacterEllipsis" Margin="0,8,0,0"/>
+                                                        </StackPanel>
                                                     </Button>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
@@ -353,7 +428,7 @@
         </Grid>
 
         <!-- ================= البحث السريع (Ctrl+K) ================= -->
-        <Grid x:Name="SearchOverlay" Grid.ColumnSpan="2" Visibility="{Binding IsSearchOpen, Converter={StaticResource BoolToVisibility}}"
+        <Grid x:Name="SearchOverlay" Grid.ColumnSpan="2" Grid.RowSpan="2" Visibility="{Binding IsSearchOpen, Converter={StaticResource BoolToVisibility}}"
               IsVisibleChanged="OnSearchVisibleChanged">
             <Border Background="#66000000" MouseLeftButtonDown="OnSearchBackdrop"/>
             <Border Background="White" CornerRadius="12" Width="560" VerticalAlignment="Top" Margin="0,90,0,0" Padding="14"

@@ -110,11 +110,13 @@ public class NewUiTests
                                                                 new RecentUser("b", "B", null, null, null, null, DateTime.UtcNow)).Select(u => u.Username));
 
             // ---- «الواجهة الجديدة»: مفتاح لكل مستخدم، والوحدة تفتح لوحة مربعات أقسامها ----
-            Assert.False(shell.UseNewUi);                                      // المعتادة افتراضيًا
+            Assert.True(shell.UseNewUi);                                       // الجديدة افتراضيًا (51_new_ui_default.sql)
+            await shell.ToggleNewUiCommand.ExecuteAsync();
+            Assert.False(shell.UseNewUi);
+            await using (var db = shell.Session.NewDb())
+                Assert.False(await new UserPreferencesService(db).UsesNewUiAsync(shell.Session.UserId));
             await shell.ToggleNewUiCommand.ExecuteAsync();
             Assert.True(shell.UseNewUi);
-            await using (var db = shell.Session.NewDb())
-                Assert.True(await new UserPreferencesService(db).UsesNewUiAsync(shell.Session.UserId));
             var hrNav = shell.NavItems.Single(n => n.ModuleCode == ModuleCode.HR);
             shell.NavigateCommand.Execute(shell.NavItems.Single(n => n.ModuleCode == ModuleCode.Sales));
             shell.NavigateCommand.Execute(hrNav);
@@ -135,6 +137,7 @@ public class NewUiTests
             Assert.False(shell.UseNewUi);
             shell.NavigateCommand.Execute(shell.NavItems.Single(n => n.ModuleCode == ModuleCode.Sales));
             Assert.False(shell.IsFlyoutOpen);
+            await shell.ToggleNewUiCommand.ExecuteAsync();                      // إعادة الافتراضي لبقية الاختبارات
 
             // إعادة المظهر الافتراضي لبقية الاختبارات
             await shell.SetThemeCommand.ExecuteAsync(Themes.Get("rahma"));

@@ -37,6 +37,8 @@ public static class ThemeHost
 {
     public static IThemeHost? Current { get; set; }
     public static ThemeInfo Active { get; private set; } = Themes.Get(null);
+    /// <summary>مظهر اختاره المستخدم في شاشة الدخول: يُحفظ له بعد الدخول (null = لم يغيّره).</summary>
+    public static string? LoginChoice { get; set; }
 
     public static void Apply(ThemeInfo theme)
     {
