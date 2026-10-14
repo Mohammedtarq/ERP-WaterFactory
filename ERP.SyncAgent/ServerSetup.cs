@@ -73,8 +73,11 @@ public static class ServerSetup
 
             // 4) الصلاحيات على الملفات: الإعداد للمسؤولين والخدمة؛ مجلد الخادم المحلي للخدمتين فقط
             AgentSetup.Run("icacls.exe", $"\"{AgentConfig.MachinePath}\" /inheritance:r /grant:r *S-1-5-32-544:F *S-1-5-18:F \"{AgentSetup.ServiceAccount}\":R", required: true);
+            // على المجلد فقط وبلا /T: الملفات (relay.json وغيره) ترث منه؛ وضع (OI)(CI) مباشرة على ملف يجعل صلاحياته لا تنطبق عليه
+            // فلا يقرؤه أحد حتى المسؤول. ثم تُعاد وراثة الملفات الموجودة لتأخذ صلاحيات المجلد.
             AgentSetup.Run("icacls.exe", $"\"{folder}\" /inheritance:r /grant:r *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F " +
-                                         $"\"{RelayAccount}\":(OI)(CI)M \"{AgentSetup.ServiceAccount}\":(OI)(CI)M /T", required: true);
+                                         $"\"{RelayAccount}\":(OI)(CI)M \"{AgentSetup.ServiceAccount}\":(OI)(CI)M", required: true);
+            AgentSetup.Run("icacls.exe", $"\"{folder}\\*\" /reset /c /q");
             Ok("صلاحيات الملفات");
 
             // 5) جدار الحماية: شبكة المعمل المحلية فقط
@@ -102,7 +105,7 @@ public static class ServerSetup
                 // علاج: حساب «خدمة محلية» (Local Service) بدل الحساب الافتراضي للخدمة، مع صلاحية التعديل على مجلد الخادم
                 Console.WriteLine("  محاولة العلاج: تشغيل الخادم المحلي بحساب «الخدمة المحلية»…");
                 StopIfExists(RelayService);
-                AgentSetup.Run("icacls.exe", $"\"{folder}\" /grant *S-1-5-19:(OI)(CI)M /T");
+                AgentSetup.Run("icacls.exe", $"\"{folder}\" /grant *S-1-5-19:(OI)(CI)M");
                 AgentSetup.Run("sc.exe", $"config {RelayService} obj= \"NT AUTHORITY\\LocalService\" password= \"\"");
                 AgentSetup.Run("sc.exe", $"start {RelayService}");
                 if (await WaitHealthAsync(local.Port)) Ok($"الخادم المحلي يعمل الآن بعد العلاج (http://localhost:{local.Port}/api/health)");
@@ -130,7 +133,7 @@ public static class ServerSetup
         if (!Directory.Exists(folder)) return;
         AgentSetup.Run("takeown.exe", $"/f \"{folder}\" /a /r /d y");
         AgentSetup.Run("icacls.exe", $"\"{folder}\" /reset /t /c /q");
-        AgentSetup.Run("icacls.exe", $"\"{folder}\" /grant *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F /t /c /q");
+        AgentSetup.Run("icacls.exe", $"\"{folder}\" /grant *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F /c /q");
         AgentSetup.Run("attrib.exe", $"-r -h -s \"{folder}\\*\" /s /d");
     }
 
