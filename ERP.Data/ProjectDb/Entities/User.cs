@@ -23,6 +23,8 @@ public class User
     public string? Favorites { get; set; }
     /// <summary>«الواجهة الجديدة»: لوحة منبثقة بمربعات أقسام الوحدة وشريط علوي (50، والافتراضية من 51_new_ui_default.sql).</summary>
     public bool UseNewUi { get; set; } = true;
+    /// <summary>نغمة خفيفة عند زيادة عدد تنبيهات الجرس (53_alert_sound.sql).</summary>
+    public bool AlertSound { get; set; } = true;
 
     /// <summary>الصورة الظاهرة في القوائم: صورته الخاصة وإلا صورة موظفه (تُملأ عند الحاجة — ليست عمودًا).</summary>
     [NotMapped] public byte[]? PhotoPreview { get; set; }

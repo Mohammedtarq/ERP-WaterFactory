@@ -150,4 +150,40 @@ public class NewUiTests
             RecentUsers.Store = null;
         }
     }
+
+    /// <summary>الجرس: النافذة الفارغة تختفي وحدها بعد المهلة، ونافذة التنبيهات لا تُغلق بمؤقت؛ والصوت مرة عند الزيادة فقط وبمفتاح.</summary>
+    [Fact]
+    public async Task Bell_empty_popup_auto_closes_and_sound_plays_only_on_new_alerts()
+    {
+        var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        await shell.IdleAsync();
+        shell.EmptyAlertsSeconds = 0.2;
+
+        shell.Alerts.Clear();
+        shell.IsAlertsOpen = true;
+        Assert.True(shell.IsAlertsOpen);
+        await Task.Delay(1200);
+        Assert.False(shell.IsAlertsOpen);                                   // الفارغة اختفت وحدها
+
+        shell.Alerts.Add(new AlertItem("t", "تنبيه", "تفصيل", 1, AlertLevel.Info, "Sales", "X"));
+        shell.IsAlertsOpen = true;
+        await Task.Delay(800);
+        Assert.True(shell.IsAlertsOpen);                                    // فيها تنبيه: تبقى حتى الضغط خارجها
+        shell.IsAlertsOpen = false;
+
+        // الصوت: لا يُرفع عند أول تحميل ولا عند ثبات العدد، ويُرفع عند الزيادة فقط، وبمفتاح المستخدم
+        shell.Alerts.Clear();
+        await shell.RefreshAlertsAsync();
+        var plays = 0;
+        shell.AlertSoundRequested += () => plays++;
+        await shell.RefreshAlertsAsync();
+        Assert.Equal(0, plays);
+
+        await shell.ToggleAlertSoundCommand.ExecuteAsync();
+        Assert.False(shell.AlertSoundEnabled);
+        await using (var db = shell.Session.NewDb())
+            Assert.False(await new UserPreferencesService(db).AlertSoundAsync(shell.Session.UserId));
+        await shell.ToggleAlertSoundCommand.ExecuteAsync();
+        Assert.True(shell.AlertSoundEnabled);
+    }
 }

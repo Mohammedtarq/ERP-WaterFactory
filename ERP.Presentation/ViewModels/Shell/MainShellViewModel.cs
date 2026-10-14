@@ -93,6 +93,7 @@ public class MainShellViewModel : ViewModelBase
             if (UseNewUi && CurrentModule is ModuleViewModel) OpenFlyout();
         });
         ToggleNewUiCommand = new AsyncRelayCommand(ToggleNewUiAsync);
+        ToggleAlertSoundCommand = new AsyncRelayCommand(ToggleAlertSoundAsync);
         CloseFlyoutCommand = new RelayCommand(() => IsFlyoutOpen = false);
         OpenTileCommand = new RelayCommand(OpenTile);
         LogoutCommand = new RelayCommand(Logout);
@@ -225,6 +226,7 @@ public class MainShellViewModel : ViewModelBase
             ThemeKey = Themes.Get(theme).Key;
             ThemeHost.Apply(Themes.Get(theme));
             UseNewUi = await new UserPreferencesService(db).UsesNewUiAsync(Session.UserId);
+            AlertSoundEnabled = await new UserPreferencesService(db).AlertSoundAsync(Session.UserId);
             SetFavorites(favorites);
             await RememberUserAsync();
         }
@@ -379,7 +381,60 @@ public class MainShellViewModel : ViewModelBase
     public bool HasAlerts => Alerts.Count > 0;
     public string AlertsText => Alerts.Count == 0 ? "لا تنبيهات" : $"التنبيهات ({Alerts.Count})";
     public string AlertsColor => Alerts.Any(a => a.Level == AlertLevel.Danger) ? "#F87171" : Alerts.Count > 0 ? "#FBBF24" : "#94A3B8";
-    public bool IsAlertsOpen { get => _isAlertsOpen; set => SetProperty(ref _isAlertsOpen, value); }
+    public bool IsAlertsOpen
+    {
+        get => _isAlertsOpen;
+        set { if (SetProperty(ref _isAlertsOpen, value)) OnAlertsOpenChanged(value); }
+    }
+
+    // ---- النافذة الفارغة تختفي وحدها بعد مهلة (10 ثوانٍ)، وبها شريط يتناقص؛ نافذة التنبيهات الموجودة لا تُغلق بمؤقت ----
+    private CancellationTokenSource? _emptyClose;
+    private double _emptyProgress = 1;
+    /// <summary>مهلة اختفاء نافذة «لا تنبيهات» بالثواني (قابلة للتقصير في الاختبارات).</summary>
+    public double EmptyAlertsSeconds { get; set; } = 10;
+    /// <summary>المتبقي من المهلة من 1 إلى 0 لشريط العدّ التنازلي.</summary>
+    public double EmptyProgress { get => _emptyProgress; private set => SetProperty(ref _emptyProgress, value); }
+
+    private void OnAlertsOpenChanged(bool open)
+    {
+        _emptyClose?.Cancel();
+        _emptyClose = null;
+        EmptyProgress = 1;
+        if (!open || HasAlerts) return;
+        var cts = _emptyClose = new CancellationTokenSource();
+        Background(CountdownAsync(cts.Token));
+    }
+
+    private async Task CountdownAsync(CancellationToken ct)
+    {
+        const int steps = 40;
+        var delay = TimeSpan.FromSeconds(EmptyAlertsSeconds / steps);
+        try
+        {
+            for (var i = 1; i <= steps; i++)
+            {
+                await Task.Delay(delay, ct);
+                EmptyProgress = 1 - (double)i / steps;
+            }
+            if (!HasAlerts) IsAlertsOpen = false;
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    // ---- صوت الإشعارات: نغمة واحدة عند زيادة عدد التنبيهات فقط (لا عند كل تحديث) ----
+    private bool _alertSound = true;
+    private int? _lastAlertCount;
+    public bool AlertSoundEnabled { get => _alertSound; private set => SetProperty(ref _alertSound, value); }
+    public AsyncRelayCommand ToggleAlertSoundCommand { get; }
+    /// <summary>تُرفع عند وصول تنبيه جديد وكان الصوت مفعّلًا؛ تشغّله النافذة.</summary>
+    public event Action? AlertSoundRequested;
+
+    private async Task ToggleAlertSoundAsync()
+    {
+        await using var db = Session.NewDb();
+        await new UserPreferencesService(db).SetAlertSoundAsync(Session.UserId, !AlertSoundEnabled);
+        AlertSoundEnabled = !AlertSoundEnabled;
+    }
     public RelayCommand ToggleAlertsCommand { get; }
     public RelayCommand OpenAlertCommand { get; }
 
@@ -401,8 +456,11 @@ public class MainShellViewModel : ViewModelBase
             {
                 return;   // قاعدة غير متاحة الآن: يبقى آخر ما عُرض
             }
+            var previous = _lastAlertCount;
             Alerts.Clear();
             foreach (var a in list) Alerts.Add(a);
+            _lastAlertCount = list.Count;
+            if (previous is int before && list.Count > before && AlertSoundEnabled) AlertSoundRequested?.Invoke();
             OnPropertyChanged(nameof(AlertsCount));
             OnPropertyChanged(nameof(HasAlerts));
             OnPropertyChanged(nameof(AlertsText));

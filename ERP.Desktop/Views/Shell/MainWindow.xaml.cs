@@ -22,6 +22,11 @@ public partial class MainWindow : Window
             if (++ticks % 2 == 0) vm.RefreshIndicators();   // الجرس ومؤشر السحابة كل دقيقة
         };
         _idleTimer.Start();
+        DataContextChanged += (_, e) =>
+        {
+            if (e.OldValue is MainShellViewModel old) old.AlertSoundRequested -= AlertChime.Play;
+            if (e.NewValue is MainShellViewModel now) now.AlertSoundRequested += AlertChime.Play;
+        };
         Closed += (_, _) =>
         {
             _idleTimer.Stop();

@@ -19,6 +19,9 @@
                         Command="{Binding DataContext.LogoutCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 <Button Content="إغلاق البرنامج" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8" Foreground="#DC2626" Click="OnExitClick"/>
             </WrapPanel>
+            <CheckBox Margin="0,4,0,0" IsChecked="{Binding DataContext.AlertSoundEnabled, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}"
+                      Command="{Binding DataContext.ToggleAlertSoundCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      Content="صوت خفيف عند وصول تنبيه جديد في الجرس"/>
             <CheckBox Margin="0,4,0,0" IsChecked="{Binding DataContext.UseNewUi, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}"
                       Command="{Binding DataContext.ToggleNewUiCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                       Content="الواجهة الحديثة: لوحة أقسام الوحدة تنبثق من زرها (إلغاؤها يعيد القائمة القديمة التي تنفتح للأسفل)"/>

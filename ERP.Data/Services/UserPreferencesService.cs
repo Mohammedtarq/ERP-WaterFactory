@@ -20,6 +20,16 @@ public class UserPreferencesService
     public async Task<bool> UsesNewUiAsync(int userId) =>
         await _db.Users.AsNoTracking().Where(x => x.Id == userId).Select(x => x.UseNewUi).FirstOrDefaultAsync();
 
+    public async Task<bool> AlertSoundAsync(int userId) =>
+        await _db.Users.AsNoTracking().Where(x => x.Id == userId).Select(x => x.AlertSound).FirstOrDefaultAsync();
+
+    public async Task SetAlertSoundAsync(int userId, bool on)
+    {
+        var u = await _db.Users.FirstAsync(x => x.Id == userId);
+        u.AlertSound = on;
+        await _db.SaveChangesAsync();
+    }
+
     public async Task SetNewUiAsync(int userId, bool on)
     {
         var u = await _db.Users.FirstAsync(x => x.Id == userId);
