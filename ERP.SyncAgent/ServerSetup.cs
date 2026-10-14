@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using ERP.Data.Services;
 using Microsoft.Data.SqlClient;
@@ -89,7 +90,24 @@ public static class ServerSetup
             // 7) فحص ذاتي: الخادم المحلي يرد فعلًا؟ (المثبّت يُظهر النتيجة، فلا يبقى أي شك)
             var health = await WaitHealthAsync(local.Port);
             if (health) Ok($"فحص ذاتي: الخادم المحلي يعمل (http://localhost:{local.Port}/api/health)");
-            else { Warn($"الفحص الذاتي: الخادم المحلي لم يرد بعد على المنفذ {local.Port}. افتح services.msc وتأكد أن «ERP Local Server» في حالة Running، أو أعد تشغيل المثبّت."); return 1; }
+            else
+            {
+                Warn($"الفحص الذاتي: الخادم المحلي لم يرد بعد على المنفذ {local.Port}. أشخّص السبب وأحاول علاجه وحدي…");
+                await DiagnoseAsync(relayExe, folder);
+
+                // علاج: حساب «خدمة محلية» (Local Service) بدل الحساب الافتراضي للخدمة، مع صلاحية التعديل على مجلد الخادم
+                Console.WriteLine("  محاولة العلاج: تشغيل الخادم المحلي بحساب «الخدمة المحلية»…");
+                StopIfExists(RelayService);
+                AgentSetup.Run("icacls.exe", $"\"{folder}\" /grant *S-1-5-19:(OI)(CI)M /T");
+                AgentSetup.Run("sc.exe", $"config {RelayService} obj= \"NT AUTHORITY\\LocalService\" password= \"\"");
+                AgentSetup.Run("sc.exe", $"start {RelayService}");
+                if (await WaitHealthAsync(local.Port)) Ok($"الخادم المحلي يعمل الآن بعد العلاج (http://localhost:{local.Port}/api/health)");
+                else
+                {
+                    Warn("لم يعمل الخادم المحلي رغم العلاج. صوّر هذه النافذة كلها وأرسلها للمطوّر، ففيها السبب.");
+                    return 1;
+                }
+            }
             return 0;
         }
         catch (Exception ex)
@@ -97,6 +115,50 @@ public static class ServerSetup
             Console.Error.WriteLine($"تعذّر تجهيز المزامنة: {ex.Message}");
             return 1;
         }
+    }
+
+    /// <summary>تشخيص يُطبع في نافذة المثبّت: حساب الخدمة، صلاحيات المجلد، سجل الأخطاء، وتشغيل الخادم مباشرة بصلاحية المسؤول.</summary>
+    private static async Task DiagnoseAsync(string relayExe, string folder)
+    {
+        Console.WriteLine("  ---------- تشخيص الخادم المحلي ----------");
+        foreach (var line in RunText("sc.exe", $"qc {RelayService}").Split('\n').Where(l => l.Contains("BINARY_PATH") || l.Contains("SERVICE_START_NAME") || l.Contains("START_TYPE")))
+            Console.WriteLine("  " + line.Trim());
+        Console.WriteLine("  صلاحيات المجلد:");
+        foreach (var line in RunText("icacls.exe", $"\"{folder}\"").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0 && !l.StartsWith("Successfully")))
+            Console.WriteLine("    " + line);
+        var log = Path.Combine(folder, "relay-error.log");
+        if (File.Exists(log))
+        {
+            Console.WriteLine("  سجل أخطاء الخادم (آخر الأسطر):");
+            foreach (var line in File.ReadAllLines(log).TakeLast(12)) Console.WriteLine("    " + line);
+        }
+        else Console.WriteLine("  لا سجل أخطاء بعد (التوقف حدث قبل أن يكتب الخادم شيئًا).");
+
+        // تشغيل مباشر بصلاحية المسؤول: يكشف هل العيب في البرنامج أم في صلاحيات حساب الخدمة
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo(relayExe) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })!;
+            var exited = p.WaitForExit(8000);
+            if (!exited) { p.Kill(true); p.WaitForExit(); }
+            var text = (p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd()).Trim();
+            if (!exited) Console.WriteLine("  تشغيل مباشر بصلاحية المسؤول: يعمل ✔ (فالعيب في صلاحيات حساب الخدمة)");
+            else Console.WriteLine($"  تشغيل مباشر بصلاحية المسؤول: توقف (رمز {p.ExitCode}):\n    " + string.Join("\n    ", text.Split('\n').Take(8).Select(l => l.TrimEnd())));
+        }
+        catch (Exception ex) { Console.WriteLine($"  تعذّر التشغيل المباشر: {ex.Message}"); }
+        Console.WriteLine("  -----------------------------------------");
+        await Task.CompletedTask;
+    }
+
+    private static string RunText(string file, string args)
+    {
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true })!;
+            var text = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+            p.WaitForExit(15000);
+            return text;
+        }
+        catch (Exception ex) { return ex.Message; }
     }
 
     /// <summary>ينتظر حتى 30 ثانية أن يرد الخادم المحلي على /api/health.</summary>
