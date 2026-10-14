@@ -1,3 +1,4 @@
+using ERP.Cloud.Contracts;
 using System.Collections.ObjectModel;
 using ERP.Data.ProjectDb;
 using ERP.Data.ProjectDb.Entities;
@@ -104,6 +105,23 @@ public class ItemsSectionViewModel : CrudSectionViewModel<Item>
         : base(s, d, ModuleCode.Warehouse, "الأصناف", Icons.Item, "#0EA5E9", "الأصناف والباركود وسعر البيع وحد التنبيه")
     {
         PrintNamesCommand = new AsyncRelayCommand(PrintNamesAsync);
+        ApproveNamesCommand = new AsyncRelayCommand(ApproveNamesAsync);
+    }
+
+    /// <summary>اعتماد الأسماء المقترحة (اسم مختصر للطلبات الخاصة واسم الأساسي) بعد معاينتها.</summary>
+    public AsyncRelayCommand ApproveNamesCommand { get; }
+
+    private async Task ApproveNamesAsync()
+    {
+        await using var db = Session.NewDb();
+        var preview = await ProductNameSuggestions.PreviewAsync(db);
+        if (preview.Recipes.Count == 0 && preview.BaseName is null) { StatusMessage = "كل الأسماء معتمدة: لا يوجد مقترح جديد"; return; }
+        var lines = preview.Recipes.Take(10).Select(x => $"• {x.CurrentName}  ←  {x.ShortName}").ToList();
+        if (preview.Recipes.Count > 10) lines.Add($"… و{preview.Recipes.Count - 10} أخرى");
+        if (preview.BaseName is not null) lines.Add($"• المتغير الأساسي  ←  {preview.BaseName}");
+        if (!Dialogs.Confirm("اعتماد الأسماء المقترحة؟ (لا يُغيَّر أي اسم مضبوط سابقًا)\n\n" + string.Join("\n", lines))) return;
+        await ProductNameSuggestions.ApplyAsync(db, preview);
+        StatusMessage = $"اعتُمد {preview.Recipes.Count} اسمًا مختصرًا" + (preview.BaseName is not null ? $" واسم الأساسي «{preview.BaseName}»" : "");
     }
 
     /// <summary>قائمة الأسماء الموحدة للمراجعة: «كارتون 40×330 الرحمة» لكل منتج وعبوة ومتغير.</summary>
@@ -115,10 +133,13 @@ public class ItemsSectionViewModel : CrudSectionViewModel<Item>
         var rows = await ProductNames.CatalogAsync(db);
         var r = new ReportDocument { Key = "product-names", CompanyName = Session.ProjectName, Title = "الأسماء الموحدة للمنتجات", PrintedBy = Session.FullName,
                                      Notes = "الصيغة: العبوة ثم عدد القطع×الحجم ثم المتغير. الحجم يُضبط من «الأصناف»، والاسم المختصر للطلب الخاص من «الوصفات المخصصة»، واسم الأساسي من «هوية الطباعة»." };
-        r.Columns.AddRange(new[] { "#", "الاسم الموحد", "الصنف", "الرمز", "العبوة", "الحجم", "المتغير", "النوع" });
+        r.Columns.AddRange(new[] { "#", "الصنف · الرمز", "العبوة", "المحتوى", "المتغير", "النوع" });
         var n = 0;
         foreach (var x in rows)
-            r.Rows.Add(new[] { (++n).ToString(), x.UnifiedName, x.ItemName, x.Code, $"{x.Level} ({x.Pieces:0.##} قطعة)", x.Size, x.Variant, x.Kind });
+        {
+            var (pack, content, _) = ProductName.Parts(x.Level, x.Pieces, x.SizeMl, x.Variant);
+            r.Rows.Add(new[] { (++n).ToString(), $"{x.ItemName} · {x.Code}", pack, content, x.Variant.Length > 0 ? x.Variant : "أساسي", x.Kind });
+        }
         r.Totals.Add(new ReportField("عدد الأسماء", rows.Count.ToString(), true));
         Dialogs.ShowReport(r);
     }

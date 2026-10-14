@@ -24,6 +24,7 @@
                             </StackPanel>
                         </Button>
                         <Button Content="الأسماء الموحدة" ToolTip="قائمة «كارتون 40×330 الرحمة» لكل منتج وعبوة ومتغير — للمراجعة والطباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintNamesCommand}" Margin="0,0,6,0"/>
+                        <Button Content="اعتماد الأسماء المقترحة" ToolTip="يقترح اسمًا مختصرًا للطلبات الخاصة واسم الأساسي «الرحمة» بعد معاينتها" Style="{StaticResource SecondaryButton}" Command="{Binding ApproveNamesCommand}" Margin="0,0,6,0"/>
                         <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">

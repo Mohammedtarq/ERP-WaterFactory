@@ -141,3 +141,32 @@ public class ProductionStockTests
         Assert.DoesNotContain(losses, l => l.Kind == "تلف" && l.ItemName == w1500.ItemName);
     }
 }
+
+/// <summary>«اعتماد الأسماء المقترحة»: معاينة بلا تغيير، ثم اعتماد لا يمسّ اسمًا مضبوطًا.</summary>
+[Collection("controls")]
+public class NameSuggestionTests
+{
+    private readonly ControlsFixture _f;
+    public NameSuggestionTests(ControlsFixture f) => _f = f;
+
+    [Fact]
+    public async Task Preview_changes_nothing_and_approval_keeps_existing_names()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var item = await db.Items.FirstAsync(i => i.ItemCode == "W-500");
+        db.CustomRecipes.AddRange(
+            new CustomRecipe { FinishedItemId = item.Id, Name = "داون تاون — وصفة خاصة" },
+            new CustomRecipe { FinishedItemId = item.Id, Name = "زواج سعيد", ShortName = "عرس" });
+        await db.SaveChangesAsync();
+
+        var preview = await ProductNameSuggestions.PreviewAsync(db);
+        Assert.Contains(preview.Recipes, s => s.CurrentName == "داون تاون — وصفة خاصة" && s.ShortName == "داون تاون");
+        Assert.DoesNotContain(preview.Recipes, s => s.CurrentName == "زواج سعيد");   // له اسم مضبوط
+        Assert.False(await db.CustomRecipes.AnyAsync(r => r.Name.StartsWith("داون تاون") && r.ShortName != null));   // المعاينة لا تغيّر
+
+        await ProductNameSuggestions.ApplyAsync(db, preview);
+        Assert.Equal("داون تاون", (await db.CustomRecipes.AsNoTracking().FirstAsync(r => r.Name.StartsWith("داون تاون"))).ShortName);
+        Assert.Equal("عرس", (await db.CustomRecipes.AsNoTracking().FirstAsync(r => r.Name == "زواج سعيد")).ShortName);
+        Assert.Empty((await ProductNameSuggestions.PreviewAsync(db)).Recipes.Where(r => r.CurrentName.StartsWith("داون تاون")));
+    }
+}

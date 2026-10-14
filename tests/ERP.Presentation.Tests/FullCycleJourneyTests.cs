@@ -258,8 +258,8 @@ public class FullCycleJourneyTests
         await items.PrintNamesCommand.ExecuteAsync();
         var names = dialogs.Reports.Last();
         Assert.Equal("الأسماء الموحدة للمنتجات", names.Title);
-        Assert.Contains(names.Rows, r => r[1] == "كارتون 40×330 الرحمة" && r[6] == "الرحمة");
-        Assert.Contains(names.Rows, r => r[1] == "كارتون 40×330 زوارق" && r[7] == $"محجوز لـ {Restaurant}");
+        Assert.Contains(names.Rows, r => r[2] == "كارتون" && r[3] == "40×330" && r[4] == "الرحمة");
+        Assert.Contains(names.Rows, r => r[2] == "كارتون" && r[3] == "40×330" && r[4] == "زوارق" && r[5] == $"محجوز لـ {Restaurant}");
 
         await shell.IdleAllAsync();
         Assert.Empty(dialogs.Errors);

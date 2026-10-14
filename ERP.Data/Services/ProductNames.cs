@@ -88,7 +88,7 @@ public sealed class ProductNames
     }
 
     /// <summary>سطر في قائمة الأسماء الموحدة للمراجعة.</summary>
-    public record CatalogRow(string Code, string ItemName, string Level, decimal Pieces, string Size, string Variant, string Kind, string UnifiedName);
+    public record CatalogRow(string Code, string ItemName, string Level, decimal Pieces, string Size, string Variant, string Kind, string UnifiedName, decimal? SizeMl = null);
 
     /// <summary>
     /// كل الأسماء الموحدة للمنتجات المصنّعة الفعّالة: كل عبوة × (الأساسي + كل طلب خاص فعّال) — للمراجعة قبل الاعتماد.
@@ -112,7 +112,7 @@ public sealed class ProductNames
                     var size = names.SizeOf(i.Id);
                     rows.Add(new CatalogRow(i.ItemCode, i.ItemName, l.LevelName, l.EquivalentBaseUnits,
                         size is decimal s ? ProductName.Size(s) + (i.SizeMl is null ? " (من الاسم)" : "") : "غير معروف",
-                        names.Variant(recipeId), VariantStockService.KindOf(recipe), names.Name(i.Id, recipeId, l.Id)));
+                        names.Variant(recipeId), VariantStockService.KindOf(recipe), names.Name(i.Id, recipeId, l.Id), size));
                 }
         }
         return rows;
@@ -120,4 +120,48 @@ public sealed class ProductNames
 
     private static string Number(decimal n) =>
         n == Math.Floor(n) ? n.ToString("N0", CultureInfo.InvariantCulture) : n.ToString("#,0.###", CultureInfo.InvariantCulture);
+}
+
+/// <summary>
+/// «اعتماد الأسماء المقترحة»: يقترح اسمًا مختصرًا لكل طلب خاص فعّال بلا اسم مختصر (النص قبل « — » من اسم الوصفة)،
+/// واسم «الرحمة» للمتغير الأساسي إن لم يُضبط. المعاينة لا تغيّر شيئًا؛ والاعتماد لا يمسّ اسمًا مضبوطًا سابقًا.
+/// </summary>
+public static class ProductNameSuggestions
+{
+    public const string DefaultBaseName = "الرحمة";
+
+    public record Suggestion(int RecipeId, string CurrentName, string ShortName);
+    public record Preview(List<Suggestion> Recipes, string? BaseName);
+
+    public static string Shorten(string recipeName)
+    {
+        var cut = recipeName.Split(" — ")[0].Trim();
+        return cut.Length > 0 ? cut : recipeName.Trim();
+    }
+
+    public static async Task<Preview> PreviewAsync(ProjectDbContext db)
+    {
+        var recipes = await db.CustomRecipes.AsNoTracking().Where(r => r.IsActive && (r.ShortName == null || r.ShortName == ""))
+            .OrderBy(r => r.Name).Select(r => new { r.Id, r.Name }).ToListAsync();
+        var baseName = await db.CompanyProfiles.AsNoTracking().Select(c => c.BaseVariantName).FirstOrDefaultAsync();
+        return new Preview(recipes.Select(r => new Suggestion(r.Id, r.Name, Shorten(r.Name))).ToList(),
+                           string.IsNullOrWhiteSpace(baseName) ? DefaultBaseName : null);
+    }
+
+    public static async Task ApplyAsync(ProjectDbContext db, Preview preview)
+    {
+        foreach (var s in preview.Recipes)
+            await db.CustomRecipes.Where(r => r.Id == s.RecipeId && (r.ShortName == null || r.ShortName == ""))
+                .ExecuteUpdateAsync(u => u.SetProperty(r => r.ShortName, s.ShortName));
+        if (preview.BaseName is not null)
+        {
+            var profile = await db.CompanyProfiles.FirstOrDefaultAsync();
+            if (profile is not null && string.IsNullOrWhiteSpace(profile.BaseVariantName))
+            {
+                profile.BaseVariantName = preview.BaseName;
+                profile.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        }
+    }
 }
