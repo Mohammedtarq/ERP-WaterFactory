@@ -141,7 +141,12 @@ public class ProductionStockReports
     private readonly ProjectDbContext _db;
     public ProductionStockReports(ProjectDbContext db) => _db = db;
 
-    public record ProductionDayRow(DateTime Date, string ItemName, decimal Pieces, string PackLabel, decimal Packs, decimal Cost);
+    public record ProductionDayRow(DateTime Date, string ItemName, decimal Pieces, string PackLabel, decimal Packs, decimal Cost,
+                                   string ItemCode = "", string Content = "", string Variant = "")
+    {
+        /// <summary>رأس المجموعة «الصنف · الرمز».</summary>
+        public string Group => $"{ItemName} · {ItemCode}";
+    }
 
     /// <summary>جرد الإنتاج الشهري: يومًا بيوم لكل منتج، بالعبوات والقطع وكلفة الإنتاج الفعلية.</summary>
     public async Task<List<ProductionDayRow>> MonthlyProductionAsync(int year, int month)
@@ -150,22 +155,25 @@ public class ProductionStockReports
         var to = from.AddMonths(1);
         var rows = await _db.StockTransactions.AsNoTracking()
             .Where(t => t.TransactionType == StockTransactionType.ProductionOutput && t.TransactionDate >= from.AddDays(-1) && t.TransactionDate < to.AddDays(1))
-            .Select(t => new { t.TransactionDate, t.ItemId, t.Item.ItemName, t.QuantityBaseUnits, t.UnitCost }).ToListAsync();
+            .Select(t => new { t.TransactionDate, t.ItemId, t.Item.ItemName, t.Item.ItemCode, RecipeId = t.Batch != null ? t.Batch.CustomRecipeId : null, t.QuantityBaseUnits, t.UnitCost }).ToListAsync();
+        var names = await ProductNames.LoadAsync(_db, rows.Select(r => r.ItemId).Distinct());
         var ids = rows.Select(r => r.ItemId).Distinct().ToList();
         var packs = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => ids.Contains(l.ItemId) && l.IsSellableUnit).ToListAsync())
             .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).First());
         return rows.Select(r => new { r, Local = DateTime.SpecifyKind(r.TransactionDate, DateTimeKind.Utc).ToLocalTime().Date })
             .Where(x => x.Local >= from && x.Local < to)
-            .GroupBy(x => new { x.Local, x.r.ItemId, x.r.ItemName })
+            .GroupBy(x => new { x.Local, x.r.ItemId, x.r.ItemName, x.r.ItemCode, x.r.RecipeId })
             .Select(g =>
             {
                 var pieces = g.Sum(x => x.r.QuantityBaseUnits);
                 var level = packs.GetValueOrDefault(g.Key.ItemId);
                 var per = level?.EquivalentBaseUnits ?? 1;
+                var (_, content, variant) = names.Parts(g.Key.ItemId, g.Key.RecipeId, level?.Id);
                 return new ProductionDayRow(g.Key.Local, g.Key.ItemName, pieces, level?.LevelName ?? "قطعة", Math.Round(pieces / per, 2),
-                                            Math.Round(g.Sum(x => x.r.QuantityBaseUnits * (x.r.UnitCost ?? 0)), 2));
+                                            Math.Round(g.Sum(x => x.r.QuantityBaseUnits * (x.r.UnitCost ?? 0)), 2),
+                                            g.Key.ItemCode, content, variant.Length > 0 ? variant : "أساسي");
             })
-            .OrderBy(r => r.Date).ThenBy(r => r.ItemName).ToList();
+            .OrderBy(r => r.Date).ThenBy(r => r.ItemName).ThenBy(r => r.Variant).ToList();
     }
 
     public record LossRow(string Kind, string ItemName, string? Party, string? Category, decimal Pieces, decimal Value);

@@ -388,10 +388,10 @@ public class ProductionMonthSectionViewModel : SectionViewModel
     private void Print()
     {
         var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"جرد الإنتاج — {Month}/{Year}", PrintedBy = Session.FullName };
-        r.Columns.AddRange(CanSeeCost ? new[] { "التاريخ", "المنتج", "العبوات", "الوحدة", "القطع", "الكلفة" } : new[] { "التاريخ", "المنتج", "العبوات", "الوحدة", "القطع" });
+        r.Columns.AddRange(CanSeeCost ? new[] { "التاريخ", "الصنف", "العبوة", "المحتوى", "المتغير", "العدد", "القطع", "الكلفة" } : new[] { "التاريخ", "الصنف", "العبوة", "المحتوى", "المتغير", "العدد", "القطع" });
         foreach (var x in Rows)
         {
-            var cells = new List<string> { x.Date.ToString("yyyy/MM/dd"), x.ItemName, $"{x.Packs:N0}", x.PackLabel, $"{x.Pieces:N0}" };
+            var cells = new List<string> { x.Date.ToString("yyyy/MM/dd"), x.Group, x.PackLabel, x.Content, x.Variant, $"{x.Packs:N0}", $"{x.Pieces:N0}" };
             if (CanSeeCost) cells.Add($"{x.Cost:N0}");
             r.Rows.Add(cells);
         }
