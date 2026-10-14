@@ -103,7 +103,8 @@ public class RepAppTests
         Assert.Equal(16_000m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));
 
         // المصروف يدخل مجموعة المصروفات بالمالية تحت «سيارة المندوب» باسم المندوب، دون قيد ثانٍ ودون صندوق، ولا يُحسب مرتين
-        var van3 = await db.FinanceEntries.Include(e => e.Category).SingleAsync(e => e.Category.Name == RepsService.RepVanCategory);
+        // يدخل باسم سيارة المندوب نفسها (اسم مخزن سيارته هنا)
+        var van3 = await db.FinanceEntries.Include(e => e.Category).SingleAsync(e => e.Category.Name == van.Name);
         Assert.Equal((3_000m, rep.FullName, "وقود"), (van3.Amount, van3.PartyName, van3.Notes));
         Assert.Equal(FinanceCategoryKind.Operating, van3.Category.Kind);
         Assert.Contains(await new FinanceEntryService(db).ListAsync(DateTime.Today, DateTime.Today, van3.CategoryId), r => r.EntryNumber == van3.EntryNumber);
@@ -113,6 +114,16 @@ public class RepAppTests
         Assert.True((await new FinanceEntryService(db).VoidAsync(van3.Id, "خطأ في المبلغ", _f.AdminId)).Success);
         Assert.Equal(19_000m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));
         Assert.True((await new RepsService(db).RecordFieldExpenseAsync(rep.Id, 3_000, "وقود", DateTime.Today, _f.AdminId)).Success);   // يعود كما كان لبقية الاختبار
+        Assert.Equal(16_000m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));
+        // وإن كانت له سيارة مسجلة (كنتر 1) فباسمها وبرقمها
+        var counter = new Vehicle { VehicleName = "كنتر 1", AssignedEmployeeId = rep.Id };
+        db.Vehicles.Add(counter);
+        await db.SaveChangesAsync();
+        Assert.True((await new RepsService(db).RecordFieldExpenseAsync(rep.Id, 500, "غسيل", DateTime.Today, _f.AdminId)).Success);
+        var viaVehicle = await db.FinanceEntries.Include(e => e.Category).OrderByDescending(e => e.Id).FirstAsync();
+        Assert.Equal(("كنتر 1", counter.Id, 500m), (viaVehicle.Category.Name, viaVehicle.VehicleId, viaVehicle.Amount));
+        Assert.Contains(await new FinanceEntryService(db).ListAsync(DateTime.Today, DateTime.Today, viaVehicle.CategoryId, counter.Id), r => r.EntryNumber == viaVehicle.EntryNumber);
+        Assert.True((await new FinanceEntryService(db).VoidAsync(viaVehicle.Id, "تجربة", _f.AdminId)).Success);
         Assert.Equal(16_000m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));
         Assert.Equal(new byte[] { 1, 2, 3 }, await app.PhotoAsync(expense.RequestId.Value));
 

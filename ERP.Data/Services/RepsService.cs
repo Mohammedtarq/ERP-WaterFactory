@@ -154,7 +154,7 @@ public class RepsService
         return FinanceOperationResult.Ok();
     }
 
-    /// <summary>اسم نوع المصروف الذي تدخل تحته مصاريف المندوبين الميدانية في «المصروفات» بالمالية.</summary>
+    /// <summary>اسم نوع المصروف الاحتياطي إن لم يكن للمندوب سيارة ولا مخزن سيارة؛ والأصل أن يدخل المصروف باسم سيارته نفسها (كنتر 1…).</summary>
     public const string RepVanCategory = "سيارة المندوب";
 
     /// <summary>
@@ -171,15 +171,23 @@ public class RepsService
 
             var walletTx = await _db.RepWalletTransactions.Where(w => w.EmployeeId == repId && w.AmountOut == amount && w.ReferenceTable == "Wallet")
                                                           .OrderByDescending(w => w.Id).FirstAsync();
-            var category = await _db.FinanceCategories.FirstOrDefaultAsync(c => c.Name == RepVanCategory);
+            // اسم سيارة المندوب: سيارته المسجلة له، وإلا اسم مخزن سيارته (مثل «كنتر 1»)، وإلا «سيارة المندوب»
+            var vehicle = vehicleId is int vid
+                ? await _db.Vehicles.FirstOrDefaultAsync(v => v.Id == vid)
+                : await _db.Vehicles.Where(v => v.IsActive && v.AssignedEmployeeId == repId).OrderBy(v => v.Id).FirstOrDefaultAsync();
+            var vanName = vehicle?.VehicleName ?? await _db.Warehouses.Where(w => w.IsActive && w.WarehouseType == WarehouseType.RepVan && w.OwnerEmployeeId == repId)
+                                                                       .OrderBy(w => w.Id).Select(w => w.Name).FirstOrDefaultAsync();
+            vehicle ??= vanName is null ? null : await _db.Vehicles.FirstOrDefaultAsync(v => v.IsActive && v.VehicleName == vanName);
+            vehicleId = vehicle?.Id;
+            var categoryName = string.IsNullOrWhiteSpace(vanName) ? RepVanCategory : vanName.Trim();
+            var category = await _db.FinanceCategories.FirstOrDefaultAsync(c => c.Name == categoryName);
             if (category is null)
             {
-                category = new FinanceCategory { Name = RepVanCategory, Kind = FinanceCategoryKind.Operating, SortOrder = 90 };
+                category = new FinanceCategory { Name = categoryName, Kind = FinanceCategoryKind.Operating, SortOrder = 90 };
                 _db.FinanceCategories.Add(category);
                 await _db.SaveChangesAsync();
             }
             var repName = await _db.Employees.Where(e => e.Id == repId).Select(e => e.FullName).FirstAsync();
-            vehicleId ??= await _db.Vehicles.Where(v => v.IsActive && v.AssignedEmployeeId == repId).OrderBy(v => v.Id).Select(v => (int?)v.Id).FirstOrDefaultAsync();
             var count = await _db.FinanceEntries.CountAsync(e => e.EntryDate.Year == date.Year);
             var entry = new FinanceEntry
             {
