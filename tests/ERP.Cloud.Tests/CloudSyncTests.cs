@@ -208,13 +208,13 @@ public class CloudSyncTests : CloudTestBase
             using var offline = CloudSyncService.CreateClient("http://127.0.0.1:1", agentKey);
             var down = await new CloudSyncService(db).RunOnceAsync(offline, "SERVER-PC");
             Assert.False(down.Ok);
-            Assert.Contains("تعذّر الاتصال بالخادم", down.Error);
+            Assert.Contains("لا خدمة تعمل على هذا العنوان", down.Error);
         }
         await using (var db = NewDb())
         {
             var s = await new CloudSyncService(db).SettingsAsync();
             Assert.True(s.LastErrorAt >= s.LastSuccessAt);
-            Assert.Contains("تعذّر الاتصال", s.LastError);
+            Assert.Contains("لا خدمة تعمل", s.LastError);
         }
         _ = fgId;
     }

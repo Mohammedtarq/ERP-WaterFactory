@@ -40,6 +40,23 @@ public enum SyncTargetKind { Local, Cloud }
 /// <summary>خطأ من الخادم برسالة عربية جاهزة للعرض.</summary>
 public class CloudSyncException(string message) : Exception(message);
 
+public partial class CloudSyncService
+{
+    /// <summary>سبب تعذّر الاتصال بكلام عربي واضح وخطوة الحل (لا رسالة .NET الإنجليزية).</summary>
+    public static string Explain(Exception ex)
+    {
+        var socket = ex as System.Net.Sockets.SocketException ?? ex.InnerException as System.Net.Sockets.SocketException;
+        if (socket?.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused)
+            return "لا خدمة تعمل على هذا العنوان — الخادم غير مثبّت أو متوقف. على حاسبة السيرفر شغّل «تثبيت - السيرفر» (آمن للتكرار)، ثم انتظر دقيقة.";
+        if (socket?.SocketErrorCode is System.Net.Sockets.SocketError.HostNotFound or System.Net.Sockets.SocketError.TryAgain)
+            return "اسم الخادم غير معروف — تحقق من كتابة العنوان.";
+        if (socket?.SocketErrorCode is System.Net.Sockets.SocketError.TimedOut or System.Net.Sockets.SocketError.HostUnreachable or System.Net.Sockets.SocketError.NetworkUnreachable
+            || ex is TaskCanceledException)
+            return "لا استجابة من الخادم — الحاسبة مطفأة أو على شبكة أخرى أو جدار الحماية يحجب المنفذ.";
+        return $"تعذّر الاتصال بالخادم — تحقق من الشبكة وعنوان الخادم ({ex.Message})";
+    }
+}
+
 /// <summary>
 /// خدمة المزامنة في المعمل (المرحلة 1). تتصل هي بالخادم السحابي ولا يُفتح أي منفذ في المعمل:
 /// 1) ترفع قائمة الأجهزة (بصمات المفاتيح فقط، والموقوف موقوف)؛
@@ -48,7 +65,7 @@ public class CloudSyncException(string message) : Exception(message);
 /// 4) ترفع «نسخة عمل» كل مندوب إن تغيّرت.
 /// الرقم الفريد لكل حركة يجعل الانقطاع وإعادة المحاولة آمنين: لا ضياع ولا تكرار.
 /// </summary>
-public class CloudSyncService
+public partial class CloudSyncService
 {
     private readonly ProjectDbContext _db;
     public CloudSyncService(ProjectDbContext db) => _db = db;
@@ -437,7 +454,7 @@ public class CloudSyncService
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
         {
-            throw new CloudSyncException($"تعذّر الاتصال بالخادم — تحقق من الشبكة وعنوان الخادم ({ex.Message})");
+            throw new CloudSyncException(Explain(ex));
         }
         using (response)
         {

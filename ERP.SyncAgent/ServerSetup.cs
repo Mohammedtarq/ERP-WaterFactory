@@ -85,6 +85,11 @@ public static class ServerSetup
             AgentSetup.Run("sc.exe", $"start {RelayService}");
             AgentSetup.Run("sc.exe", $"start {AgentSetup.ServiceName}");
             Ok("بدأت الخدمتان، وتبدآن تلقائيًا مع كل تشغيل للحاسبة");
+
+            // 7) فحص ذاتي: الخادم المحلي يرد فعلًا؟ (المثبّت يُظهر النتيجة، فلا يبقى أي شك)
+            var health = await WaitHealthAsync(local.Port);
+            if (health) Ok($"فحص ذاتي: الخادم المحلي يعمل (http://localhost:{local.Port}/api/health)");
+            else { Warn($"الفحص الذاتي: الخادم المحلي لم يرد بعد على المنفذ {local.Port}. افتح services.msc وتأكد أن «ERP Local Server» في حالة Running، أو أعد تشغيل المثبّت."); return 1; }
             return 0;
         }
         catch (Exception ex)
@@ -92,6 +97,20 @@ public static class ServerSetup
             Console.Error.WriteLine($"تعذّر تجهيز المزامنة: {ex.Message}");
             return 1;
         }
+    }
+
+    /// <summary>ينتظر حتى 30 ثانية أن يرد الخادم المحلي على /api/health.</summary>
+    private static async Task<bool> WaitHealthAsync(int port)
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+        for (var i = 0; i < 15; i++)
+        {
+            try { if ((await http.GetAsync($"http://127.0.0.1:{port}/api/health")).IsSuccessStatusCode) return true; }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) { }
+            await Task.Delay(2000);
+        }
+        return false;
     }
 
     private static async Task GrantSqlAsync(string serverCs)

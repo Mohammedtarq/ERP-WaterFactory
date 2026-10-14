@@ -275,6 +275,16 @@ public class DualSyncTests : CloudTestBase, IDisposable
     }
 
     [Fact]
+    public async Task Refused_connection_is_explained_in_arabic_with_the_fix()
+    {
+        using var http = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:1/"), Timeout = TimeSpan.FromSeconds(3) };
+        var (ok, message) = await CloudSyncService.TestAsync(http);
+        Assert.False(ok);
+        Assert.Contains("تثبيت - السيرفر", message);
+        Assert.DoesNotContain("actively refused", message);
+    }
+
+    [Fact]
     public async Task Server_pc_enables_local_sync_by_itself_once_and_respects_the_user_afterwards()
     {
         // إعداد كما تركه المستخدم بالخطأ: عنوان الخادم المحلي في خانة السحابي، والمحلي غير مفعّل
