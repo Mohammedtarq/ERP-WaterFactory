@@ -30,6 +30,10 @@ public static class ServerSetup
             relayExe ??= Path.GetFullPath(Path.Combine(Path.GetDirectoryName(agentExe)!, "..", "LocalServer", "ERP.Cloud.Api.exe"));
             if (!File.Exists(relayExe)) throw new FileNotFoundException($"لم يُعثر على الخادم المحلي: {relayExe}");
 
+            // 0) تثبيت سابق قد يترك صلاحيات تمنع حتى المسؤول من الكتابة: تُستعاد ملكية المجلد وصلاحياته الافتراضية أولًا،
+            //    ثم تُقيَّد من جديد في الخطوة 4 (للمسؤولين وحسابي الخدمتين فقط)
+            ResetFolderAccess(AgentConfig.Folder);
+
             // 1) مجلد الخادم المحلي وإعداده (يقرؤه الخادم بنفسه)
             var folder = AgentConfig.LocalServerFolder;
             Directory.CreateDirectory(folder);
@@ -113,8 +117,21 @@ public static class ServerSetup
         catch (Exception ex)
         {
             Console.Error.WriteLine($"تعذّر تجهيز المزامنة: {ex.Message}");
+            if (ex is UnauthorizedAccessException)
+                Console.Error.WriteLine("  إن تكرر «Access denied» رغم صلاحية المسؤول: افتح «أمان Windows ← الحماية من الفيروسات والتهديدات ← الحماية من برامج الفدية»،" +
+                                        " وعطّل «الوصول المتحكم به إلى المجلدات» (Controlled folder access) أثناء التثبيت، أو اسمح لبرنامج ERP.SyncAgent.exe، ثم أعد التثبيت.");
             return 1;
         }
+    }
+
+    /// <summary>يستعيد لمجلد البيانات ملكية المسؤولين وصلاحياته الموروثة (آمن للتكرار)، وينزع صفات القراءة فقط.</summary>
+    private static void ResetFolderAccess(string folder)
+    {
+        if (!Directory.Exists(folder)) return;
+        AgentSetup.Run("takeown.exe", $"/f \"{folder}\" /a /r /d y");
+        AgentSetup.Run("icacls.exe", $"\"{folder}\" /reset /t /c /q");
+        AgentSetup.Run("icacls.exe", $"\"{folder}\" /grant *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F /t /c /q");
+        AgentSetup.Run("attrib.exe", $"-r -h -s \"{folder}\\*\" /s /d");
     }
 
     /// <summary>تشخيص يُطبع في نافذة المثبّت: حساب الخدمة، صلاحيات المجلد، سجل الأخطاء، وتشغيل الخادم مباشرة بصلاحية المسؤول.</summary>
