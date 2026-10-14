@@ -85,32 +85,25 @@ public static class ReportRenderer
         var inner = ((IDocumentPaginatorSource)body).DocumentPaginator;
         inner.PageSize = new Size(contentWidth, bodyHeight);
         return new BrandedPaginator(inner, size, PageMargin, header.DesiredSize.Height + 10, footerSample.DesiredSize.Height,
-            () => BuildHeader(r, b, contentWidth), (page, total) => BuildFooter(r, b, contentWidth, page, total));
+            () => BuildHeader(r, b, contentWidth), (page, total) => BuildFooter(r, b, contentWidth, page, total), BrandColor(b));
     }
 
-    /// <summary>الترويسة: الشعار والشركة في البداية (يمين)، عنوان المستند في النهاية (يسار) بخط أكبر، ثم خط بلون العلامة.</summary>
+    /// <summary>
+    /// الترويسة (قالب التقارير المؤطّر): اسم التقرير يمينًا، الشعار في المنتصف، اسم المعمل وعنوانه يسارًا بنص متوسّط،
+    /// ثم خط متدرّج بلون العلامة. لا شعار لفظي في الترويسة.
+    /// </summary>
     public static FrameworkElement BuildHeader(ReportDocument r, ReportBranding b, double width)
     {
-        var brand = new SolidColorBrush(BrandColor(b));
+        var brandColor = BrandColor(b);
+        var brand = new SolidColorBrush(brandColor);
         var grid = new Grid { Width = width, FlowDirection = FlowDirection.RightToLeft };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(42, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.15, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var company = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        if (LoadLogo(b.Logo) is { } logo)
-            company.Children.Add(new Image { Source = logo, MaxHeight = 64, MaxWidth = 96, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 12, 0),
-                                             VerticalAlignment = VerticalAlignment.Center });
-        var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        names.Children.Add(Text(b.CompanyName, 17, FontWeights.Bold, Ink));
-        if (!string.IsNullOrWhiteSpace(b.CompanyNameEn)) names.Children.Add(Text(b.CompanyNameEn!, 10, FontWeights.Normal, Muted, FlowDirection.LeftToRight));
-        if (b.ContactLine.Length > 0) names.Children.Add(Text(b.ContactLine, 9.5, FontWeights.Normal, Muted));
-        if (b.RegistrationLine.Length > 0) names.Children.Add(Text(b.RegistrationLine, 9, FontWeights.Normal, Muted));
-        company.Children.Add(names);
-        grid.Children.Add(company);
-
-        // في اتجاه RTL: Right = نهاية السطر = يسار الصفحة
+        // في اتجاه RTL: العمود الأول = يمين الصفحة
         var titleBlock = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         var title = Text(r.Title, 18, FontWeights.Bold, Ink);
         title.TextAlignment = TextAlignment.Right;
@@ -128,12 +121,36 @@ public static class ReportRenderer
             stamp.TextAlignment = TextAlignment.Right;
             titleBlock.Children.Add(stamp);
         }
-        Grid.SetColumn(titleBlock, 1);
         grid.Children.Add(titleBlock);
 
-        var line = new Rectangle { Height = 2, Fill = brand, Margin = new Thickness(0, 8, 0, 0) };
+        if (LoadLogo(b.Logo) is { } logo)
+        {
+            var img = new Image { Source = logo, MaxHeight = 66, MaxWidth = 110, Stretch = Stretch.Uniform, Margin = new Thickness(14, 0, 14, 0),
+                                  VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(img, 1);
+            grid.Children.Add(img);
+        }
+
+        var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch };
+        void Centered(TextBlock t) { t.TextAlignment = TextAlignment.Center; names.Children.Add(t); }
+        Centered(Text(b.CompanyName, 16, FontWeights.Bold, Ink));
+        if (!string.IsNullOrWhiteSpace(b.CompanyNameEn)) Centered(Text(b.CompanyNameEn!, 10, FontWeights.Normal, Muted, FlowDirection.LeftToRight));
+        if (b.ContactLine.Length > 0) Centered(Text(b.ContactLine, 9.5, FontWeights.Normal, Muted));
+        if (b.RegistrationLine.Length > 0) Centered(Text(b.RegistrationLine, 9, FontWeights.Normal, Muted));
+        Grid.SetColumn(names, 2);
+        grid.Children.Add(names);
+
+        var line = new Rectangle
+        {
+            Height = 3, Margin = new Thickness(0, 8, 0, 0), RadiusX = 1.5, RadiusY = 1.5,
+            Fill = new LinearGradientBrush(new GradientStopCollection
+            {
+                new(Color.FromArgb(0x20, brandColor.R, brandColor.G, brandColor.B), 0), new(brandColor, 0.5),
+                new(Color.FromArgb(0x20, brandColor.R, brandColor.G, brandColor.B), 1)
+            })
+        };
         Grid.SetRow(line, 1);
-        Grid.SetColumnSpan(line, 2);
+        Grid.SetColumnSpan(line, 3);
         grid.Children.Add(line);
         Layout(grid, width);
         return grid;
@@ -203,7 +220,8 @@ public static class ReportRenderer
         var photo = LoadLogo(r.Photo);
         if (fields.Count > 0 || photo is not null)
         {
-            var t = new Table { CellSpacing = 0, Margin = new Thickness(0, 0, 0, 12) };
+            var t = new Table { CellSpacing = 3, Margin = new Thickness(0, 0, 0, 12) };
+            var card = new SolidColorBrush(Color.FromArgb(0x10, brandColor.R, brandColor.G, brandColor.B));
             foreach (var w in new[] { 1.0, 2.0, 1.0, 2.0 }) t.Columns.Add(new TableColumn { Width = new GridLength(w, GridUnitType.Star) });
             // نسبي لا ثابت: العرض الثابت مع النسبي في جدول RTL يبتلع العرض (انظر جدول الأعمدة أدناه)
             if (photo is not null) t.Columns.Add(new TableColumn { Width = new GridLength(1.1, GridUnitType.Star) });
@@ -215,8 +233,8 @@ public static class ReportRenderer
                 var pair = fields.Skip(i).Take(2).ToList();
                 foreach (var f in pair)
                 {
-                    row.Cells.Add(Cell(f.Label, Muted, FontWeights.Normal, 10.5));
-                    row.Cells.Add(Cell(f.Value, Ink, FontWeights.SemiBold, 11));
+                    row.Cells.Add(MetaCell(f.Label, Muted, FontWeights.Normal, 10.5, card, brandColor));
+                    row.Cells.Add(MetaCell(f.Value, Ink, FontWeights.SemiBold, 11, card, brandColor));
                 }
                 for (var k = pair.Count; k < 2; k++) { row.Cells.Add(Cell("", Muted, FontWeights.Normal, 10.5)); row.Cells.Add(Cell("", Ink, FontWeights.Normal, 11)); }
                 if (i == 0 && photo is not null)
@@ -240,16 +258,22 @@ public static class ReportRenderer
                 // يبتلع العرض كله فتنضغط بقية الأعمدة وتتكدّس حروفها عموديًا
                 t.Columns.Add(new TableColumn { Width = new GridLength(c == "#" ? 0.45 : ColumnWeight(r, i), GridUnitType.Star) });
             var head = new TableRowGroup();
-            var hr = new TableRow { Background = tint };
+            var hr = new TableRow
+            {
+                Background = new LinearGradientBrush(Color.FromArgb(0x38, brandColor.R, brandColor.G, brandColor.B),
+                                                     Color.FromArgb(0x12, brandColor.R, brandColor.G, brandColor.B), 90)
+            };
             foreach (var c in r.Columns)
                 hr.Cells.Add(new TableCell(new Paragraph(new Run(c)) { Margin = new Thickness(0), FontWeight = FontWeights.Bold, FontSize = 10.5 })
                 { Padding = new Thickness(6, 5, 6, 5), BorderBrush = brand, BorderThickness = new Thickness(0, 0, 0, 1.2) });
             head.Rows.Add(hr);
             t.RowGroups.Add(head);
             var g = new TableRowGroup();
+            var zebra = new SolidColorBrush(Color.FromArgb(0x0A, brandColor.R, brandColor.G, brandColor.B));
+            var n = 0;
             foreach (var rowValues in r.Rows)
             {
-                var row = new TableRow();
+                var row = new TableRow { Background = n++ % 2 == 1 ? zebra : Brushes.Transparent };
                 foreach (var v in rowValues)
                     row.Cells.Add(new TableCell(new Paragraph(new Run(v)) { Margin = new Thickness(0), FontSize = 10.5 })
                     { Padding = new Thickness(6, 4, 6, 4), BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 0, 0.75) });
@@ -285,6 +309,8 @@ public static class ReportRenderer
                 {
                     label.BorderBrush = value.BorderBrush = brand;
                     label.BorderThickness = value.BorderThickness = new Thickness(0, 1.2, 0, 1.2);
+                    label.Background = value.Background = tint;
+                    label.Padding = value.Padding = new Thickness(8, 5, 8, 5);
                 }
                 row.Cells.Add(label);
                 row.Cells.Add(value);
@@ -320,6 +346,14 @@ public static class ReportRenderer
         var avg = lengths.Average();
         return Math.Clamp(avg / 7.0, 1, 4);
     }
+
+    /// <summary>خلية بطاقة معلومات: خلفية خفيفة بلون العلامة وحد رفيع.</summary>
+    private static TableCell MetaCell(string text, Brush brush, FontWeight weight, double size, Brush card, Color brandColor) =>
+        new(new Paragraph(new Run(text)) { Margin = new Thickness(0), FontWeight = weight, Foreground = brush, FontSize = size })
+        {
+            Padding = new Thickness(8, 5, 8, 5), Background = card,
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x30, brandColor.R, brandColor.G, brandColor.B)), BorderThickness = new Thickness(0.75)
+        };
 
     private static TableCell Cell(string text, Brush brush, FontWeight weight, double size) =>
         new(new Paragraph(new Run(text)) { Margin = new Thickness(0), FontWeight = weight, Foreground = brush, FontSize = size })
@@ -431,10 +465,12 @@ public sealed class BrandedPaginator : DocumentPaginator
     private readonly Func<FrameworkElement> _header;
     private readonly Func<int, int, FrameworkElement> _footer;
     private Size _pageSize;
+    private readonly Color? _frame;
 
     public BrandedPaginator(DocumentPaginator inner, Size pageSize, Thickness margin, double headerHeight, double footerHeight,
-                            Func<FrameworkElement> header, Func<int, int, FrameworkElement> footer)
+                            Func<FrameworkElement> header, Func<int, int, FrameworkElement> footer, Color? frame = null)
     {
+        _frame = frame;
         _inner = inner;
         _pageSize = pageSize;
         _margin = margin;
@@ -455,7 +491,10 @@ public sealed class BrandedPaginator : DocumentPaginator
         var root = new ContainerVisual();
         root.Children.Add(new DrawingVisual());   // خلفية بيضاء
         using (var dc = ((DrawingVisual)root.Children[0]).RenderOpen())
+        {
             dc.DrawRectangle(Brushes.White, null, new Rect(_pageSize));
+            if (_frame is Color c) DrawFrame(dc, c);
+        }
 
         root.Children.Add(Place(_header(), _margin.Left, _margin.Top));
         var body = new ContainerVisual { Transform = new TranslateTransform(_margin.Left, _margin.Top + _headerHeight) };
@@ -483,6 +522,16 @@ public sealed class BrandedPaginator : DocumentPaginator
             doc.Pages.Add(content);
         }
         return doc;
+    }
+
+    /// <summary>إطار الصفحة (قالب التقارير): ظل مائل خفيف ثم إطار مزدوج بلون العلامة — مظهر مجسّم بلا صور.</summary>
+    private void DrawFrame(DrawingContext dc, Color c)
+    {
+        var outer = new Rect(16, 16, _pageSize.Width - 32, _pageSize.Height - 32);
+        dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(0x1C, 0, 0, 0)), null, new Rect(outer.X + 3, outer.Y + 3, outer.Width, outer.Height), 6, 6);
+        dc.DrawRoundedRectangle(Brushes.White, new Pen(new SolidColorBrush(c), 1.4), outer, 6, 6);
+        var inner = new Rect(outer.X + 4, outer.Y + 4, outer.Width - 8, outer.Height - 8);
+        dc.DrawRoundedRectangle(null, new Pen(new SolidColorBrush(Color.FromArgb(0x55, c.R, c.G, c.B)), 0.6), inner, 4, 4);
     }
 
     private static ContainerVisual Place(Visual v, double x, double y)
