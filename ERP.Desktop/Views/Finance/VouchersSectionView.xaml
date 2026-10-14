@@ -20,9 +20,34 @@
                     <TextBlock Text="نوع الطرف" Style="{StaticResource FieldLabel}"/>
                     <ComboBox ItemsSource="{Binding PartyTypes}" SelectedItem="{Binding PartyType}" DisplayMemberPath="Label"/>
                     <TextBlock Text="الطرف" Style="{StaticResource FieldLabel}"/>
-                    <ComboBox ItemsSource="{Binding Parties}" SelectedItem="{Binding Party}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
+                    <ComboBox ItemsSource="{Binding Parties}" SelectedItem="{Binding Party}" IsTextSearchEnabled="True" TextSearch.TextPath="Name">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel LastChildFill="True">
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding DebtText}" Margin="14,0,0,0" FontWeight="SemiBold" Foreground="#64748B">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasDebt}" Value="True"><Setter Property="Foreground" Value="#B91C1C"/></DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Name}"/>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Border Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="8" Padding="10,7" Margin="0,8,0,0"
+                            Visibility="{Binding HasPartyDebt, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding PartyDebtText}" Foreground="#B91C1C" FontWeight="Bold" TextWrapping="Wrap"/>
+                    </Border>
                     <TextBlock Text="المبلغ (د.ع)" Style="{StaticResource FieldLabel}"/>
-                    <TextBox Text="{Binding Amount}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                    <Border Background="#F0FDF4" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="8" Padding="10,7" Margin="0,8,0,0"
+                            Visibility="{Binding HasDebtAfter, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding DebtAfterText}" Foreground="#166534" FontWeight="Bold" TextWrapping="Wrap"/>
+                    </Border>
                     <TextBlock Text="طريقة الدفع" Style="{StaticResource FieldLabel}"/>
                     <ComboBox ItemsSource="{Binding PaymentMethods}" SelectedItem="{Binding PaymentMethod}" DisplayMemberPath="Label"/>
                     <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>

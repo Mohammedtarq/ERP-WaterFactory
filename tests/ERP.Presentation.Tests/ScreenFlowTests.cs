@@ -517,6 +517,16 @@ public class ScreenFlowTests
         await v.IdleAsync();
         v.Party = v.Parties.Single(p => p.Id == _f.DirectId);
         v.Amount = 750;
+        // دين العميل يظهر بجانب اسمه وبعد السند (والتحذير إن زاد المبلغ على الدين)
+        Assert.NotNull(v.Party.Debt);
+        Assert.True(v.HasPartyDebt);
+        Assert.Contains(v.Party.Name, v.PartyDebtText);
+        Assert.True(v.HasDebtAfter);
+        var debt = v.Party.Debt!.Value;
+        Assert.Contains(750 > debt ? "أكبر من الدين" : "الدين بعد هذا السند", v.DebtAfterText);
+        v.Amount = debt + 1;
+        Assert.Contains("أكبر من الدين", v.DebtAfterText);
+        v.Amount = 750;
         Assert.Equal("CashReceiptVoucher", v.MappingRule!.TransactionType);
         Assert.Contains("الصندوق", v.RulePreview);
         await v.SaveCommand.ExecuteAsync();

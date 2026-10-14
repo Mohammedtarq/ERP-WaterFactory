@@ -259,7 +259,12 @@ public class VoucherRow
     public string StatusLabel => IsVoided ? $"ملغى: {VoidReason}" : "مرحّل";
 }
 
-public record PartyOption(int? Id, string Name);
+public record PartyOption(int? Id, string Name, decimal? Debt = null)
+{
+    /// <summary>دين العميل بجانب اسمه في القائمة: «دين 1,250,000» أو «لا دين» (للعملاء فقط).</summary>
+    public string DebtText => Debt is not decimal d ? "" : d > 0 ? $"دين {d:N0}" : "لا دين";
+    public bool HasDebt => Debt is > 0;
+}
 
 public class VouchersSectionViewModel : SectionViewModel
 {
@@ -323,10 +328,27 @@ public class VouchersSectionViewModel : SectionViewModel
     public ObservableCollection<AccountMappingRule> MappingRules { get; } = new();
     public ObservableCollection<VoucherRow> Vouchers { get; } = new();
 
-    public Option<VoucherType> VoucherType { get => _voucherType; set { if (SetProperty(ref _voucherType, value)) SuggestRule(); } }
+    public Option<VoucherType> VoucherType { get => _voucherType; set { if (SetProperty(ref _voucherType, value)) { SuggestRule(); RaiseDebt(); } } }
     public Option<VoucherPartyType> PartyType { get => _partyType; set { if (SetProperty(ref _partyType, value)) Background(LoadPartiesAsync()); } }
-    public PartyOption? Party { get => _party; set => SetProperty(ref _party, value); }
-    public decimal Amount { get => _amount; set => SetProperty(ref _amount, value); }
+    public PartyOption? Party { get => _party; set { if (SetProperty(ref _party, value)) RaiseDebt(); } }
+
+    private void RaiseDebt()
+    {
+        OnPropertyChanged(nameof(PartyDebtText));
+        OnPropertyChanged(nameof(HasPartyDebt));
+        OnPropertyChanged(nameof(DebtAfterText));
+        OnPropertyChanged(nameof(HasDebtAfter));
+    }
+
+    /// <summary>دين العميل المختار الحالي (يظهر للعملاء فقط).</summary>
+    public bool HasPartyDebt => PartyType.Value == VoucherPartyType.Customer && Party?.Debt is not null;
+    public string PartyDebtText => Party?.Debt is not decimal d ? "" :
+        d > 0 ? $"دين {Party.Name} الحالي: {d:N0} د.ع" : $"{Party.Name}: لا دين عليه";
+    /// <summary>الدين بعد سند القبض بالمبلغ المكتوب؛ وتحذير إن زاد المبلغ على الدين (لا يمنع الحفظ).</summary>
+    public bool HasDebtAfter => HasPartyDebt && VoucherType.Value == Data.ProjectDb.Entities.VoucherType.Receipt && Amount > 0;
+    public string DebtAfterText => Party?.Debt is not decimal d ? "" :
+        Amount > d ? $"المبلغ أكبر من الدين بمقدار {Amount - d:N0} د.ع (يصبح للعميل رصيد دائن)" : $"الدين بعد هذا السند: {d - Amount:N0} د.ع";
+    public decimal Amount { get => _amount; set { if (SetProperty(ref _amount, value)) RaiseDebt(); } }
     public Option<PaymentMethod> PaymentMethod { get => _paymentMethod; set => SetProperty(ref _paymentMethod, value); }
     public DateTime VoucherDate { get => _voucherDate; set => SetProperty(ref _voucherDate, value); }
     public AccountMappingRule? MappingRule { get => _mappingRule; set { if (SetProperty(ref _mappingRule, value)) OnPropertyChanged(nameof(RulePreview)); } }
@@ -388,13 +410,22 @@ public class VouchersSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         IEnumerable<PartyOption> list = PartyType.Value switch
         {
-            VoucherPartyType.Customer => await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).Select(c => new PartyOption(c.Id, c.Name)).ToListAsync(),
-            VoucherPartyType.Supplier => await db.Suppliers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).Select(c => new PartyOption(c.Id, c.Name)).ToListAsync(),
-            VoucherPartyType.Employee => await db.Employees.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.FullName).Select(c => new PartyOption(c.Id, c.FullName)).ToListAsync(),
+            VoucherPartyType.Customer => await CustomerOptionsAsync(db),
+            VoucherPartyType.Supplier => await db.Suppliers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).Select(c => new PartyOption(c.Id, c.Name, null)).ToListAsync(),
+            VoucherPartyType.Employee => await db.Employees.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.FullName).Select(c => new PartyOption(c.Id, c.FullName, null)).ToListAsync(),
             _ => new[] { new PartyOption(null, "أخرى (بدون طرف محدد)") }
         };
         foreach (var p in list) Parties.Add(p);
         Party = Parties.FirstOrDefault();
+        RaiseDebt();
+    }
+
+    /// <summary>العملاء الفعّالون مع دين كل واحد (من أرصدة العملاء: الموجب = عليه دين).</summary>
+    private static async Task<List<PartyOption>> CustomerOptionsAsync(ProjectDbContext db)
+    {
+        var balances = (await new SalesService(db).GetCustomerBalancesAsync()).ToDictionary(b => b.CustomerId, b => b.Balance);
+        var customers = await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).Select(c => new { c.Id, c.Name }).ToListAsync();
+        return customers.Select(c => new PartyOption(c.Id, c.Name, balances.GetValueOrDefault(c.Id))).ToList();
     }
 
     private async Task SaveAsync()
