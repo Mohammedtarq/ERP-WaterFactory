@@ -325,13 +325,41 @@ public class MainShellViewModel : ViewModelBase
         if (CurrentModuleVm is not { } m) return;
         var q = SectionCatalog.Normalize(FlyoutFilter.Trim());
         bool Match(SectionViewModel s) => q.Length == 0 || SectionCatalog.Normalize(s.Title).Contains(q) || SectionCatalog.Normalize(s.Description).Contains(q);
-        if (q.Length == 0) FlyoutGroups.Add(new FlyoutGroup("نظرة عامة", m.Color, new List<object> { m.Home }));
+        var groups = new List<FlyoutGroup>();
         foreach (var g in m.Groups)
         {
             var items = g.Items.Where(Match).Cast<object>().ToList();
-            if (items.Count > 0) FlyoutGroups.Add(new FlyoutGroup(g.Name, g.Color, items));
+            if (items.Count > 0) groups.Add(new FlyoutGroup(g.Name, g.Color, items));
         }
+        // «التحليل» (لوحة الوحدة: مؤشرات ورسوم) مجموعة تُختار، قبل «التقارير»
+        if (q.Length == 0 || SectionCatalog.Normalize(m.Home.Title).Contains(q) || SectionCatalog.Normalize(m.Home.Description).Contains(q))
+        {
+            var analysis = new FlyoutGroup(AnalysisGroup, "#2563EB", new List<object> { m.Home });
+            var reports = groups.FindIndex(g => g.Name == "التقارير");
+            groups.Insert(reports < 0 ? groups.Count : reports, analysis);
+        }
+        foreach (var g in groups) FlyoutGroups.Add(g);
+        FlyoutColumns = Balance(groups);
     }
+
+    public const string AnalysisGroup = "التحليل";
+
+    /// <summary>عمودا اللوحة: توزيع المجموعات بالترتيب على العمود الأقصر فتتسع بلا شريط تمرير.</summary>
+    private static IReadOnlyList<FlyoutColumn> Balance(List<FlyoutGroup> groups)
+    {
+        var cols = new[] { new FlyoutColumn(new()), new FlyoutColumn(new()) };
+        var weight = new int[2];
+        foreach (var g in groups)
+        {
+            var i = weight[0] <= weight[1] ? 0 : 1;
+            cols[i].Groups.Add(g);
+            weight[i] += 1 + g.Items.Count;
+        }
+        return cols;
+    }
+
+    private IReadOnlyList<FlyoutColumn> _flyoutColumns = Array.Empty<FlyoutColumn>();
+    public IReadOnlyList<FlyoutColumn> FlyoutColumns { get => _flyoutColumns; private set => SetProperty(ref _flyoutColumns, value); }
 
     /// <summary>مربع في اللوحة: القسم (أو «نظرة عامة») يُفتح وتُغلق اللوحة.</summary>
     private void OpenTile(object? p)
@@ -527,3 +555,6 @@ public class MainShellViewModel : ViewModelBase
 
 /// <summary>مجموعة في اللوحة المنبثقة: اسمها ولونها ومربعاتها (أقسام، أو «نظرة عامة»).</summary>
 public sealed record FlyoutGroup(string Name, string Color, List<object> Items);
+
+/// <summary>عمود في اللوحة المنبثقة: مجموعاته بالترتيب.</summary>
+public sealed record FlyoutColumn(List<FlyoutGroup> Groups);

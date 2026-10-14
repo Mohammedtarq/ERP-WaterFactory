@@ -121,8 +121,9 @@ public class NewUiTests
             shell.NavigateCommand.Execute(shell.NavItems.Single(n => n.ModuleCode == ModuleCode.Sales));
             shell.NavigateCommand.Execute(hrNav);
             Assert.True(shell.IsFlyoutOpen);
-            Assert.Equal("نظرة عامة", shell.FlyoutGroups[0].Name);
-            Assert.Equal(new[] { "نظرة عامة", "الموظفون", "الحضور والإجازات", "الحوافز", "الرواتب", "التقارير" }, shell.FlyoutGroups.Select(g => g.Name));
+            Assert.Equal(new[] { "الموظفون", "الحضور والإجازات", "الحوافز", "الرواتب", "التحليل", "التقارير" }, shell.FlyoutGroups.Select(g => g.Name));
+            Assert.Equal(2, shell.FlyoutColumns.Count);                         // عمودان بلا شريط تمرير
+            Assert.Equal(shell.FlyoutGroups.Count, shell.FlyoutColumns.Sum(c => c.Groups.Count));
             shell.FlyoutFilter = "تقارير";
             var tile = Assert.Single(Assert.Single(shell.FlyoutGroups).Items);
             Assert.Equal("تقارير الموارد البشرية", ((SectionViewModel)tile).Title);
@@ -131,7 +132,7 @@ public class NewUiTests
             Assert.Same(tile, hr.SelectedTab);
             shell.NavigateCommand.Execute(hrNav);
             Assert.Equal("", shell.FlyoutFilter);                              // اللوحة تُفتح نظيفة
-            shell.OpenTileCommand.Execute(shell.FlyoutGroups[0].Items[0]);      // «نظرة عامة»
+            shell.OpenTileCommand.Execute(shell.FlyoutGroups.Single(g => g.Name == "التحليل").Items[0]);   // لوحة الوحدة
             Assert.IsType<HomeSectionViewModel>(hr.SelectedTab);
             await shell.ToggleNewUiCommand.ExecuteAsync();
             Assert.False(shell.UseNewUi);

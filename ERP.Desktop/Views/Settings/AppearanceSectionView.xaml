@@ -5,6 +5,25 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:AppearanceSectionViewModel}">
+    <StackPanel VerticalAlignment="Top">
+    <!-- حسابي: ما كان في قائمة الصورة (الصورة، الواجهة، الخروج، إغلاق البرنامج) — القائمة العلوية فيها تغيير الصورة والخروج فقط -->
+    <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+        <StackPanel>
+            <TextBlock Text="حسابي" Style="{StaticResource SectionTitle}"/>
+            <WrapPanel Margin="0,6,0,0">
+                <Button Content="تغيير صورتي" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8"
+                        Command="{Binding DataContext.ChangeMyPhotoCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                <Button Content="إزالة صورتي" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8" Foreground="#DC2626"
+                        Command="{Binding DataContext.RemoveMyPhotoCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                <Button Content="تسجيل الخروج (تبديل المستخدم)" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8"
+                        Command="{Binding DataContext.LogoutCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                <Button Content="إغلاق البرنامج" Style="{StaticResource SecondaryButton}" Margin="0,0,8,8" Foreground="#DC2626" Click="OnExitClick"/>
+            </WrapPanel>
+            <CheckBox Margin="0,4,0,0" IsChecked="{Binding DataContext.UseNewUi, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}"
+                      Command="{Binding DataContext.ToggleNewUiCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      Content="الواجهة الحديثة: لوحة أقسام الوحدة تنبثق من زرها (إلغاؤها يعيد القائمة القديمة التي تنفتح للأسفل)"/>
+        </StackPanel>
+    </Border>
     <Border Style="{StaticResource Card}" VerticalAlignment="Top">
         <StackPanel>
             <TextBlock Text="مظهر الواجهة" Style="{StaticResource SectionTitle}"/>
@@ -52,4 +71,5 @@
             </StackPanel>
         </StackPanel>
     </Border>
+    </StackPanel>
 </UserControl>

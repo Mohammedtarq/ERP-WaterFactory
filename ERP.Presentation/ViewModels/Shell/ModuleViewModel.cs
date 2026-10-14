@@ -182,12 +182,13 @@ public class HomeSectionViewModel : ObservableObject
     public bool IsCurrent { get => _isCurrent; internal set => SetProperty(ref _isCurrent, value); }
 
     public ModuleViewModel Owner { get; }
-    public string Title => "الرئيسية";
+    /// <summary>لوحة الوحدة (مؤشرات اليوم ورسوم آخر 14 يومًا) هي «التحليل».</summary>
+    public string Title => "التحليل";
     public string DisplayTitle => Title;
     public string Glyph => Icons.Home;
     public string Color => Owner.Color;
     /// <summary>للمربع في اللوحة المنبثقة («الواجهة الجديدة»).</summary>
-    public string Description => "لوحة الوحدة: مؤشرات اليوم وبطاقات كل أقسامها";
+    public string Description => "مؤشرات اليوم ورسوم النشاط لآخر 14 يومًا";
     public IEnumerable<SectionViewModel> Sections => Owner.Tabs.OfType<SectionViewModel>();
     /// <summary>بطاقات الأقسام مقسّمة بنفس مجموعات القائمة الجانبية وألوانها.</summary>
     public ObservableCollection<SectionGroup> Groups => Owner.Groups;
@@ -243,7 +244,7 @@ public abstract class ModuleViewModel : ViewModelBase
     /// <summary>مسار القسم الظاهر: «الحوافز ‹ حافز المندوب» (أو «الرئيسية»).</summary>
     public string Breadcrumb => SelectedTab is SectionViewModel s
         ? (Groups.ToArray().FirstOrDefault(x => x.Items.Contains(s))?.Name is { } groupName ? $"{groupName} ‹ {s.DisplayTitle}" : s.DisplayTitle)
-        : "الرئيسية";
+        : "التحليل";
 
     protected void UseGroups(string moduleCode)
     {

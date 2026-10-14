@@ -49,7 +49,7 @@ public class SidebarGroupsTests
             Assert.All(module.Groups, g => Assert.False(g.IsOpen));
             Assert.True(module.Home.IsCurrent);
             Assert.False(target.IsCurrent);
-            Assert.Equal("الرئيسية", module.Breadcrumb);
+            Assert.Equal("التحليل", module.Breadcrumb);
         }
         await shell.IdleAllAsync();
         Assert.Empty(_f.Unhandled);

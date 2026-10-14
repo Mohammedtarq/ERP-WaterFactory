@@ -16,7 +16,7 @@ public class AppearanceSectionViewModel : SectionViewModel
     private ThemeInfo _selected = Themes.Get(null);
 
     public AppearanceSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.SystemSettings, "المظهر", Icons.Star, "#2B8FD6", "اختر مظهر الواجهة لك: ستة ألوان من شعار الرحمة")
+        : base(s, d, ModuleCode.SystemSettings, "حسابي والمظهر", Icons.Star, "#2B8FD6", "صورتك، والواجهة، والخروج، ومظهرك من ستة ألوان")
     {
         ApplyCommand = new AsyncRelayCommand(ApplyAsync);
     }
