@@ -58,6 +58,13 @@ public partial class MainWindow : Window
         if (DataContext is MainShellViewModel vm) vm.IsSearchOpen = false;
     }
 
+    /// <summary>التلاشي السفلي يظهر ما دام في اللوحة المزيد تحت، ويختفي عند الوصول لآخرها أو إن اتسعت للكل.</summary>
+    private void OnFlyScrollChanged(object sender, System.Windows.Controls.ScrollChangedEventArgs e)
+    {
+        var more = FlyScroll.ScrollableHeight > 0 && FlyScroll.VerticalOffset < FlyScroll.ScrollableHeight - 1;
+        FlyFade.Visibility = more ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void OnFlyoutBackdrop(object sender, MouseButtonEventArgs e)
     {
         if (DataContext is MainShellViewModel vm) vm.IsFlyoutOpen = false;

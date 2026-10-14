@@ -339,8 +339,16 @@
                             <TextBlock Text="{Binding SelectedItem.Title}" FontSize="20" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </DockPanel>
-                    <!-- بلا شريط تمرير ظاهر: المجموعات موزّعة على عمودين فتتسع؛ وعلى شاشة صغيرة جدًا يبقى التمرير بالعجلة -->
-                    <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
+                    <!-- المجموعات على عمودين فتتسع غالبًا؛ وإن زادت (مخازن كثيرة) يظهر شريط تمرير رفيع على اليسار وتلاشٍ سفلي يدل على المزيد -->
+                    <Grid>
+                    <ScrollViewer x:Name="FlyScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" ScrollChanged="OnFlyScrollChanged">
+                        <ScrollViewer.Resources>
+                            <Style TargetType="ScrollBar" BasedOn="{StaticResource {x:Type ScrollBar}}">
+                                <Setter Property="Opacity" Value="1"/>
+                                <Setter Property="Width" Value="9"/>
+                                <Setter Property="Margin" Value="0,0,6,0"/>
+                            </Style>
+                        </ScrollViewer.Resources>
                         <ItemsControl ItemsSource="{Binding FlyoutColumns}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate><UniformGrid Columns="2" VerticalAlignment="Top"/></ItemsPanelTemplate>
@@ -396,6 +404,15 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
+                    <Border x:Name="FlyFade" Height="36" VerticalAlignment="Bottom" IsHitTestVisible="False" Visibility="Collapsed">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#00FFFFFF" Offset="0"/>
+                                <GradientStop Color="#FFFFFFFF" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    </Grid>
                 </DockPanel>
             </Border>
         </Grid>
