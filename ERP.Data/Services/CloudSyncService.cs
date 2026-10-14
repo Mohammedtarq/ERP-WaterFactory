@@ -47,12 +47,12 @@ public partial class CloudSyncService
     {
         var socket = ex as System.Net.Sockets.SocketException ?? ex.InnerException as System.Net.Sockets.SocketException;
         if (socket?.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused)
-            return "لا خدمة تعمل على هذا العنوان — الخادم غير مثبّت أو متوقف. على حاسبة السيرفر شغّل «تثبيت - السيرفر» (آمن للتكرار)، ثم انتظر دقيقة.";
+            return "تعذّر الاتصال بالخادم — لا خدمة تعمل على هذا العنوان — الخادم غير مثبّت أو متوقف. على حاسبة السيرفر شغّل «تثبيت - السيرفر» (آمن للتكرار)، ثم انتظر دقيقة.";
         if (socket?.SocketErrorCode is System.Net.Sockets.SocketError.HostNotFound or System.Net.Sockets.SocketError.TryAgain)
-            return "اسم الخادم غير معروف — تحقق من كتابة العنوان.";
+            return "تعذّر الاتصال بالخادم — اسم الخادم غير معروف، تحقق من كتابة العنوان.";
         if (socket?.SocketErrorCode is System.Net.Sockets.SocketError.TimedOut or System.Net.Sockets.SocketError.HostUnreachable or System.Net.Sockets.SocketError.NetworkUnreachable
             || ex is TaskCanceledException)
-            return "لا استجابة من الخادم — الحاسبة مطفأة أو على شبكة أخرى أو جدار الحماية يحجب المنفذ.";
+            return "تعذّر الاتصال بالخادم — لا استجابة: الحاسبة مطفأة أو على شبكة أخرى أو جدار الحماية يحجب المنفذ.";
         return $"تعذّر الاتصال بالخادم — تحقق من الشبكة وعنوان الخادم ({ex.Message})";
     }
 }
