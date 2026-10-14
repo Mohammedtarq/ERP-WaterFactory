@@ -8,6 +8,17 @@ builder.Host.UseWindowsService(o => o.ServiceName = "ERPLocalRelay");
 if (OperatingSystem.IsWindows())
     builder.Configuration.AddJsonFile(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
                                                    "ERP-WaterFactory", "LocalServer", "relay.json"), optional: true);
+if (OperatingSystem.IsWindows())
+{
+    // خدمة الحاسبة تعمل بلا أي إعداد: القيم الناقصة تأخذ افتراضيها، وأي خطأ عند البدء يُكتب في ملف بجانب القاعدة
+    var folder = RelayDefaults.FolderOf(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData));
+    builder.Configuration.AddInMemoryCollection(RelayDefaults.Missing(builder.Configuration, folder));
+    AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+    {
+        try { Directory.CreateDirectory(folder); File.AppendAllText(Path.Combine(folder, "relay-error.log"), $"{DateTime.Now:s} {e.ExceptionObject}\n"); }
+        catch (Exception) { /* لا شيء أكثر */ }
+    };
+}
 if (builder.Configuration["Relay:Listen"] is { Length: > 0 } listen) builder.WebHost.UseUrls(listen);
 
 // القاعدة: ملف SQLite (الخادم المحلي والاستضافة الصغيرة) أو SQL Server

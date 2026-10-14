@@ -275,6 +275,24 @@ public class DualSyncTests : CloudTestBase, IDisposable
     }
 
     [Fact]
+    public void Local_relay_runs_with_no_settings_file_using_programdata_defaults()
+    {
+        var folder = ERP.Cloud.Api.RelayDefaults.FolderOf(@"C:\ProgramData");
+        var empty = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var d = ERP.Cloud.Api.RelayDefaults.Missing(empty, folder);
+        Assert.Equal(Path.Combine(folder, "relay.db"), d["Relay:SqlitePath"]);
+        Assert.Equal(Path.Combine(folder, "agent-key.txt"), d["Relay:AgentKeyFile"]);
+        Assert.Equal("http://0.0.0.0:5080", d["Relay:Listen"]);
+
+        // ما ضُبط صراحةً لا يُمسّ: قاعدة SQL للاستضافة السحابية، ومفتاح من متغير بيئة، ومنفذ مخصص
+        var set = Microsoft.Extensions.Configuration.MemoryConfigurationBuilderExtensions.AddInMemoryCollection(new Microsoft.Extensions.Configuration.ConfigurationBuilder(), new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Relay"] = "Server=x", ["Relay:AgentKey"] = new string('A', 64), ["Relay:Listen"] = "http://0.0.0.0:9000"
+        }).Build();
+        Assert.Empty(ERP.Cloud.Api.RelayDefaults.Missing(set, folder));
+    }
+
+    [Fact]
     public async Task Refused_connection_is_explained_in_arabic_with_the_fix()
     {
         using var http = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:1/"), Timeout = TimeSpan.FromSeconds(3) };
