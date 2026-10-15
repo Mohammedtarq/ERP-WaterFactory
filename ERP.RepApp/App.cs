@@ -19,7 +19,7 @@ public class App : Application
     }
 
     public static NavigationPage Root(Page page) =>
-        new(page) { BarBackgroundColor = Ui.Primary, BarTextColor = Colors.White, FlowDirection = FlowDirection.RightToLeft };
+        new(page) { BarBackgroundColor = Ui.Deep, BarTextColor = Colors.White, FlowDirection = FlowDirection.RightToLeft };
 
     /// <summary>استبدال الشاشة الجذرية (بعد الربط أو فكّه).</summary>
     public static void ShowRoot(Page page)

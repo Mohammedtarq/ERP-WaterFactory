@@ -20,28 +20,47 @@ public class HomePage : ContentPage
     public HomePage()
     {
         _wallet.FontAttributes = FontAttributes.Bold;
+        _wallet.TextColor = Ui.Navy;
+        _company.TextColor = Ui.Navy;
+        _company.HorizontalTextAlignment = TextAlignment.Center;
+        _rep.HorizontalTextAlignment = TextAlignment.Center;
+        _connection.HorizontalTextAlignment = TextAlignment.Center;
+        _wallet.HorizontalTextAlignment = TextAlignment.Center;
+        _today.HorizontalTextAlignment = TextAlignment.Center;
+        _waiting.HorizontalTextAlignment = TextAlignment.Center;
+        _logo.HorizontalOptions = LayoutOptions.Center;
+        var grid = new Grid
+        {
+            ColumnSpacing = 12, RowSpacing = 12,
+            ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Star) },
+            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto) }
+        };
+        void Place(View v, int row, int col) { Grid.SetRow(v, row); Grid.SetColumn(v, col); grid.Children.Add(v); }
+        // اتجاه RTL: العمود الأول يمين الشاشة
+        Place(Ui.Tile("💵", "تحصيل دين", "استلام دفعة من زبون", Ui.Brand, () => Navigation.PushAsync(new CollectionPage())), 0, 0);
+        Place(Ui.Tile("👤", "زبون جديد", "إضافة زبون وموقعه", Color.FromArgb("#0D9488"), () => Navigation.PushAsync(new NewCustomerPage())), 0, 1);
+        Place(Ui.Tile("🔧", "مصروف السيارة", "وقود وصيانة وغسيل", Color.FromArgb("#D97706"), () => Navigation.PushAsync(new ExpensePage())), 1, 0);
+        Place(Ui.Tile("📦", "رصيد السيارة", "ما تبقى من البضاعة", Color.FromArgb("#6366F1"), () => Navigation.PushAsync(new VanStockPage())), 1, 1);
+        Place(Ui.Tile("📋", "حركاتي", "سجل اليوم وحالة كل حركة", Color.FromArgb("#475569"), () => Navigation.PushAsync(new OutboxPage())), 2, 0);
+        Place(Ui.Tile("🔄", "مزامنة الآن", "إرسال واستلام من المعمل", Ui.Brand, SyncAsync), 2, 1);
+
         Ui.Setup(this, "الرئيسية", new VerticalStackLayout
         {
             Spacing = 6,
             Children =
             {
-                Ui.Card(new HorizontalStackLayout
+                // بطاقة الحالة: شعار المعمل واسمه والمندوب، ثم مبيعات اليوم وحالة الإرسال
+                Ui.Card(new VerticalStackLayout
                 {
-                    Spacing = 12,
-                    Children = { _logo, new VerticalStackLayout { VerticalOptions = LayoutOptions.Center, Children = { _company, _rep } } }
-                }, Ui.Primary),
-                _connection,
-                Ui.Card(new VerticalStackLayout { Children = { Ui.Text("النقد معك", 15, Ui.Muted), _wallet } }, Ui.Primary),
-                Ui.Card(new VerticalStackLayout { Spacing = 4, Children = { _today, _waiting } }),
-                Ui.Big("بيع", Ui.Primary, () => Navigation.PushAsync(new SalePage())),
-                Ui.Big("تحصيل دين", Ui.Blue, () => Navigation.PushAsync(new CollectionPage())),
-                Ui.Big("زبون جديد", Ui.Blue, () => Navigation.PushAsync(new NewCustomerPage())),
-                Ui.Big("مصروف السيارة", Ui.Amber, () => Navigation.PushAsync(new ExpensePage())),
-                Ui.Big("رصيد السيارة", Ui.Amber, () => Navigation.PushAsync(new VanStockPage())),
-                Ui.Big("حركاتي", Ui.Muted, () => Navigation.PushAsync(new OutboxPage())),
-                Ui.Big("مزامنة الآن", Ui.Ink, SyncAsync),
+                    Spacing = 4,
+                    Children = { _logo, _company, _rep, _today, _waiting, _connection }
+                }),
+                Ui.Card(new VerticalStackLayout { Children = { Ui.Text("النقد معك", 14, Ui.Muted), _wallet } }, Ui.Brand),
+                Ui.Hero("💰", "بيع", "فاتورة نقدية أو آجلة", () => Navigation.PushAsync(new SalePage())),
+                grid,
             }
         });
+        BackgroundColor = Colors.White;
         ToolbarItems.Add(new ToolbarItem("الطابعة", null, async () =>
         {
             if (await ReceiptActions.ChoosePrinterAsync(this)) await DisplayAlert("الطابعة", ReceiptActions.PrinterText, "حسنًا");
