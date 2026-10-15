@@ -22,6 +22,10 @@ public class Employee
     public decimal BaseSalary { get; set; }
 
     public bool IsSalesRep { get; set; }
+    /// <summary>دخول تطبيق المندوب (54_rep_app_login.sql): اسم قصير وكلمة مرور قصيرة مجزّأة بملح.</summary>
+    public string? RepLoginName { get; set; }
+    public string? RepLoginSalt { get; set; }
+    public string? RepLoginHash { get; set; }
     public bool IsSalesManager { get; set; }
 
     public DateTime? HireDate { get; set; }

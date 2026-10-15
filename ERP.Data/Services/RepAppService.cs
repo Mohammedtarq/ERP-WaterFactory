@@ -32,7 +32,8 @@ public record RepRequestRow(int Id, DateTime OccurredAt, string RepName, RepRequ
 public enum RepRequestFilter { Pending, ToReview, All }
 
 /// <summary>جهاز في شاشة إدارة الأجهزة.</summary>
-public record RepDeviceRow(int Id, string RepName, string DeviceName, bool IsActive, DateTime RegisteredAt, DateTime? LastSeenAt, string RegisteredBy);
+public record RepDeviceRow(int Id, string RepName, string DeviceName, bool IsActive, DateTime RegisteredAt, DateTime? LastSeenAt, string RegisteredBy,
+                           int RepEmployeeId = 0, string? LoginName = null);
 
 /// <summary>
 /// تطبيق المندوبين — المرحلة 0: يستقبل حركات الهاتف ويرحّلها بخدمات النظام نفسها (الصلاحيات، قفل الشهر، الحجز، القيود):
@@ -73,6 +74,36 @@ public class RepAppService
         return (FinanceOperationResult.Ok(), key);
     }
 
+    /// <summary>
+    /// اسم دخول التطبيق وكلمة مروره للمندوب: من حرف إلى 4 حروف أو أرقام (قرار المالك)، فريد بين المندوبين، وتُحفظ مجزّأة بملح.
+    /// تصل الهاتف مع نسخة العمل التالية.
+    /// </summary>
+    public async Task<FinanceOperationResult> SetLoginAsync(int repEmployeeId, string username, string password, int userId)
+    {
+        var rep = await _db.Employees.FirstOrDefaultAsync(e => e.Id == repEmployeeId && e.IsSalesRep);
+        if (rep is null) return FinanceOperationResult.Fail("المندوب غير موجود");
+        if (!RepLogin.IsValid(username)) return FinanceOperationResult.Fail("اسم الدخول من حرف إلى 4 حروف أو أرقام بلا فراغات");
+        if (!RepLogin.IsValid(password)) return FinanceOperationResult.Fail("كلمة المرور من حرف إلى 4 حروف أو أرقام بلا فراغات");
+        var name = RepLogin.Normalize(username);
+        if (await _db.Employees.AnyAsync(e => e.Id != rep.Id && e.RepLoginName == name))
+            return FinanceOperationResult.Fail($"اسم الدخول «{name}» مستخدم لمندوب آخر");
+        var login = RepLogin.Create(name, password);
+        (rep.RepLoginName, rep.RepLoginSalt, rep.RepLoginHash) = (login.Username, login.Salt, login.Hash);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Edit", "Employees", rep.Id, $"ضبط اسم دخول تطبيق المندوب {rep.FullName} ({login.Username})");
+        return FinanceOperationResult.Ok();
+    }
+
+    public async Task<FinanceOperationResult> ClearLoginAsync(int repEmployeeId, int userId)
+    {
+        var rep = await _db.Employees.FirstOrDefaultAsync(e => e.Id == repEmployeeId && e.IsSalesRep);
+        if (rep is null) return FinanceOperationResult.Fail("المندوب غير موجود");
+        (rep.RepLoginName, rep.RepLoginSalt, rep.RepLoginHash) = (null, null, null);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Edit", "Employees", rep.Id, $"إلغاء دخول تطبيق المندوب {rep.FullName}");
+        return FinanceOperationResult.Ok();
+    }
+
     public async Task<FinanceOperationResult> SetDeviceActiveAsync(int deviceId, bool active, int userId)
     {
         var device = await _db.RepDevices.Include(d => d.RepEmployee).FirstOrDefaultAsync(d => d.Id == deviceId && d.RemovedAt == null);
@@ -110,9 +141,9 @@ public class RepAppService
 
     public async Task<List<RepDeviceRow>> DevicesAsync() =>
         (await _db.RepDevices.AsNoTracking().Where(d => d.RemovedAt == null).OrderByDescending(d => d.IsActive).ThenBy(d => d.RepEmployee.FullName)
-            .Select(d => new { d.Id, Rep = d.RepEmployee.FullName, d.DeviceName, d.IsActive, d.RegisteredAt, d.LastSeenAt, By = d.RegisteredByUser.Username })
+            .Select(d => new { d.Id, Rep = d.RepEmployee.FullName, d.DeviceName, d.IsActive, d.RegisteredAt, d.LastSeenAt, By = d.RegisteredByUser.Username, d.RepEmployeeId, d.RepEmployee.RepLoginName })
             .ToListAsync())
-        .Select(d => new RepDeviceRow(d.Id, d.Rep, d.DeviceName, d.IsActive, d.RegisteredAt.ToLocalTime(), d.LastSeenAt?.ToLocalTime(), d.By)).ToList();
+        .Select(d => new RepDeviceRow(d.Id, d.Rep, d.DeviceName, d.IsActive, d.RegisteredAt.ToLocalTime(), d.LastSeenAt?.ToLocalTime(), d.By, d.RepEmployeeId, d.RepLoginName)).ToList();
 
     // ============================ الإعدادات ============================
 

@@ -26,6 +26,7 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="المندوب" Binding="{Binding RepName}" Width="*"/>
                         <DataGridTextColumn Header="الجهاز" Binding="{Binding DeviceName}" Width="*"/>
+                        <DataGridTextColumn Header="اسم الدخول" Binding="{Binding LoginName, TargetNullValue=—}" Width="90"/>
                         <DataGridCheckBoxColumn Header="مفعّل" Binding="{Binding IsActive, Mode=OneWay}" Width="60"/>
                         <DataGridTextColumn Header="آخر اتصال" Binding="{Binding LastSeenAt, StringFormat='yyyy/MM/dd HH:mm'}" Width="130"/>
                         <DataGridTextColumn Header="سُجّل في" Binding="{Binding RegisteredAt, StringFormat='yyyy/MM/dd'}" Width="95"/>
@@ -49,6 +50,20 @@
                     <Image Source="{Binding LinkQr, Converter={StaticResource BytesToImage}}" Width="220" Height="220" Margin="0,10,0,0" HorizontalAlignment="Center"
                            RenderOptions.BitmapScalingMode="NearestNeighbor" Visibility="{Binding HasLinkQr, Converter={StaticResource BoolToVisibility}}"/>
                     <TextBlock Text="{Binding LinkHint}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="دخول التطبيق (للمندوب المختار)" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="اسم وكلمة مرور من حرف إلى 4 حروف أو أرقام بلا تعقيد. يطلبهما التطبيق عند فتحه." Style="{StaticResource Muted}" TextWrapping="Wrap" FontSize="12"/>
+                    <TextBlock Text="اسم الدخول" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding LoginName, UpdateSourceTrigger=PropertyChanged}" MaxLength="4" Width="120" HorizontalAlignment="Left" FlowDirection="LeftToRight"/>
+                    <TextBlock Text="كلمة المرور" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding LoginPassword, UpdateSourceTrigger=PropertyChanged}" MaxLength="4" Width="120" HorizontalAlignment="Left" FlowDirection="LeftToRight"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="حفظ الدخول" Style="{StaticResource SuccessButton}" Command="{Binding SaveLoginCommand}"/>
+                        <Button Content="إلغاء الدخول" Style="{StaticResource SecondaryButton}" Command="{Binding ClearLoginCommand}" Margin="6,0,0,0"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource Card}" Margin="0,12,0,0">

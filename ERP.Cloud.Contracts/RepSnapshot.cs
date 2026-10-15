@@ -21,7 +21,8 @@ public record RepSnapshot(
     List<Guid>? PostedClientIds = null,
     string? CompanyName = null,
     byte[]? CompanyLogo = null,
-    SnapshotServers? Servers = null)
+    SnapshotServers? Servers = null,
+    SnapshotLogin? Login = null)
 {
     /// <summary>الشعار ينتقل مع كل نسخة عمل، فيبقى صغيرًا.</summary>
     public const int MaxLogoBytes = 200 * 1024;

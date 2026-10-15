@@ -438,7 +438,8 @@ public partial class CloudSyncService
         var logo = company?.Logo is { Length: > 0 and <= RepSnapshot.MaxLogoBytes } l ? l : null;
         return new RepSnapshot(rep.Id, rep.FullName, DateTime.UtcNow, settings.AllowCreditOverLimit, settings.CashAlertDays, wallet,
                                products, snapCustomers, agentPrices, stock, posted,
-                               string.IsNullOrWhiteSpace(company?.NameAr) ? null : company.NameAr.Trim(), logo, servers);
+                               string.IsNullOrWhiteSpace(company?.NameAr) ? null : company.NameAr.Trim(), logo, servers,
+                               rep.RepLoginName is { } ln && rep.RepLoginSalt is { } ls && rep.RepLoginHash is { } lh ? new SnapshotLogin(ln, ls, lh) : null);
     }
 
     // ============================ الاتصال ============================

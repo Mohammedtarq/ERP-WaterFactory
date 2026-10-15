@@ -151,6 +151,39 @@ public class RepDevicesSectionViewModel : SectionViewModel
         ToggleCommand = new AsyncRelayCommand(ToggleAsync);
         DeleteCommand = new AsyncRelayCommand(DeleteAsync);
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
+        SaveLoginCommand = new AsyncRelayCommand(SaveLoginAsync);
+        ClearLoginCommand = new AsyncRelayCommand(ClearLoginAsync);
+    }
+
+    private string _loginName = "";
+    private string _loginPassword = "";
+    /// <summary>اسم دخول التطبيق وكلمة مروره للمندوب المختار: من حرف إلى 4 حروف أو أرقام بلا تعقيد.</summary>
+    public string LoginName { get => _loginName; set => SetProperty(ref _loginName, value); }
+    public string LoginPassword { get => _loginPassword; set => SetProperty(ref _loginPassword, value); }
+    public AsyncRelayCommand SaveLoginCommand { get; }
+    public AsyncRelayCommand ClearLoginCommand { get; }
+
+    private async Task SaveLoginAsync()
+    {
+        if (!Require(CanEdit, "ضبط دخول التطبيق")) return;
+        if (Selected is not { RepEmployeeId: > 0 } row) { Dialogs.Error("اختر المندوب (جهازه) من الجدول"); return; }
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new RepAppService(db).SetLoginAsync(row.RepEmployeeId, LoginName, LoginPassword, Session.UserId),
+                                    $"ضُبط دخول {row.RepName}: يصل الهاتف مع المزامنة التالية"))
+        {
+            LoginPassword = "";
+            await LoadAsync();
+        }
+    }
+
+    private async Task ClearLoginAsync()
+    {
+        if (!Require(CanEdit, "إلغاء دخول التطبيق")) return;
+        if (Selected is not { RepEmployeeId: > 0 } row) { Dialogs.Error("اختر المندوب (جهازه) من الجدول"); return; }
+        if (!Dialogs.Confirm($"إلغاء اسم الدخول وكلمة المرور للمندوب {row.RepName}؟ يفتح تطبيقه بلا كلمة مرور بعد المزامنة التالية.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new RepAppService(db).ClearLoginAsync(row.RepEmployeeId, Session.UserId), $"أُلغي دخول {row.RepName}"))
+            await LoadAsync();
     }
 
     public ObservableCollection<RepDeviceRow> Devices { get; } = new();
@@ -165,7 +198,7 @@ public class RepDevicesSectionViewModel : SectionViewModel
     public byte[]? LinkQr { get => _linkQr; private set { if (SetProperty(ref _linkQr, value)) OnPropertyChanged(nameof(HasLinkQr)); } }
     public bool HasLinkQr => LinkQr is not null;
     public string? LinkHint { get => _linkHint; private set => SetProperty(ref _linkHint, value); }
-    public RepDeviceRow? Selected { get => _selected; set => SetProperty(ref _selected, value); }
+    public RepDeviceRow? Selected { get => _selected; set { if (SetProperty(ref _selected, value)) LoginName = value?.LoginName ?? ""; } }
     public bool AllowOverLimit { get => _allowOverLimit; set => SetProperty(ref _allowOverLimit, value); }
     public int CashAlertDays { get => _cashAlertDays; set => SetProperty(ref _cashAlertDays, value); }
     public AsyncRelayCommand RegisterCommand { get; }

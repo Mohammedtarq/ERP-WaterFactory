@@ -148,4 +148,35 @@ public class RepAppTests
         Assert.NotNull(card.LastSeenAt);
         Assert.Equal(0, card.PendingRequests);
     }
+
+    /// <summary>دخول التطبيق: حرف إلى 4 خانات، فريد، مجزّأ، ويصل الهاتف في نسخة العمل.</summary>
+    [Fact]
+    public async Task App_login_is_validated_unique_hashed_and_travels_in_the_snapshot()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var a = new Employee { FullName = "مندوب دخول 1", IsSalesRep = true, BaseSalary = 1 };
+        var b = new Employee { FullName = "مندوب دخول 2", IsSalesRep = true, BaseSalary = 1 };
+        db.AddRange(a, b);
+        await db.SaveChangesAsync();
+        var svc = new RepAppService(db);
+
+        Assert.False((await svc.SetLoginAsync(a.Id, "toolong", "12", _f.AdminId)).Success);      // أطول من 4
+        Assert.False((await svc.SetLoginAsync(a.Id, "ab", "a b", _f.AdminId)).Success);          // فراغ
+        Assert.True((await svc.SetLoginAsync(a.Id, "AB", "12", _f.AdminId)).Success);
+        Assert.False((await svc.SetLoginAsync(b.Id, "ab", "34", _f.AdminId)).Success);           // الاسم لمندوب آخر
+        Assert.True((await svc.SetLoginAsync(a.Id, "ab", "99", _f.AdminId)).Success);            // تعديل مندوبه نفسه
+
+        var stored = await db.Employees.AsNoTracking().FirstAsync(e => e.Id == a.Id);
+        Assert.Equal("ab", stored.RepLoginName);
+        Assert.DoesNotContain("99", stored.RepLoginHash);
+
+        var snap = await new CloudSyncService(db).BuildSnapshotAsync(a.Id);
+        var login = Assert.IsType<SnapshotLogin>(snap!.Login);
+        Assert.True(RepLogin.Verify(login, "AB", "99"));
+        Assert.False(RepLogin.Verify(login, "ab", "12"));
+        Assert.Null((await new CloudSyncService(db).BuildSnapshotAsync(b.Id))!.Login);
+
+        Assert.True((await svc.ClearLoginAsync(a.Id, _f.AdminId)).Success);
+        Assert.Null((await new CloudSyncService(db).BuildSnapshotAsync(a.Id))!.Login);
+    }
 }
