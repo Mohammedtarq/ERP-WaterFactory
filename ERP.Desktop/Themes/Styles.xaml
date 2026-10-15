@@ -305,6 +305,18 @@
         </Setter>
     </Style>
 
+    <!-- التبويبات الداخلية داخل الشاشات (الأرصدة، التقارير والمستندات...) بنفس شكل تبويبات الوحدة بدل مربعات Windows الرمادية -->
+    <Style TargetType="TabItem" BasedOn="{StaticResource ModuleTabItem}">
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="#334155"/>
+    </Style>
+    <Style TargetType="TabControl">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="#E2E8F0"/>
+        <Setter Property="BorderThickness" Value="0,1,0,0"/>
+        <Setter Property="Padding" Value="0,8,0,0"/>
+    </Style>
+
     <!-- رأس تبويب: أيقونة ملوّنة داخل دائرة فاتحة + العنوان (يعمل لأي كائن فيه Title/Glyph/Color) -->
     <DataTemplate x:Key="TabHeaderTemplate">
         <StackPanel Orientation="Horizontal">

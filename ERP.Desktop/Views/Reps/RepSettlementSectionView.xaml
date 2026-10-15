@@ -41,12 +41,13 @@
                     <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,10,0,0">
                         <StackPanel>
                             <TextBlock Text="1) المرتجع" FontWeight="SemiBold"/>
-                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}" Margin="0,4,0,0"/>
+                            <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                <ComboBox ItemsSource="{Binding LevelOptions}" SelectedItem="{Binding LineLevel}" DisplayMemberPath="LevelName" Width="110"/>
-                                <TextBox Text="{Binding LineQuantity}" Width="70" Margin="6,0" FlowDirection="LeftToRight" ToolTip="الكمية"/>
-                                <CheckBox Content="تالف ميداني" IsChecked="{Binding LineDamaged}" VerticalAlignment="Center" Margin="6,0"/>
-                                <Button Content="إضافة" Style="{StaticResource SecondaryButton}" Command="{Binding AddReturnCommand}"/>
+                                <StackPanel><TextBlock Text="العبوة" Style="{StaticResource FieldLabel}"/><ComboBox ItemsSource="{Binding LevelOptions}" SelectedItem="{Binding LineLevel}" DisplayMemberPath="LevelName" Width="110"/></StackPanel>
+                                <StackPanel Margin="6,0"><TextBlock Text="الكمية" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding LineQuantity}" Width="70" FlowDirection="LeftToRight"/></StackPanel>
+                                <CheckBox Content="تالف ميداني" IsChecked="{Binding LineDamaged}" VerticalAlignment="Bottom" Margin="6,0,6,6"/>
+                                <Button Content="إضافة" Style="{StaticResource SecondaryButton}" Command="{Binding AddReturnCommand}" VerticalAlignment="Bottom"/>
                             </StackPanel>
                             <ItemsControl ItemsSource="{Binding Returns}" Margin="0,6,0,0">
                                 <ItemsControl.ItemTemplate>
@@ -69,15 +70,17 @@
                     <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,8,0,0">
                         <StackPanel>
                             <TextBlock Text="2) مجاني المندوب (لمن ولماذا)" FontWeight="SemiBold"/>
-                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding FreeItem}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}" Margin="0,4,0,0"/>
+                            <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding FreeItem}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                <ComboBox ItemsSource="{Binding FreeLevelOptions}" SelectedItem="{Binding FreeLevel}" DisplayMemberPath="LevelName" Width="110"/>
-                                <TextBox Text="{Binding FreeQuantity}" Width="70" Margin="6,0" FlowDirection="LeftToRight" ToolTip="الكمية"/>
-                                <ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding FreeCustomer}" DisplayMemberPath="Name" Width="200" ToolTip="العميل (اختياري)"/>
+                                <StackPanel><TextBlock Text="العبوة" Style="{StaticResource FieldLabel}"/><ComboBox ItemsSource="{Binding FreeLevelOptions}" SelectedItem="{Binding FreeLevel}" DisplayMemberPath="LevelName" Width="110"/></StackPanel>
+                                <StackPanel Margin="6,0"><TextBlock Text="الكمية" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding FreeQuantity}" Width="70" FlowDirection="LeftToRight"/></StackPanel>
+                                <StackPanel><TextBlock Text="العميل (اختياري)" Style="{StaticResource FieldLabel}"/><ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding FreeCustomer}" DisplayMemberPath="Name" Width="200"/></StackPanel>
                             </StackPanel>
-                            <DockPanel Margin="0,6,0,0">
+                            <TextBlock Text="السبب (هدية افتتاح، تعويض تالف، عينة...)" Style="{StaticResource FieldLabel}"/>
+                            <DockPanel>
                                 <Button DockPanel.Dock="Left" Content="إضافة" Style="{StaticResource SecondaryButton}" Command="{Binding AddFreeCommand}" Margin="6,0,0,0"/>
-                                <TextBox Text="{Binding FreeReason}" ToolTip="السبب: هدية افتتاح، تعويض تالف، عينة..."/>
+                                <TextBox Text="{Binding FreeReason}"/>
                             </DockPanel>
                             <ItemsControl ItemsSource="{Binding FreeGoods}" Margin="0,6,0,0">
                                 <ItemsControl.ItemTemplate>
@@ -102,10 +105,10 @@
                         <StackPanel>
                             <TextBlock Text="3) المصاريف الميدانية" FontWeight="SemiBold"/>
                             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                <TextBox Text="{Binding ExpenseAmount}" Width="90" FlowDirection="LeftToRight" ToolTip="المبلغ"/>
-                                <TextBox Text="{Binding ExpenseDescription}" Width="150" Margin="6,0" ToolTip="الوصف: وقود، تصليح..."/>
-                                <ComboBox ItemsSource="{Binding Vehicles}" SelectedItem="{Binding ExpenseVehicle}" DisplayMemberPath="VehicleName" Width="120" ToolTip="السيارة"/>
-                                <Button Content="إضافة" Style="{StaticResource SecondaryButton}" Command="{Binding AddExpenseCommand}" Margin="6,0,0,0"/>
+                                <StackPanel><TextBlock Text="المبلغ" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding ExpenseAmount}" Width="90" FlowDirection="LeftToRight"/></StackPanel>
+                                <StackPanel Margin="6,0"><TextBlock Text="الوصف (وقود، تصليح...)" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding ExpenseDescription}" Width="150"/></StackPanel>
+                                <StackPanel><TextBlock Text="السيارة" Style="{StaticResource FieldLabel}"/><ComboBox ItemsSource="{Binding Vehicles}" SelectedItem="{Binding ExpenseVehicle}" DisplayMemberPath="VehicleName" Width="120"/></StackPanel>
+                                <Button Content="إضافة" Style="{StaticResource SecondaryButton}" Command="{Binding AddExpenseCommand}" Margin="6,0,0,0" VerticalAlignment="Bottom"/>
                             </StackPanel>
                             <ItemsControl ItemsSource="{Binding Expenses}" Margin="0,6,0,0">
                                 <ItemsControl.ItemTemplate>
