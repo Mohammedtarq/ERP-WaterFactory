@@ -18,24 +18,19 @@
             </DockPanel>
             <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="14,10" Margin="0,10,0,0">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding TotalQuantity, StringFormat='إجمالي الكمية: {0:N0} قطعة'}" FontWeight="SemiBold" Margin="0,0,30,0"/>
+                    <TextBlock Text="{Binding ItemsCountText}" FontWeight="SemiBold" Margin="0,0,30,0"/>
                     <TextBlock Text="{Binding TotalValue, StringFormat='القيمة بسعر البيع: {0:N0} د.ع'}" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}"/>
                 </StackPanel>
             </Border>
+            <!-- كل المخازن معًا (تام ومواد أولية): الاسم كاملًا في كل صف، والكمية بوحدة الصنف -->
             <DataGrid x:Name="StockGrid" ItemsSource="{Binding Rows}">
-                <DataGrid.GroupStyle>
-                    <StaticResource ResourceKey="ItemGroupStyle"/>
-                </DataGrid.GroupStyle>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="العبوة" Binding="{Binding Pack}" Width="90"/>
-                    <DataGridTextColumn Header="المحتوى" Binding="{Binding Content}" Width="100"/>
-                    <DataGridTextColumn Header="المتغير" Binding="{Binding Variant}" Width="*"/>
+                    <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="100"/>
+                    <DataGridTextColumn Header="الصنف" Binding="{Binding DisplayName}" Width="*" MinWidth="220" FontWeight="SemiBold"/>
                     <DataGridTextColumn Header="المخزن" Binding="{Binding WarehouseName}" Width="150"/>
                     <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="120"/>
                     <DataGridTextColumn Header="الصلاحية" Binding="{Binding ExpiryDate, StringFormat=yyyy/MM/dd}" Width="100"/>
-                    <DataGridTextColumn Header="الكمية بالعبوات" Binding="{Binding Breakdown}" Width="150" FontWeight="SemiBold"/>
-                    <DataGridTextColumn Header="بالقطعة" Binding="{Binding QuantityBaseUnits, StringFormat=N0}" Width="90"/>
-                    <DataGridTextColumn Header="سعر القطعة" Binding="{Binding UnitPrice, StringFormat=N0}" Width="90"/>
+                    <DataGridTextColumn Header="الكمية" Binding="{Binding Breakdown}" Width="160" FontWeight="SemiBold"/>
                     <DataGridTextColumn Header="القيمة" Binding="{Binding Value, StringFormat=N0}" Width="120"/>
                 </DataGrid.Columns>
             </DataGrid>

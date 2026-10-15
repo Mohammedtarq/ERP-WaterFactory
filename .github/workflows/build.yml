@@ -93,7 +93,7 @@ jobs:
         run: |
           if (Test-Path docs/ci-screens) { Remove-Item docs/ci-screens -Recurse -Force }
           New-Item -ItemType Directory -Force docs/ci-screens | Out-Null
-          Get-ChildItem ui-screenshots -Directory | Where-Object { $_.Name -match '^\d\d-' } | ForEach-Object { Copy-Item $_.FullName docs/ci-screens/ -Recurse -Force }
+          Get-ChildItem ui-screenshots -Directory | Where-Object { $_.Name -match '^\d\d-|^tutorial|^print' } | ForEach-Object { Copy-Item $_.FullName docs/ci-screens/ -Recurse -Force }
           Copy-Item ui-screenshots/*.png docs/ci-screens/ -Force -ErrorAction SilentlyContinue
           Copy-Item ui-screenshots/binding-trace.txt, ui-screenshots/dialogs.txt docs/ci-screens/ -Force -ErrorAction SilentlyContinue
           git config user.name "github-actions[bot]"

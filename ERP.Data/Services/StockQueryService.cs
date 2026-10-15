@@ -21,6 +21,9 @@ public class CurrentStockRow
     public string Pack { get; set; } = "";
     public string Content { get; set; } = "";
     public string Variant { get; set; } = "";
+    /// <summary>الاسم المعروض: الموحد للمصنَّع، والكامل للمادة الأولية.</summary>
+    public string DisplayName { get; set; } = "";
+    public bool IsFinished { get; set; }
     /// <summary>رأس المجموعة «الصنف · الرمز».</summary>
     public string Group => $"{ItemName} · {ItemCode}";
 }
@@ -84,7 +87,14 @@ public class StockQueryService
             .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
         foreach (var r in rows) r.Breakdown = WarehouseDocumentService.Breakdown(r.QuantityBaseUnits, levels.GetValueOrDefault(r.ItemId));
         var names = await ProductNames.LoadAsync(_db, itemIds);
-        foreach (var r in rows) (r.Pack, r.Content, r.Variant) = names.Parts(r.ItemId, r.RecipeId);
-        return rows.OrderBy(r => r.ItemName).ThenBy(r => r.WarehouseName).ThenBy(r => r.Variant).ThenBy(r => r.ExpiryDate).ToList();
+        var finished = await _db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, i => i.SourcingMethod != ERP.Data.ProjectDb.Entities.SourcingMethod.Purchased);
+        foreach (var r in rows)
+        {
+            (r.Pack, r.Content, r.Variant) = names.Parts(r.ItemId, r.RecipeId);
+            r.IsFinished = finished.GetValueOrDefault(r.ItemId);
+            r.DisplayName = r.IsFinished ? names.Name(r.ItemId, r.RecipeId) : r.ItemName;
+        }
+        return rows.OrderBy(r => r.IsFinished ? 0 : 1).ThenBy(r => r.DisplayName).ThenBy(r => r.WarehouseName).ThenBy(r => r.ExpiryDate).ToList();
     }
 }

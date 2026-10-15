@@ -243,6 +243,8 @@ public class RenderTests
         var install = await new ProvisioningService().InstallAsync(new InstallRequest(
             controlCs, "مصنع مياه البصرة", $"ERP_UiPrj_{suffix}", "المدير العام", "admin", "Admin@123", DemoData: true));
         Assert.True(install.Success, install.ErrorMessage);
+        // يوم تجربة بشكل بيانات المعمل: ألوان السدادات، ليبل الزبائن، أسماء خاصة، تالف مختلط، مستندات متعددة الأسطر
+        await TrialDayData.SeedAsync(install.ProjectConnectionString);
 
         ClearCollected();
         var dialogs = new NullDialogs();
@@ -274,6 +276,8 @@ public class RenderTests
             var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1440, Height = 900,
                                         Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual, WindowState = WindowState.Normal };
             main.Show();
+            // شاشة خادم CI صغيرة (≈1024 بكسل) فتُقصّ النافذة؛ نثبّت المحتوى على 1600×900 قريبًا من شاشة المستخدم الفعلية
+            if (main.Content is FrameworkElement root) { root.Width = 1600; root.Height = 900; }
             var n = 3;
             foreach (var item in shell.NavItems)
             {

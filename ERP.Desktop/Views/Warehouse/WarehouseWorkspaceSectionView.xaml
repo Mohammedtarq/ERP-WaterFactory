@@ -32,7 +32,7 @@
                 <StackPanel><TextBlock Text="عدد الأصناف" Style="{StaticResource Muted}"/><TextBlock Text="{Binding ItemsCount}" FontSize="20" FontWeight="Bold"/></StackPanel>
             </Border>
             <Border Grid.Column="2" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,8,0">
-                <StackPanel><TextBlock Text="إجمالي الرصيد" Style="{StaticResource Muted}"/><TextBlock Text="{Binding TotalText}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" ToolTip="{Binding TotalPieces, StringFormat='{}{0:N0} قطعة'}"/></StackPanel>
+                <StackPanel><TextBlock Text="{Binding TotalLabel}" Style="{StaticResource Muted}"/><TextBlock Text="{Binding TotalText}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" ToolTip="{Binding TotalPieces, StringFormat='{}{0:N0} قطعة'}"/></StackPanel>
             </Border>
             <Border Grid.Column="3" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,8,0">
                 <StackPanel><TextBlock Text="وارد اليوم" Style="{StaticResource Muted}"/><TextBlock Text="{Binding TodayInText}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" Foreground="{StaticResource SuccessBrush}"/></StackPanel>
@@ -197,21 +197,48 @@
                             </StackPanel>
                             <TextBlock Text="رصيد هذا المخزن وحده لكل صنف وتشغيلة" Style="{StaticResource SectionTitle}" Margin="0"/>
                         </DockPanel>
-                        <DataGrid x:Name="StockGrid" ItemsSource="{Binding VisibleBalances}" IsReadOnly="True">
+                        <Grid>
+                        <!-- منتج تام فقط: الاسم الموحد بأعمدة منفصلة تحت رأس الصنف -->
+                        <DataGrid x:Name="StockGrid" ItemsSource="{Binding VisibleBalances}" IsReadOnly="True"
+                                  Visibility="{Binding PartsLayout, Converter={StaticResource BoolToVisibility}}">
                             <DataGrid.GroupStyle>
-                    <StaticResource ResourceKey="ItemGroupStyle"/>
-                </DataGrid.GroupStyle>
+                                <StaticResource ResourceKey="ItemGroupStyle"/>
+                            </DataGrid.GroupStyle>
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="العبوة" Binding="{Binding Pack}" Width="90"/>
                                 <DataGridTextColumn Header="المحتوى" Binding="{Binding Content}" Width="100"/>
                                 <DataGridTextColumn Header="المتغير" Binding="{Binding VariantName}" Width="*" MinWidth="120"/>
                                 <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="130"/>
                                 <DataGridTextColumn Header="الصلاحية" Binding="{Binding ExpiryDate, StringFormat=yyyy/MM/dd}" Width="100"/>
-                                <DataGridTextColumn Header="الرصيد" Binding="{Binding Breakdown}" Width="150" FontWeight="SemiBold"/>
-                                <DataGridTextColumn Header="بالقطعة" Binding="{Binding Quantity, StringFormat=N0}" Width="90"/>
+                                <DataGridTextColumn Header="الرصيد" Binding="{Binding Breakdown}" Width="170" FontWeight="SemiBold"/>
                                 <DataGridCheckBoxColumn Header="عند الحد" Binding="{Binding BelowAlert, Mode=OneWay}" Width="80"/>
                             </DataGrid.Columns>
                         </DataGrid>
+                        <!-- مواد أولية أو مختلط (التالف): اسم الصنف كاملًا في كل صف، بلا أعمدة فارغة -->
+                        <DataGrid x:Name="NamedStockGrid" ItemsSource="{Binding VisibleBalances}" IsReadOnly="True"
+                                  Visibility="{Binding NameLayout, Converter={StaticResource BoolToVisibility}}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="110"/>
+                                <DataGridTemplateColumn Header="الصنف" Width="*" MinWidth="220">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Border CornerRadius="5" Padding="6,1" Margin="0,0,6,0" Background="#EEF4FA"
+                                                        Visibility="{Binding DataContext.MixedLayout, RelativeSource={RelativeSource AncestorType=DataGrid}, Converter={StaticResource BoolToVisibility}}">
+                                                    <TextBlock Text="{Binding KindText}" FontSize="11" Foreground="#1B4F7A"/>
+                                                </Border>
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="130"/>
+                                <DataGridTextColumn Header="الصلاحية" Binding="{Binding ExpiryDate, StringFormat=yyyy/MM/dd}" Width="100"/>
+                                <DataGridTextColumn Header="الرصيد" Binding="{Binding Breakdown}" Width="170" FontWeight="SemiBold"/>
+                                <DataGridCheckBoxColumn Header="عند الحد" Binding="{Binding BelowAlert, Mode=OneWay}" Width="80"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        </Grid>
                     </DockPanel>
                 </Border>
             </TabItem>
@@ -276,19 +303,39 @@
                                             <Button Content="كل الأصناف" Style="{StaticResource SecondaryButton}" Command="{Binding AllItemsLedgerCommand}" Margin="8,0,0,0"/>
                                         </StackPanel>
                                     </DockPanel>
-                                    <DataGrid ItemsSource="{Binding Ledger}" IsReadOnly="True">
+<Grid>
+                                    <!-- منتج تام فقط: العبوة | المحتوى | المتغير -->
+                                    <DataGrid ItemsSource="{Binding Ledger}" IsReadOnly="True"
+                                              Visibility="{Binding LedgerPartsLayout, Converter={StaticResource BoolToVisibility}}">
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn Header="التاريخ" Binding="{Binding Date, StringFormat='yyyy/MM/dd HH:mm'}" Width="125"/>
-                                            <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
-                                            <DataGridTextColumn Header="الحركة" Binding="{Binding TypeLabel}" Width="150"/>
-                                            <DataGridTextColumn Header="المستند" Binding="{Binding Reference}" Width="140"/>
+                                            <DataGridTextColumn Header="التاريخ" Binding="{Binding Date, StringFormat='yyyy/MM/dd HH:mm'}" Width="135"/>
+                                            <DataGridTextColumn Header="العبوة" Binding="{Binding Pack}" Width="75"/>
+                                            <DataGridTextColumn Header="المحتوى" Binding="{Binding Content}" Width="80"/>
+                                            <DataGridTextColumn Header="المتغير" Binding="{Binding VariantName}" Width="*" MinWidth="110"/>
+                                            <DataGridTextColumn Header="الحركة" Binding="{Binding TypeLabel}" Width="130"/>
+                                            <DataGridTextColumn Header="المستند" Binding="{Binding Reference}" Width="150"/>
+                                            <DataGridTextColumn Header="الجهة" Binding="{Binding Party}" Width="130"/>
+                                            <DataGridTextColumn Header="وارد" Binding="{Binding InText}" Width="100"/>
+                                            <DataGridTextColumn Header="صادر" Binding="{Binding OutText}" Width="100"/>
+                                            <DataGridTextColumn Header="الرصيد" Binding="{Binding BalanceText}" Width="110" FontWeight="SemiBold"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                    <!-- مواد أولية أو مختلط: اسم الصنف كاملًا -->
+                                    <DataGrid ItemsSource="{Binding Ledger}" IsReadOnly="True"
+                                              Visibility="{Binding LedgerNameLayout, Converter={StaticResource BoolToVisibility}}">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="التاريخ" Binding="{Binding Date, StringFormat='yyyy/MM/dd HH:mm'}" Width="135"/>
+                                            <DataGridTextColumn Header="الصنف" Binding="{Binding DisplayName}" Width="*" MinWidth="170" FontWeight="SemiBold"/>
+                                            <DataGridTextColumn Header="الحركة" Binding="{Binding TypeLabel}" Width="130"/>
+                                            <DataGridTextColumn Header="المستند" Binding="{Binding Reference}" Width="150"/>
                                             <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="100"/>
                                             <DataGridTextColumn Header="الجهة" Binding="{Binding Party}" Width="120"/>
                                             <DataGridTextColumn Header="وارد" Binding="{Binding InText}" Width="110"/>
                                             <DataGridTextColumn Header="صادر" Binding="{Binding OutText}" Width="110"/>
-                                            <DataGridTextColumn Header="الرصيد" Binding="{Binding BalanceText}" Width="120"/>
+                                            <DataGridTextColumn Header="الرصيد" Binding="{Binding BalanceText}" Width="120" FontWeight="SemiBold"/>
                                         </DataGrid.Columns>
                                     </DataGrid>
+                                    </Grid>
                                 </DockPanel>
                             </Border>
                         </TabItem>
@@ -299,7 +346,21 @@
                                         <TextBlock Text="النوع:" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <ComboBox ItemsSource="{Binding DocumentFilters}" SelectedItem="{Binding DocumentFilter}" DisplayMemberPath="Label" Width="200"/>
                                     </StackPanel>
-                                    <DataGrid ItemsSource="{Binding Documents}" IsReadOnly="True">
+                                    <DataGrid ItemsSource="{Binding Documents}" IsReadOnly="True" RowDetailsVisibilityMode="VisibleWhenSelected">
+                                        <DataGrid.RowDetailsTemplate>
+                                            <DataTemplate>
+                                                <ItemsControl ItemsSource="{Binding LineSummaries}" Margin="40,2,12,8" Visibility="{Binding HasManyLines, Converter={StaticResource BoolToVisibility}}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <DockPanel Margin="0,2">
+                                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Quantity}" FontWeight="SemiBold" Width="150"/>
+                                                                <TextBlock Text="{Binding Name, StringFormat='↳ {0}'}" Foreground="#33597D"/>
+                                                            </DockPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </DataTemplate>
+                                        </DataGrid.RowDetailsTemplate>
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="رقم المستند" Binding="{Binding DocumentNumber}" Width="140"/>
                                             <DataGridTextColumn Header="النوع" Binding="{Binding DocumentType, Converter={StaticResource EnumArabicConverter}}" Width="150"/>
@@ -307,7 +368,7 @@
                                             <DataGridTextColumn Header="مخزن المناقلة" Binding="{Binding CounterWarehouse}" Width="140"/>
                                             <DataGridTextColumn Header="الجهة" Binding="{Binding PartyName}" Width="*"/>
                                             <DataGridTextColumn Header="السطور" Binding="{Binding LinesCount}" Width="60"/>
-                                            <DataGridTextColumn Header="الكمية" Binding="{Binding TotalText}" Width="140"/>
+                                            <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="2*" MinWidth="220"/>
                                             <DataGridTextColumn Header="المستخدم" Binding="{Binding CreatedBy}" Width="100"/>
                                             <DataGridTemplateColumn Header="" Width="46">
                                                 <DataGridTemplateColumn.CellTemplate>

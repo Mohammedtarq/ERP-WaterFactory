@@ -48,10 +48,16 @@ public class StockLedgerRow
     public decimal In { get; init; }
     public decimal Out { get; init; }
     public decimal Balance { get; set; }
-    // بعبوات الصنف؛ الرصيد التراكمي بالعبوات لكشف صنف واحد فقط (أصناف مختلفة لا تُجمع بعبوة واحدة)
+    // بعبوات الصنف؛ الرصيد التراكمي لكل (صنف، متغير) على حدة — أصناف مختلفة لا تُجمع في رقم واحد
     public string InText { get; set; } = "";
     public string OutText { get; set; } = "";
     public string BalanceText { get; set; } = "";
+    /// <summary>الاسم المعروض: الاسم الموحد للمنتج المصنَّع («شرنك 20×330 زواج سعيد») أو اسم المادة الكامل.</summary>
+    public string DisplayName { get; set; } = "";
+    public string Pack { get; set; } = "";
+    public string Content { get; set; } = "";
+    public string VariantName { get; set; } = "";
+    public bool IsFinished { get; set; }
 }
 
 public class StockBalanceRow
@@ -71,6 +77,11 @@ public class StockBalanceRow
     public string Pack { get; set; } = "";
     public string Content { get; set; } = "";
     public string VariantName { get; set; } = "";
+    /// <summary>منتج مصنَّع (له الاسم الموحد) أم مادة أولية مشتراة (اسمها الكامل).</summary>
+    public bool IsFinished { get; set; }
+    /// <summary>الاسم المعروض في كل مخزن: الاسم الموحد للمصنَّع («شرنك 20×330 زواج سعيد») أو اسم المادة الكامل («سدادة — أبيض»).</summary>
+    public string DisplayName { get; set; } = "";
+    public string KindText => IsFinished ? "تام" : "أولية";
     /// <summary>رأس المجموعة «الصنف · الرمز».</summary>
     public string Group => $"{ItemName} · {ItemCode}";
 }
@@ -92,7 +103,17 @@ public class StockDocumentRow
     /// <summary>التالف الميداني بعبوات الأصناف (فارغ إن لم يوجد).</summary>
     public string DamagedText { get; set; } = "";
     public string CreatedBy { get; init; } = "";
+    /// <summary>
+    /// الكمية بالاسم في عمود القائمة: سطر واحد ← «10 شرنك 20×330 الرحمة» أو «1,200 سدادة — ذهبي»؛
+    /// عدة أسطر ← «3 أسطر · 16 شرنك + 4 كارتون» ويُفتح الصف لرؤية كل سطر باسمه.
+    /// </summary>
+    public string QuantityText { get; set; } = "";
+    public List<DocumentLineSummary> LineSummaries { get; set; } = new();
+    public bool HasManyLines => LineSummaries.Count > 1;
 }
+
+/// <summary>سطر مختصر في المستند: الاسم الموحد/الكامل والكمية بوحدته.</summary>
+public record DocumentLineSummary(string Name, string Quantity, bool IsDamaged);
 
 /// <summary>
 /// واجهة كل مخزن: مستندات الإدخال والإخراج والمناقلة والتالف والمسحوب المجاني (كل مستند ذري: كله أو لا شيء،
@@ -208,10 +229,14 @@ public class WarehouseDocumentService
                     var batch = await _db.ItemBatches.FirstOrDefaultAsync(b => b.ItemId == l.ItemId && b.BatchNumber == number);
                     if (batch is null)
                     {
-                        batch = new ItemBatch { ItemId = l.ItemId, BatchNumber = number, ExpiryDate = l.NewBatchExpiry?.Date, ManufactureDate = r.Date.Date };
+                        // تشغيلة جديدة لطلب خاص تحمل متغيرها، وإلا ضاع الاسم الخاص وظهرت كالأساسي
+                        batch = new ItemBatch { ItemId = l.ItemId, BatchNumber = number, ExpiryDate = l.NewBatchExpiry?.Date, ManufactureDate = r.Date.Date,
+                                                CustomRecipeId = l.CustomRecipeId };
                         _db.ItemBatches.Add(batch);
                         await _db.SaveChangesAsync();
                     }
+                    else if (batch.CustomRecipeId != l.CustomRecipeId)
+                        return (FinanceOperationResult.Fail($"التشغيلة {number} موجودة لمتغير آخر — اختر رقم تشغيلة جديدًا"), null);
                     batchId = batch.Id;
                 }
                 Add(l.ItemId, r.WarehouseId, batchId, pieces, StockTransactionType.Receipt);
@@ -331,46 +356,76 @@ public class WarehouseDocumentService
         return result;
     }
 
-    /// <summary>كشف حركة مفصّل بالترتيب الزمني مع رصيد تراكمي (لصنف واحد أو لكل الأصناف).</summary>
+    /// <summary>
+    /// كشف حركة مفصّل بالترتيب الزمني مع رصيد تراكمي لكل (صنف، متغير) على حدة — لصنف واحد أو لكل الأصناف.
+    /// </summary>
     public async Task<List<StockLedgerRow>> GetLedgerAsync(int warehouseId, int? itemId, DateTime from, DateTime to)
     {
         var (f, t) = Range(from, to);
-        var opening = await _db.StockTransactions.Where(x => x.WarehouseId == warehouseId && x.TransactionDate < f && (itemId == null || x.ItemId == itemId))
-            .SumAsync(x => (decimal?)x.QuantityBaseUnits) ?? 0;
+        var openings = (await _db.StockTransactions.Where(x => x.WarehouseId == warehouseId && x.TransactionDate < f && (itemId == null || x.ItemId == itemId))
+            .GroupBy(x => new { x.ItemId, RecipeId = x.Batch != null ? x.Batch.CustomRecipeId : null })
+            .Select(g => new { g.Key.ItemId, g.Key.RecipeId, Qty = g.Sum(x => x.QuantityBaseUnits) }).ToListAsync())
+            .ToDictionary(o => (o.ItemId, o.RecipeId), o => o.Qty);
         var tx = await _db.StockTransactions.AsNoTracking()
             .Where(x => x.WarehouseId == warehouseId && x.TransactionDate >= f && x.TransactionDate < t && (itemId == null || x.ItemId == itemId))
             .OrderBy(x => x.TransactionDate).ThenBy(x => x.Id)
-            .Select(x => new { x.TransactionDate, x.ItemId, x.Item.ItemName, x.TransactionType, x.DamageReason, x.ReferenceTable, x.ReferenceId,
-                               BatchNumber = x.Batch != null ? x.Batch.BatchNumber : null, x.FreeIssueRecipient, x.QuantityBaseUnits })
+            .Select(x => new { x.TransactionDate, x.ItemId, x.Item.ItemName,
+                               x.TransactionType, x.DamageReason, x.ReferenceTable, x.ReferenceId,
+                               BatchNumber = x.Batch != null ? x.Batch.BatchNumber : null, RecipeId = x.Batch != null ? x.Batch.CustomRecipeId : null,
+                               x.FreeIssueRecipient, x.QuantityBaseUnits })
             .ToListAsync();
 
         var refs = await ResolveReferencesAsync(tx.Where(x => x.ReferenceId != null).Select(x => (x.ReferenceTable!, x.ReferenceId!.Value)));
-        var packs = await PackFormatter.LoadAsync(_db, tx.Select(x => x.ItemId).Append(itemId ?? 0));
-        string BalanceText(decimal b) => itemId is int one ? packs.Of(one, b) : "";
+        var ids = tx.Select(x => x.ItemId).Concat(openings.Keys.Select(k => k.ItemId)).Append(itemId ?? 0).Distinct().ToList();
+        var packs = await PackFormatter.LoadAsync(_db, ids);
+        var names = await ProductNames.LoadAsync(_db, ids);
+        var finished = await _db.Items.AsNoTracking().Where(i => ids.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, i => i.SourcingMethod != SourcingMethod.Purchased);
+        var itemNames = await _db.Items.AsNoTracking().Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.ItemName);
+
+        StockLedgerRow Named(StockLedgerRow r, int item, int? recipe, string itemName)
+        {
+            r.IsFinished = finished.GetValueOrDefault(item);
+            if (r.IsFinished)
+            {
+                (r.Pack, r.Content, r.VariantName) = names.Parts(item, recipe);
+                r.DisplayName = names.Name(item, recipe);
+            }
+            else r.DisplayName = itemName;
+            return r;
+        }
+
         var rows = new List<StockLedgerRow>();
-        var balance = opening;
-        if (itemId is not null || tx.Count > 0)
-            rows.Add(new StockLedgerRow { Date = from.Date, ItemId = itemId, ItemName = "", TypeLabel = "رصيد أول المدة", Reference = "", Balance = opening,
-                                          BalanceText = BalanceText(opening) });
+        // رصيد أول المدة: سطر لكل (صنف، متغير) له رصيد سابق — أو سطر واحد بالصفر لكشف صنف واحد بلا رصيد سابق
+        var balances = new Dictionary<(int, int?), decimal>(openings);
+        foreach (var ((item, recipe), qty) in openings.Where(o => o.Value != 0).OrderBy(o => itemNames.GetValueOrDefault(o.Key.ItemId)))
+            rows.Add(Named(new StockLedgerRow { Date = from.Date, ItemId = item, ItemName = itemNames.GetValueOrDefault(item, ""), TypeLabel = "رصيد أول المدة",
+                                                Reference = "", Balance = qty, BalanceText = packs.Of(item, qty) }, item, recipe, itemNames.GetValueOrDefault(item, "")));
+        if (itemId is int only && rows.Count == 0)
+            rows.Add(Named(new StockLedgerRow { Date = from.Date, ItemId = only, ItemName = itemNames.GetValueOrDefault(only, ""), TypeLabel = "رصيد أول المدة",
+                                                Reference = "", Balance = 0, BalanceText = "0" }, only, null, itemNames.GetValueOrDefault(only, "")));
         foreach (var x in tx)
         {
-            balance += x.QuantityBaseUnits;
-            rows.Add(new StockLedgerRow
+            var key = (x.ItemId, x.RecipeId);
+            var balance = balances.GetValueOrDefault(key) + x.QuantityBaseUnits;
+            balances[key] = balance;
+            var source = x.ReferenceId is null ? default : refs.GetValueOrDefault((x.ReferenceTable!, x.ReferenceId.Value));
+            rows.Add(Named(new StockLedgerRow
             {
                 Date = x.TransactionDate.ToLocalTime(), ItemId = x.ItemId, ItemName = x.ItemName,
                 TypeLabel = TypeLabel(x.TransactionType, x.QuantityBaseUnits) + (x.DamageReason is null ? "" : $" ({DamageLabel(x.DamageReason.Value)})"),
-                Reference = x.ReferenceId is null ? "" : refs.GetValueOrDefault((x.ReferenceTable!, x.ReferenceId.Value), $"{x.ReferenceTable} #{x.ReferenceId}"),
-                BatchNumber = x.BatchNumber, Party = x.FreeIssueRecipient,
+                Reference = x.ReferenceId is null ? (x.ReferenceTable == "OpeningBalance" ? "رصيد افتتاحي" : "")
+                          : source.Number ?? $"{x.ReferenceTable} #{x.ReferenceId}",
+                BatchNumber = x.BatchNumber, Party = x.FreeIssueRecipient ?? source.Party,
                 In = x.QuantityBaseUnits > 0 ? x.QuantityBaseUnits : 0, Out = x.QuantityBaseUnits < 0 ? -x.QuantityBaseUnits : 0,
                 InText = x.QuantityBaseUnits > 0 ? packs.Of(x.ItemId, x.QuantityBaseUnits) : "",
                 OutText = x.QuantityBaseUnits < 0 ? packs.Of(x.ItemId, -x.QuantityBaseUnits) : "",
-                Balance = balance, BalanceText = BalanceText(balance)
-            });
+                Balance = balance, BalanceText = packs.Of(x.ItemId, balance)
+            }, x.ItemId, x.RecipeId, x.ItemName));
         }
         return rows;
     }
 
-    /// <summary>الرصيد الحالي لكل صنف وتشغيلة في المخزن، مع التفكيك بوحدات التعبئة.</summary>
     public async Task<List<StockBalanceRow>> GetBalancesAsync(int warehouseId)
     {
         var raw = await _db.StockTransactions.Where(x => x.WarehouseId == warehouseId)
@@ -393,9 +448,11 @@ public class WarehouseDocumentService
             var item = items[r.ItemId];
             var b = r.BatchId is null ? null : batches.GetValueOrDefault(r.BatchId.Value);
             var (pack, content, variant) = names.Parts(r.ItemId, b?.CustomRecipeId);
+            var isFinished = item.SourcingMethod != SourcingMethod.Purchased;
             return new StockBalanceRow
             {
                 Pack = pack, Content = content, VariantName = variant.Length > 0 ? variant : "أساسي",
+                IsFinished = isFinished, DisplayName = isFinished ? names.Name(r.ItemId, b?.CustomRecipeId) : item.ItemName,
                 ItemId = r.ItemId, ItemCode = item.ItemCode, ItemName = item.ItemName, BatchNumber = b?.BatchNumber, ExpiryDate = b?.ExpiryDate,
                 Variant = b?.CustomRecipe?.Name,
                 Quantity = r.Qty, Breakdown = Breakdown(r.Qty, levels.GetValueOrDefault(r.ItemId)),
@@ -406,17 +463,19 @@ public class WarehouseDocumentService
 
     public static string Breakdown(decimal pieces, IReadOnlyList<ItemPackagingLevel>? levelsDesc)
     {
-        if (levelsDesc is null || levelsDesc.Count == 0 || pieces <= 0) return $"{pieces:0.###}";
+        // بفواصل الآلاف دائمًا: «4,449,330 قطعة» لا «4449330 قطعة»
+        static string N(decimal n) => n.ToString("#,0.###", System.Globalization.CultureInfo.InvariantCulture);
+        if (levelsDesc is null || levelsDesc.Count == 0 || pieces <= 0) return N(pieces);
         var parts = new List<string>();
         var rest = pieces;
         foreach (var l in levelsDesc.Where(l => l.EquivalentBaseUnits > 0))
         {
             var n = Math.Floor(rest / l.EquivalentBaseUnits);
             if (n <= 0) continue;
-            parts.Add($"{n:0} {l.LevelName}");
+            parts.Add($"{N(n)} {l.LevelName}");
             rest -= n * l.EquivalentBaseUnits;
         }
-        if (rest > 0) parts.Add($"{rest:0.###}");
+        if (rest > 0) parts.Add(N(rest));
         return string.Join(" + ", parts);
     }
 
@@ -427,15 +486,33 @@ public class WarehouseDocumentService
         if (docs.Count == 0) return docs;
         var ids = docs.Select(d => d.Id).ToList();
         var lines = await _db.StockDocumentLines.AsNoTracking().Where(l => ids.Contains(l.StockDocumentId))
-            .GroupBy(l => new { l.StockDocumentId, l.ItemId, l.IsDamaged })
-            .Select(g => new { g.Key.StockDocumentId, g.Key.ItemId, g.Key.IsDamaged, Qty = g.Sum(l => l.QuantityBaseUnits) }).ToListAsync();
-        var packs = await PackFormatter.LoadAsync(_db, lines.Select(l => l.ItemId));
+            .GroupBy(l => new { l.StockDocumentId, l.ItemId, l.IsDamaged, RecipeId = l.Batch != null ? l.Batch.CustomRecipeId : null })
+            .Select(g => new { g.Key.StockDocumentId, g.Key.ItemId, g.Key.IsDamaged, g.Key.RecipeId, Qty = g.Sum(l => l.QuantityBaseUnits) }).ToListAsync();
+        var itemIds = lines.Select(l => l.ItemId).Distinct().ToList();
+        var packs = await PackFormatter.LoadAsync(_db, itemIds);
+        var names = await ProductNames.LoadAsync(_db, itemIds);
+        var items = await _db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, i => (i.ItemName, Finished: i.SourcingMethod != SourcingMethod.Purchased));
         var byDoc = lines.ToLookup(l => l.StockDocumentId);
         foreach (var d in docs)
         {
-            d.TotalText = packs.Total(byDoc[d.Id].Select(l => (l.ItemId, l.Qty)));
-            var damaged = byDoc[d.Id].Where(l => l.IsDamaged).ToList();
+            var docLines = byDoc[d.Id].ToList();
+            d.TotalText = packs.Total(docLines.Select(l => (l.ItemId, l.Qty)));
+            var damaged = docLines.Where(l => l.IsDamaged).ToList();
             d.DamagedText = damaged.Count == 0 ? "" : packs.Total(damaged.Select(l => (l.ItemId, l.Qty)));
+            d.LineSummaries = docLines.Select(l =>
+            {
+                var item = items.TryGetValue(l.ItemId, out var found) ? found : (ItemName: "؟", Finished: false);
+                // المصنَّع بعبوته الكبرى: «10 شرنك» + الاسم الموحد؛ المادة الأولية: «1,200 قطعة» + اسمها الكامل
+                var name = item.Finished ? names.Name(l.ItemId, l.RecipeId) : item.ItemName;
+                return new DocumentLineSummary(name, packs.Of(l.ItemId, l.Qty), l.IsDamaged);
+            }).ToList();
+            d.QuantityText = d.LineSummaries.Count switch
+            {
+                0 => "",
+                1 => $"{d.LineSummaries[0].Quantity} — {d.LineSummaries[0].Name}",
+                var n => $"▾ {n} أسطر · {d.TotalText}"
+            };
         }
         return docs;
     }
@@ -485,22 +562,28 @@ public class WarehouseDocumentService
             .Include(d => d.Lines).ThenInclude(l => l.Batch)
             .FirstOrDefaultAsync(d => d.Id == id);
 
-    /// <summary>أرقام المستندات المصدر للحركات (فاتورة، مستند مخزني، أمر إنتاج، استلام...).</summary>
-    private async Task<Dictionary<(string, int), string>> ResolveReferencesAsync(IEnumerable<(string table, int id)> refs)
+    /// <summary>أرقام المستندات المصدر للحركات (فاتورة، مستند مخزني، أمر إنتاج، استلام...) والجهة المقابلة فيها.</summary>
+    private async Task<Dictionary<(string, int), (string? Number, string? Party)>> ResolveReferencesAsync(IEnumerable<(string table, int id)> refs)
     {
-        var result = new Dictionary<(string, int), string>();
+        var result = new Dictionary<(string, int), (string? Number, string? Party)>();
         foreach (var g in refs.Distinct().GroupBy(r => r.table))
         {
             var ids = g.Select(r => r.id).ToList();
-            IEnumerable<(int Id, string Number)> found = g.Key switch
+            IEnumerable<(int Id, string Number, string? Party)> found = g.Key switch
             {
-                "StockDocuments" => (await _db.StockDocuments.Where(d => ids.Contains(d.Id)).Select(d => new { d.Id, d.DocumentNumber }).ToListAsync()).Select(x => (x.Id, x.DocumentNumber)),
-                "SalesInvoices" => (await _db.SalesInvoices.Where(d => ids.Contains(d.Id)).Select(d => new { d.Id, d.InvoiceNumber }).ToListAsync()).Select(x => (x.Id, x.InvoiceNumber)),
-                "ProductionOrders" => (await _db.ProductionOrders.Where(d => ids.Contains(d.Id)).Select(d => new { d.Id, d.MONumber }).ToListAsync()).Select(x => (x.Id, x.MONumber)),
-                "GoodsReceipts" => (await _db.GoodsReceipts.Where(d => ids.Contains(d.Id)).Select(d => new { d.Id, d.ReceiptNumber }).ToListAsync()).Select(x => (x.Id, x.ReceiptNumber)),
-                _ => ids.Select(i => (i, $"{g.Key} #{i}"))
+                "StockDocuments" => (await _db.StockDocuments.Where(d => ids.Contains(d.Id))
+                        .Select(d => new { d.Id, d.DocumentNumber, d.PartyName, Counter = d.CounterWarehouse != null ? d.CounterWarehouse.Name : null }).ToListAsync())
+                    .Select(x => (x.Id, x.DocumentNumber, x.PartyName ?? x.Counter)),
+                "SalesInvoices" => (await _db.SalesInvoices.Where(d => ids.Contains(d.Id)).Select(d => new { d.Id, d.InvoiceNumber, d.Customer.Name }).ToListAsync())
+                    .Select(x => (x.Id, x.InvoiceNumber, (string?)x.Name)),
+                "ProductionOrders" => (await _db.ProductionOrders.Where(d => ids.Contains(d.Id)).Select(d => new { d.Id, d.MONumber }).ToListAsync())
+                    .Select(x => (x.Id, x.MONumber, (string?)"الإنتاج")),
+                "GoodsReceipts" => (await _db.GoodsReceipts.Where(d => ids.Contains(d.Id)).Select(d => new { d.Id, d.ReceiptNumber }).ToListAsync())
+                    .Select(x => (x.Id, x.ReceiptNumber, (string?)null)),
+                "LegacyImports" => ids.Select(i => (i, "رصيد افتتاحي (نقل من نظام الرحمة)", (string?)null)),
+                _ => ids.Select(i => (i, $"{g.Key} #{i}", (string?)null))
             };
-            foreach (var (id, number) in found) result[(g.Key, id)] = number;
+            foreach (var (id, number, party) in found) result[(g.Key, id)] = (number, party);
         }
         return result;
     }

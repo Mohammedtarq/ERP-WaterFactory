@@ -359,6 +359,16 @@ public class CurrentStockSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
     public decimal TotalQuantity => Rows.Sum(r => r.QuantityBaseUnits);
     public decimal TotalValue => Rows.Sum(r => r.Value);
+    /// <summary>لا جمع لكميات بوحدات مختلفة: عدد الأصناف بنوعيها.</summary>
+    public string ItemsCountText
+    {
+        get
+        {
+            var finished = Rows.Where(r => r.IsFinished).Select(r => (r.ItemId, r.RecipeId)).Distinct().Count();
+            var raw = Rows.Where(r => !r.IsFinished).Select(r => r.ItemId).Distinct().Count();
+            return $"منتجات تامة: {finished} · مواد أولية: {raw}";
+        }
+    }
 
     public override async Task LoadAsync()
     {
@@ -373,6 +383,7 @@ public class CurrentStockSectionViewModel : SectionViewModel
             foreach (var r in await new StockQueryService(db).GetCurrentStockAsync(SelectedWarehouse?.Id)) Rows.Add(r);
             OnPropertyChanged(nameof(TotalQuantity));
             OnPropertyChanged(nameof(TotalValue));
+            OnPropertyChanged(nameof(ItemsCountText));
         }
         finally
         {

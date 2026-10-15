@@ -336,12 +336,15 @@ public class VouchersSectionViewModel : SectionViewModel
     {
         OnPropertyChanged(nameof(PartyDebtText));
         OnPropertyChanged(nameof(HasPartyDebt));
+        OnPropertyChanged(nameof(PartyOwes));
         OnPropertyChanged(nameof(DebtAfterText));
         OnPropertyChanged(nameof(HasDebtAfter));
     }
 
     /// <summary>دين العميل المختار الحالي (يظهر للعملاء فقط).</summary>
     public bool HasPartyDebt => PartyType.Value == VoucherPartyType.Customer && Party?.Debt is not null;
+    /// <summary>عليه دين فعلًا (يُلوَّن بالأحمر)؛ «لا دين» يظهر بلون محايد.</summary>
+    public bool PartyOwes => HasPartyDebt && Party!.Debt > 0;
     public string PartyDebtText => Party?.Debt is not decimal d ? "" :
         d > 0 ? $"دين {Party.Name} الحالي: {d:N0} د.ع" : $"{Party.Name}: لا دين عليه";
     /// <summary>الدين بعد سند القبض بالمبلغ المكتوب؛ وتحذير إن زاد المبلغ على الدين (لا يمنع الحفظ).</summary>

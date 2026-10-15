@@ -85,14 +85,28 @@
                         <DatePicker SelectedDate="{Binding To}" Width="125"/>
                         <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding LoadDocumentsCommand}" Margin="8,0,0,0"/>
                     </WrapPanel>
-                    <DataGrid ItemsSource="{Binding Documents}" IsReadOnly="True">
+                    <DataGrid ItemsSource="{Binding Documents}" IsReadOnly="True" RowDetailsVisibilityMode="VisibleWhenSelected">
+                        <DataGrid.RowDetailsTemplate>
+                                            <DataTemplate>
+                                                <ItemsControl ItemsSource="{Binding LineSummaries}" Margin="40,2,12,8" Visibility="{Binding HasManyLines, Converter={StaticResource BoolToVisibility}}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <DockPanel Margin="0,2">
+                                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Quantity}" FontWeight="SemiBold" Width="150"/>
+                                                                <TextBlock Text="{Binding Name, StringFormat='↳ {0}'}" Foreground="#33597D"/>
+                                                            </DockPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </DataTemplate>
+                                        </DataGrid.RowDetailsTemplate>
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="الرقم" Binding="{Binding DocumentNumber}" Width="130"/>
                             <DataGridTextColumn Header="النوع" Binding="{Binding DocumentType, Converter={StaticResource EnumArabicConverter}}" Width="120"/>
                             <DataGridTextColumn Header="التاريخ" Binding="{Binding DocumentDate, StringFormat=yyyy/MM/dd}" Width="90"/>
                             <DataGridTextColumn Header="المندوب" Binding="{Binding PartyName}" Width="*"/>
                             <DataGridTextColumn Header="المخزن المقابل" Binding="{Binding CounterWarehouse}" Width="110"/>
-                            <DataGridTextColumn Header="الكمية" Binding="{Binding TotalText}" Width="130"/>
+                            <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="2*" MinWidth="200"/>
                             <DataGridTextColumn Header="تلف ميداني" Binding="{Binding DamagedText}" Width="95"/>
                             <DataGridTemplateColumn Header="" Width="40">
                                 <DataGridTemplateColumn.CellTemplate>

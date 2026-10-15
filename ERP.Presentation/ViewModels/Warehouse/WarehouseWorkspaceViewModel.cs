@@ -128,6 +128,18 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     private string _totalText = "0", _todayInText = "0", _todayOutText = "0";
     /// <summary>إجمالي الرصيد بالعبوات: «6,196 كارتون + 4,380 شرنك».</summary>
     public string TotalText { get => _totalText; private set => SetProperty(ref _totalText, value); }
+    private string _totalLabel = "إجمالي الرصيد";
+    public string TotalLabel { get => _totalLabel; private set => SetProperty(ref _totalLabel, value); }
+    /// <summary>
+    /// أعمدة الأرصدة بحسب ما يحويه المخزن: منتج تام فقط ← العبوة | المحتوى | المتغير؛
+    /// مواد أولية أو مختلط (التالف) ← الرمز | الصنف (الاسم الكامل أو الموحد) بلا أعمدة فارغة.
+    /// </summary>
+    public bool PartsLayout => Balances.Count > 0 && Balances.All(b => b.IsFinished);
+    public bool NameLayout => !PartsLayout;
+    /// <summary>مخزن فيه النوعان معًا: يظهر وسم «تام/أولية» بجانب الاسم.</summary>
+    public bool MixedLayout => Balances.Any(b => b.IsFinished) && Balances.Any(b => !b.IsFinished);
+    public bool LedgerPartsLayout => Ledger.Count > 0 && Ledger.Where(r => r.ItemId is not null && r.DisplayName.Length > 0).All(r => r.IsFinished);
+    public bool LedgerNameLayout => !LedgerPartsLayout;
     public string TodayInText { get => _todayInText; private set => SetProperty(ref _todayInText, value); }
     public string TodayOutText { get => _todayOutText; private set => SetProperty(ref _todayOutText, value); }
     public int LowCount { get => _lowCount; private set => SetProperty(ref _lowCount, value); }
@@ -354,7 +366,15 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         _packs = await PackFormatter.LoadAsync(db);
         FillItems();   // المتوفر بجانب كل صنف في قائمة الاختيار
         TotalPieces = balances.Sum(b => b.Quantity);
-        TotalText = _packs.Total(balances.Select(b => (b.ItemId, b.Quantity)));
+        // لا يُجمع ما اختلفت وحدته: إجمالي العبوات للمنتج التام فقط، والمواد الأولية تُعدّ أصنافًا
+        var finished = balances.Where(b => b.IsFinished).ToList();
+        var rawCount = balances.Where(b => !b.IsFinished).Select(b => b.ItemId).Distinct().Count();
+        TotalLabel = finished.Count > 0 ? "إجمالي المنتج التام" : "إجمالي الرصيد";
+        TotalText = finished.Count > 0 ? _packs.Total(finished.Select(b => (b.ItemId, b.Quantity))) + (rawCount > 0 ? $" + {rawCount} مادة أولية" : "")
+                  : rawCount > 0 ? $"{rawCount} مادة أولية" : "0";
+        OnPropertyChanged(nameof(PartsLayout));
+        OnPropertyChanged(nameof(NameLayout));
+        OnPropertyChanged(nameof(MixedLayout));
         LowCount = balances.Where(b => b.BelowAlert).Select(b => b.ItemId).Distinct().Count();
         if (HasAlerts)
         {
@@ -404,6 +424,8 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         Ledger.Clear();
         foreach (var r in await new WarehouseDocumentService(db).GetLedgerAsync(WarehouseId, LedgerItem?.Id, ReportFrom, ReportTo)) Ledger.Add(r);
+        OnPropertyChanged(nameof(LedgerPartsLayout));
+        OnPropertyChanged(nameof(LedgerNameLayout));
     }
 
     // ============================ إدخال السطور ============================
@@ -556,7 +578,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
              .Total("إجمالي النتائج", _packs.Total(VisibleBalances.Select(b => (b.ItemId, b.Quantity))), true);
         else
         {
-            r.Total("عدد الأصناف", ItemsCount.ToString()).Total("إجمالي الرصيد", TotalText, true);
+            r.Total("عدد الأصناف", ItemsCount.ToString()).Total(TotalLabel, TotalText, true);
             if (LowCount > 0) r.Total("أصناف عند حد التنبيه", LowCount.ToString());
         }
         r.Signatures.AddRange(new[] { "أمين المخزن", "المدقق" });
