@@ -7,50 +7,36 @@
         xmlns:c="clr-namespace:ERP.Desktop.Views.Controls"
         mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:LoginViewModel}"
         Title="تسجيل الدخول — نظام إدارة الأعمال المتكامل"
-        FlowDirection="RightToLeft" FontFamily="{StaticResource UiFont}"
+        FlowDirection="RightToLeft" FontFamily="pack://application:,,,/Assets/Fonts/#IBM Plex Sans Arabic"
         Width="1100" Height="720" MinWidth="900" MinHeight="640" WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource SidebarDeepBrush}">
-    <!-- التصميم المعتمد: بطاقة بيضاء في الوسط على خلفية لون المظهر، فيها الشعار واسم المعمل وعبارته،
-         ثم المستخدمون بدوائر صورهم، وكلمة المرور لمن اختير، و«مستخدم آخر…»، والمظهر أسفل الشاشة -->
+        Background="White">
+    <!-- التصميم المعتمد: جانب أبيض بمحتوى متوسّط (شعار، اسم المعمل، «تسجيل الدخول»، المستخدمون بصورهم، كلمة المرور، «دخول»)
+         ولوحة زرقاء بشعار أبيض في وسطها. الكحلي #0F3556 لون موحّد للنصوص وزر الدخول. -->
     <Grid>
-        <!-- خلفية: تدرج لون المظهر ودوائر خافتة -->
-        <Border Background="{DynamicResource SidebarBrush}" Opacity="0.55">
-            <Border.OpacityMask>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Color="#FF000000" Offset="0"/>
-                    <GradientStop Color="#00000000" Offset="1"/>
-                </LinearGradientBrush>
-            </Border.OpacityMask>
-        </Border>
-        <Canvas ClipToBounds="True" IsHitTestVisible="False">
-            <Ellipse Width="560" Height="560" Canvas.Left="-160" Canvas.Top="-200" Stroke="#22FFFFFF" StrokeThickness="1.5"/>
-            <Ellipse Width="760" Height="760" Canvas.Left="-260" Canvas.Top="160" Stroke="#18FFFFFF" StrokeThickness="1.5"/>
-            <Ellipse Width="520" Height="520" Canvas.Right="-140" Canvas.Bottom="-180" Stroke="#22FFFFFF" StrokeThickness="1.5"/>
-        </Canvas>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
-        <TextBlock Text="{Binding VersionText}" Foreground="#CBD5E1" FontSize="12.5" Margin="22,16" HorizontalAlignment="Left" VerticalAlignment="Top"/>
+        <!-- ================= جانب الدخول (يمين) ================= -->
+        <Grid Grid.Column="0" Background="White">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Width="400" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,24">
+                    <!-- شعار المعمل (من «هوية الطباعة») وإلا الشعار الملوّن -->
+                    <Grid HorizontalAlignment="Center" Height="76">
+                        <Image Source="pack://application:,,,/Assets/logo-color.png" Width="76" Height="76"
+                               RenderOptions.BitmapScalingMode="HighQuality" Visibility="{Binding CompanyLogo, Converter={StaticResource NullToVisible}}"/>
+                        <Image Source="{Binding CompanyLogo, Converter={StaticResource BytesToImage}}" MaxWidth="160" MaxHeight="76" RenderOptions.BitmapScalingMode="HighQuality"
+                               Visibility="{Binding CompanyLogo, Converter={StaticResource NullToCollapsed}}"/>
+                    </Grid>
+                    <TextBlock Text="{Binding Title}" Foreground="#0F3556" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
+                    <TextBlock Text="تسجيل الدخول" Foreground="#0F3556" FontSize="38" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,18,0,0"/>
+                    <TextBlock Text="اختر حسابك ثم أدخل كلمة المرور" Foreground="#0F3556" Opacity="0.75" FontSize="14.5" HorizontalAlignment="Center" Margin="0,6,0,0"
+                               Visibility="{Binding HasRecent, Converter={StaticResource BoolToVisibility}}"/>
 
-        <!-- البطاقة -->
-        <Border Background="White" CornerRadius="26" Width="660" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="44,30,44,26" Margin="0,0,0,40">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="40" ShadowDepth="8" Opacity="0.35" Color="#0B1A33"/>
-            </Border.Effect>
-            <StackPanel>
-                <!-- شعار المعمل (من «هوية الطباعة») وإلا الشعار الملوّن -->
-                <Grid HorizontalAlignment="Center" Height="110">
-                    <Image Source="pack://application:,,,/Assets/logo-color.png" Width="110" Height="110"
-                           RenderOptions.BitmapScalingMode="HighQuality" Visibility="{Binding CompanyLogo, Converter={StaticResource NullToVisible}}"/>
-                    <Image Source="{Binding CompanyLogo, Converter={StaticResource BytesToImage}}" MaxWidth="200" MaxHeight="110" RenderOptions.BitmapScalingMode="HighQuality"
-                           Visibility="{Binding CompanyLogo, Converter={StaticResource NullToCollapsed}}"/>
-                </Grid>
-                <TextBlock Text="{Binding Title}" Foreground="#1E293B" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,12,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
-                <TextBlock Text="{Binding Slogan}" Foreground="#64748B" FontSize="15" HorizontalAlignment="Center" Margin="0,4,0,0"
-                           Visibility="{Binding Slogan, Converter={StaticResource NullToCollapsed}}"/>
-
-                <!-- المستخدمون بصورهم: المختار بحلقة -->
-                <StackPanel Visibility="{Binding HasRecent, Converter={StaticResource BoolToVisibility}}" Margin="0,20,0,0">
-                    <TextBlock Text="اختر المستخدم" Foreground="#475569" FontSize="13.5" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,10"/>
-                    <ListBox x:Name="UsersList" ItemsSource="{Binding Recent}" SelectedItem="{Binding PickedUser, Mode=TwoWay}" SelectionChanged="OnPickUser"
+                    <!-- المستخدمون بصورهم: المختار بحلقة -->
+                    <StackPanel Visibility="{Binding HasRecent, Converter={StaticResource BoolToVisibility}}" Margin="0,18,0,0">
+                        <ListBox x:Name="UsersList" ItemsSource="{Binding Recent}" SelectedItem="{Binding PickedUser, Mode=TwoWay}" SelectionChanged="OnPickUser"
                              HorizontalAlignment="Center" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate><WrapPanel HorizontalAlignment="Center"/></ItemsPanelTemplate>
@@ -66,16 +52,16 @@
                                                 <Border x:Name="Ring" Width="82" Height="82" CornerRadius="41" BorderThickness="3" BorderBrush="Transparent" Padding="3" HorizontalAlignment="Center">
                                                     <c:Avatar Photo="{Binding Photo}" DisplayName="{Binding FullName}" Size="70"/>
                                                 </Border>
-                                                <TextBlock x:Name="Name" Text="{Binding FullName}" Foreground="#334155" FontSize="13.5" FontWeight="SemiBold" TextAlignment="Center"
+                                                <TextBlock x:Name="Name" Text="{Binding FullName}" Foreground="#0F3556" FontSize="13.5" FontWeight="SemiBold" TextAlignment="Center"
                                                            TextTrimming="CharacterEllipsis" Margin="0,6,0,0"/>
-                                                <TextBlock Text="{Binding Role}" Foreground="#94A3B8" FontSize="11.5" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding Role}" Foreground="#6B8296" FontSize="11.5" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                             </StackPanel>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter TargetName="Ring" Property="BorderBrush" Value="#CBD5E1"/>
                                                 </Trigger>
                                                 <Trigger Property="IsSelected" Value="True">
-                                                    <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource SidebarBrush}"/>
+                                                    <Setter TargetName="Ring" Property="BorderBrush" Value="#2B8FD6"/>
                                                     <Setter TargetName="Name" Property="FontWeight" Value="Bold"/>
                                                     <Setter TargetName="Name" Property="Foreground" Value="#0F172A"/>
                                                 </Trigger>
@@ -86,117 +72,123 @@
                             </Style>
                         </ListBox.ItemContainerStyle>
                     </ListBox>
-                </StackPanel>
+                    </StackPanel>
 
-                <StackPanel Width="380" HorizontalAlignment="Center" Margin="0,18,0,0">
-                    <!-- اسم المستخدم لمن ليس في الصور فقط -->
-                    <Border CornerRadius="12" BorderBrush="#CBD5E1" BorderThickness="1.2" Padding="12,2" Margin="0,0,0,10"
-                            Visibility="{Binding IsOtherUser, Converter={StaticResource BoolToVisibility}}">
-                        <DockPanel>
-                            <TextBlock DockPanel.Dock="Left" Text="&#xE77B;" Style="{StaticResource Icon}" FontSize="15" Foreground="#64748B" VerticalAlignment="Center"/>
-                            <Grid Margin="8,0,0,0">
-                                <TextBox x:Name="UserBox" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" BorderThickness="0"
-                                         Background="Transparent" FontSize="15" Padding="2,9"/>
-                                <TextBlock Text="اسم المستخدم" Foreground="#94A3B8" FontSize="14" VerticalAlignment="Center" IsHitTestVisible="False"
-                                           Visibility="{Binding Username, Converter={StaticResource NullToVisible}}"/>
-                            </Grid>
-                        </DockPanel>
-                    </Border>
+                    <StackPanel Margin="0,18,0,0">
+                        <!-- اسم المستخدم لمن ليس في الصور فقط -->
+                        <Border CornerRadius="14" BorderBrush="#E2E8F0" BorderThickness="1.5" Background="White" Padding="14,2" Margin="0,0,0,12"
+                                Visibility="{Binding IsOtherUser, Converter={StaticResource BoolToVisibility}}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Left" Text="&#xE77B;" Style="{StaticResource Icon}" FontSize="15" Foreground="#0F3556" VerticalAlignment="Center"/>
+                                <Grid Margin="8,0,0,0">
+                                    <TextBox x:Name="UserBox" Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" BorderThickness="0"
+                                             Background="Transparent" Foreground="#0F3556" FontSize="15" Padding="2,10"/>
+                                    <TextBlock Text="اسم المستخدم" Foreground="#0F3556" Opacity="0.7" FontSize="14.5" VerticalAlignment="Center" IsHitTestVisible="False"
+                                               Visibility="{Binding Username, Converter={StaticResource NullToVisible}}"/>
+                                </Grid>
+                            </DockPanel>
+                        </Border>
 
-                    <!-- كلمة المرور بأيقونة القفل وزر الإظهار -->
-                    <Border CornerRadius="12" BorderBrush="#CBD5E1" BorderThickness="1.2" Padding="12,2">
-                        <DockPanel>
-                            <TextBlock DockPanel.Dock="Left" Text="&#xE72E;" Style="{StaticResource Icon}" FontSize="15" Foreground="#64748B" VerticalAlignment="Center"/>
-                            <ToggleButton x:Name="ShowPassword" DockPanel.Dock="Right" Cursor="Hand" ToolTip="إظهار كلمة المرور" Checked="OnShowPassword" Unchecked="OnHidePassword"
-                                          VerticalAlignment="Center">
-                                <ToggleButton.Template>
-                                    <ControlTemplate TargetType="ToggleButton">
-                                        <Border Background="Transparent" Padding="4"><ContentPresenter/></Border>
-                                    </ControlTemplate>
-                                </ToggleButton.Template>
-                                <TextBlock Text="&#xE7B3;" Style="{StaticResource Icon}" FontSize="16" Foreground="#64748B"/>
-                            </ToggleButton>
-                            <Grid Margin="8,0,0,0">
-                                <PasswordBox x:Name="PasswordBox" FlowDirection="LeftToRight" BorderThickness="0" Background="Transparent" FontSize="15" Padding="2,9"
-                                             PasswordChanged="OnPasswordChanged"/>
-                                <TextBox x:Name="PlainPassword" FlowDirection="LeftToRight" BorderThickness="0" Background="Transparent" FontSize="15" Padding="2,9" Visibility="Collapsed"/>
-                                <TextBlock x:Name="PasswordHint" Text="{Binding PasswordHint}" Foreground="#94A3B8" FontSize="14" VerticalAlignment="Center" IsHitTestVisible="False"/>
-                            </Grid>
-                        </DockPanel>
-                    </Border>
+                        <!-- كلمة المرور بأيقونة القفل وزر الإظهار -->
+                        <Border CornerRadius="14" BorderBrush="#E2E8F0" BorderThickness="1.5" Background="White" Padding="14,2">
+                            <Border.Effect><DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.05" Color="#0F3556"/></Border.Effect>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Left" Text="&#xE72E;" Style="{StaticResource Icon}" FontSize="15" Foreground="#0F3556" VerticalAlignment="Center"/>
+                                <ToggleButton x:Name="ShowPassword" DockPanel.Dock="Right" Cursor="Hand" ToolTip="إظهار كلمة المرور" Checked="OnShowPassword" Unchecked="OnHidePassword"
+                                              VerticalAlignment="Center">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="Transparent" Padding="4"><ContentPresenter/></Border>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                    <TextBlock Text="&#xE7B3;" Style="{StaticResource Icon}" FontSize="16" Foreground="#0F3556"/>
+                                </ToggleButton>
+                                <Grid Margin="8,0,0,0">
+                                    <PasswordBox x:Name="PasswordBox" FlowDirection="LeftToRight" BorderThickness="0" Background="Transparent" Foreground="#0F3556" FontSize="15" Padding="2,12"
+                                                 PasswordChanged="OnPasswordChanged"/>
+                                    <TextBox x:Name="PlainPassword" FlowDirection="LeftToRight" BorderThickness="0" Background="Transparent" Foreground="#0F3556" FontSize="15" Padding="2,12" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="PasswordHint" Text="{Binding PasswordHint}" Foreground="#0F3556" Opacity="0.7" FontSize="14.5" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                </Grid>
+                            </DockPanel>
+                        </Border>
 
-                    <Border Background="#FEF2F2" CornerRadius="8" Padding="10,8" Margin="0,12,0,0"
-                            Visibility="{Binding ErrorMessage, Converter={StaticResource NullToCollapsed}}">
-                        <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap"/>
-                    </Border>
+                        <Border Background="#FEF2F2" CornerRadius="8" Padding="10,8" Margin="0,12,0,0"
+                                Visibility="{Binding ErrorMessage, Converter={StaticResource NullToCollapsed}}">
+                            <TextBlock Text="{Binding ErrorMessage}" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap"/>
+                        </Border>
 
-                    <Button IsDefault="True" Margin="0,16,0,0" Height="48" Cursor="Hand" Click="OnLoginClick"
-                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="Bd" CornerRadius="12" Background="{DynamicResource SidebarBrush}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarSelectedBrush}"/>
-                                    </Trigger>
-                                    <Trigger Property="IsEnabled" Value="False">
-                                        <Setter TargetName="Bd" Property="Opacity" Value="0.6"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                        <TextBlock Text="دخول" Foreground="White" FontSize="16.5" FontWeight="Bold"/>
-                    </Button>
-                    <TextBlock Text="جارٍ التحقق..." Foreground="#64748B" HorizontalAlignment="Center" Margin="0,8,0,0"
-                               Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"/>
-                    <Button Command="{Binding OtherUserCommand}" Click="OnOtherUser" Cursor="Hand" HorizontalAlignment="Center" Margin="0,12,0,0"
-                            Visibility="{Binding HasRecent, Converter={StaticResource BoolToVisibility}}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <TextBlock x:Name="T" Text="مستخدم آخر…" Foreground="#334155" FontSize="13.5" FontWeight="SemiBold"/>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="T" Property="TextDecorations" Value="Underline"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                </StackPanel>
-            </StackPanel>
-        </Border>
-
-        <!-- المظهر قبل الدخول: يُحفظ لهذا المستخدم بعد دخوله -->
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24">
-            <TextBlock Text="المظهر" Foreground="#E2E8F0" FontSize="13.5" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <ListBox ItemsSource="{Binding ThemeOptions}" SelectedItem="{Binding SelectedTheme, Mode=TwoWay}" Background="Transparent" BorderThickness="0">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemContainerStyle>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Cursor" Value="Hand"/>
-                        <Setter Property="ToolTip" Value="{Binding Name}"/>
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <Border x:Name="Ring" Width="30" Height="30" CornerRadius="15" BorderThickness="2" BorderBrush="Transparent" Margin="3,0" Padding="3">
-                                        <Ellipse Fill="{Binding Primary, Converter={StaticResource HexBrush}}"/>
+                        <Button IsDefault="True" Margin="0,16,0,0" Height="54" Cursor="Hand" Click="OnLoginClick"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bd" CornerRadius="14" Background="#0F3556">
+                                        <Border.Effect><DropShadowEffect BlurRadius="18" ShadowDepth="5" Opacity="0.28" Color="#0F3556"/></Border.Effect>
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Ring" Property="BorderBrush" Value="#94A3B8"/>
+                                            <Setter TargetName="Bd" Property="Background" Value="#16507F"/>
                                         </Trigger>
-                                        <Trigger Property="IsSelected" Value="True">
-                                            <Setter TargetName="Ring" Property="BorderBrush" Value="White"/>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter TargetName="Bd" Property="Opacity" Value="0.6"/>
                                         </Trigger>
                                     </ControlTemplate.Triggers>
                                 </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </ListBox.ItemContainerStyle>
-            </ListBox>
-        </StackPanel>
+                            </Button.Template>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="دخول" Foreground="White" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <TextBlock Text="&#xE72B;" Style="{StaticResource Icon}" Foreground="White" FontSize="15" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="جارٍ التحقق..." Foreground="#0F3556" Opacity="0.75" HorizontalAlignment="Center" Margin="0,8,0,0"
+                                   Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"/>
+                        <Button Command="{Binding OtherUserCommand}" Click="OnOtherUser" Cursor="Hand" HorizontalAlignment="Center" Margin="0,14,0,0"
+                                Visibility="{Binding HasRecent, Converter={StaticResource BoolToVisibility}}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <TextBlock x:Name="T" Text="مستخدم آخر…" Foreground="#0F3556" FontSize="13.5" FontWeight="SemiBold"/>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="T" Property="TextDecorations" Value="Underline"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ================= اللوحة الزرقاء (يسار): شعار أبيض في الوسط ================= -->
+        <Grid Grid.Column="1" ClipToBounds="True">
+            <Grid.Background>
+                <RadialGradientBrush Center="0.5,0.45" GradientOrigin="0.5,0.45" RadiusX="0.85" RadiusY="0.85">
+                    <GradientStop Color="#2A74AE" Offset="0"/>
+                    <GradientStop Color="#1B4F7A" Offset="0.5"/>
+                    <GradientStop Color="#0F3556" Offset="1"/>
+                </RadialGradientBrush>
+            </Grid.Background>
+            <Grid VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,0,0,60" IsHitTestVisible="False">
+                <Ellipse Width="620" Height="620" Stroke="#338FD3F4" StrokeThickness="1.4"/>
+                <Ellipse Width="460" Height="460" Stroke="#338FD3F4" StrokeThickness="1.4" Opacity="0.8"/>
+                <Ellipse Width="320" Height="320" Stroke="#338FD3F4" StrokeThickness="1.4" Opacity="0.6"/>
+                <!-- الشعار بقناع: صورة الشعار تتحول إلى ظل أبيض -->
+                <Rectangle Width="240" Height="240" Fill="White" Opacity="0.93" Visibility="{Binding CompanyLogo, Converter={StaticResource NullToVisible}}">
+                    <Rectangle.OpacityMask>
+                        <ImageBrush ImageSource="pack://application:,,,/Assets/logo-color.png" Stretch="Uniform"/>
+                    </Rectangle.OpacityMask>
+                </Rectangle>
+                <Rectangle Width="240" Height="240" Fill="White" Opacity="0.93" Visibility="{Binding CompanyLogo, Converter={StaticResource NullToCollapsed}}">
+                    <Rectangle.OpacityMask>
+                        <ImageBrush ImageSource="{Binding CompanyLogo, Converter={StaticResource BytesToImage}}" Stretch="Uniform"/>
+                    </Rectangle.OpacityMask>
+                </Rectangle>
+            </Grid>
+            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,44">
+                <TextBlock Text="تصميم حسابات المعمل" Foreground="White" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <TextBlock Text="مخازن · إنتاج · مبيعات · مالية" Foreground="#CFE6F5" FontSize="14" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>
