@@ -11,6 +11,9 @@ public partial class App : Application
 {
     private readonly WpfDialogService _dialogs = new();
 
+    // صيغة التاريخ والتلميح العربيان في كل حقول التاريخ (يسري في التطبيق وفي اختبارات الرسم معًا)
+    static App() => DatePickerArabic.Register();
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);

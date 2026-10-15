@@ -56,7 +56,7 @@ public class TrialDayDataTests : IAsyncLifetime
         // المنتج التام: الاسم الموحد بالمتغير الخاص
         var fg = await svc.GetBalancesAsync(Wh(WarehouseType.FinishedGoods));
         Assert.All(fg, b => Assert.True(b.IsFinished));
-        Assert.Contains(fg, b => b.VariantName == "مطعم الحسون" && b.Breakdown == "38 كارتون" && b.DisplayName.Contains("مطعم الحسون"));
+        Assert.Contains(fg, b => b.VariantName == "مطعم الحسون" && b.Breakdown == "28 كارتون" && b.DisplayName.Contains("مطعم الحسون"));
         Assert.Contains(fg, b => b.VariantName == "زواج سعيد" && b.Breakdown == "30 شرنك");
 
         // التالف مختلط: تام بالاسم الموحد ومادة أولية باسمها
@@ -71,7 +71,9 @@ public class TrialDayDataTests : IAsyncLifetime
         Assert.Contains(ledger, l => l.Reference == "رصيد افتتاحي");
         Assert.DoesNotContain(ledger, l => l.Reference.Contains('#'));
 
-        // حد اسم خاص: الحسون تحت حدّه (38 من 50 كرتون)، وزواج سعيد غير متابَع
+        // المبيعات: فاتورتان مرحّلتان، والآجلة دين على مطعم الحسون
+        Assert.Equal(2, await db.SalesInvoices.CountAsync(i => i.Status == DocumentStatus.Posted));
+        // حد اسم خاص: الحسون تحت حدّه (28 من 50 كرتون)، وزواج سعيد غير متابَع
         var names = await new VariantAlertService(db).ListAsync();
         Assert.Contains(names, n => n.VariantName == "مطعم الحسون" && n.IsLow && n.MinText == "50 كارتون");
         Assert.Contains(names, n => n.VariantName == "زواج سعيد" && !n.IsTracked);
@@ -79,7 +81,7 @@ public class TrialDayDataTests : IAsyncLifetime
         // المستندات: متعدد الأسطر يُلخَّص ويُفتح لكل سطر باسمه؛ سطر واحد يُكتب باسمه
         var docs = await svc.GetDocumentsAsync(Wh(WarehouseType.RawMaterial), DateTime.Today, DateTime.Today);
         var receipt = docs.Single(d => d.DocumentType == StockDocumentType.Receipt);
-        Assert.Equal("▾ 5 أسطر", receipt.QuantityText.Split(" · ")[0]);
+        Assert.Equal("▾ 5 أسطر · 5 مادة أولية", receipt.QuantityText);           // لا «2,850,386 قطعة» لمواد مختلفة
         Assert.Contains(receipt.LineSummaries, l => l.Name == "سدادة — أبيض" && l.Quantity == "1,322,240 قطعة");
         var damagedDoc = docs.Single(d => d.DocumentType == StockDocumentType.Damaged);
         Assert.Equal("1,200 قطعة — سدادة — ذهبي", damagedDoc.QuantityText);

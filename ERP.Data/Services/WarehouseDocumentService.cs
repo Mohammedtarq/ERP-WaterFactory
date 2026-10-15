@@ -507,11 +507,16 @@ public class WarehouseDocumentService
                 var name = item.Finished ? names.Name(l.ItemId, l.RecipeId) : item.ItemName;
                 return new DocumentLineSummary(name, packs.Of(l.ItemId, l.Qty), l.IsDamaged);
             }).ToList();
+            // الإجمالي بلا جمع لقطع مواد مختلفة: عبوات المنتج التام، والمواد الأولية تُعدّ أصنافًا
+            var fin = docLines.Where(l => items.TryGetValue(l.ItemId, out var it) && it.Finished).ToList();
+            var rawCount = docLines.Where(l => !(items.TryGetValue(l.ItemId, out var it) && it.Finished)).Select(l => l.ItemId).Distinct().Count();
+            var total = fin.Count == 0 ? (rawCount > 0 ? $"{rawCount} مادة أولية" : "0")
+                      : packs.Total(fin.Select(l => (l.ItemId, l.Qty))) + (rawCount > 0 ? $" + {rawCount} مادة أولية" : "");
             d.QuantityText = d.LineSummaries.Count switch
             {
                 0 => "",
                 1 => $"{d.LineSummaries[0].Quantity} — {d.LineSummaries[0].Name}",
-                var n => $"▾ {n} أسطر · {d.TotalText}"
+                var n => $"▾ {n} أسطر · {total}"
             };
         }
         return docs;

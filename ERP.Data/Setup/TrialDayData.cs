@@ -85,9 +85,24 @@ public static class TrialDayData
         await Doc(new StockDocumentRequest(StockDocumentType.Damaged, raw.Id, today,
             new[] { new StockDocumentLineInput(gold.item.Id, gold.level, 1_200, BatchId: goldBatch) }, user, DamageReason: DamageReason.Production));
 
-        // حد تنبيه لاسم خاص واحد (50 كرتون والرصيد 38 ← تحت الحد وفي الجرس)؛ زواج سعيد بلا حد (غير متابَع)
+        // حد تنبيه لاسم خاص واحد (50 كرتون والرصيد 28 بعد البيع ← تحت الحد وفي الجرس)؛ زواج سعيد بلا حد (غير متابَع)
         db.VariantAlerts.Add(new VariantAlert { ItemId = w500.Id, CustomRecipeId = hsRecipe.Id, MinPacks = 50, UpdatedByUserId = user });
         await db.SaveChangesAsync();
+
+        // مبيعات: فاتورة نقدية لزبون مباشر (الأساسي) وفاتورة آجلة لمطعم الحسون (اسمه الخاص) — تملأ شاشات البيع والمالية
+        var sales = new SalesService(db);
+        async Task Sell(int customerId, InvoicePaymentMethod method, decimal cartons, int? recipeId)
+        {
+            var (created, id) = await sales.CreateInvoiceAsync(new SalesInvoiceHeaderInput(customerId, fg.Id, today, method), user);
+            if (!created.Success) throw new InvalidOperationException($"بيانات يوم التجربة: فاتورة: {created.ErrorMessage}");
+            var line = await sales.AddLineAsync(id!.Value, new SalesInvoiceLineInput(w500.Id, carton, cartons, CustomRecipeId: recipeId), user);
+            if (!line.Success) throw new InvalidOperationException($"بيانات يوم التجربة: سطر فاتورة: {line.ErrorMessage}");
+            var (posted, _) = await sales.PostInvoiceAsync(id.Value, user);
+            if (!posted.Success) throw new InvalidOperationException($"بيانات يوم التجربة: ترحيل: {posted.ErrorMessage}");
+        }
+        var direct = await db.Customers.Where(c => c.CustomerType == CustomerType.Direct && c.Id != customer.Id).Select(c => c.Id).FirstAsync();
+        await Sell(direct, InvoicePaymentMethod.Cash, 5, null);
+        await Sell(customer.Id, InvoicePaymentMethod.Credit, 10, hsRecipe.Id);
 
         // استهلاك ليبل في الإنتاج (المواد الأولية لا تُصرف صرفًا حرًا، بل لأمر إنتاج)
         db.StockTransactions.Add(new StockTransaction { ItemId = hassoun.item.Id, WarehouseId = raw.Id, QuantityBaseUnits = -400,
