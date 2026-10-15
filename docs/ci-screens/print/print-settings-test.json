@@ -1,0 +1,9 @@
+{
+  "SalesInvoice": {
+    "Printer": 1,
+    "HiddenColumns": [
+      "\u0627\u0644\u0642\u0637\u0639"
+    ],
+    "HideZeroRows": false
+  }
+}
