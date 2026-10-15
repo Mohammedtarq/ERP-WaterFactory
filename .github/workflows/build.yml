@@ -85,6 +85,26 @@ jobs:
             git commit -m "صور دليل الاستخدام من الشاشات الفعلية [skip ci]"
             git push origin "HEAD:${{ github.ref_name }}"
           }
+      # صور الشاشات الفعلية (ببيانات تجريبية) تُحفظ في docs/ci-screens ليراها المطوّر مباشرة من المستودع،
+      # فقط عند طلبها بـ [shots] في رسالة الدفعة، وبـ [skip ci] حتى لا تبدأ دفعة جديدة. تُستبدل كل مرة.
+      - name: صور الشاشات للمراجعة
+        if: always() && github.event_name == 'push' && contains(github.event.head_commit.message, '[shots]')
+        shell: pwsh
+        run: |
+          if (Test-Path docs/ci-screens) { Remove-Item docs/ci-screens -Recurse -Force }
+          New-Item -ItemType Directory -Force docs/ci-screens | Out-Null
+          Get-ChildItem ui-screenshots -Directory | Where-Object { $_.Name -match '^\d\d-' } | ForEach-Object { Copy-Item $_.FullName docs/ci-screens/ -Recurse -Force }
+          Copy-Item ui-screenshots/*.png docs/ci-screens/ -Force -ErrorAction SilentlyContinue
+          Copy-Item ui-screenshots/binding-trace.txt, ui-screenshots/dialogs.txt docs/ci-screens/ -Force -ErrorAction SilentlyContinue
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A docs/ci-screens
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "صور الشاشات الفعلية للمراجعة [skip ci]"
+            git pull --rebase origin "${{ github.ref_name }}"
+            git push origin "HEAD:${{ github.ref_name }}"
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
