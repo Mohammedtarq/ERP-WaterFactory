@@ -41,7 +41,7 @@
                     <Button Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626" Command="{Binding DeleteTemplateCommand}" ToolTip="حذف القالب المختار" Margin="0,0,0,4"/>
                 </WrapPanel>
                 <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
-                    <TextBlock Text="{Binding TotalPieces, StringFormat='مجموع القطع: {0:N0}'}" FontWeight="SemiBold"/>
+                    <TextBlock Text="{Binding TotalText}" FontWeight="SemiBold"/>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                         <Button Content="إضافة منتج" Style="{StaticResource SecondaryButton}" Command="{Binding AddLineCommand}"/>
                         <Button Content="فحص المواد" Style="{StaticResource SecondaryButton}" Command="{Binding PreviewCommand}" Margin="8,0,0,0"

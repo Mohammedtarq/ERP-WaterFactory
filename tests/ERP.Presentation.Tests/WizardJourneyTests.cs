@@ -212,6 +212,7 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Equal("كارتون", loadLine.Level!.LevelName);
         loadLine.Quantity = 5;
         Assert.Equal(60m, loads.TotalPieces);
+        Assert.StartsWith("المجموع: ", loads.TotalText);                       // بالعبوات لا بالقطع
         await loads.SaveDefaultCommand.ExecuteAsync();
         await loads.CreateCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);

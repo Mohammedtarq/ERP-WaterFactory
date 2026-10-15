@@ -100,6 +100,14 @@ public class DailyProductionSectionViewModel : SectionViewModel
     public ObservableCollection<MaterialNeedRow> Needs { get; } = new();
     public ObservableCollection<DailyProductionTemplate> Templates { get; } = new();
     public decimal TotalPieces => Lines.Sum(l => l.Pieces);
+    /// <summary>المجموع بالعبوات (الإنتاج بالكارتون والشرنك لا بالقطع): «20 كارتون + 10 شرنك».</summary>
+    public string TotalText => PacksTotal(Lines.Where(l => l.Level is not null && l.Packs > 0).Select(l => (l.Level!.LevelName, l.Packs)));
+
+    internal static string PacksTotal(IEnumerable<(string Pack, decimal Count)> lines)
+    {
+        var parts = lines.GroupBy(l => l.Pack).Select(g => $"{g.Sum(x => x.Count):N0} {g.Key}").ToList();
+        return "المجموع: " + (parts.Count == 0 ? "0" : string.Join(" + ", parts));
+    }
     public bool CanSeeCost => Has(SpecialPermission.CostAndProfit);
     public bool HasShortage => Needs.Any(n => n.Short > 0);
 
@@ -124,7 +132,7 @@ public class DailyProductionSectionViewModel : SectionViewModel
     internal IEnumerable<ItemPackagingLevel> LevelsOf(int itemId) =>
         _levels.Where(l => l.ItemId == itemId).OrderByDescending(l => l.EquivalentBaseUnits);
     internal IEnumerable<CustomRecipe> RecipesOf(int itemId) => _recipes.Where(r => r.FinishedItemId == itemId).OrderBy(r => r.Name);
-    internal void RaiseTotals() => OnPropertyChanged(nameof(TotalPieces));
+    internal void RaiseTotals() { OnPropertyChanged(nameof(TotalPieces)); OnPropertyChanged(nameof(TotalText)); }
 
     public override async Task LoadAsync()
     {
@@ -371,6 +379,8 @@ public class ProductionMonthSectionViewModel : SectionViewModel
     public int Month { get => _month; set { if (SetProperty(ref _month, value)) Background(LoadAsync()); } }
     public ObservableCollection<ProductionStockReports.ProductionDayRow> Rows { get; } = new();
     public decimal TotalPieces => Rows.Sum(r => r.Pieces);
+    /// <summary>المجموع بالعبوات لكل عبوة ومحتوى: «120 كارتون 12×500 + 40 شرنك 6×1.5 لتر».</summary>
+    public string TotalText => DailyProductionSectionViewModel.PacksTotal(Rows.Select(r => ($"{r.PackLabel} {r.Content}".Trim(), r.Packs)));
     public decimal TotalCost => Rows.Sum(r => r.Cost);
     public bool CanSeeCost => Has(SpecialPermission.CostAndProfit);
     public RelayCommand PrintCommand { get; }
@@ -382,6 +392,7 @@ public class ProductionMonthSectionViewModel : SectionViewModel
         Rows.Clear();
         foreach (var r in rows) Rows.Add(r);
         OnPropertyChanged(nameof(TotalPieces));
+        OnPropertyChanged(nameof(TotalText));
         OnPropertyChanged(nameof(TotalCost));
     }
 
@@ -395,7 +406,7 @@ public class ProductionMonthSectionViewModel : SectionViewModel
             if (CanSeeCost) cells.Add($"{x.Cost:N0}");
             r.Rows.Add(cells);
         }
-        r.Total("مجموع القطع", $"{TotalPieces:N0}", true);
+        r.Total("الإجمالي", TotalText.Replace("المجموع: ", ""), true);
         if (CanSeeCost) r.Total("كلفة الإنتاج", $"{TotalCost:N0} د.ع");
         Dialogs.ShowReport(r);
     }

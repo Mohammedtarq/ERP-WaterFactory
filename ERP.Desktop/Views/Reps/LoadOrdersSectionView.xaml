@@ -37,20 +37,20 @@
                     </WrapPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="0"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
                         <TextBlock Grid.Column="1" Text="المتغير" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
                         <TextBlock Grid.Column="2" Text="الوحدة" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
                         <TextBlock Grid.Column="3" Text="الكمية" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
-                        <TextBlock Grid.Column="4" Text="القطع" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                        
                         <TextBlock Grid.Column="5" Text="المتاح في المخزن" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
                     </Grid>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Bottom">
                     <DockPanel Margin="0,6,0,0">
                         <Button DockPanel.Dock="Left" Content="إضافة صنف" Style="{StaticResource SecondaryButton}" Command="{Binding AddLineCommand}"/>
-                        <TextBlock Text="{Binding TotalPieces, StringFormat='مجموع القطع: {0:N0}'}" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+                        <TextBlock Text="{Binding TotalText}" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Right" TextWrapping="Wrap"/>
                     </DockPanel>
                     <TextBlock Text="{Binding ShortageText}" Foreground="#DC2626" TextWrapping="Wrap" Margin="0,4,0,0"/>
                     <TextBlock Text="ملاحظات" Style="{StaticResource FieldLabel}"/>
@@ -64,14 +64,14 @@
                             <DataTemplate>
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="60"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
+                                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="0"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
                                     </Grid.ColumnDefinitions>
                                     <ComboBox ItemsSource="{Binding DataContext.Products, ElementName=Root}" SelectedItem="{Binding Product}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
                                     <ComboBox Grid.Column="1" ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name" Margin="6,0,0,0"
                                               ToolTip="الأساسي = حمولة عامة؛ اسم المطعم = تشغيلاته المحجوزة لتوصيلها له"/>
                                     <ComboBox Grid.Column="2" ItemsSource="{Binding Levels}" SelectedItem="{Binding Level}" DisplayMemberPath="LevelName" Margin="6,0,0,0"/>
                                     <TextBox Grid.Column="3" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
-                                    <TextBlock Grid.Column="4" Text="{Binding Pieces, StringFormat=N0}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                    
                                     <TextBlock Grid.Column="5" Text="{Binding AvailableText}" Margin="6,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
@@ -108,7 +108,7 @@
                             <DataGridTextColumn Header="الرقم" Binding="{Binding OrderNumber}" Width="110"/>
                             <DataGridTextColumn Header="التاريخ" Binding="{Binding LoadDate, StringFormat=yyyy/MM/dd}" Width="90"/>
                             <DataGridTextColumn Header="المندوب" Binding="{Binding RepName}" Width="*"/>
-                            <DataGridTextColumn Header="القطع" Binding="{Binding RequestedPieces, StringFormat=N0}" Width="70"/>
+                            <DataGridTextColumn Header="المطلوب" Binding="{Binding RequestedText}" Width="1.4*" MinWidth="140"/>
                             <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="110"/>
                             <DataGridTextColumn Header="مستند الإسناد" Binding="{Binding DocumentNumber}" Width="130"/>
                             <DataGridTextColumn Header="طلبه" Binding="{Binding RequestedBy}" Width="90"/>

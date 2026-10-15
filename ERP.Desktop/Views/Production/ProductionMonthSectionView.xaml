@@ -21,7 +21,7 @@
                 <TextBlock Text="جرد الإنتاج الشهري" Style="{StaticResource SectionTitle}" Margin="0"/>
             </DockPanel>
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
-                <TextBlock Text="{Binding TotalPieces, StringFormat='مجموع القطع: {0:N0}'}" FontWeight="SemiBold" Margin="0,0,24,0"/>
+                <TextBlock Text="{Binding TotalText}" FontWeight="SemiBold" Margin="0,0,24,0"/>
                 <TextBlock Text="{Binding TotalCost, StringFormat='كلفة الإنتاج: {0:N0} د.ع'}" FontWeight="SemiBold"
                            Visibility="{Binding CanSeeCost, Converter={StaticResource BoolToVisibility}}"/>
             </StackPanel>

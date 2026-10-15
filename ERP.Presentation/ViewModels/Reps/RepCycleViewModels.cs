@@ -189,6 +189,16 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     public DateTime Date { get => _date; set => SetProperty(ref _date, value); }
     public string? Notes { get => _notes; set => SetProperty(ref _notes, value); }
     public decimal TotalPieces => Lines.Sum(l => l.Pieces);
+    /// <summary>مجموع الطلب بالعبوات لكل صنف («20 كارتون + 10 شرنك») لا بالقطع.</summary>
+    public string TotalText
+    {
+        get
+        {
+            var parts = Lines.Where(l => l.Product is not null && l.Pieces > 0).GroupBy(l => l.Product!.Id)
+                .Select(g => PacksText(g.Key, g.Sum(l => l.Pieces))).ToList();
+            return parts.Count == 0 ? "المجموع: 0" : "المجموع: " + string.Join(" + ", parts);
+        }
+    }
     public RepLoadOrderRow? SelectedOrder
     {
         get => _selectedOrder;
@@ -213,6 +223,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     internal void RaiseTotals()
     {
         OnPropertyChanged(nameof(TotalPieces));
+        OnPropertyChanged(nameof(TotalText));
         foreach (var l in Lines) l.RefreshAvailability();
         OnPropertyChanged(nameof(ShortageText));
     }

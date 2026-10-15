@@ -28,6 +28,8 @@ public class RepLoadOrderRow
     public RepLoadOrderStatus Status { get; init; }
     public int LinesCount { get; init; }
     public decimal RequestedPieces { get; init; }
+    /// <summary>المطلوب بالعبوات: «20 كارتون 40×330 + 10 شرنك 20×330» (لا بالقطع).</summary>
+    public string RequestedText { get; set; } = "";
     public string? DocumentNumber { get; init; }
     public string RequestedBy { get; init; } = "";
     public string? PreparedBy { get; init; }
@@ -205,7 +207,7 @@ public class RepOperationsService
     {
         var q = _db.RepLoadOrders.AsNoTracking().Where(o => o.LoadDate >= from.Date && o.LoadDate <= to.Date || o.Status == RepLoadOrderStatus.Pending);
         if (status is not null) q = q.Where(o => o.Status == status);
-        return await q.OrderBy(o => o.Status == RepLoadOrderStatus.Pending ? 0 : 1).ThenByDescending(o => o.LoadDate).ThenByDescending(o => o.Id)
+        var rows = await q.OrderBy(o => o.Status == RepLoadOrderStatus.Pending ? 0 : 1).ThenByDescending(o => o.LoadDate).ThenByDescending(o => o.Id)
             .Select(o => new RepLoadOrderRow
             {
                 Id = o.Id, OrderNumber = o.OrderNumber, LoadDate = o.LoadDate, RepName = o.RepEmployee.FullName, VanName = o.VanWarehouse.Name,
@@ -214,6 +216,13 @@ public class RepOperationsService
                 DocumentNumber = o.StockDocument != null ? o.StockDocument.DocumentNumber : null,
                 RequestedBy = o.RequestedByUser.Username, PreparedBy = o.PreparedByUser != null ? o.PreparedByUser.Username : null
             }).ToListAsync();
+        var ids = rows.Select(r => r.Id).ToList();
+        var lines = await _db.RepLoadOrderLines.AsNoTracking().Where(l => ids.Contains(l.RepLoadOrderId))
+            .Select(l => new { l.RepLoadOrderId, l.ItemId, Pieces = l.QuantityInLevel * l.PackagingLevel.EquivalentBaseUnits }).ToListAsync();
+        var packs = await PackFormatter.LoadAsync(_db, lines.Select(l => l.ItemId));
+        var byOrder = lines.ToLookup(l => l.RepLoadOrderId);
+        foreach (var r in rows) r.RequestedText = packs.Total(byOrder[r.Id].Select(l => (l.ItemId, l.Pieces)));
+        return rows;
     }
 
     public Task<RepLoadOrder?> GetLoadOrderAsync(int orderId) =>
