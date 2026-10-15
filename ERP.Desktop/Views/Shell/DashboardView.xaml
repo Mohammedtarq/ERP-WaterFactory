@@ -67,11 +67,10 @@
                     <TextBlock DockPanel.Dock="Top" Text="أصناف عند حد التنبيه" Style="{StaticResource SectionTitle}" Foreground="{StaticResource DangerBrush}"/>
                     <DataGrid ItemsSource="{Binding LowStock}">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="80"/>
-                            <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
-                            <DataGridTextColumn Header="المخزن" Binding="{Binding Warehouse}" Width="90"/>
-                            <DataGridTextColumn Header="الرصيد" Binding="{Binding Balance}" Width="90"/>
-                            <DataGridTextColumn Header="الحد" Binding="{Binding MinLevel}" Width="80"/>
+                            <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*" MinWidth="120"/>
+                            <DataGridTextColumn Header="المخزن" Binding="{Binding Warehouse}" Width="110"/>
+                            <DataGridTextColumn Header="الرصيد" Binding="{Binding Balance}" Width="Auto" MinWidth="80"/>
+                            <DataGridTextColumn Header="الحد" Binding="{Binding MinLevel}" Width="Auto" MinWidth="80"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

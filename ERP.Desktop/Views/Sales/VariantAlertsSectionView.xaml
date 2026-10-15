@@ -44,7 +44,7 @@
                     <DataGridTextColumn Header="الاسم الخاص" Binding="{Binding VariantName}" Width="*" MinWidth="160" IsReadOnly="True" FontWeight="SemiBold"/>
                     <DataGridTextColumn Header="المنتج" Binding="{Binding Name}" Width="1.3*" MinWidth="180" IsReadOnly="True"/>
                     <DataGridTextColumn Header="الرصيد" Binding="{Binding BalanceText}" Width="140" IsReadOnly="True" FontWeight="SemiBold"/>
-                    <DataGridTextColumn Header="حد التنبيه ✎" Binding="{Binding MinPacks, TargetNullValue='', UpdateSourceTrigger=LostFocus}" Width="100">
+                    <DataGridTextColumn Header="حد التنبيه ✎" Binding="{Binding MinPacks, TargetNullValue='', StringFormat='{}{0:0.###}', UpdateSourceTrigger=LostFocus}" Width="100">
                         <DataGridTextColumn.CellStyle>
                             <Style TargetType="DataGridCell">
                                 <Setter Property="Background" Value="#FFFBEB"/>
