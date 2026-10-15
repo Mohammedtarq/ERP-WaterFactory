@@ -116,6 +116,17 @@ public class AlertsService
                     low.Count, low.Any(x => x.Balance <= 0) ? AlertLevel.Danger : AlertLevel.Warning, ModuleCode.Warehouse, "StockAlertsSectionViewModel"));
         }
 
+        // 5ب) الأسماء الخاصة (والأساسي) تحت حدّها اليدوي — لمدير المبيعات ليقرر خطة الإنتاج
+        if (p.CanView(ModuleCode.Sales))
+        {
+            var lowNames = await new VariantAlertService(_db).LowAsync();
+            if (lowNames.Count > 0)
+                alerts.Add(new("variant-low", $"أسماء تحت حد التنبيه: {lowNames.Count}",
+                    Names(lowNames.Select(x => $"{x.VariantName}: {x.BalanceText} من {x.MinText}"), lowNames.Count),
+                    lowNames.Count, lowNames.Any(x => x.BalancePieces <= 0) ? AlertLevel.Danger : AlertLevel.Warning,
+                    ModuleCode.Sales, "VariantAlertsSectionViewModel"));
+        }
+
         // 6) ما بيع قبل تسجيل إنتاجه (نقص في المنتج التام)
         if (p.CanView(ModuleCode.Production))
         {

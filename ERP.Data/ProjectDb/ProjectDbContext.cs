@@ -136,6 +136,7 @@ public partial class ProjectDbContext : DbContext
     public DbSet<CloudSyncSetting> CloudSyncSettings => Set<CloudSyncSetting>();
     // ---- حد التنبيه لكل مخزن (41_warehouse_item_alerts.sql) ----
     public DbSet<WarehouseItemAlert> WarehouseItemAlerts => Set<WarehouseItemAlert>();
+    public DbSet<VariantAlert> VariantAlerts => Set<VariantAlert>();
 
     // ---- المصروفات والحسابات الختامية (31_expenses_final_accounts.sql) ----
     public DbSet<FinanceCategory> FinanceCategories => Set<FinanceCategory>();
@@ -751,6 +752,12 @@ public partial class ProjectDbContext : DbContext
         });
         modelBuilder.Entity<RepAppSetting>().Property(s => s.Id).ValueGeneratedNever();
         modelBuilder.Entity<CloudSyncSetting>().Property(s => s.Id).ValueGeneratedNever();
+        modelBuilder.Entity<VariantAlert>(e =>
+        {
+            e.Property(a => a.MinPacks).HasPrecision(18, 3);
+            e.HasOne(a => a.Item).WithMany().HasForeignKey(a => a.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(a => a.CustomRecipe).WithMany().HasForeignKey(a => a.CustomRecipeId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<WarehouseItemAlert>(e =>
         {
             e.HasIndex(a => new { a.WarehouseId, a.ItemId }).IsUnique();

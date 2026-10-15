@@ -208,6 +208,7 @@
     <DataTemplate DataType="{x:Type vmSales:CustomerDepositsSectionViewModel}"><vSales:CustomerDepositsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSales:CustomersSectionViewModel}"><vSales:CustomersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSales:SellingPricesSectionViewModel}"><vSales:SellingPricesSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSales:VariantAlertsSectionViewModel}"><vSales:VariantAlertsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSales:LoadingSettingsSectionViewModel}"><vSales:LoadingSettingsSectionView/></DataTemplate>
 
     <!-- Settings -->

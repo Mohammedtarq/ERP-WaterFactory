@@ -22,6 +22,7 @@ public class SalesModuleViewModel : ModuleViewModel
         Deposits = Add(new CustomerDepositsSectionViewModel(s, d));
         Add(new CustomersSectionViewModel(s, d));
         Add(new SellingPricesSectionViewModel(s, d));
+        VariantAlerts = Add(new VariantAlertsSectionViewModel(s, d));
         Add(new LoadingSettingsSectionViewModel(s, d));
         Add(new Shell.SalesReportsSectionViewModel(s, d));
         // صندوق موظف المبيعات: تدخله مبيعاته النقدية، ويسلّم منه للصندوق الرئيسي
@@ -29,6 +30,8 @@ public class SalesModuleViewModel : ModuleViewModel
     }
 
     public Finance.CashBoxesSectionViewModel MyBox { get; }
+    /// <summary>حدود تنبيه الأسماء الخاصة (يفتحها تنبيه الجرس).</summary>
+    public VariantAlertsSectionViewModel VariantAlerts { get; }
 
     public SalesInvoiceSectionViewModel Invoice { get; }
     public SalesInvoiceListSectionViewModel InvoiceList { get; }
