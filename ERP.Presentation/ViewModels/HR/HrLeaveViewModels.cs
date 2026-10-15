@@ -281,16 +281,24 @@ public class LeavesSectionViewModel : SectionViewModel
         foreach (var r in rows) Rows.Add(r);
     }
 
+    /// <summary>
+    /// تغيير الموظف والتاريخ معًا يطلب تحميلين متزامنين: يُعتمد آخرهما فقط، وتُملأ القائمة بعد اكتمال القراءة
+    /// (كان التحميلان يكتبان في القائمة نفسها معًا فيتعطل — «Source array was not long enough» في CI).
+    /// </summary>
     private async Task LoadBalancesAsync()
     {
-        Balances.Clear();
-        HourlyText = "";
-        if (Employee is null) return;
+        var token = ++_balancesLoad;
+        var employee = Employee;
+        var from = FromDate;
+        if (employee is null) { Balances.Clear(); HourlyText = ""; return; }
         await using var db = Session.NewDb();
-        var (rows, taken, free) = await new HrLeaveService(db).BalancesAsync(Employee.Id, FromDate);
+        var (rows, taken, free) = await new HrLeaveService(db).BalancesAsync(employee.Id, from);
+        if (token != _balancesLoad) return;
+        Balances.Clear();
         foreach (var r in rows) Balances.Add(r);
-        HourlyText = $"الزمنيات في {FromDate:MM/yyyy}: {taken} من {free} مسموحة" + (taken >= free ? " — التالية تُحسب يومًا من الاعتيادية" : "");
+        HourlyText = $"الزمنيات في {from:MM/yyyy}: {taken} من {free} مسموحة" + (taken >= free ? " — التالية تُحسب يومًا من الاعتيادية" : "");
     }
+    private int _balancesLoad;
 
     private bool TryInput(out LeaveInput? input, bool showErrors)
     {

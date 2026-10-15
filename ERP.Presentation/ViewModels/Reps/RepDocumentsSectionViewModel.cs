@@ -238,7 +238,7 @@ public class RepDocumentsSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var d = await new WarehouseDocumentService(db).GetDocumentAsync(documentId);
         if (d is null) { Dialogs.Error("المستند غير موجود"); return; }
-        Dialogs.ShowReport(DocumentReports.StockDocumentReport(Session, d));
+        Dialogs.ShowReport(await ERP.Presentation.ViewModels.Warehouse.WarehouseWorkspaceSectionViewModel.DocumentReportAsync(Session, db, d));
     }
 
     private void PrintVanStock()

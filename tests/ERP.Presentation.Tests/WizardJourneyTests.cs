@@ -495,8 +495,8 @@ public class WizardJourneyTests : IAsyncLifetime
         Assert.Equal("مستند إرجاع من مندوب", rr.Title);
         Assert.Contains(rr.HeaderFields, f => f.Label == "المندوب" && f.Value == "علي المندوب");
         Assert.Contains(rr.Rows, r => r.Contains("تلف ميداني"));
-        Assert.Contains(rr.Totals, t => t.Label == "سليم يعود للمخزن" && t.Value == "12");
-        Assert.Contains(rr.Totals, t => t.Label == "تلف ميداني" && t.Value == "6");
+        Assert.Contains(rr.Totals, t => t.Label == "سليم يعود للمخزن" && t.Value == "1 كارتون 12×500");   // بالعبوة لا بالقطع
+        Assert.Contains(rr.Totals, t => t.Label == "تلف ميداني" && t.Value == "6 قطعة");
     }
 
     private SetupViewModel Wizard(RecordingNavigator nav, MemoryConfigStore config, string projectDb, string password)

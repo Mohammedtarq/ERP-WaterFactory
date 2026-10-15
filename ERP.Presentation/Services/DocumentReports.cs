@@ -144,7 +144,11 @@ public static class DocumentReports
     // ============================ المخازن والمندوبين ============================
 
     /// <summary>مستند مخزني مطبوع (من واجهة المخزن أو من شاشة مستندات المندوبين).</summary>
-    public static ReportDocument StockDocumentReport(AppSession s, StockDocument d)
+    /// <remarks>
+    /// الصنف بالاسم الموحد للمنتج المصنَّع («شرنك 20×330 زواج سعيد») وباسمه الكامل للمادة الأولية، والكمية بوحدته؛
+    /// والإجمالي لكل عبوة على حدة — لا جمع لقطع أصناف مختلفة (docs/agreed-pricing-and-names.md قسم «ط»).
+    /// </remarks>
+    public static ReportDocument StockDocumentReport(AppSession s, StockDocument d, ProductNames names, PackFormatter packs)
     {
         var r = new ReportDocument { Key = $"stock-doc-{d.DocumentType}", CompanyName = s.ProjectName, Title = $"مستند {ArabicLabels.Of(d.DocumentType)}", PrintedBy = s.FullName, Notes = d.Notes };
         r.Field("رقم المستند", d.DocumentNumber)
@@ -160,23 +164,31 @@ public static class DocumentReports
          .Field("المستخدم", d.CreatedByUser.Username);
         var isReturn = d.DocumentType == StockDocumentType.RepReturn;
         r.Columns.AddRange(isReturn
-            ? new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع", "الحالة", "التشغيلة" }
-            : new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع", "التشغيلة", "الصلاحية" });
+            ? new[] { "#", "الصنف", "الكمية", "الحالة", "التشغيلة" }
+            : new[] { "#", "الصنف", "الكمية", "التشغيلة", "الصلاحية" });
         var i = 0;
+        string Name(StockDocumentLine l) => l.Item.SourcingMethod != SourcingMethod.Purchased
+            ? names.Name(l.ItemId, l.Batch?.CustomRecipeId) : l.Item.ItemName;
         foreach (var l in d.Lines.OrderBy(l => l.Id))
         {
             var batch = l.Batch?.BatchNumber ?? (d.DocumentType == StockDocumentType.Receipt ? "—" : "تلقائي");
             r.Rows.Add(isReturn
-                ? new[] { (++i).ToString(), $"{l.Item.ItemName} ({l.Item.ItemCode})", l.PackagingLevel.LevelName, $"{l.QuantityInLevel:N0}",
-                          $"{l.QuantityBaseUnits:N0}", l.IsDamaged ? "تلف ميداني" : "سليم", batch }
-                : new[] { (++i).ToString(), $"{l.Item.ItemName} ({l.Item.ItemCode})", l.PackagingLevel.LevelName, $"{l.QuantityInLevel:N0}",
-                          $"{l.QuantityBaseUnits:N0}", batch, l.Batch?.ExpiryDate?.ToString("yyyy/MM/dd") ?? "" });
+                ? new[] { (++i).ToString(), Name(l), packs.Of(l.ItemId, l.QuantityBaseUnits), l.IsDamaged ? "تلف ميداني" : "سليم", batch }
+                : new[] { (++i).ToString(), Name(l), packs.Of(l.ItemId, l.QuantityBaseUnits), batch, l.Batch?.ExpiryDate?.ToString("yyyy/MM/dd") ?? "" });
+        }
+        string Total(IEnumerable<StockDocumentLine> lines)
+        {
+            var list = lines.ToList();
+            var finished = list.Where(l => l.Item.SourcingMethod != SourcingMethod.Purchased).ToList();
+            var raw = list.Where(l => l.Item.SourcingMethod == SourcingMethod.Purchased).Select(l => l.ItemId).Distinct().Count();
+            if (finished.Count == 0) return raw > 0 ? $"{raw} مادة أولية" : "0";
+            return packs.Total(finished.Select(l => (l.ItemId, l.QuantityBaseUnits))) + (raw > 0 ? $" + {raw} مادة أولية" : "");
         }
         r.Total("عدد السطور", d.Lines.Count.ToString());
         if (isReturn)
-            r.Total("سليم يعود للمخزن", $"{d.Lines.Where(l => !l.IsDamaged).Sum(l => l.QuantityBaseUnits):N0}")
-             .Total("تلف ميداني", $"{d.Lines.Where(l => l.IsDamaged).Sum(l => l.QuantityBaseUnits):N0}");
-        r.Total("إجمالي القطع", $"{d.Lines.Sum(l => l.QuantityBaseUnits):N0}", true);
+            r.Total("سليم يعود للمخزن", Total(d.Lines.Where(l => !l.IsDamaged)))
+             .Total("تلف ميداني", Total(d.Lines.Where(l => l.IsDamaged)));
+        r.Total("الإجمالي", Total(d.Lines), true);
         r.Signatures.AddRange(d.DocumentType switch
         {
             StockDocumentType.Receipt => new[] { "المسلِّم", "أمين المخزن", "المدير" },

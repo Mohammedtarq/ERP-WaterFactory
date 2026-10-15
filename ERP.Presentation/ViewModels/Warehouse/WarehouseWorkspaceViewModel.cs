@@ -569,10 +569,16 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var d = await new WarehouseDocumentService(db).GetDocumentAsync(documentId);
         if (d is null) { Dialogs.Error("المستند غير موجود"); return; }
-        Dialogs.ShowReport(BuildDocumentReport(d));
+        Dialogs.ShowReport(await BuildDocumentReportAsync(db, d));
     }
 
-    public ReportDocument BuildDocumentReport(StockDocument d) => DocumentReports.StockDocumentReport(Session, d);
+    public static async Task<ReportDocument> DocumentReportAsync(AppSession session, Data.ProjectDb.ProjectDbContext db, StockDocument d)
+    {
+        var ids = d.Lines.Select(l => l.ItemId).Distinct().ToList();
+        return DocumentReports.StockDocumentReport(session, d, await ProductNames.LoadAsync(db, ids), await PackFormatter.LoadAsync(db, ids));
+    }
+
+    private Task<ReportDocument> BuildDocumentReportAsync(Data.ProjectDb.ProjectDbContext db, StockDocument d) => DocumentReportAsync(Session, db, d);
 
     public ReportDocument BuildBalancesReport()
     {

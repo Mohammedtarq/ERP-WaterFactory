@@ -69,7 +69,7 @@ public class WarehouseCashBoxTests
         Assert.Equal(before + 120, Balance(fg, "W500"));
         var printed = dialogs.Reports[docsBefore];
         Assert.Equal("مستند إدخال مخزني", printed.Title);
-        Assert.Contains(printed.Rows, r => r[3] == "10" && r[4] == "120" && r[5] == "WS-R1");
+        Assert.Contains(printed.Rows, r => r[2] == "10 كارتون" && r[3] == "WS-R1");                    // الكمية بعبوتها لا بالقطع
         Assert.Empty(fg.Lines);
 
         // 2) مناقلة كرتونين إلى المخزن الجديد بنفس التشغيلة
