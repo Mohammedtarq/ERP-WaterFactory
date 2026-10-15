@@ -168,7 +168,9 @@ public class RepAppTests
 
         var stored = await db.Employees.AsNoTracking().FirstAsync(e => e.Id == a.Id);
         Assert.Equal("ab", stored.RepLoginName);
-        Assert.DoesNotContain("99", stored.RepLoginHash);
+        // مخزّنة مجزّأة لا نصًا (التجزئة العشوائية قد تحوي «99» صدفةً فلا يُفحص النص الجزئي — كان سبب فشل متقطع)
+        Assert.NotEqual("99", stored.RepLoginHash);
+        Assert.Equal(32, Convert.FromBase64String(stored.RepLoginHash!).Length);
 
         var snap = await new CloudSyncService(db).BuildSnapshotAsync(a.Id);
         var login = Assert.IsType<SnapshotLogin>(snap!.Login);
