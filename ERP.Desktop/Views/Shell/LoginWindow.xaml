@@ -44,7 +44,7 @@
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Cursor" Value="Hand"/>
-                                <Setter Property="ToolTip" Value="{Binding Username}"/>
+                                <Setter Property="ToolTip" Value="{Binding FullName}"/>
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">
@@ -52,7 +52,7 @@
                                                 <Border x:Name="Ring" Width="82" Height="82" CornerRadius="41" BorderThickness="3" BorderBrush="Transparent" Padding="3" HorizontalAlignment="Center">
                                                     <c:Avatar Photo="{Binding Photo}" DisplayName="{Binding FullName}" Size="70"/>
                                                 </Border>
-                                                <TextBlock x:Name="Name" Text="{Binding FullName}" Foreground="#0F3556" FontSize="13.5" FontWeight="SemiBold" TextAlignment="Center"
+                                                <TextBlock x:Name="Name" Text="{Binding Username}" Foreground="#0F3556" FontSize="13.5" FontWeight="SemiBold" TextAlignment="Center"
                                                            TextTrimming="CharacterEllipsis" Margin="0,6,0,0"/>
                                                 <TextBlock Text="{Binding Role}" Foreground="#6B8296" FontSize="11.5" TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                             </StackPanel>
