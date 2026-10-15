@@ -85,6 +85,10 @@ public static class TrialDayData
         await Doc(new StockDocumentRequest(StockDocumentType.Damaged, raw.Id, today,
             new[] { new StockDocumentLineInput(gold.item.Id, gold.level, 1_200, BatchId: goldBatch) }, user, DamageReason: DamageReason.Production));
 
+        // حد تنبيه لاسم خاص واحد (50 كرتون والرصيد 38 ← تحت الحد وفي الجرس)؛ زواج سعيد بلا حد (غير متابَع)
+        db.VariantAlerts.Add(new VariantAlert { ItemId = w500.Id, CustomRecipeId = hsRecipe.Id, MinPacks = 50, UpdatedByUserId = user });
+        await db.SaveChangesAsync();
+
         // استهلاك ليبل في الإنتاج (المواد الأولية لا تُصرف صرفًا حرًا، بل لأمر إنتاج)
         db.StockTransactions.Add(new StockTransaction { ItemId = hassoun.item.Id, WarehouseId = raw.Id, QuantityBaseUnits = -400,
                                                         TransactionType = StockTransactionType.ProductionConsume, CreatedByUserId = user });

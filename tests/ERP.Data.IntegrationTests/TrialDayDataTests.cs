@@ -71,6 +71,11 @@ public class TrialDayDataTests : IAsyncLifetime
         Assert.Contains(ledger, l => l.Reference == "رصيد افتتاحي");
         Assert.DoesNotContain(ledger, l => l.Reference.Contains('#'));
 
+        // حد اسم خاص: الحسون تحت حدّه (38 من 50 كرتون)، وزواج سعيد غير متابَع
+        var names = await new VariantAlertService(db).ListAsync();
+        Assert.Contains(names, n => n.VariantName == "مطعم الحسون" && n.IsLow && n.MinText == "50 كارتون");
+        Assert.Contains(names, n => n.VariantName == "زواج سعيد" && !n.IsTracked);
+
         // المستندات: متعدد الأسطر يُلخَّص ويُفتح لكل سطر باسمه؛ سطر واحد يُكتب باسمه
         var docs = await svc.GetDocumentsAsync(Wh(WarehouseType.RawMaterial), DateTime.Today, DateTime.Today);
         var receipt = docs.Single(d => d.DocumentType == StockDocumentType.Receipt);
