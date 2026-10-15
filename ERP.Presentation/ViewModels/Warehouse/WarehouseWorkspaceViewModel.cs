@@ -390,8 +390,19 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
             .ToListAsync();
         TodayIn = todayByItem.Sum(t => t.In);
         TodayOut = todayByItem.Sum(t => t.Out);
-        TodayInText = _packs.Total(todayByItem.Select(t => (t.ItemId, t.In)));
-        TodayOutText = _packs.Total(todayByItem.Select(t => (t.ItemId, t.Out)));
+        // نفس قاعدة الإجمالي: عبوات المنتج التام، والمواد الأولية تُعدّ أصنافًا (لا جمع لقطع مواد مختلفة)
+        var finishedIds = (await db.Items.AsNoTracking().Where(i => todayByItem.Select(t => t.ItemId).Contains(i.Id)).ToListAsync())
+            .Where(i => i.SourcingMethod != SourcingMethod.Purchased).Select(i => i.Id).ToHashSet();
+        string Today(Func<decimal, bool> any, Func<(int ItemId, decimal In, decimal Out), decimal> qty)
+        {
+            var rows = todayByItem.Select(t => (t.ItemId, t.In, t.Out)).Where(t => any(qty(t))).ToList();
+            var fin = rows.Where(t => finishedIds.Contains(t.ItemId)).ToList();
+            var raw = rows.Count(t => !finishedIds.Contains(t.ItemId));
+            if (fin.Count == 0) return raw > 0 ? $"{raw} مادة أولية" : "0";
+            return _packs.Total(fin.Select(t => (t.ItemId, qty(t)))) + (raw > 0 ? $" + {raw} مادة أولية" : "");
+        }
+        TodayInText = Today(q => q > 0, t => t.In);
+        TodayOutText = Today(q => q > 0, t => t.Out);
 
         var ledgerId = LedgerItem?.Id;
         LedgerItems.Clear();

@@ -49,6 +49,13 @@ jobs:
           "ERP_TEST_PRINTER=ERP Test Printer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "ERP_TEST_PRINTER_OUTPUT=$out" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Printer: $driver -> $out"
+      # شاشة خادم CI الافتراضية 1024×768 تقصّ النافذة؛ نرفعها لتُرسم الشاشات كما على شاشة المستخدم (1600×900)
+      - name: دقة شاشة الخادم
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+          Get-CimInstance Win32_VideoController | Select-Object CurrentHorizontalResolution, CurrentVerticalResolution
       - name: رسم كل الشاشات (بدون بيانات ثم ببيانات تجريبية حقيقية)
         shell: pwsh
         env:

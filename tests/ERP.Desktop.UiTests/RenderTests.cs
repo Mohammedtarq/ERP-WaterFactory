@@ -273,11 +273,9 @@ public class RenderTests
             Assert.Null(ps.ErrorMessage);
 
             var shell = nav.Shell!;
-            var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1440, Height = 900,
+            var main = new MainWindow { DataContext = shell, ShowActivated = false, Width = 1600, Height = 900,
                                         Left = 0, Top = 0, WindowStartupLocation = WindowStartupLocation.Manual, WindowState = WindowState.Normal };
             main.Show();
-            // شاشة خادم CI صغيرة (≈1024 بكسل) فتُقصّ النافذة؛ نثبّت المحتوى على 1600×900 قريبًا من شاشة المستخدم الفعلية
-            if (main.Content is FrameworkElement root) { root.Width = 1600; root.Height = 900; }
             var n = 3;
             foreach (var item in shell.NavItems)
             {

@@ -69,6 +69,7 @@ public class WarehouseNamesTests
         Assert.Equal("4,449,330 قطعة", cap.Breakdown);                                 // بفواصل الآلاف
         Assert.Equal("2 مادة أولية", raw.TotalText);                                     // لا «4,465,330 قطعة»
         Assert.DoesNotContain("4,", raw.TotalText);
+        Assert.EndsWith("مادة أولية", raw.TodayInText);                                // ولا «وارد اليوم» يجمع قطع مواد مختلفة
 
         // كشف الحركة لكل الأصناف: رصيد جارٍ لكل صنف على حدة واسمه ظاهر
         raw.LedgerItem = null;
