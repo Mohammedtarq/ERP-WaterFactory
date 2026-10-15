@@ -45,6 +45,31 @@ public static class Ui
         return b;
     }
 
+    // أيقونات خطية موحدة (24×24): السماكة والنهايات المدوّرة نفسها في كل مكان، وتتلوّن بلون مربعها
+    private static readonly Dictionary<string, string> Icons = new()
+    {
+        ["coin"] = "M 12 3 a 9 9 0 1 0 0 18 a 9 9 0 0 0 0 -18 z M 12 7 v 10 M 9.5 9.5 c 0 -1 1 -1.5 2.5 -1.5 s 2.5 0.6 2.5 1.7 c 0 2.3 -5 1.2 -5 3.6 c 0 1.1 1.1 1.7 2.5 1.7 s 2.5 -0.6 2.5 -1.5",
+        ["user"] = "M 10 11 a 4 4 0 1 0 0 -8 a 4 4 0 0 0 0 8 z M 2 21 c 0 -4 3.5 -6 8 -6 M 19 8 v 6 M 16 11 h 6",
+        ["wrench"] = "M 14.7 6.3 a 4 4 0 0 0 -5.4 5.4 L 3 18 l 3 3 l 6.3 -6.3 a 4 4 0 0 0 5.4 -5.4 l -2.6 2.6 l -2.4 -0.6 l -0.6 -2.4 z",
+        ["box"] = "M 21 8 l -9 -5 l -9 5 l 9 5 z M 3 8 v 8 l 9 5 l 9 -5 V 8 M 12 13 v 8",
+        ["list"] = "M 6 3 h 12 a 2 2 0 0 1 2 2 v 14 a 2 2 0 0 1 -2 2 H 6 a 2 2 0 0 1 -2 -2 V 5 a 2 2 0 0 1 2 -2 z M 8 8 h 8 M 8 12 h 8 M 8 16 h 5",
+        ["sync"] = "M 21 12 a 9 9 0 0 0 -15 -6.7 L 3 8 M 3 3 v 5 h 5 M 3 12 a 9 9 0 0 0 15 6.7 L 21 16 M 21 21 v -5 h -5",
+        ["cash"] = "M 4 6 h 16 a 2 2 0 0 1 2 2 v 8 a 2 2 0 0 1 -2 2 H 4 a 2 2 0 0 1 -2 -2 V 8 a 2 2 0 0 1 2 -2 z M 12 9 a 3 3 0 1 0 0 6 a 3 3 0 0 0 0 -6 z"
+    };
+
+    /// <summary>أيقونة خطية بالاسم: coin، user، wrench، box، list، sync، cash.</summary>
+    public static View Icon(string key, Color color, double size)
+    {
+        if (!Icons.TryGetValue(key, out var data)) return new BoxView { WidthRequest = size, HeightRequest = size, Color = Colors.Transparent };
+        return new Microsoft.Maui.Controls.Shapes.Path
+        {
+            Data = (Microsoft.Maui.Controls.Shapes.Geometry)new Microsoft.Maui.Controls.Shapes.PathGeometryConverter().ConvertFromInvariantString(data)!,
+            Stroke = new SolidColorBrush(color), StrokeThickness = 1.8, Fill = null,
+            StrokeLineCap = Microsoft.Maui.Controls.Shapes.PenLineCap.Round, StrokeLineJoin = Microsoft.Maui.Controls.Shapes.PenLineJoin.Round,
+            Aspect = Stretch.Uniform, WidthRequest = size, HeightRequest = size, HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center
+        };
+    }
+
     /// <summary>مربع في شبكة الرئيسية: أيقونة في دائرة خفيفة فوق الاسم والوصف، كلها في المنتصف.</summary>
     public static Border Tile(string icon, string title, string hint, Color tint, Func<Task> onTap)
     {
@@ -62,7 +87,7 @@ public static class Ui
                     {
                         WidthRequest = 52, HeightRequest = 52, HorizontalOptions = LayoutOptions.Center, StrokeThickness = 0,
                         BackgroundColor = tint.WithAlpha(0.14f), StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 16 },
-                        Content = new Label { Text = icon, FontSize = 26, HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center }
+                        Content = Icon(icon, tint, 26)
                     },
                     new Label { Text = title, FontSize = 16, FontAttributes = FontAttributes.Bold, TextColor = Navy, HorizontalTextAlignment = TextAlignment.Center },
                     new Label { Text = hint, FontSize = 12, TextColor = Muted, HorizontalTextAlignment = TextAlignment.Center, LineBreakMode = LineBreakMode.WordWrap }
@@ -105,7 +130,7 @@ public static class Ui
                     {
                         WidthRequest = 46, HeightRequest = 46, HorizontalOptions = LayoutOptions.Center, StrokeThickness = 0,
                         BackgroundColor = Colors.White.WithAlpha(0.2f), StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 14 },
-                        Content = new Label { Text = icon, FontSize = 24, HorizontalOptions = LayoutOptions.Center, VerticalOptions = LayoutOptions.Center }
+                        Content = Icon(icon, Colors.White, 24)
                     },
                     new Label { Text = title, FontSize = 30, FontAttributes = FontAttributes.Bold, TextColor = Colors.White, HorizontalTextAlignment = TextAlignment.Center },
                     new Label { Text = hint, FontSize = 13, TextColor = Colors.White.WithAlpha(0.9f), HorizontalTextAlignment = TextAlignment.Center }

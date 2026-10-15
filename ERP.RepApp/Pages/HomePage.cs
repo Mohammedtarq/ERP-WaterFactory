@@ -37,12 +37,12 @@ public class HomePage : ContentPage
         };
         void Place(View v, int row, int col) { Grid.SetRow(v, row); Grid.SetColumn(v, col); grid.Children.Add(v); }
         // اتجاه RTL: العمود الأول يمين الشاشة
-        Place(Ui.Tile("💵", "تحصيل دين", "استلام دفعة من زبون", Ui.Brand, () => Navigation.PushAsync(new CollectionPage())), 0, 0);
-        Place(Ui.Tile("👤", "زبون جديد", "إضافة زبون وموقعه", Color.FromArgb("#0D9488"), () => Navigation.PushAsync(new NewCustomerPage())), 0, 1);
-        Place(Ui.Tile("🔧", "مصروف السيارة", "وقود وصيانة وغسيل", Color.FromArgb("#D97706"), () => Navigation.PushAsync(new ExpensePage())), 1, 0);
-        Place(Ui.Tile("📦", "رصيد السيارة", "ما تبقى من البضاعة", Color.FromArgb("#6366F1"), () => Navigation.PushAsync(new VanStockPage())), 1, 1);
-        Place(Ui.Tile("📋", "حركاتي", "سجل اليوم وحالة كل حركة", Color.FromArgb("#475569"), () => Navigation.PushAsync(new OutboxPage())), 2, 0);
-        Place(Ui.Tile("🔄", "مزامنة الآن", "إرسال واستلام من المعمل", Ui.Brand, SyncAsync), 2, 1);
+        Place(Ui.Tile("coin", "تحصيل دين", "استلام دفعة من زبون", Ui.Brand, () => Navigation.PushAsync(new CollectionPage())), 0, 0);
+        Place(Ui.Tile("user", "زبون جديد", "إضافة زبون وموقعه", Color.FromArgb("#0D9488"), () => Navigation.PushAsync(new NewCustomerPage())), 0, 1);
+        Place(Ui.Tile("wrench", "مصروف السيارة", "وقود وصيانة وغسيل", Color.FromArgb("#D97706"), () => Navigation.PushAsync(new ExpensePage())), 1, 0);
+        Place(Ui.Tile("box", "رصيد السيارة", "ما تبقى من البضاعة", Color.FromArgb("#6366F1"), () => Navigation.PushAsync(new VanStockPage())), 1, 1);
+        Place(Ui.Tile("list", "حركاتي", "سجل اليوم وحالة كل حركة", Color.FromArgb("#475569"), () => Navigation.PushAsync(new OutboxPage())), 2, 0);
+        Place(Ui.Tile("sync", "مزامنة الآن", "إرسال واستلام من المعمل", Ui.Brand, SyncAsync), 2, 1);
 
         Ui.Setup(this, "الرئيسية", new VerticalStackLayout
         {
@@ -56,7 +56,7 @@ public class HomePage : ContentPage
                     Children = { _logo, _company, _rep, _today, _waiting, _connection }
                 }),
                 Ui.Card(new VerticalStackLayout { Children = { Ui.Text("النقد معك", 14, Ui.Muted), _wallet } }, Ui.Brand),
-                Ui.Hero("💰", "بيع", "فاتورة نقدية أو آجلة", () => Navigation.PushAsync(new SalePage())),
+                Ui.Hero("cash", "بيع", "فاتورة نقدية أو آجلة", () => Navigation.PushAsync(new SalePage())),
                 grid,
             }
         });
