@@ -194,6 +194,40 @@ public class RenderTests
 
     public record Option(string Code, string Name);
 
+    /// <summary>يمرّ على كل تبويب داخلي ثابت (TabItem معرّف في XAML) ويصوّره، ثم تبويباته المتداخلة (حتى مستويين).</summary>
+    private static async Task CaptureInnerTabsAsync(FrameworkElement root, DependencyObject? scope, SectionViewModel section,
+                                                    string name, List<string> shots, int depth)
+    {
+        if (scope is null || depth > 1) return;
+        foreach (var tabs in FindTabControls(scope).Where(t => t.ItemsSource is null && t.IsVisible).ToList())
+        {
+            for (var k = 0; k < tabs.Items.Count; k++)
+            {
+                if (tabs.Items[k] is not TabItem { Visibility: Visibility.Visible } tab) continue;
+                tabs.SelectedIndex = k;
+                await UiThread.SettleAsync();
+                await section.IdleAsync();
+                await UiThread.SettleAsync();
+                var sub = $"{name}--{k + 1}-{UiThread.SafeName(tab.Header?.ToString() ?? "")}";
+                shots.Add(UiThread.Save(root, $"{sub}.png"));
+                if (tab.Content is DependencyObject content) await CaptureInnerTabsAsync(root, content, section, sub, shots, depth + 1);
+            }
+            tabs.SelectedIndex = 0;
+        }
+    }
+
+    /// <summary>أقرب TabControl في الشجرة المرئية (لا يدخل في تبويبات TabControl آخر: تلك تُعالج بالتكرار).</summary>
+    private static IEnumerable<TabControl> FindTabControls(DependencyObject root)
+    {
+        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var c = 0; c < count; c++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, c);
+            if (child is TabControl tc) { yield return tc; continue; }
+            foreach (var t in FindTabControls(child)) yield return t;
+        }
+    }
+
     /// <summary>
     /// الرحلة الكاملة على SQL Server حقيقي (LocalDB في CI): تثبيت ببيانات تجريبية ← دخول ←
     /// النافذة الرئيسية ← كل وحدة ← كل تبويب بعد تحميل بياناته، مع صورة لكل واحد.
@@ -259,8 +293,12 @@ public class RenderTests
                     m.SelectedTab = section;
                     await m.LastActivation;
                     await section.IdleAsync();
+                    shell.IsFlyoutOpen = false;                 // قائمة الوحدة المنبثقة تغطي الشاشة فلا يُرى محتواها
                     await UiThread.SettleAsync();
-                    shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{folder}/{i++:00}-{UiThread.SafeName(section.Title)}.png"));
+                    var name = $"{folder}/{i++:00}-{UiThread.SafeName(section.Title)}";
+                    shots.Add(UiThread.Save((FrameworkElement)main.Content, $"{name}.png"));
+                    // التبويبات الداخلية الثابتة (الأرصدة، التقارير والمستندات، كشف الحركة...) — كل واحد بصورته
+                    await CaptureInnerTabsAsync((FrameworkElement)main.Content, main.Content as DependencyObject, section, name, shots, 0);
                 }
             }
             main.Close();
