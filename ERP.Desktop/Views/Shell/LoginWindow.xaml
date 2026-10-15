@@ -7,7 +7,7 @@
         xmlns:c="clr-namespace:ERP.Desktop.Views.Controls"
         mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:LoginViewModel}"
         Title="تسجيل الدخول — نظام إدارة الأعمال المتكامل"
-        FlowDirection="RightToLeft" FontFamily="pack://application:,,,/Assets/Fonts/#IBM Plex Sans Arabic"
+        FlowDirection="RightToLeft" FontFamily="pack://application:,,,/ERP.Desktop;component/Assets/Fonts/#IBM Plex Sans Arabic"
         Width="1100" Height="720" MinWidth="900" MinHeight="640" WindowStartupLocation="CenterScreen"
         Background="White">
     <!-- التصميم المعتمد: جانب أبيض بمحتوى متوسّط (شعار، اسم المعمل، «تسجيل الدخول»، المستخدمون بصورهم، كلمة المرور، «دخول»)
@@ -24,7 +24,7 @@
                 <StackPanel Width="400" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,24">
                     <!-- شعار المعمل (من «هوية الطباعة») وإلا الشعار الملوّن -->
                     <Grid HorizontalAlignment="Center" Height="76">
-                        <Image Source="pack://application:,,,/Assets/logo-color.png" Width="76" Height="76"
+                        <Image Source="pack://application:,,,/ERP.Desktop;component/Assets/logo-color.png" Width="76" Height="76"
                                RenderOptions.BitmapScalingMode="HighQuality" Visibility="{Binding CompanyLogo, Converter={StaticResource NullToVisible}}"/>
                         <Image Source="{Binding CompanyLogo, Converter={StaticResource BytesToImage}}" MaxWidth="160" MaxHeight="76" RenderOptions.BitmapScalingMode="HighQuality"
                                Visibility="{Binding CompanyLogo, Converter={StaticResource NullToCollapsed}}"/>
@@ -176,7 +176,7 @@
                 <!-- الشعار بقناع: صورة الشعار تتحول إلى ظل أبيض -->
                 <Rectangle Width="240" Height="240" Fill="White" Opacity="0.93" Visibility="{Binding CompanyLogo, Converter={StaticResource NullToVisible}}">
                     <Rectangle.OpacityMask>
-                        <ImageBrush ImageSource="pack://application:,,,/Assets/logo-color.png" Stretch="Uniform"/>
+                        <ImageBrush ImageSource="pack://application:,,,/ERP.Desktop;component/Assets/logo-color.png" Stretch="Uniform"/>
                     </Rectangle.OpacityMask>
                 </Rectangle>
                 <Rectangle Width="240" Height="240" Fill="White" Opacity="0.93" Visibility="{Binding CompanyLogo, Converter={StaticResource NullToCollapsed}}">
