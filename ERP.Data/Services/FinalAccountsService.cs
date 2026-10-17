@@ -17,6 +17,14 @@ public class ProductMarginRow
     public decimal Margin => Revenue - Cost;
     public decimal MarginPercent => Revenue == 0 ? 0 : Math.Round(Margin / Revenue * 100, 1);
     public decimal CostPerPiece => PiecesSold == 0 ? 0 : Math.Round(Cost / PiecesSold, 2);
+    /// <summary>المباع بالعبوات («15 كارتون») — القطع للحساب فقط.</summary>
+    public string PacksText { get; set; } = "";
+    /// <summary>قطع بيعت بلا كلفة (دخلت بمستند إدخال لا بالإنتاج أو الشراء) — تُحسب بالكلفة المرجعية إن أُدخلت.</summary>
+    public decimal UncostedPieces { get; set; }
+    /// <summary>كلفة القطعة المرجعية للصنف (قابلة للتعديل من الحسابات الختامية).</summary>
+    public decimal? ReferenceCost { get; set; }
+    /// <summary>بيع بلا كلفة ولا كلفة مرجعية: الربح مضخَّم.</summary>
+    public bool MissingCost => UncostedPieces > 0 && (ReferenceCost ?? 0) == 0;
 }
 
 public record FinalAccountLine(string Section, string Label, decimal Amount, bool IsTotal = false);
@@ -46,6 +54,16 @@ public class FinalAccountsReport
     /// <summary>كلفة القنينة = (المواد + المصاريف التشغيلية والرواتب ومصاريف المندوبين) ÷ القطع المباعة. غير التشغيلي لا يدخل.</summary>
     public decimal CostPerPiece => PiecesSold == 0 ? 0 : Math.Round((MaterialsCost + OperatingExpenses + Salaries + RepFieldExpenses) / PiecesSold, 2);
     public decimal OverheadPerPiece => PiecesSold == 0 ? 0 : Math.Round((OperatingExpenses + Salaries + RepFieldExpenses) / PiecesSold, 2);
+    /// <summary>تنبيه «بضاعة بلا كلفة»: منتجات بيعت بلا كلفة ولا كلفة مرجعية فالربح أعلى من الحقيقي.</summary>
+    public string? MissingCostWarning
+    {
+        get
+        {
+            var missing = Products.Where(p => p.MissingCost).ToList();
+            return missing.Count == 0 ? null
+                : $"⚠ بضاعة بلا كلفة: {string.Join("، ", missing.Select(p => p.ItemName))} — دخلت بمستند إدخال لا بالإنتاج، فالربح أعلى من الحقيقي. أدخل «كلفة القطعة المرجعية» في الجدول ثم احفظ.";
+        }
+    }
 }
 
 public class WorkingCapitalSnapshot
@@ -117,7 +135,8 @@ public class FinalAccountsService
             .Where(t => t.ReferenceTable == "SalesInvoices" && t.ReferenceId != null && invoiceIds.Contains(t.ReferenceId.Value)
                         && (t.TransactionType == StockTransactionType.SalesIssue || t.TransactionType == StockTransactionType.RepSale))
             .GroupBy(t => t.ItemId)
-            .Select(g => new { ItemId = g.Key, Pieces = -g.Sum(t => t.QuantityBaseUnits), Cost = -g.Sum(t => t.QuantityBaseUnits * (t.UnitCost ?? 0)) })
+            .Select(g => new { ItemId = g.Key, Pieces = -g.Sum(t => t.QuantityBaseUnits), Cost = -g.Sum(t => t.QuantityBaseUnits * (t.UnitCost ?? 0)),
+                               Uncosted = -g.Sum(t => t.UnitCost == null || t.UnitCost == 0 ? t.QuantityBaseUnits : 0) })
             .ToDictionaryAsync(x => x.ItemId);
 
         var products = lines.GroupBy(l => new { l.ItemId, l.ItemName, l.CostPrice }).Select(g =>
@@ -125,12 +144,14 @@ public class FinalAccountsService
             var pieces = g.Sum(l => l.QuantityBaseUnits);
             var costed = issued.GetValueOrDefault(g.Key.ItemId);
             // ما بيع بانتظار الإنتاج بلا حركة مخزنية بعد: بمتوسط الكلفة الحالي
-            var uncosted = Math.Max(0, pieces - (costed?.Pieces ?? 0));
+            // وما صُرف بلا كلفة (مستند إدخال بلا سعر): بالكلفة المرجعية للصنف إن أُدخلت
+            var uncosted = Math.Max(0, pieces - (costed?.Pieces ?? 0)) + (costed?.Uncosted ?? 0);
             return new ProductMarginRow
             {
                 ItemId = g.Key.ItemId, ItemName = g.Key.ItemName, PiecesSold = pieces, Revenue = g.Sum(l => l.LineTotal),
                 ListValue = Math.Round(g.Sum(l => l.List * l.QuantityInLevel), 2),
-                Cost = Math.Round((costed?.Cost ?? 0) + uncosted * (g.Key.CostPrice ?? 0), 2)
+                Cost = Math.Round((costed?.Cost ?? 0) + uncosted * (g.Key.CostPrice ?? 0), 2),
+                UncostedPieces = uncosted, ReferenceCost = g.Key.CostPrice
             };
         }).ToList();
 
@@ -154,6 +175,8 @@ public class FinalAccountsService
             row.Cost = Math.Round(row.Cost - returnedCost.GetValueOrDefault(ret.ItemId), 2);
         }
         products = products.OrderByDescending(p => p.Revenue).ToList();
+        var packs = await PackFormatter.LoadAsync(_db, products.Select(p => p.ItemId));
+        foreach (var p in products) p.PacksText = packs.Of(p.ItemId, p.PiecesSold);
 
         // ---- المصروفات من شاشة المصروف ----
         // مصاريف سيارات المندوبين من محافظهم تُحسب من الدفتر (حساب 5103) فلا تُجمع هنا مرة ثانية
@@ -218,6 +241,29 @@ public class FinalAccountsService
             r.Add(new("إيرادات أخرى", e.Name, e.Amount));
         r.Add(new("النتيجة", "صافي ربح الشهر", report.NetProfit, true));
         return report;
+    }
+
+    /// <summary>
+    /// كلفة القطعة المرجعية لمنتج (Items.CostPrice) من الحسابات الختامية: تُحسب بها القطع المباعة بلا كلفة
+    /// (بضاعة دخلت بمستند إدخال لا بالإنتاج). لا تغيّر كلفة الحركات المسعّرة فعلًا. لصاحب صلاحية «الحسابات الختامية».
+    /// </summary>
+    public async Task<FinanceOperationResult> SetReferenceCostsAsync(IReadOnlyDictionary<int, decimal> costPerPiece, int userId)
+    {
+        if (!await SpecialPermission.HasAsync(_db, userId, SpecialPermission.FinalAccounts))
+            return FinanceOperationResult.Fail("تعديل الكلفة لمن يملك صلاحية «الحسابات الختامية» فقط");
+        if (costPerPiece.Values.Any(c => c < 0)) return FinanceOperationResult.Fail("الكلفة لا تكون سالبة");
+        var ids = costPerPiece.Keys.ToList();
+        foreach (var item in await _db.Items.Where(i => ids.Contains(i.Id)).ToListAsync())
+        {
+            var cost = costPerPiece[item.Id];
+            if (item.CostPrice == cost) continue;
+            var old = item.CostPrice;
+            item.CostPrice = cost;
+            await new AuditService(_db).LogAsync(userId, "Update", "Items", item.Id,
+                $"كلفة القطعة المرجعية لـ {item.ItemName}: {old?.ToString("N2") ?? "—"} ← {cost:N2} (من الحسابات الختامية)");
+        }
+        await _db.SaveChangesAsync();
+        return FinanceOperationResult.Ok();
     }
 
     // ============================ رأس المال التشغيلي ============================

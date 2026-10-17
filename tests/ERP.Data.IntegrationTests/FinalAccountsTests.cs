@@ -65,7 +65,8 @@ public class FinalAccountsTests
         var report = await new FinalAccountsService(db).MonthAsync(Day.Year, Day.Month);
         var p = Assert.Single(report.Products);
         Assert.Equal((24m, 4_800m, 6_000m, 1_200m), (p.PiecesSold, p.Revenue, p.ListValue, p.Discount));
-        Assert.Equal(Math.Round(issueCost, 2), p.Cost);
+        var refCost = await db.Items.Where(i => i.Id == w500.Id).Select(i => i.CostPrice).FirstAsync() ?? 0;
+        Assert.Equal(Math.Round(issueCost + p.UncostedPieces * refCost, 2), p.Cost);   // المسعَّر + ما بلا كلفة بالكلفة المرجعية
         Assert.Equal(50_000m, report.OperatingExpenses);              // النثرية الملغاة لا تُحسب
         Assert.Equal(200_000m, report.NonOperatingExpenses);
         Assert.Equal(30_000m, report.OtherIncome);
@@ -76,6 +77,26 @@ public class FinalAccountsTests
         Assert.Contains(report.Lines, l => l.Label == "خصم الوكلاء والأسعار الخاصة" && l.Amount == -1_200m);
         Assert.Contains(report.Lines, l => l.Section.StartsWith("غير تشغيلي") && l.Label == "توسعة");
         Assert.Equal(report.NetProfit, report.Lines.Last().Amount);
+
+        // المباع بالعبوات، و«بضاعة بلا كلفة»: دخلت بمستند إدخال بلا سعر فتُحسب بالكلفة المرجعية بعد إدخالها
+        Assert.Equal("2 كارتون", p.PacksText);
+        if (issueCost == 0)
+        {
+            Assert.Equal(24m, p.UncostedPieces);
+            await db.Items.Where(i => i.Id == w500.Id).ExecuteUpdateAsync(u => u.SetProperty(i => i.CostPrice, (decimal?)null));
+            var warned = await new FinalAccountsService(db).MonthAsync(Day.Year, Day.Month);
+            Assert.True(warned.Products.Single().MissingCost);
+            Assert.Contains("بضاعة بلا كلفة", warned.MissingCostWarning);
+            var set = await new FinalAccountsService(db).SetReferenceCostsAsync(new Dictionary<int, decimal> { [w500.Id] = 90m }, _f.AdminId);
+            Assert.True(set.Success, set.ErrorMessage);
+            db.ChangeTracker.Clear();
+            var fixedReport = await new FinalAccountsService(db).MonthAsync(Day.Year, Day.Month);
+            var fp = fixedReport.Products.Single();
+            Assert.Equal(24m * 90m, fp.Cost);
+            Assert.False(fp.MissingCost);
+            Assert.Null(fixedReport.MissingCostWarning);
+            Assert.Equal(report.NetProfit - (fp.Cost - p.Cost), fixedReport.NetProfit);
+        }
 
         // التقرير اليومي للصناديق
         var daily = await new FinalAccountsService(db).DailyCashAsync(Day);

@@ -54,33 +54,74 @@
             </Border>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding DepartmentTotalText}" FontWeight="SemiBold" Margin="0,6,0,0"/>
-            <DataGrid ItemsSource="{Binding VisibleRows}">
+            <!-- تجميع الأعمدة تحت عنوانين: المستحقات (أخضر) والاستقطاعات (أحمر)، مع مجموع لكل مجموعة؛
+                 عرض الشريط يتبع أعمدة الجدول (PayrollSectionView.xaml.cs) -->
+            <Grid DockPanel.Dock="Top" x:Name="GroupBand" Height="30">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="BandLead" Width="0"/>
+                    <ColumnDefinition x:Name="BandIdentity" Width="0"/>
+                    <ColumnDefinition x:Name="BandEarnings" Width="0"/>
+                    <ColumnDefinition x:Name="BandDeductions" Width="0"/>
+                    <ColumnDefinition x:Name="BandNet" Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="2" Background="#0E7A55" CornerRadius="6,6,0,0" Margin="1,0">
+                    <TextBlock Text="المستحقات" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border Grid.Column="3" Background="#B42318" CornerRadius="6,6,0,0" Margin="1,0">
+                    <TextBlock Text="الاستقطاعات" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+            </Grid>
+            <DataGrid x:Name="PayrollGrid" ItemsSource="{Binding VisibleRows}" IsReadOnly="True">
+                <DataGrid.Resources>
+                    <Style x:Key="EarnHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                        <Setter Property="Background" Value="#0E7A55"/>
+                        <Setter Property="Foreground" Value="White"/>
+                    </Style>
+                    <Style x:Key="DeductHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                        <Setter Property="Background" Value="#B42318"/>
+                        <Setter Property="Foreground" Value="White"/>
+                    </Style>
+                    <Style x:Key="EarnTotal" TargetType="TextBlock">
+                        <Setter Property="FontWeight" Value="Bold"/>
+                        <Setter Property="Foreground" Value="#0E7A55"/>
+                    </Style>
+                    <Style x:Key="DeductTotal" TargetType="TextBlock">
+                        <Setter Property="FontWeight" Value="Bold"/>
+                        <Setter Property="Foreground" Value="#B42318"/>
+                    </Style>
+                </DataGrid.Resources>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*" MinWidth="140"/>
-                    <DataGridTextColumn Header="القسم" Binding="{Binding DepartmentName}" Width="110"/>
-                    <DataGridTextColumn Header="العملة" Binding="{Binding Currency}" Width="60"/>
-                    <DataGridTextColumn Header="الأساسي" Binding="{Binding BaseSalary, StringFormat=N0}" Width="100"/>
-                    <DataGridTextColumn Header="البدلات" Binding="{Binding Allowances, StringFormat=N0}" Width="90"/>
-                    <DataGridTextColumn Header="خصم الغياب" Binding="{Binding AbsenceDeduction, StringFormat=N0}" Width="95"/>
-                    <DataGridTextColumn Header="الإضافي" Binding="{Binding OvertimeAmount, StringFormat=N0}" Width="90">
+                    <DataGridTextColumn Header="القسم" Binding="{Binding DepartmentName}" Width="100"/>
+                    <DataGridTextColumn Header="العملة" Binding="{Binding Currency}" Width="55"/>
+                    <!-- المستحقات -->
+                    <DataGridTextColumn Header="الأساسي" Binding="{Binding BaseSalary, StringFormat=N0}" Width="90" HeaderStyle="{StaticResource EarnHeader}"/>
+                    <DataGridTextColumn Header="البدلات" Binding="{Binding Allowances, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource EarnHeader}"/>
+                    <DataGridTextColumn Header="الإضافي" Binding="{Binding OvertimeAmount, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource EarnHeader}">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding OvertimeHint}"/></Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="بدون راتب" Binding="{Binding UnpaidLeaveDeduction, StringFormat=N0}" Width="90">
+                    <DataGridTextColumn Header="الحوافز" Binding="{Binding Incentives, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource EarnHeader}">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding IncentivesHint}"/></Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="المجموع" Binding="{Binding TotalEarnings, StringFormat=N0}" Width="95" HeaderStyle="{StaticResource EarnHeader}" ElementStyle="{StaticResource EarnTotal}"/>
+                    <!-- الاستقطاعات -->
+                    <DataGridTextColumn Header="الغياب" Binding="{Binding AbsenceDeduction, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="بدون راتب" Binding="{Binding UnpaidLeaveDeduction, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource DeductHeader}">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding UnpaidLeaveHint}"/></Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Header="حافز المندوب" Binding="{Binding RepIncentive, StringFormat=N0}" Width="100"/>
-                    <DataGridTextColumn Header="حافز المدير" Binding="{Binding ManagerIncentive, StringFormat=N0}" Width="95"/>
-                    <DataGridTextColumn Header="الحافز الشهري" Binding="{Binding MonthlyIncentive, StringFormat=N0}" Width="100"/>
-                    <DataGridTextColumn Header="قسط السلفة" Binding="{Binding LoanDeduction, StringFormat=N0}" Width="95"/>
-                    <DataGridTextColumn Header="المسحوبات" Binding="{Binding WithdrawalDeduction, StringFormat=N0}" Width="95"/>
-                    <DataGridTextColumn Header="العقوبات" Binding="{Binding PenaltyDeduction, StringFormat=N0}" Width="85"/>
-                    <DataGridTextColumn Header="الضمان الاجتماعي" Binding="{Binding SocialSecurity, StringFormat=N0}" Width="110"/>
-                    <DataGridTextColumn Header="التكافل الاجتماعي" Binding="{Binding SocialSolidarity, StringFormat=N0}" Width="110"/>
-                    <DataGridTextColumn Header="الصافي" Binding="{Binding NetSalary, StringFormat=N2}" Width="120"/>
+                    <DataGridTextColumn Header="السلف" Binding="{Binding LoanDeduction, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="المسحوبات" Binding="{Binding WithdrawalDeduction, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="العقوبات" Binding="{Binding PenaltyDeduction, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="الضمان" Binding="{Binding SocialSecurity, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="التكافل" Binding="{Binding SocialSolidarity, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="المجموع" Binding="{Binding TotalDeductions, StringFormat=N0}" Width="90" HeaderStyle="{StaticResource DeductHeader}" ElementStyle="{StaticResource DeductTotal}"/>
+                    <DataGridTextColumn Header="الصافي" Binding="{Binding NetSalary, StringFormat=N2}" Width="110" FontWeight="Bold"/>
                 </DataGrid.Columns>
             </DataGrid>
         </DockPanel>

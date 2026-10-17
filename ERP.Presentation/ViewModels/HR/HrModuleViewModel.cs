@@ -344,6 +344,12 @@ public class PayrollRow
     public decimal UnpaidLeaveDeduction { get; init; }
     public string UnpaidLeaveHint { get; init; } = "";
     public decimal NetSalary { get; init; }
+
+    // تجميع الأعمدة: المستحقات والاستقطاعات مع مجموع لكل مجموعة
+    public decimal Incentives => RepIncentive + ManagerIncentive + MonthlyIncentive;
+    public string IncentivesHint => Incentives == 0 ? "" : $"المندوب {RepIncentive:N0} · المدير {ManagerIncentive:N0} · الشهري {MonthlyIncentive:N0}";
+    public decimal TotalEarnings => BaseSalary + Allowances + OvertimeAmount + Incentives;
+    public decimal TotalDeductions => AbsenceDeduction + UnpaidLeaveDeduction + LoanDeduction + WithdrawalDeduction + PenaltyDeduction + SocialSecurity + SocialSolidarity;
 }
 
 public class PayrollSectionViewModel : PeriodSectionViewModel

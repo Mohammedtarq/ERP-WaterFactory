@@ -203,6 +203,20 @@ public class FinanceCategoriesSectionViewModel : CrudSectionViewModel<FinanceCat
 }
 
 // ============================ الحسابات الختامية ============================
+/// <summary>صف «هامش كل منتج» بكلفة قطعة مرجعية قابلة للتعديل (للبضاعة المباعة بلا كلفة).</summary>
+public class ProductMarginEditRow : ObservableObject
+{
+    private decimal? _referenceCost;
+    public ProductMarginEditRow(ProductMarginRow row) { Row = row; _referenceCost = row.ReferenceCost; }
+    public ProductMarginRow Row { get; }
+    public decimal? ReferenceCost
+    {
+        get => _referenceCost;
+        set { if (SetProperty(ref _referenceCost, value)) OnPropertyChanged(nameof(IsDirty)); }
+    }
+    public bool IsDirty => ReferenceCost != Row.ReferenceCost;
+}
+
 public class FinalAccountsSectionViewModel : SectionViewModel
 {
     private int _year = DateTime.Today.Year;
@@ -214,6 +228,7 @@ public class FinalAccountsSectionViewModel : SectionViewModel
                "ربح الشهر: المبيعات والخصم، كلفة المواد، المصاريف التشغيلية وغير التشغيلية، الخسائر، وكلفة القنينة")
     {
         PrintCommand = new RelayCommand(Print);
+        SaveCostsCommand = new AsyncRelayCommand(SaveCostsAsync);
     }
 
     protected override bool ReloadOnActivate => true;
@@ -223,8 +238,21 @@ public class FinalAccountsSectionViewModel : SectionViewModel
     public int Month { get => _month; set { if (SetProperty(ref _month, value)) Background(LoadAsync()); } }
     public FinalAccountsReport? Report { get => _report; private set => SetProperty(ref _report, value); }
     public ObservableCollection<FinalAccountLine> Lines { get; } = new();
-    public ObservableCollection<ProductMarginRow> Products { get; } = new();
+    public ObservableCollection<ProductMarginEditRow> Products { get; } = new();
     public RelayCommand PrintCommand { get; }
+    public AsyncRelayCommand SaveCostsCommand { get; }
+
+    /// <summary>حفظ «كلفة القطعة المرجعية» المعدّلة ثم إعادة حساب الشهر.</summary>
+    private async Task SaveCostsAsync()
+    {
+        var changed = Products.Where(p => p.IsDirty).ToDictionary(p => p.Row.ItemId, p => p.ReferenceCost ?? 0);
+        if (changed.Count == 0) { StatusMessage = "لا تعديل على الكلفة"; return; }
+        await using var db = Session.NewDb();
+        var result = await new FinalAccountsService(db).SetReferenceCostsAsync(changed, Session.UserId);
+        if (!result.Success) { Dialogs.Error(result.ErrorMessage!); return; }
+        await LoadAsync();
+        StatusMessage = $"حُفظت كلفة {changed.Count} منتج — " + StatusMessage;
+    }
 
     public override async Task LoadAsync()
     {
@@ -234,7 +262,7 @@ public class FinalAccountsSectionViewModel : SectionViewModel
         Lines.Clear();
         foreach (var l in report.Lines) Lines.Add(l);
         Products.Clear();
-        foreach (var p in report.Products) Products.Add(p);
+        foreach (var p in report.Products) Products.Add(new ProductMarginEditRow(p));
         Report = report;
         StatusMessage = report.PiecesSold == 0 ? "لا مبيعات مرحّلة في هذا الشهر" : $"كلفة القنينة {report.CostPerPiece:N2} د.ع — صافي الربح {report.NetProfit:N0} د.ع";
     }
@@ -248,12 +276,13 @@ public class FinalAccountsSectionViewModel : SectionViewModel
         r.Columns.AddRange(new[] { "القسم", "البند", "المبلغ" });
         foreach (var l in Lines) r.Rows.Add(new[] { l.Section, l.IsTotal ? $"◄ {l.Label}" : l.Label, $"{l.Amount:N0}" });
         r.Total("صافي ربح الشهر", $"{Report.NetProfit:N0} د.ع", true);
+        if (Report.MissingCostWarning is { } warn) r.Field("تنبيه", warn);
         Dialogs.ShowReport(r);
 
         var p = new ReportDocument { Key = "product-margins", CompanyName = Session.ProjectName, Title = $"هامش كل منتج — {Month}/{Year}", PrintedBy = Session.FullName };
-        p.Columns.AddRange(new[] { "المنتج", "القطع", "الإيراد", "بسعر القائمة", "الخصم", "الكلفة", "الهامش", "%" });
-        foreach (var x in Products)
-            p.Rows.Add(new[] { x.ItemName, $"{x.PiecesSold:N0}", $"{x.Revenue:N0}", $"{x.ListValue:N0}", $"{x.Discount:N0}", $"{x.Cost:N0}", $"{x.Margin:N0}", $"{x.MarginPercent:N1}" });
+        p.Columns.AddRange(new[] { "المنتج", "المباع بالعبوة", "القطع", "الإيراد", "بسعر القائمة", "الخصم", "الكلفة", "الهامش", "%" });
+        foreach (var x in Products.Select(e => e.Row))
+            p.Rows.Add(new[] { x.ItemName + (x.MissingCost ? " ⚠ بلا كلفة" : ""), x.PacksText, $"{x.PiecesSold:N0}", $"{x.Revenue:N0}", $"{x.ListValue:N0}", $"{x.Discount:N0}", $"{x.Cost:N0}", $"{x.Margin:N0}", $"{x.MarginPercent:N1}" });
         Dialogs.ShowReport(p);
     }
 }
