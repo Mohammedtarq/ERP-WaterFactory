@@ -8,6 +8,15 @@
     </ResourceDictionary.MergedDictionaries>
 
     <m:EnumArabicConverter x:Key="EnumArabicConverter"/>
+    <m:RecipeVariantConverter x:Key="RecipeVariant"/>
+    <!-- قائمة الطلبات الخاصة: اسم الزبون/المتغير واضحًا، واسم الطلب الكامل رماديًا -->
+    <DataTemplate x:Key="RecipeChoiceTemplate">
+        <TextBlock>
+            <Run Text="{Binding Converter={StaticResource RecipeVariant}, Mode=OneWay}" FontWeight="SemiBold"/>
+            <Run Text="  "/>
+            <Run Text="{Binding Name, Mode=OneWay}" Foreground="#94A3B8"/>
+        </TextBlock>
+    </DataTemplate>
     <m:HexBrushConverter x:Key="HexBrush"/>
     <m:HexBrushConverter x:Key="HexBrushSoft" Opacity="0.14"/>
     <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>

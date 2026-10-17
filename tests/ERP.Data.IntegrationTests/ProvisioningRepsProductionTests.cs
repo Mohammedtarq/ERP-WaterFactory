@@ -703,6 +703,12 @@ public class ProductionServiceTests
         var order = (await new ProductionService(final).GetOrdersAsync()).Single(o => o.Id == orderId);
         Assert.Equal("ماء صنف أ + ماء صنف ب", order.FinishedItemName);
         Assert.Equal(2, order.LinesCount);
+        // الأسماء في الإنتاج: المنتج بالعبوة والمحتوى، والمتغير شرائح، وكل سطر باسمه الموحد في الصف المفتوح
+        Assert.True(order.HasManyLines);
+        Assert.NotEmpty(order.ProductText);
+        Assert.All(order.Lines, l => Assert.False(string.IsNullOrEmpty(l.DisplayName)));
+        Assert.All(order.Lines, l => Assert.StartsWith(l.ProductText.Split(' ')[0], l.DisplayName));
+        Assert.Single(order.Variants);                                                      // كلاهما أساسي ← شريحة واحدة
 
         // المجموع غير كافٍ رغم كفاية كل صنف وحده (50 متبقية، كل صنف يحتاج 40) ← رفض برسالة "مشترك بين" ودون صرف
         var (_, short1) = await prod.CreateOrderAsync(new[] { new ProductionLineInput(itemA.Id, 40), new ProductionLineInput(itemB.Id, 40) }, raw.Id, machineId, user);

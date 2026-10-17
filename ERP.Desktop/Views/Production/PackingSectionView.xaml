@@ -21,7 +21,7 @@
                             <TextBlock>
                                 <Run Text="{Binding MONumber, Mode=OneWay}"/>
                                 <Run Text=" — "/>
-                                <Run Text="{Binding FinishedItemName, Mode=OneWay}"/>
+                                <Run Text="{Binding DisplayName, Mode=OneWay}"/>
                                 <Run Text=" — "/>
                                 <Run Text="{Binding QuantityText, Mode=OneWay}"/>
                                 <Run Text=" — دفعة "/>

@@ -37,6 +37,13 @@ public class ProductionLineRow
     public string QuantityText { get; init; } = "";
     public string PackedText { get; init; } = "";
     public string RemainingText { get; init; } = "";
+    public int? CustomRecipeId { get; init; }
+    /// <summary>المنتج بالعبوة والمحتوى بلا متغير: «كارتون 12×500».</summary>
+    public string ProductText { get; init; } = "";
+    /// <summary>المتغير: الأساسي («الرحمة») أو الاسم الخاص.</summary>
+    public string VariantName { get; init; } = "";
+    /// <summary>الاسم الموحد كاملًا: «كارتون 12×500 مطعم الحسون».</summary>
+    public string DisplayName { get; init; } = "";
 }
 
 public class ProductionOrderRow
@@ -58,6 +65,11 @@ public class ProductionOrderRow
     public string PackedText { get; init; } = "";
     public string PiecesHint => $"{QuantityToProduce:N0} قطعة — المعبّأ {PackedQuantity:N0} قطعة";
     public IReadOnlyList<ProductionLineRow> Lines { get; init; } = Array.Empty<ProductionLineRow>();
+    /// <summary>المنتج بالعبوة والمحتوى (بلا تكرار لسطور الصنف نفسه): «كارتون 12×500».</summary>
+    public string ProductText { get; init; } = "";
+    /// <summary>متغيرات الأمر شرائح: الأساسي والأسماء الخاصة.</summary>
+    public IReadOnlyList<string> Variants { get; init; } = Array.Empty<string>();
+    public bool HasManyLines => Lines.Count > 1;
 }
 
 /// <summary>
@@ -577,7 +589,7 @@ public class ProductionService
             .Select(l => new
             {
                 l.Id, l.ProductionOrderId, l.LineNo, l.ProductionOrder.MONumber, l.FinishedItemId, Item = l.FinishedItem.ItemName,
-                Recipe = l.CustomRecipe != null ? l.CustomRecipe.Name : null, l.QuantityToProduce, l.ProductionOrder.Status,
+                Recipe = l.CustomRecipe != null ? l.CustomRecipe.Name : null, l.CustomRecipeId, l.QuantityToProduce, l.ProductionOrder.Status,
                 Batch = l.OutputBatch != null ? l.OutputBatch.BatchNumber : null,
                 Machine = l.ProductionOrder.Machine != null ? l.ProductionOrder.Machine.Name : null,
                 LastQc = _db.QCBatchResults.Where(q => q.BatchId == l.OutputBatchId).OrderByDescending(q => q.Id).Select(q => (QCOverallResult?)q.OverallResult).FirstOrDefault(),
@@ -585,14 +597,21 @@ public class ProductionService
             })
             .OrderByDescending(l => l.ProductionOrderId).ThenBy(l => l.LineNo).ToListAsync();
         var packs = await PackFormatter.LoadAsync(_db, lines.Select(l => l.FinishedItemId));
-        return lines.Select(l => new ProductionLineRow
+        var names = await ProductNames.LoadAsync(_db, lines.Select(l => l.FinishedItemId));
+        return lines.Select(l =>
         {
+            var (pack, content, variant) = names.Parts(l.FinishedItemId, l.CustomRecipeId);
+            return new ProductionLineRow
+        {
+            CustomRecipeId = l.CustomRecipeId, VariantName = variant, DisplayName = names.Name(l.FinishedItemId, l.CustomRecipeId),
+            ProductText = content.Length > 0 ? $"{pack} {content}" : $"{pack} — {l.Item}",
             LineId = l.Id, OrderId = l.ProductionOrderId, LineNo = l.LineNo, MONumber = l.MONumber, FinishedItemId = l.FinishedItemId,
             FinishedItemName = l.Item, RecipeName = l.Recipe, QuantityToProduce = l.QuantityToProduce, PackedQuantity = l.Packed,
             OutputBatch = l.Batch, LastQc = l.LastQc, Status = l.Status, MachineName = l.Machine,
             QuantityText = packs.Of(l.FinishedItemId, l.QuantityToProduce), PackedText = packs.Of(l.FinishedItemId, l.Packed),
             RemainingText = packs.Of(l.FinishedItemId, Math.Max(0, l.QuantityToProduce - l.Packed)),
             StageText = l.Status == ProductionOrderStatus.InProgress && l.Packed >= l.QuantityToProduce ? "عُبّئ بالكامل" : Stage(l.Status, l.LastQc)
+        };
         }).ToList();
     }
 
@@ -619,6 +638,8 @@ public class ProductionService
                 RecipeName = mine.Any(l => l.RecipeName != null) ? string.Join("، ", mine.Where(l => l.RecipeName != null).Select(l => l.RecipeName)) : null,
                 OutputBatch = mine.Count == 0 ? null : string.Join("، ", mine.Select(l => l.OutputBatch)),
                 PackedQuantity = mine.Sum(l => l.PackedQuantity), LastQc = qc, LinesCount = mine.Count, Lines = mine,
+                ProductText = string.Join(" + ", mine.Select(l => l.ProductText).Distinct()),
+                Variants = mine.Select(l => string.IsNullOrEmpty(l.VariantName) ? "الأساسي" : l.VariantName).Distinct().ToList(),
                 QuantityText = mine.Count == 0 ? $"{o.QuantityToProduce:N0} قطعة" : packs.Total(mine.Select(l => (l.FinishedItemId, l.QuantityToProduce))),
                 PackedText = packs.Total(mine.Select(l => (l.FinishedItemId, l.PackedQuantity))),
                 StageText = Stage(o.Status, qc)

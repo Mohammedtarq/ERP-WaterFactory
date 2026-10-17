@@ -35,11 +35,44 @@
                 </DockPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
                 <!-- الصفوف تتمدد للنص الملتف (المنتج/المرحلة) بدل قصّه -->
-                <DataGrid ItemsSource="{Binding Orders}" RowHeight="NaN" MinRowHeight="34">
+                <!-- المنتج بالعبوة والمحتوى | المتغير شرائح | الكمية بالعبوات؛ الأمر متعدد الأسطر يُفتح لكل سطر باسمه الموحد -->
+                <DataGrid ItemsSource="{Binding Orders}" RowHeight="NaN" MinRowHeight="34" RowDetailsVisibilityMode="VisibleWhenSelected">
+                    <DataGrid.RowDetailsTemplate>
+                        <DataTemplate>
+                            <ItemsControl ItemsSource="{Binding Lines}" Margin="40,2,12,8" Visibility="{Binding HasManyLines, Converter={StaticResource BoolToVisibility}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,2">
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding QuantityText}" FontWeight="SemiBold" Width="130"/>
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding OutputBatch, StringFormat='دفعة {0}'}" Foreground="#64748B" Width="150"/>
+                                            <TextBlock Text="{Binding DisplayName, StringFormat='↳ {0}'}" Foreground="#33597D"/>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </DataTemplate>
+                    </DataGrid.RowDetailsTemplate>
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="88" MinWidth="76"/>
-                        <DataGridTextColumn Header="المنتج" Binding="{Binding FinishedItemName}" Width="1.6*" MinWidth="105" ElementStyle="{StaticResource WrapCell}"/>
-                        <DataGridTextColumn Header="الوصفة الخاصة" Binding="{Binding RecipeName}" Width="1.1*" MinWidth="90" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding ProductText}" Width="1.2*" MinWidth="105" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTemplateColumn Header="المتغير" Width="1.4*" MinWidth="110">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ItemsControl ItemsSource="{Binding Variants}" VerticalAlignment="Center">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#EEF2FF" CornerRadius="9" Padding="8,1" Margin="0,1,4,1">
+                                                    <TextBlock Text="{Binding}" Foreground="#4338CA" FontSize="12"/>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="الماكينة" Binding="{Binding MachineName}" Width="90" MinWidth="80"
                                             Visibility="{Binding Data.HasSidePanel, Source={StaticResource Proxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
                         <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="105" MinWidth="88" ElementStyle="{StaticResource WrapCell}">
@@ -98,8 +131,9 @@
                     <StackPanel>
                         <TextBlock Text="المنتج النهائي (له قائمة مواد)" Style="{StaticResource FieldLabel}"/>
                         <ComboBox ItemsSource="{Binding FinishedItems}" SelectedItem="{Binding FinishedItem}" DisplayMemberPath="ItemName"/>
-                        <TextBlock Text="وصفة مخصصة لعميل (اختياري)" Style="{StaticResource FieldLabel}"/>
-                        <ComboBox ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name"/>
+                        <TextBlock Text="طلب خاص لزبون (اختياري — فارغ = الأساسي)" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" ItemTemplate="{StaticResource RecipeChoiceTemplate}"
+                                  TextSearch.TextPath="Name"/>
                         <TextBlock Text="رقم الدفعة (مولَّد تلقائيًا ويمكن تعديله)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding BatchNumber, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
                         <TextBlock Text="الكمية المطلوب إنتاجها (بالكارتون/الشرنك)" Style="{StaticResource FieldLabel}"/>

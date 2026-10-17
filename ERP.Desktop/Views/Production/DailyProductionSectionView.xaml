@@ -77,7 +77,7 @@
                                         <ColumnDefinition Width="70"/><ColumnDefinition Width="80"/><ColumnDefinition Width="60"/><ColumnDefinition Width="36"/>
                                     </Grid.ColumnDefinitions>
                                     <ComboBox ItemsSource="{Binding DataContext.Products, ElementName=Root}" SelectedItem="{Binding Product}" DisplayMemberPath="ItemName" IsTextSearchEnabled="True"/>
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name" Margin="6,0,0,0" ToolTip="الأساسي = الليبل العام؛ الاسم الخاص يستبدل الغطاء والليبل وتُحجز تشغيلته لصاحبه"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" ItemTemplate="{StaticResource RecipeChoiceTemplate}" TextSearch.TextPath="Name" Margin="6,0,0,0" ToolTip="الأساسي = الليبل العام؛ الاسم الخاص يستبدل الغطاء والليبل وتُحجز تشغيلته لصاحبه"/>
                                     <ComboBox Grid.Column="2" ItemsSource="{Binding Levels}" SelectedItem="{Binding Level}" DisplayMemberPath="LevelName" Margin="6,0,0,0"/>
                                     <TextBox Grid.Column="3" Text="{Binding Packs, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                                     <TextBox Grid.Column="4" Text="{Binding Color, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0"/>

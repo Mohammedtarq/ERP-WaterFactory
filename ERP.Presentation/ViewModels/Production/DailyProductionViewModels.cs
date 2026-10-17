@@ -142,7 +142,7 @@ public class DailyProductionSectionViewModel : SectionViewModel
         foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && withBom.Contains(i.Id)).OrderBy(i => i.ItemName).ToListAsync())
             Products.Add(i);
         _levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => withBom.Contains(l.ItemId) && l.IsSellableUnit).ToListAsync();
-        _recipes = await db.CustomRecipes.AsNoTracking().Where(r => r.IsActive && withBom.Contains(r.FinishedItemId)).ToListAsync();
+        _recipes = await db.CustomRecipes.AsNoTracking().Include(r => r.Customer).Where(r => r.IsActive && withBom.Contains(r.FinishedItemId)).ToListAsync();
         await LoadTemplatesAsync(db);
     }
 

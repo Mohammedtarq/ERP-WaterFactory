@@ -13,6 +13,18 @@ public class EnumArabicConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
 }
 
+/// <summary>
+/// الطلب الخاص باسمه في الاسم الموحد (المختصر ← اسم الزبون ← اسم الطلب) — لقوائم الوصفات في الإنتاج:
+/// اسم الزبون واضحًا، واسم الطلب الكامل رماديًا بجانبه عند اختلافه.
+/// </summary>
+public class RecipeVariantConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is ERP.Data.ProjectDb.Entities.CustomRecipe r
+        ? ERP.Cloud.Contracts.ProductName.Variant(r.ShortName, r.Customer?.Name, r.Name, false, null)
+        : "";
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
+}
+
 /// <summary>"#10B981" ← فرشاة، مع شفافية اختيارية للخلفيات الفاتحة خلف الأيقونات.</summary>
 public class HexBrushConverter : IValueConverter
 {
