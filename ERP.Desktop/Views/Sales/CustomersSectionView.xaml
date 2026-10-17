@@ -79,6 +79,9 @@
                         <TextBox Text="{Binding Editor.Name}"/>
                         <TextBlock Text="نوع العميل" Style="{StaticResource FieldLabel}"/>
                         <ComboBox ItemsSource="{Binding TypeOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Editor.CustomerType}"/>
+                        <TextBlock Text="علامة الخصم (للتقرير الشهري فقط)" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding DiscountKindOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Editor.DiscountKind}"
+                                  ToolTip="وكيل أو صاحب خصم تشجيعي — يظهر في «تقرير الخصم الشهري» ولا يغيّر الأسعار"/>
                         <TextBlock Text="الوكيل (للعميل الفرعي فقط)" Style="{StaticResource FieldLabel}"/>
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="بدون" Style="{StaticResource RowIconButton}" Tag="#64748B"

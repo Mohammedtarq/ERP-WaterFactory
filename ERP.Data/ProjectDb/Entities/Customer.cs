@@ -1,6 +1,8 @@
 namespace ERP.Data.ProjectDb.Entities;
 
 public enum CustomerType { Agent, SubCustomer, Direct }
+/// <summary>علامة لتقرير الخصم الشهري فقط (لا تؤثر في الأسعار): وكيل أو صاحب خصم تشجيعي.</summary>
+public enum DiscountKind { Agent, Incentive }
 
 public class Customer
 {
@@ -18,6 +20,9 @@ public class Customer
 
     /// <summary>حد الدين بالمبلغ: الآجل الذي يتجاوزه يوقف حتى يوافق المدير (NULL = بلا حد).</summary>
     public decimal? CreditLimit { get; set; }
+
+    /// <summary>وكيل / صاحب خصم تشجيعي / لا شيء — لتقرير الخصم الشهري فقط (58_pack_prices.sql).</summary>
+    public DiscountKind? DiscountKind { get; set; }
 
     // ملاحظة: مديونية كل عميل (وكيل أو فرعي) مستقلة تمامًا وتُحسب من
     // SalesInvoices + Vouchers الخاصة به فقط — لا حقل رصيد هنا، بنفس مبدأ

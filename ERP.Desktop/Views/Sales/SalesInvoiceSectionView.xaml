@@ -103,8 +103,6 @@
                                        Foreground="{Binding PricingTypeColor, Converter={StaticResource HexBrush}}"/>
                         </StackPanel>
                     </Border>
-                    <CheckBox Grid.Row="1" Grid.Column="4" Content="تطبيق تسعير الوكيل" IsChecked="{Binding UseAgentPricing}" Margin="0,14,0,0"
-                              Visibility="{Binding IsAgentOrSub, Converter={StaticResource BoolToVisibility}}"/>
                     <StackPanel Grid.Row="1" Grid.Column="6" Visibility="{Binding IsPartial, Converter={StaticResource BoolToVisibility}}">
                         <TextBlock Text="المبلغ المدفوع الآن" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding AmountPaidNow, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
@@ -200,8 +198,10 @@
                         <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*" IsReadOnly="True"/>
                         <DataGridTextColumn Header="الوحدة" Binding="{Binding LevelName}" Width="80" IsReadOnly="True"/>
                         <DataGridTextColumn Header="الكمية ✎" Binding="{Binding QuantityInLevel, UpdateSourceTrigger=PropertyChanged}" Width="80"/>
-                        <DataGridTextColumn Header="بالقطعة" Binding="{Binding BaseUnits, StringFormat=N0, Mode=OneWay}" Width="80" IsReadOnly="True"/>
-                        <DataGridTextColumn Header="سعر الوحدة ✎" Binding="{Binding UnitPrice, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
+                        <DataGridTextColumn Header="سعر القائمة" Binding="{Binding ListPrice, StringFormat=N0, Mode=OneWay}" Width="90" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="سعر البيع ✎" Binding="{Binding UnitPrice, UpdateSourceTrigger=PropertyChanged}" Width="100"
+/>
+                        <DataGridTextColumn Header="الخصم" Binding="{Binding Discount, StringFormat=N0, Mode=OneWay}" Width="80" IsReadOnly="True"/>
                         <DataGridTextColumn Header="الإجمالي" Binding="{Binding LineTotal, StringFormat=N0, Mode=OneWay}" Width="110" IsReadOnly="True"/>
                         <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchLabel}" Width="150" IsReadOnly="True"/>
                         <DataGridTemplateColumn Header="" Width="46">
@@ -224,8 +224,12 @@
                 <StackPanel>
                     <TextBlock Text="ملخص الفاتورة" Style="{StaticResource SectionTitle}"/>
                     <DockPanel Margin="0,4">
-                        <TextBlock DockPanel.Dock="Right" Text="{Binding TotalPieces, StringFormat=N0}"/>
-                        <TextBlock Text="عدد القطع" Style="{StaticResource Muted}"/>
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding PacksTotalText}"/>
+                        <TextBlock Text="الكمية" Style="{StaticResource Muted}"/>
+                    </DockPanel>
+                    <DockPanel Margin="0,4" Visibility="{Binding HasDiscount, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding TotalDiscount, StringFormat=N0}" Foreground="#B45309" FontWeight="SemiBold"/>
+                        <TextBlock Text="إجمالي الخصم" Style="{StaticResource Muted}"/>
                     </DockPanel>
                     <DockPanel Margin="0,4">
                         <TextBlock DockPanel.Dock="Right" Text="{Binding SubTotal, StringFormat=N0}"/>

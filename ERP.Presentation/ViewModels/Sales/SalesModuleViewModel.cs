@@ -25,6 +25,7 @@ public class SalesModuleViewModel : ModuleViewModel
         VariantAlerts = Add(new VariantAlertsSectionViewModel(s, d));
         Add(new LoadingSettingsSectionViewModel(s, d));
         Add(new Shell.SalesReportsSectionViewModel(s, d));
+        Add(new DiscountReportSectionViewModel(s, d));
         // صندوق موظف المبيعات: تدخله مبيعاته النقدية، ويسلّم منه للصندوق الرئيسي
         MyBox = Add(new Finance.CashBoxesSectionViewModel(s, d, ModuleCode.Sales, "صندوقي"));
     }
@@ -71,6 +72,12 @@ public class InvoiceLineDraft : ObservableObject
     /// <summary>متغير التسعير (بالاسم أو من التشغيلة) لإعادة التسعير عند تغيير العميل.</summary>
     public int? PriceRecipeId { get; init; }
     public string BatchLabel { get; init; } = "تلقائي (الأقرب انتهاءً)";
+    /// <summary>الاسم الموحد للسطر («كارتون 40×330 الرحمة») في الطباعة والإيصال.</summary>
+    public string DisplayName { get; init; } = "";
+    private decimal _listPrice;
+    /// <summary>سعر القائمة للعبوة (العام الموحّد أو سعر الطلب الخاص) — الخصم = (القائمة − السعر) × الكمية.</summary>
+    public decimal ListPrice { get => _listPrice; set { if (SetProperty(ref _listPrice, value)) { OnPropertyChanged(nameof(Discount)); _changed(); } } }
+    public decimal Discount => ListPrice > UnitPrice ? Math.Round((ListPrice - UnitPrice) * QuantityInLevel, 2) : 0;
 
     /// <summary>true = السعر عُدّل يدويًا، فلا يُعاد تسعيره عند تغيير العميل.</summary>
     public bool IsManualPrice { get; set; }
@@ -78,7 +85,7 @@ public class InvoiceLineDraft : ObservableObject
     public decimal QuantityInLevel
     {
         get => _quantityInLevel;
-        set { if (SetProperty(ref _quantityInLevel, value)) { OnPropertyChanged(nameof(BaseUnits)); OnPropertyChanged(nameof(LineTotal)); _changed(); } }
+        set { if (SetProperty(ref _quantityInLevel, value)) { OnPropertyChanged(nameof(BaseUnits)); OnPropertyChanged(nameof(LineTotal)); OnPropertyChanged(nameof(Discount)); _changed(); } }
     }
 
     public decimal UnitPrice
@@ -89,6 +96,7 @@ public class InvoiceLineDraft : ObservableObject
             if (!SetProperty(ref _unitPrice, value)) return;
             IsManualPrice = true;
             OnPropertyChanged(nameof(LineTotal));
+            OnPropertyChanged(nameof(Discount));
             _changed();
         }
     }
@@ -99,6 +107,7 @@ public class InvoiceLineDraft : ObservableObject
         IsManualPrice = false;
         OnPropertyChanged(nameof(UnitPrice));
         OnPropertyChanged(nameof(LineTotal));
+        OnPropertyChanged(nameof(Discount));
     }
 
     public decimal BaseUnits => QuantityInLevel * BaseUnitsPerLevel;
@@ -336,23 +345,20 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
     public bool IsAgentOrSub => Customer?.CustomerType is CustomerType.Agent or CustomerType.SubCustomer;
 
-    /// <summary>نوع التسعير المطبّق يُعرض تلقائيًا بمجرد اختيار العميل.</summary>
+    /// <summary>التسعير موحّد لكل الزبائن (بالعبوة)؛ الوكيل وصاحب الخصم التشجيعي يأخذان خصمهما بكتابة سعر أقل.</summary>
     public string PricingTypeLabel => Customer switch
     {
-        null => "اختر العميل لعرض نوع التسعير",
-        { CustomerType: CustomerType.Agent } when UseAgentPricing => "وكيل — يُطبَّق سعر الوكيل الخاص (أو السعر العادي للصنف بلا سعر خاص)",
-        { CustomerType: CustomerType.SubCustomer } when UseAgentPricing =>
-            $"عميل فرعي تابع لـ \"{Customer.ParentAgent?.Name}\" — يرث سعر وكيله",
-        { CustomerType: CustomerType.Direct } => "عميل مباشر — سعر البيع العادي",
-        _ => $"{ArabicLabels.Of(Customer.CustomerType)} — تم إلغاء تسعير الوكيل: سعر البيع العادي"
+        null => "اختر العميل",
+        { DiscountKind: DiscountKind.Agent } => "وكيل — السعر العام بالعبوة؛ اكتب سعره الأقل في السطر فيظهر الخصم",
+        { DiscountKind: DiscountKind.Incentive } => "صاحب خصم تشجيعي — السعر العام بالعبوة؛ اكتب سعره الأقل فيظهر الخصم",
+        _ => "السعر العام بالعبوة — موحّد لكل الزبائن"
     };
 
-    public string PricingTypeColor => Customer?.CustomerType switch
+    public string PricingTypeColor => Customer?.DiscountKind switch
     {
-        CustomerType.Agent => "#8B5CF6",
-        CustomerType.SubCustomer => "#0EA5E9",
-        CustomerType.Direct => "#10B981",
-        _ => "#94A3B8"
+        DiscountKind.Agent => "#8B5CF6",
+        DiscountKind.Incentive => "#0EA5E9",
+        _ => Customer is null ? "#94A3B8" : "#10B981"
     };
 
     // ---------------- إدخال سطر ----------------
@@ -376,10 +382,16 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         LineLevel is { EquivalentBaseUnits: > 1 } lv
             ? $"المتاح للبيع: {LineAvailable:N0} قطعة = {Math.Floor(LineAvailable.Value / lv.EquivalentBaseUnits):N0} {lv.LevelName}"
             : $"المتاح للبيع: {LineAvailable:N0} قطعة";
-    public string LineBaseUnitsText => LineLevel is null ? "" : $"= {LineQuantity * LineLevel.EquivalentBaseUnits:N0} قطعة";
+    public string LineBaseUnitsText => LineLevel is null || LineLevel.EquivalentBaseUnits > 1 || Mode != SaleMode.RawMaterials ? "" : $"= {LineQuantity * LineLevel.EquivalentBaseUnits:N0} قطعة";
 
     // ---------------- المجاميع (نفس معادلات sp_Sales_PostInvoice) ----------------
     public decimal TotalPieces => Lines.Sum(l => l.BaseUnits);
+    /// <summary>الكمية بالعبوات: «15 كارتون + 4 شرنك» (لا قطع).</summary>
+    public string PacksTotalText => Lines.Count == 0 ? "0"
+        : string.Join(" + ", Lines.GroupBy(l => l.LevelName).Select(g => $"{g.Sum(l => l.QuantityInLevel):#,0.###} {g.Key}"));
+    /// <summary>إجمالي الخصم: Σ (سعر القائمة − سعر البيع) × الكمية.</summary>
+    public decimal TotalDiscount => IsFreeSale ? 0 : Lines.Sum(l => l.Discount);
+    public bool HasDiscount => TotalDiscount > 0;
     public decimal SubTotal => IsFreeSale ? 0 : Lines.Sum(l => l.LineTotal);
     public decimal TaxAmount => IsFreeSale || !TaxEnabled ? 0 : Math.Round(SubTotal * TaxRate / 100m, 2);
     public decimal LoadingAmount => IsFreeSale || !LoadingEnabled ? 0 : Math.Round(TotalPieces * LoadingRate, 2);
@@ -404,7 +416,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
     private void RaiseTotals()
     {
-        foreach (var n in new[] { nameof(TotalPieces), nameof(SubTotal), nameof(TaxAmount), nameof(LoadingAmount),
+        foreach (var n in new[] { nameof(TotalPieces), nameof(PacksTotalText), nameof(TotalDiscount), nameof(HasDiscount), nameof(SubTotal), nameof(TaxAmount), nameof(LoadingAmount),
                                   nameof(Total), nameof(PaidNow), nameof(AmountDue) })
             OnPropertyChanged(n);
     }
@@ -484,9 +496,11 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         // بيع المواد الأولية يقبل أي وحدة للمادة (كرتون، قطعة...)؛ غيره وحدات البيع فقط
         var anyUnit = Mode == SaleMode.RawMaterials;
-        foreach (var l in await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == LineItem.Id && (l.IsSellableUnit || anyUnit))
-                     .OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync())
-            LevelOptions.Add(l);
+        var levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == LineItem.Id && (l.IsSellableUnit || anyUnit))
+                     .OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync();
+        // لا بيع بالقطعة: منتج له عبوة يُباع بعبوته فقط (بيع المواد الأولية مستثنى)
+        if (!anyUnit && levels.Any(l => l.EquivalentBaseUnits > 1)) levels = levels.Where(l => l.EquivalentBaseUnits > 1).ToList();
+        foreach (var l in levels) LevelOptions.Add(l);
 
         BatchOptions.Add(new BatchOption { BatchId = null, Label = "تلقائي (الأقرب انتهاءً)", ShortLabel = "تلقائي (الأقرب انتهاءً)" });
         if (Warehouse is not null)
@@ -521,14 +535,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         var svc = new SalesService(db);
-        if (Customer is null)
-        {
-            var level = await db.ItemPackagingLevels.AsNoTracking().FirstAsync(l => l.Id == levelId);
-            var item = await db.Items.AsNoTracking().FirstAsync(i => i.Id == itemId);
-            var recipePrice = recipeId is null ? null : await db.CustomRecipes.AsNoTracking().Where(r => r.Id == recipeId).Select(r => r.SalePrice).FirstOrDefaultAsync();
-            return Math.Round((recipePrice ?? item.SalePrice) * level.EquivalentBaseUnits, 2);
-        }
-        return await svc.GetSuggestedUnitPriceAsync(Customer.Id, itemId, levelId, UseAgentPricing && IsAgentOrSub, recipeId);
+        return await svc.GetPackPriceAsync(itemId, levelId, recipeId);
     }
 
     private async Task RefreshLineStockAsync()
@@ -569,9 +576,12 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         }
 
         var suggested = await SuggestPriceAsync(LineItem.Id, LineLevel.Id, LineBatch?.PriceRecipeId);
+        string display;
+        await using (var namesDb = Session.NewDb())
+            display = (await ProductNames.LoadAsync(namesDb, new[] { LineItem.Id })).Name(LineItem.Id, LineBatch?.PriceRecipeId, LineLevel.Id);
         var line = new InvoiceLineDraft(RaiseTotals)
         {
-            ItemId = LineItem.Id, ItemCode = LineItem.ItemCode, ItemName = LineItem.ItemName,
+            ItemId = LineItem.Id, ItemCode = LineItem.ItemCode, ItemName = LineItem.ItemName, DisplayName = display, ListPrice = suggested,
             PackagingLevelId = LineLevel.Id, LevelName = LineLevel.LevelName, BaseUnitsPerLevel = LineLevel.EquivalentBaseUnits,
             BatchId = LineBatch?.BatchId, CustomRecipeId = LineBatch?.RecipeId, PriceRecipeId = LineBatch?.PriceRecipeId, BatchLabel = LineBatch?.ShortLabel ?? "تلقائي (الأقرب انتهاءً)",
             QuantityInLevel = LineQuantity
@@ -590,7 +600,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         Customer!.Id, Warehouse!.Id, InvoiceDate, PaymentMethod.Value,
         AmountPaidNow: IsPartial ? AmountPaidNow : 0,
         TaxEnabled: TaxEnabled, TaxRate: TaxRate, LoadingSuppliesEnabled: LoadingEnabled,
-        IsAgentPricing: IsAgentOrSub ? UseAgentPricing : false,
+        IsAgentPricing: false,
         IsFreeSale: IsFreeSale, FreeSaleRecipient: IsFreeSale ? FreeSaleRecipient : null, Notes: Notes);
 
     private string? ValidateForm()
@@ -729,11 +739,16 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             Notes = inv.Notes;
 
             Lines.Clear();
+            ProductNames names;
+            await using (var namesDb = Session.NewDb())
+                names = await ProductNames.LoadAsync(namesDb, inv.Lines.Select(x => x.ItemId));
             foreach (var l in inv.Lines.OrderBy(l => l.Id))
             {
                 var draft = new InvoiceLineDraft(RaiseTotals)
                 {
                     ItemId = l.ItemId, ItemCode = l.Item.ItemCode, ItemName = l.Item.ItemName,
+                    DisplayName = names.Name(l.ItemId, l.CustomRecipeId ?? l.Batch?.CustomRecipeId, l.PackagingLevelId),
+                    ListPrice = l.ListUnitPrice ?? l.UnitPrice,
                     PackagingLevelId = l.PackagingLevelId, LevelName = l.PackagingLevel.LevelName,
                     BaseUnitsPerLevel = l.PackagingLevel.EquivalentBaseUnits, BatchId = l.BatchId, CustomRecipeId = l.CustomRecipeId,
                     PriceRecipeId = l.CustomRecipeId ?? l.Batch?.CustomRecipeId,
@@ -765,7 +780,8 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             Notes = Notes,
             PrintedBy = Session.FullName,
             Key = "SalesInvoice", ReceiptCapable = true,
-            ReceiptColumns = IsFreeSale ? new[] { 1, 2, 3 } : new[] { 1, 3, 5, 6 }   // الصنف، الكمية، السعر، المبلغ
+            // الإيصال 80mm: الصنف، الكمية، السعر، [الخصم إن وُجد]، المبلغ
+            ReceiptColumns = IsFreeSale ? new[] { 1, 2 } : HasDiscount ? new[] { 1, 2, 3, 4, 5 } : new[] { 1, 2, 3, 5 }
         };
         r.Field("رقم الفاتورة", InvoiceId is null ? "—" : InvoiceNumber)
          .Field("التاريخ", InvoiceDate.ToString("yyyy/MM/dd"))
@@ -774,20 +790,23 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
          .Field("طريقة الدفع", IsFreeSale ? null : PaymentMethod.Label)
          .Field("المخزن", Warehouse?.Name);
 
+        // الكمية بالعبوة والصنف بالاسم الموحد (لا قطع)؛ عمود الخصم لكل سطر
         r.Columns.AddRange(IsFreeSale
-            ? new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع" }
-            : new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع", "السعر", "المبلغ" });
+            ? new[] { "#", "الصنف", "الكمية" }
+            : new[] { "#", "الصنف", "الكمية", "السعر", "الخصم", "المبلغ" });
         var i = 0;
         foreach (var l in Lines)
         {
-            var row = new List<string> { (++i).ToString(), $"{l.ItemName} ({l.ItemCode})", l.LevelName, $"{l.QuantityInLevel:N0}", $"{l.BaseUnits:N0}" };
-            if (!IsFreeSale) row.AddRange(new[] { $"{l.UnitPrice:N0}", $"{l.LineTotal:N0}" });
+            var name = string.IsNullOrEmpty(l.DisplayName) ? l.ItemName : l.DisplayName;
+            var row = new List<string> { (++i).ToString(), name, $"{l.QuantityInLevel:#,0.###} {l.LevelName}" };
+            if (!IsFreeSale) row.AddRange(new[] { $"{l.UnitPrice:N0}", l.Discount > 0 ? $"{l.Discount:N0}" : "", $"{l.LineTotal:N0}" });
             r.Rows.Add(row);
         }
 
-        r.Total("إجمالي القطع", $"{TotalPieces:N0}");
+        r.Total("الكمية", PacksTotalText);
         if (!IsFreeSale)
         {
+            if (HasDiscount) r.Total("إجمالي الخصم", $"{TotalDiscount:N0} د.ع");
             r.Total("المجموع", $"{SubTotal:N0} د.ع");
             if (TaxAmount != 0) r.Total($"الضريبة ({TaxRate:0.##}%)", $"{TaxAmount:N0} د.ع");
             if (LoadingAmount != 0) r.Total("رسوم التحميل", $"{LoadingAmount:N0} د.ع");
@@ -1131,6 +1150,13 @@ public class CustomersSectionViewModel : CrudSectionViewModel<Customer>
         : base(s, d, ModuleCode.Sales, "العملاء", Icons.People, "#0EA5E9", "الوكلاء والعملاء الفرعيون والمباشرون") { }
 
     public IReadOnlyList<Option<CustomerType>> TypeOptions { get; } = ArabicLabels.OptionsOf<CustomerType>();
+    /// <summary>علامة تقرير الخصم الشهري (لا تؤثر في الأسعار).</summary>
+    public IReadOnlyList<Option<DiscountKind?>> DiscountKindOptions { get; } = new[]
+    {
+        new Option<DiscountKind?>(null, "لا شيء"),
+        new Option<DiscountKind?>(DiscountKind.Agent, "وكيل"),
+        new Option<DiscountKind?>(DiscountKind.Incentive, "صاحب خصم تشجيعي")
+    };
     public ObservableCollection<Customer> Agents { get; } = new();
 
     protected override int GetId(Customer e) => e.Id;
@@ -1170,19 +1196,15 @@ public class CustomersSectionViewModel : CrudSectionViewModel<Customer>
     }
 }
 
-/// <summary>سطر قابل للتعديل في «أسعار البيع»: الأسعار تُكتب بالعبوة (شرنك/كارتون) وتُحفظ بالقطعة.</summary>
+/// <summary>سطر قابل للتعديل في «أسعار البيع»: سعر العبوة يُكتب ويُحفظ كما هو (لا تحويل للقطعة).</summary>
 public class SellingPriceEditRow : ObservableObject
 {
-    private decimal? _general;
-    private decimal? _agent;
+    private decimal? _price;
 
     public SellingPriceEditRow(SellingPriceRow row)
     {
         Row = row;
-        _general = Pack(row.GeneralPiece);
-        _agent = Pack(row.AgentPiece);
-        OriginalGeneral = _general;
-        OriginalAgent = _agent;
+        _price = row.PackPrice;
     }
 
     public SellingPriceRow Row { get; }
@@ -1190,62 +1212,30 @@ public class SellingPriceEditRow : ObservableObject
     public bool IsVariant => Row.RecipeId is not null;
     public string VariantText => Row.RecipeName ?? "الأساسي";
     public string PackText => Row.PackPieces > 1 ? $"{Row.PackName} ({Row.PackPieces:N0})" : Row.PackName;
-    /// <summary>السعر العام للعبوة (للطلب الخاص فارغ = سعر الأساسي).</summary>
-    public decimal? GeneralPack { get => _general; set { if (SetProperty(ref _general, value)) Changed(); } }
-    /// <summary>سعر الوكيل المختار للعبوة (فارغ = يأخذ السعر العام).</summary>
-    public decimal? AgentPack { get => _agent; set { if (SetProperty(ref _agent, value)) Changed(); } }
-    private decimal? OriginalGeneral { get; }
-    private decimal? OriginalAgent { get; }
-    public bool GeneralChanged => GeneralPack != OriginalGeneral;
-    public bool AgentChanged => AgentPack != OriginalAgent;
-    public bool IsChanged => GeneralChanged || AgentChanged;
-
-    /// <summary>ما يُطبَّق فعلًا للعبوة عند عدم تحديد سعر خاص.</summary>
-    public string EffectiveText
-    {
-        get
-        {
-            // نفس ترتيب fn_Sales_UnitPrice: وكيل الطلب الخاص ← عام الطلب الخاص ← وكيل الأساسي ← سعر الصنف
-            var general = GeneralPack ?? Pack(Row.BasePiece);
-            var agent = AgentPack ?? (IsVariant ? GeneralPack ?? Pack(Row.BaseAgentPiece) ?? general : general);
-            return $"العام {general:N0} — للوكيل {agent:N0}";
-        }
-    }
-
-    internal decimal? Pack(decimal? piece) => piece is { } p ? Math.Round(p * Row.PackPieces, 2) : null;
-    internal decimal? Piece(decimal? pack) => pack is { } p ? Math.Round(p / Row.PackPieces, 2) : null;
-    /// <summary>سعر عبوة لا ينقسم على قطعها بدقة فلسين (يُقرَّب سعر القطعة).</summary>
-    internal bool Inexact(decimal? pack) => pack is { } p && Math.Round(p / Row.PackPieces, 2) * Row.PackPieces != p;
-
-    private void Changed()
-    {
-        OnPropertyChanged(nameof(IsChanged));
-        OnPropertyChanged(nameof(EffectiveText));
-    }
+    /// <summary>سعر العبوة (للطلب الخاص فارغ = سعر الأساسي).</summary>
+    public decimal? PackPrice { get => _price; set { if (SetProperty(ref _price, value)) { OnPropertyChanged(nameof(IsChanged)); OnPropertyChanged(nameof(EffectiveText)); } } }
+    public bool IsChanged => PackPrice != Row.PackPrice;
+    /// <summary>ما يُطبَّق فعلًا في الفاتورة والتطبيق: سعر الطلب الخاص أو سعر الأساسي الموروث.</summary>
+    public string EffectiveText => PackPrice is { } p ? $"{p:N0} د.ع" : $"{Row.BasePackPrice:N0} د.ع (سعر الأساسي)";
 }
 
 /// <summary>
-/// «أسعار البيع» (ملاحظة التجربة 3، بدل «أسعار الوكلاء»): المنتجات وطلباتها الخاصة فقط، بالعبوة، بالسعر العام وسعر الوكيل المختار.
-/// السعر يُحفظ بالقطعة؛ الفاتورة والتطبيق والتسوية تأخذ سعر الطلب الخاص حين يُختار متغيره.
+/// «أسعار البيع» بالعبوة (docs/agreed-pricing-and-names.md قسم «أ»): سعر عام موحّد لكل الزبائن لكل عبوة، وسعر الطلب الخاص على المتغير.
+/// لا أسعار وكلاء: الوكيل وصاحب الخصم يأخذان خصمهما بكتابة السعر الأقل في الفاتورة.
 /// </summary>
 public class SellingPricesSectionViewModel : SectionViewModel
 {
-    private Customer? _agent;
     private string _filter = "";
 
     public SellingPricesSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.Sales, "أسعار البيع", Icons.Price, "#F59E0B", "السعر العام وسعر كل وكيل لكل منتج وطلب خاص — بالعبوة")
+        : base(s, d, ModuleCode.Sales, "أسعار البيع", Icons.Price, "#F59E0B", "سعر كل عبوة لكل منتج وطلب خاص — موحّد لكل الزبائن")
     {
         SaveCommand = new AsyncRelayCommand(SaveAsync);
     }
 
     protected override bool HasPendingInput => Rows.Any(r => r.IsChanged);
 
-    public ObservableCollection<Customer> Agents { get; } = new();
     public ObservableCollection<SellingPriceEditRow> Rows { get; } = new();
-    /// <summary>الوكيل الذي تُعرض أسعاره الخاصة (فارغ = الأسعار العامة فقط).</summary>
-    public Customer? Agent { get => _agent; set { if (SetProperty(ref _agent, value)) { OnPropertyChanged(nameof(HasAgent)); Background(LoadRowsAsync()); } } }
-    public bool HasAgent => Agent is not null;
     public string Filter { get => _filter; set { if (SetProperty(ref _filter, value ?? "")) OnPropertyChanged(nameof(VisibleRows)); } }
     /// <summary>قائمة فعلية للجدول القابل للتحرير.</summary>
     public IList<SellingPriceEditRow> VisibleRows => Filter.Trim().Length == 0 ? Rows
@@ -1255,20 +1245,7 @@ public class SellingPricesSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        var keep = Agent?.Id;
-        Agents.Clear();
-        foreach (var a in await db.Customers.AsNoTracking().Where(c => c.CustomerType == CustomerType.Agent && c.IsActive).OrderBy(c => c.Name).ToListAsync())
-            Agents.Add(a);
-        _agent = Agents.FirstOrDefault(a => a.Id == keep);
-        OnPropertyChanged(nameof(Agent));
-        OnPropertyChanged(nameof(HasAgent));
-        await LoadRowsAsync();
-    }
-
-    private async Task LoadRowsAsync()
-    {
-        await using var db = Session.NewDb();
-        var rows = await new SellingPriceService(db).RowsAsync(Agent?.Id);
+        var rows = await new SellingPriceService(db).RowsAsync();
         Rows.Clear();
         foreach (var r in rows) Rows.Add(new SellingPriceEditRow(r));
         OnPropertyChanged(nameof(VisibleRows));
@@ -1280,18 +1257,13 @@ public class SellingPricesSectionViewModel : SectionViewModel
         if (!Require(CanEdit, "تعديل أسعار البيع")) return;
         var changed = Rows.Where(r => r.IsChanged).ToList();
         if (changed.Count == 0) { StatusMessage = "لا توجد تغييرات"; return; }
-        var inexact = changed.Where(r => (r.GeneralChanged && r.Inexact(r.GeneralPack)) || (r.AgentChanged && r.Inexact(r.AgentPack))).ToList();
-        if (inexact.Count > 0 && !Dialogs.Confirm("بعض الأسعار لا تنقسم على قطع العبوة بدقة (مثل " + inexact[0].ItemName
-                                                  + ")، فيُقرَّب سعر القطعة إلى فلسين وقد يختلف سعر العبوة قليلًا. متابعة؟"))
-            return;
         await using var db = Session.NewDb();
-        var changes = changed.Select(r => new SellingPriceChange(r.Row.ItemId, r.Row.RecipeId,
-            r.GeneralChanged, r.Piece(r.GeneralPack), r.AgentChanged, r.Piece(r.AgentPack))).ToList();
-        if (await RunOperationAsync(() => new SellingPriceService(db).SaveAsync(Agent?.Id, changes, Session.UserId),
-                                    $"حُفظت أسعار {changed.Count} سطر — تسري على الفواتير الجديدة"))
+        var changes = changed.Select(r => new SellingPriceChange(r.Row.ItemId, r.Row.RecipeId, r.Row.LevelId, r.PackPrice)).ToList();
+        if (await RunOperationAsync(() => new SellingPriceService(db).SaveAsync(changes, Session.UserId),
+                                    $"حُفظت أسعار {changed.Count} سطر — تسري على الفواتير الجديدة ولا تغيّر فاتورة سابقة"))
         {
             var message = StatusMessage;
-            await LoadRowsAsync();
+            await LoadAsync();
             StatusMessage = message;
         }
     }

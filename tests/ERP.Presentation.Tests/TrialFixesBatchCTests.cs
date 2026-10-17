@@ -139,7 +139,7 @@ public class TrialFixesBatchCTests
     }
 
     [Fact]
-    public async Task Selling_prices_screen_sets_general_agent_and_special_order_prices_by_pack()
+    public async Task Selling_prices_screen_sets_unified_pack_prices_and_special_order_prices()
     {
         int productId, recipeId, agentId, directId, fgId, shrinkId;
         await using (var db = _f.NewDb())
@@ -174,62 +174,42 @@ public class TrialFixesBatchCTests
         prices.Filter = "أسعار البيع";
         var basic = prices.VisibleRows.Single(r => r.Row.ItemId == productId && !r.IsVariant);
         var variant = prices.VisibleRows.Single(r => r.Row.RecipeId == recipeId);
-        Assert.Equal(("شرنك (20)", 4_000m, "الأساسي"), (basic.PackText, basic.GeneralPack, basic.VariantText));
-        Assert.Equal(("ليبل مطعم الأسعار", (decimal?)null, "العام 4,000 — للوكيل 4,000"), (variant.VariantText, variant.GeneralPack, variant.EffectiveText));
-        Assert.False(prices.HasAgent);
+        Assert.Equal(("شرنك (20)", 4_000m, "الأساسي"), (basic.PackText, basic.PackPrice, basic.VariantText));
+        Assert.DoesNotContain(prices.VisibleRows, r => r.Row.ItemId == productId && r.Row.PackPieces == 1);   // لا سعر قطعة للبيع
+        Assert.Equal(("ليبل مطعم الأسعار", (decimal?)null, "4,000 د.ع (سعر الأساسي)"), (variant.VariantText, variant.PackPrice, variant.EffectiveText));
 
-        // السعر العام للعبوة: الأساسي 5,000 والطلب الخاص 6,000
-        basic.GeneralPack = 5_000;
-        variant.GeneralPack = 6_000;
+        // سعر العبوة كما يُكتب (غير متناسب مع القطعة): الأساسي 4,250 والطلب الخاص 4,500
+        basic.PackPrice = 4_250;
+        variant.PackPrice = 4_500;
         await prices.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
 
-        // سعر الوكيل: للأساسي 4,600، والطلب الخاص بلا سعر وكيل ← يأخذ عام الطلب الخاص
-        prices.Agent = prices.Agents.Single(a => a.Id == agentId);
-        await prices.IdleAsync();
-        Assert.True(prices.HasAgent);
-        basic = prices.VisibleRows.Single(r => r.Row.ItemId == productId && !r.IsVariant);
-        variant = prices.VisibleRows.Single(r => r.Row.RecipeId == recipeId);
-        basic.AgentPack = 4_600;
-        Assert.Equal("العام 6,000 — للوكيل 6,000", variant.EffectiveText);
-        await prices.SaveCommand.ExecuteAsync();
-        Assert.Empty(dialogs.Errors);
-
-        async Task<decimal> PriceAsync(int customerId, int? recipe)
+        async Task<(decimal Unit, decimal? List)> PriceAsync(int customerId, int? recipe, decimal? typed = null)
         {
             await using var db = _f.NewDb();
             var admin = await db.Users.FirstAsync(u => u.Username == AppFixture.AdminUser);
             var svc = new SalesService(db);
             var (_, id) = await svc.CreateInvoiceAsync(new SalesInvoiceHeaderInput(customerId, fgId, DateTime.Today, InvoicePaymentMethod.Credit), admin.Id);
-            Assert.True((await svc.AddLineAsync(id!.Value, new SalesInvoiceLineInput(productId, shrinkId, 1, CustomRecipeId: recipe), admin.Id)).Success);
-            var unit = await db.SalesInvoiceLines.Where(l => l.SalesInvoiceId == id).Select(l => l.UnitPrice).SingleAsync();
-            Assert.Equal(unit, await svc.GetSuggestedUnitPriceAsync(customerId, productId, shrinkId, true, recipe));   // الاقتراح في الشاشة = ما تسعّره الفاتورة
-            return unit;
+            Assert.True((await svc.AddLineAsync(id!.Value, new SalesInvoiceLineInput(productId, shrinkId, 1, UnitPrice: typed, CustomRecipeId: recipe), admin.Id)).Success);
+            var line = await db.SalesInvoiceLines.Where(l => l.SalesInvoiceId == id).SingleAsync();
+            if (typed is null) Assert.Equal(line.UnitPrice, await svc.GetSuggestedUnitPriceAsync(customerId, productId, shrinkId, true, recipe));   // الاقتراح = ما تسعّره الفاتورة
+            return (line.UnitPrice, line.ListUnitPrice);
         }
-        Assert.Equal(5_000m, await PriceAsync(directId, null));
-        Assert.Equal(6_000m, await PriceAsync(directId, recipeId));
-        Assert.Equal(4_600m, await PriceAsync(agentId, null));
-        Assert.Equal(6_000m, await PriceAsync(agentId, recipeId));
+        // السعر العام موحّد لكل الزبائن (الوكيل كالمباشر)، والطلب الخاص سعره على المتغير
+        Assert.Equal(4_250m, (await PriceAsync(directId, null)).Unit);
+        Assert.Equal(4_250m, (await PriceAsync(agentId, null)).Unit);
+        Assert.Equal(4_500m, (await PriceAsync(agentId, recipeId)).Unit);
+        // خصم الوكيل: يكتب المكتب السعر الأقل، وسعر القائمة يبقى العام فيظهر الخصم
+        Assert.Equal((4_000m, (decimal?)4_250m), await PriceAsync(agentId, null, 4_000));
 
-        // سعر وكيل خاص للطلب الخاص يغلب العام
-        variant = prices.VisibleRows.Single(r => r.Row.RecipeId == recipeId);
-        variant.AgentPack = 5_500;
+        // إلغاء سعر الطلب الخاص (فارغ) يعيده لسعر الأساسي
+        prices.Rows.Single(r => r.Row.RecipeId == recipeId).PackPrice = null;
         await prices.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
-        Assert.Equal(5_500m, await PriceAsync(agentId, recipeId));
-        Assert.Equal(6_000m, await PriceAsync(directId, recipeId));
-
-        // إلغاء سعر الطلب الخاص العام (فارغ) يعيده لسعر الأساسي
-        prices.Agent = null;
-        await prices.IdleAsync();
-        prices.Rows.Single(r => r.Row.RecipeId == recipeId).GeneralPack = null;
-        await prices.SaveCommand.ExecuteAsync();
-        Assert.Empty(dialogs.Errors);
-        Assert.Equal(5_000m, await PriceAsync(directId, recipeId));
+        Assert.Equal(4_250m, (await PriceAsync(directId, recipeId)).Unit);
         await using (var db = _f.NewDb())
         {
-            Assert.Equal(250m, (await db.Items.SingleAsync(i => i.Id == productId)).SalePrice);                 // محفوظ بالقطعة
-            Assert.Equal(230m, (await db.AgentItemPrices.SingleAsync(p => p.ItemId == productId && p.CustomRecipeId == null)).AgentPrice);
+            Assert.Equal(4_250m, (await db.PackPrices.SingleAsync(p => p.PackagingLevelId == shrinkId && p.CustomRecipeId == null)).Price);   // محفوظ بالعبوة كما كُتب
             Assert.True(await db.AuditLogs.AnyAsync(a => a.TableName == "SellingPrices"));
         }
         await shell.IdleAllAsync();

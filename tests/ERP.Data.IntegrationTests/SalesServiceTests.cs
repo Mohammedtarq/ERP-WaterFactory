@@ -119,14 +119,46 @@ public class SalesServiceTests
     }
 
     [Fact]
-    public async Task Hierarchical_pricing_per_packaging_level()
+    public async Task Unified_pack_price_for_every_customer()
+    {
+        // السعر العام موحّد لكل الزبائن (لا أسعار وكلاء)؛ عبوة بلا سعر محفوظ = سعر القطعة × قطعها
+        using var db = _f.NewDb();
+        var svc = new SalesService(db);
+        Assert.Equal(3000m, await svc.GetSuggestedUnitPriceAsync(_f.AgentId, _f.WaterItemId, _f.CartonLevelId, true));
+        Assert.Equal(3000m, await svc.GetSuggestedUnitPriceAsync(_f.SubCustomerId, _f.WaterItemId, _f.CartonLevelId, true));
+        Assert.Equal(3000m, await svc.GetSuggestedUnitPriceAsync(_f.DirectId, _f.WaterItemId, _f.CartonLevelId, true));
+        Assert.Equal(250m, await svc.GetSuggestedUnitPriceAsync(_f.AgentId, _f.WaterItemId, _f.PieceLevelId, false));
+    }
+
+    /// <summary>
+    /// الخصم: يكتب المكتب للوكيل السعر الأقل (2,500 بدل 3,000) فيُحفظ سعر القائمة ويظهر الخصم؛
+    /// وتقرير الخصم الشهري لمن عليه علامة «وكيل» أو «صاحب خصم تشجيعي» من الفواتير المرحّلة فقط.
+    /// </summary>
+    [Fact]
+    public async Task Typed_lower_price_shows_as_discount_in_the_monthly_report()
     {
         using var db = _f.NewDb();
         var svc = new SalesService(db);
-        Assert.Equal(2400m, await svc.GetSuggestedUnitPriceAsync(_f.AgentId, _f.WaterItemId, _f.CartonLevelId, true));
-        Assert.Equal(2400m, await svc.GetSuggestedUnitPriceAsync(_f.SubCustomerId, _f.WaterItemId, _f.CartonLevelId, true));
-        Assert.Equal(3000m, await svc.GetSuggestedUnitPriceAsync(_f.DirectId, _f.WaterItemId, _f.CartonLevelId, true));
-        Assert.Equal(250m, await svc.GetSuggestedUnitPriceAsync(_f.AgentId, _f.WaterItemId, _f.PieceLevelId, false));
+        var month = new DateTime(Today.Year, Today.Month, 1).AddMonths(3);   // شهر لا تمسه اختبارات أخرى
+        var agent = await db.Customers.SingleAsync(c => c.Id == _f.AgentId);
+        agent.DiscountKind = DiscountKind.Agent;
+        await db.SaveChangesAsync();
+
+        var id = await NewInvoiceAsync(svc, new(_f.AgentId, _f.MainWarehouseId, month, InvoicePaymentMethod.Credit));
+        Assert.True((await svc.AddLineAsync(id, new(_f.WaterItemId, _f.CartonLevelId, 2, UnitPrice: 2_500), _f.AdminUserId)).Success);
+        var line = await db.SalesInvoiceLines.AsNoTracking().SingleAsync(l => l.SalesInvoiceId == id);
+        Assert.Equal((2_500m, (decimal?)3_000m), (line.UnitPrice, line.ListUnitPrice));
+        // مسودة لا تدخل التقرير
+        var draft = (await new DiscountReportService(db).MonthAsync(month.Year, month.Month)).Single(r => r.CustomerId == _f.AgentId);
+        Assert.Equal(0, draft.InvoicesCount);
+        var (posted, _) = await svc.PostInvoiceAsync(id, _f.AdminUserId);
+        Assert.True(posted.Success, posted.ErrorMessage);
+
+        var row = (await new DiscountReportService(db).MonthAsync(month.Year, month.Month)).Single(r => r.CustomerId == _f.AgentId);
+        Assert.Equal((DiscountKind.Agent, 1, 6_000m, 1_000m, 5_000m, 16.7m),
+                     (row.Kind, row.InvoicesCount, row.GrossBeforeDiscount, row.Discount, row.Net, row.DiscountPercent));
+        // زبون بلا علامة لا يظهر
+        Assert.DoesNotContain(await new DiscountReportService(db).MonthAsync(month.Year, month.Month), r => r.CustomerId == _f.DirectId);
     }
 
     [Fact]
@@ -140,10 +172,10 @@ public class SalesServiceTests
 
         var (r, s) = await svc.PostInvoiceAsync(id, _f.AdminUserId);
         Assert.True(r.Success, r.ErrorMessage);
-        Assert.Equal(4800m, s!.SubTotal);            // 2 كارتون × 12 × 200 (سعر الوكيل الأب)
-        Assert.Equal(672m, s.TaxAmount);              // 14%
+        Assert.Equal(6000m, s!.SubTotal);            // 2 كارتون × 3,000 (السعر العام الموحّد)
+        Assert.Equal(840m, s.TaxAmount);              // 14%
         Assert.Equal(240m, s.LoadingSuppliesAmount);  // 24 قطعة × 10
-        Assert.Equal(5712m, s.AmountDue);
+        Assert.Equal(7080m, s.AmountDue);
 
         var je = await db.JournalEntries.Include(j => j.Lines).SingleAsync(j => j.Id == s.JournalEntryId);
         Assert.True(je.IsPosted);
@@ -152,12 +184,12 @@ public class SalesServiceTests
 
         var inv = await svc.GetInvoiceAsync(id);
         Assert.Equal(DocumentStatus.Posted, inv!.Status);
-        Assert.Equal(5712m, inv.TotalAmount);
+        Assert.Equal(7080m, inv.TotalAmount);
 
         var bal = (await svc.GetCustomerBalancesAsync()).Single(b => b.CustomerId == _f.SubCustomerId);
-        Assert.Equal(5712m, bal.Balance);
+        Assert.Equal(7080m, bal.Balance);
         var stmt = await svc.GetCustomerStatementAsync(_f.SubCustomerId);
-        Assert.Equal(5712m, stmt.Last().RunningBalance);
+        Assert.Equal(7080m, stmt.Last().RunningBalance);
         Assert.Contains(await svc.GetInvoiceListAsync(customerId: _f.SubCustomerId), x => x.Id == id);
     }
 

@@ -578,29 +578,37 @@ public static class DocumentReports
     {
         var inv = await db.SalesInvoices.AsNoTracking().Include(x => x.Customer).Include(x => x.Warehouse)
             .Include(x => x.Lines).ThenInclude(l => l.Item).Include(x => x.Lines).ThenInclude(l => l.PackagingLevel)
+            .Include(x => x.Lines).ThenInclude(l => l.Batch)
             .FirstOrDefaultAsync(x => x.Id == invoiceId);
         if (inv is null) return null;
         var posted = inv.Status == DocumentStatus.Posted;
+        var names = await ProductNames.LoadAsync(db, inv.Lines.Select(l => l.ItemId));
+        decimal Disc(SalesInvoiceLine l) => l.ListUnitPrice is decimal lp && lp > l.UnitPrice ? Math.Round((lp - l.UnitPrice) * l.QuantityInLevel, 2) : 0;
+        var totalDiscount = inv.IsFreeSale ? 0 : inv.Lines.Sum(Disc);
         var r = new ReportDocument
         {
             CompanyName = s.ProjectName, Title = inv.IsFreeSale ? "إذن صرف — بيع مجاني" : "فاتورة مبيعات", Stamp = inv.Status == DocumentStatus.Voided ? $"ملغاة — {inv.VoidReason}" : posted ? null : "مسودة — غير مرحّلة",
             Notes = inv.Notes, PrintedBy = s.FullName, Key = "SalesInvoice", ReceiptCapable = true,
-            ReceiptColumns = inv.IsFreeSale ? new[] { 1, 2, 3 } : new[] { 1, 3, 5, 6 }
+            // الإيصال 80mm: الصنف، الكمية، السعر، [الخصم إن وُجد]، المبلغ
+            ReceiptColumns = inv.IsFreeSale ? new[] { 1, 2 } : totalDiscount > 0 ? new[] { 1, 2, 3, 4, 5 } : new[] { 1, 2, 3, 5 }
         };
         r.Field("رقم الفاتورة", inv.InvoiceNumber).Field("التاريخ", inv.InvoiceDate.ToString("yyyy/MM/dd"))
          .Field(inv.IsFreeSale ? "الجهة المستفيدة" : "العميل", inv.IsFreeSale ? inv.FreeSaleRecipient : inv.Customer.Name)
          .Field("نوع العميل", inv.IsFreeSale ? null : ArabicLabels.Of(inv.Customer.CustomerType))
          .Field("طريقة الدفع", inv.IsFreeSale ? null : ArabicLabels.Of(inv.PaymentMethod)).Field("المخزن", inv.Warehouse.Name);
-        r.Columns.AddRange(inv.IsFreeSale ? new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع" }
-                                          : new[] { "#", "الصنف", "الوحدة", "الكمية", "القطع", "السعر", "المبلغ" });
+        // الصنف بالاسم الموحد والكمية بالعبوة (لا قطع)، وعمود الخصم لكل سطر
+        r.Columns.AddRange(inv.IsFreeSale ? new[] { "#", "الصنف", "الكمية" }
+                                          : new[] { "#", "الصنف", "الكمية", "السعر", "الخصم", "المبلغ" });
         var i = 0;
         foreach (var l in inv.Lines.OrderBy(l => l.Id))
         {
-            var row = new List<string> { (++i).ToString(), $"{l.Item.ItemName} ({l.Item.ItemCode})", l.PackagingLevel.LevelName, Q(l.QuantityInLevel), Q(l.QuantityBaseUnits) };
-            if (!inv.IsFreeSale) row.AddRange(new[] { N(l.UnitPrice), N(l.LineTotal) });
+            var name = names.Name(l.ItemId, l.CustomRecipeId ?? l.Batch?.CustomRecipeId, l.PackagingLevelId);
+            var row = new List<string> { (++i).ToString(), name, $"{Q(l.QuantityInLevel)} {l.PackagingLevel.LevelName}" };
+            if (!inv.IsFreeSale) row.AddRange(new[] { N(l.UnitPrice), Disc(l) > 0 ? N(Disc(l)) : "", N(l.LineTotal) });
             r.Rows.Add(row);
         }
-        r.Total("إجمالي القطع", Q(inv.Lines.Sum(l => l.QuantityBaseUnits)));
+        r.Total("الكمية", string.Join(" + ", inv.Lines.GroupBy(l => l.PackagingLevel.LevelName).Select(g => $"{Q(g.Sum(l => l.QuantityInLevel))} {g.Key}")));
+        if (totalDiscount > 0) r.Total("إجمالي الخصم", $"{N(totalDiscount)} د.ع");
         if (!inv.IsFreeSale && posted)
         {
             r.Total("المجموع", $"{N(inv.SubTotal)} د.ع");

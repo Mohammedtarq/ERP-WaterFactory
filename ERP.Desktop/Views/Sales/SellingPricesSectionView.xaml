@@ -23,15 +23,12 @@
                     <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                 </StackPanel>
                 <WrapPanel>
-                    <TextBlock Text="أسعار وكيل:" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <ComboBox ItemsSource="{Binding Agents}" SelectedItem="{Binding Agent}" DisplayMemberPath="Name" Width="220"
-                              ToolTip="اختر وكيلًا لعرض أسعاره الخاصة وتعديلها (فارغ = الأسعار العامة فقط)"/>
-                    <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Margin="16,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
                     <TextBox Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" Width="220" ToolTip="بحث باسم المنتج أو الطلب الخاص"/>
                 </WrapPanel>
             </DockPanel>
             <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
-                       Text="الأسعار بالعبوة (✎ قابل للتعديل). الطلب الخاص بلا سعر يأخذ سعر المنتج الأساسي، وسعر الوكيل الفارغ يأخذ السعر العام. تسري على الفواتير الجديدة والتطبيق وتسوية المندوب."/>
+                       Text="سعر كل عبوة كما يُكتب (✎ قابل للتعديل)، موحّد لكل الزبائن. الطلب الخاص بلا سعر يأخذ سعر الأساسي. الخصم للوكيل وصاحب الخصم التشجيعي يُكتب في الفاتورة (السعر الأقل). تسري على الفواتير الجديدة والتطبيق ولا تغيّر فاتورة سابقة."/>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
             <DataGrid ItemsSource="{Binding VisibleRows}" IsReadOnly="False" CanUserAddRows="False">
                 <DataGrid.Resources>
@@ -57,11 +54,8 @@
                     <DataGridTextColumn Header="المنتج" Binding="{Binding ItemName}" Width="*" MinWidth="160" IsReadOnly="True"/>
                     <DataGridTextColumn Header="الطلب الخاص" Binding="{Binding VariantText}" Width="170" IsReadOnly="True"/>
                     <DataGridTextColumn Header="العبوة" Binding="{Binding PackText}" Width="100" IsReadOnly="True"/>
-                    <DataGridTextColumn Header="السعر العام للعبوة ✎" Binding="{Binding GeneralPack, StringFormat=N0, TargetNullValue='', UpdateSourceTrigger=LostFocus}"
+                    <DataGridTextColumn Header="سعر العبوة ✎" Binding="{Binding PackPrice, StringFormat=N0, TargetNullValue='', UpdateSourceTrigger=LostFocus}"
                                         Width="140" CellStyle="{StaticResource EditableCell}"/>
-                    <DataGridTextColumn Header="سعر الوكيل للعبوة ✎" Binding="{Binding AgentPack, StringFormat=N0, TargetNullValue='', UpdateSourceTrigger=LostFocus}"
-                                        Width="140" CellStyle="{StaticResource EditableCell}"
-                                        Visibility="{Binding Data.HasAgent, Source={StaticResource Proxy}, Converter={StaticResource BoolToVisibility}}"/>
                     <DataGridTextColumn Header="المطبَّق" Binding="{Binding EffectiveText}" Width="190" IsReadOnly="True"/>
                     <DataGridCheckBoxColumn Header="معدَّل" Binding="{Binding IsChanged, Mode=OneWay}" Width="60" IsReadOnly="True"/>
                 </DataGrid.Columns>

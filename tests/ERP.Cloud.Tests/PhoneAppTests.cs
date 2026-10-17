@@ -92,10 +92,10 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         Assert.Equal("معمل الرحمة للمياه", work.CompanyName);
         Assert.Equal(png, work.Snapshot!.CompanyLogo);
 
-        // قائمة البيع: ما في السيارة فقط بكل عبوة (الأكبر أولًا)
+        // قائمة البيع: ما في السيارة فقط بالعبوة (لا بيع بالقطعة)
         var options = work.LoadedOptions();
-        Assert.Equal(new[] { "شرنك 20 — ماء هاتف شرنك", "قطعة — ماء هاتف شرنك" }, options.Select(o => o.Text));   // الاسم الموحد (الحجم غير مضبوط)
-        Assert.Equal(new[] { 10m, 200m }, options.Select(o => o.Available));
+        Assert.Equal(new[] { "شرنك 20 — ماء هاتف شرنك" }, options.Select(o => o.Text));   // الاسم الموحد (الحجم غير مضبوط)
+        Assert.Equal(new[] { 10m }, options.Select(o => o.Available));
 
         // ---- يوم بلا إنترنت: كل شيء يُحفظ في الهاتف والأرصدة تتحرك ----
         online = false;
@@ -125,7 +125,7 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         Assert.Equal(new int?[] { null, 2, 1 }, store.Outbox().Select(i => i.ReceiptNo));
         Assert.Equal(4m, store.Outbox()[1].Lines!.Single().Quantity);
         Assert.Equal(new DayItemTotal("شرنك 20 — ماء هاتف شرنك", "شرنك", 6), Assert.Single(work.TodayItems()));
-        Assert.Equal(new[] { 4m, 80m }, work.LoadedOptions().Select(o => o.Available));
+        Assert.Equal(new[] { 4m }, work.LoadedOptions().Select(o => o.Available));
 
         Assert.Equal(80m, work.VanStock()[seed.WaterId]);                           // 200 − 6 شرنك
         Assert.Equal(15_000m, work.Wallet());                                       // 10,000 نقدي + 5,000 تحصيل
@@ -277,7 +277,7 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         Assert.False(live.IsNew);
         Assert.Equal((customerId, 10_000m), (live.Id, live.Balance));
 
-        // ---- عميل فرعي لوكيل من زبائن المندوب ----
+        // ---- الوكلاء وعملاؤهم الفرعيون لا يظهرون في الهاتف: المكتب هو من يبيع لهم ----
         await using (var db = NewDb())
         {
             var c = await db.Customers.SingleAsync(x => x.Id == customerId);
@@ -287,15 +287,8 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         agentState.LastSnapshotCheckUtc = null;                                    // تعديل من الشاشة: نسخة العمل في الفحص الدوري التالي
         await Factory();
         await sync.RunAsync();
-        var agentRow = Assert.Single(work.Agents());
-        var sub = work.SaveNewCustomer(new NewCustomerPayload("كشك الجسر", Type: "SubCustomer", ParentAgentId: agentRow.Id));
-        Assert.Equal(agentRow.Id, sub.Customer.PriceAgentId);
-        await sync.RunAsync();
-        await Factory();
-        await sync.RunAsync();
-        await using (var db = NewDb())
-            Assert.Equal((CustomerType.SubCustomer, (int?)customerId), await db.Customers.Where(x => x.Name == "كشك الجسر").Select(x => new ValueTuple<CustomerType, int?>(x.CustomerType, x.ParentAgentId)).SingleAsync());
-        Assert.Single(work.Customers(), c => c.Name == "كشك الجسر");
+        Assert.Empty(work.Agents());
+        Assert.DoesNotContain(work.Customers(), c => c.Name == "أسواق النخيل" && !c.IsNew);   // لا يصل من المعمل بعد أن صار وكيلًا
     }
 
     [Fact]

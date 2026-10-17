@@ -70,7 +70,7 @@ public static class SectionGrouping
             new GroupDef("العملاء", Blue, "Customers", "CustomerStatement", "CustomerDeposits"),
             new GroupDef("الأسعار والصندوق", Amber, "SellingPrices", "LoadingSettings", "CashBoxes"),
             new GroupDef("متابعة الأسماء الخاصة", Orange, "VariantAlerts"),
-            new GroupDef("التقارير", Purple, "SalesReports"),
+            new GroupDef("التقارير", Purple, "SalesReports", "DiscountReport"),
         },
         [ModuleCode.Suppliers] = new[]
         {

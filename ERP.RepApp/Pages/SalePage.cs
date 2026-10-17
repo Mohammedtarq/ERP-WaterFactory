@@ -82,8 +82,7 @@ public class SalePage : ContentPage
         var inCart = _lines.Where(l => l.ItemId == o.Product.ItemId && l.RecipeId == o.RecipeId).Sum(l => l.Quantity * (o.Product.Levels.FirstOrDefault(x => x.LevelId == l.LevelId)?.Units ?? 0));
         var left = Formats.Packs(o.VanPieces - inCart, o.Product.Levels);
         _itemPrice.Text = (_kind == "Free" ? "مجاني"
-            : _customer.Selected is { } c ? $"سعر ال{o.Level.Name}: {Formats.Money(Math.Round(RepWork.PiecePrice(snap, c.Customer, o.Product, o.RecipeId) * o.Level.Units, 2))}"
-            : "اختر الزبون لعرض السعر") + $" — الباقي في السيارة: {left}";
+            : $"سعر ال{o.Level.Name}: {Formats.Money(RepWork.PackPrice(o.Product, o.Level, o.RecipeId))}") + $" — الباقي في السيارة: {left}";
     }
 
     private void Add()

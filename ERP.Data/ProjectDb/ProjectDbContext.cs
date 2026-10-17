@@ -137,6 +137,7 @@ public partial class ProjectDbContext : DbContext
     // ---- حد التنبيه لكل مخزن (41_warehouse_item_alerts.sql) ----
     public DbSet<WarehouseItemAlert> WarehouseItemAlerts => Set<WarehouseItemAlert>();
     public DbSet<VariantAlert> VariantAlerts => Set<VariantAlert>();
+    public DbSet<PackPrice> PackPrices => Set<PackPrice>();
 
     // ---- المصروفات والحسابات الختامية (31_expenses_final_accounts.sql) ----
     public DbSet<FinanceCategory> FinanceCategories => Set<FinanceCategory>();
@@ -421,6 +422,14 @@ public partial class ProjectDbContext : DbContext
         // ================= المبيعات والعملاء =================
         modelBuilder.Entity<Customer>().Property(c => c.CustomerType).HasConversion<string>();
         modelBuilder.Entity<Customer>().Property(c => c.CreditLimit).HasPrecision(18, 2);
+        modelBuilder.Entity<Customer>().Property(c => c.DiscountKind).HasConversion<string>();
+        modelBuilder.Entity<PackPrice>(e =>
+        {
+            e.Property(p => p.Price).HasPrecision(18, 2);
+            e.HasOne(p => p.Item).WithMany().HasForeignKey(p => p.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.PackagingLevel).WithMany().HasForeignKey(p => p.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.CustomRecipe).WithMany().HasForeignKey(p => p.CustomRecipeId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<SalesInvoiceLine>().Property(l => l.ListUnitPrice).HasPrecision(18, 2);
         modelBuilder.Entity<Customer>().HasOne(c => c.ParentAgent).WithMany().HasForeignKey(c => c.ParentAgentId).OnDelete(DeleteBehavior.Restrict);
 

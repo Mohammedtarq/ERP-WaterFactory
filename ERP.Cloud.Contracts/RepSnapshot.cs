@@ -50,13 +50,20 @@ public record SnapshotProduct(int ItemId, string Code, string Name, decimal Piec
                        recipeId is null ? ProductName.Variant(null, null, null, true, BaseVariant) : VariantOf(recipeId)!.Name);
 }
 
-/// <summary>متغير المنتج (طلب خاص لمطعم أو مناسبة): اسمه في الاسم الموحد، وسعر قطعته العام (فارغ = سعر الأساسي).</summary>
-public record SnapshotVariant(int RecipeId, string Name, decimal? PiecePrice);
+/// <summary>
+/// متغير المنتج (طلب خاص لمطعم أو مناسبة): اسمه في الاسم الموحد، وسعر قطعته العام (فارغ = سعر الأساسي)،
+/// وأسعار عبواته كما تُكتب (فارغ = سعر عبوة الأساسي).
+/// </summary>
+public record SnapshotVariant(int RecipeId, string Name, decimal? PiecePrice, List<SnapshotPackPrice>? PackPrices = null);
 
-public record SnapshotLevel(int LevelId, string Name, decimal Units);
+/// <summary>عبوة بيع وسعرها العام الموحّد كما يُكتب (فارغ في نسخة أقدم = سعر القطعة × قطعها).</summary>
+public record SnapshotLevel(int LevelId, string Name, decimal Units, decimal? Price = null);
+
+/// <summary>سعر عبوة لطلب خاص.</summary>
+public record SnapshotPackPrice(int LevelId, decimal Price);
 
 /// <summary>
-/// زبون المندوب. PriceAgentId: الوكيل الذي يُسعَّر هذا الزبون بأسعاره الخاصة (الوكيل نفسه، أو وكيل العميل الفرعي).
+/// زبون المندوب. PriceAgentId: لم يعد مستعملًا — السعر موحّد لكل الزبائن، والوكلاء وعملاؤهم الفرعيون لا يصلون للهاتف (المكتب يبيع لهم).
 /// </summary>
 public record SnapshotCustomer(int Id, string Name, string? Phone, string? Address, string Type, int? PriceAgentId, decimal? CreditLimit, decimal Balance);
 

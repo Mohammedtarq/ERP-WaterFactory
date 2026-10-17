@@ -95,7 +95,7 @@ public class ProvisioningTests
         await sales.AddLineAsync(id!.Value, new(item.Id, carton.Id, 2), _f.AdminLocalId);
         var (pr, summary) = await sales.PostInvoiceAsync(id.Value, _f.AdminLocalId);
         Assert.True(pr.Success, pr.ErrorMessage);
-        Assert.Equal(4800m + 240m, summary!.TotalAmount);          // 24 × 200 سعر الوكيل + 24 × 10 تحميل
+        Assert.Equal(6000m + 240m, summary!.TotalAmount);          // كارتونان × 3,000 السعر العام الموحّد (لا سعر وكيل) + 24 × 10 تحميل
     }
 
     [Fact]

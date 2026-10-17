@@ -181,20 +181,15 @@ public class RepWork
     public int WaitingCount() => _store.Outbox(days: 30).Count(i => i.State != OutboxState.Done);
 
     /// <summary>
-    /// سعر القطعة للزبون بقاعدة المعمل (fn_Sales_UnitPrice): للطلب الخاص سعر وكيله للطلب الخاص ← سعره العام ← كالأساسي؛
-    /// وللأساسي سعر وكيله ← السعر العادي.
+    /// سعر العبوة بقاعدة المعمل (fn_Sales_PackPrice) بلا أي تعديل أو خصم: سعر الطلب الخاص لعبوته ← سعر العبوة العام الموحّد
+    /// ← (نسخة عمل أقدم) سعر القطعة × قطعها.
     /// </summary>
-    public static decimal PiecePrice(RepSnapshot snap, SnapshotCustomer c, SnapshotProduct p, int? recipeId = null)
+    public static decimal PackPrice(SnapshotProduct p, SnapshotLevel level, int? recipeId = null)
     {
-        if (recipeId is int r)
-        {
-            if (c.PriceAgentId is int a && snap.AgentPrices.FirstOrDefault(x => x.AgentCustomerId == a && x.ItemId == p.ItemId && x.RecipeId == r) is { } vp)
-                return vp.PiecePrice;
-            if (p.VariantOf(r)?.PiecePrice is decimal general) return general;
-        }
-        return c.PriceAgentId is int agent && snap.AgentPrices.FirstOrDefault(x => x.AgentCustomerId == agent && x.ItemId == p.ItemId && x.RecipeId == null) is { } special
-            ? special.PiecePrice
-            : p.PiecePrice;
+        var variant = recipeId is int r ? p.VariantOf(r) : null;
+        if (variant?.PackPrices?.FirstOrDefault(x => x.LevelId == level.LevelId) is { } vp) return vp.Price;
+        if (level.Price is decimal general) return general;
+        return Math.Round((variant?.PiecePrice ?? p.PiecePrice) * level.Units, 2, MidpointRounding.AwayFromZero);
     }
 
     // ============================ البيع ============================
@@ -218,7 +213,7 @@ public class RepWork
             var product = snap.Products.FirstOrDefault(p => p.ItemId == l.ItemId);
             var level = product?.Levels.FirstOrDefault(x => x.LevelId == l.LevelId);
             if (product is null || level is null) return Fail("صنف أو عبوة غير موجودة في نسخة العمل — زامن ثم أعد المحاولة");
-            var unit = kind == "Free" ? 0 : Math.Round(PiecePrice(snap, customer.Customer, product, l.RecipeId) * level.Units, 2, MidpointRounding.AwayFromZero);
+            var unit = kind == "Free" ? 0 : PackPrice(product, level, l.RecipeId);
             priced.Add(new PricedLine(product, level, l.Quantity, unit, Math.Round(l.Quantity * unit, 2, MidpointRounding.AwayFromZero), l.Quantity * level.Units, l.RecipeId));
         }
 

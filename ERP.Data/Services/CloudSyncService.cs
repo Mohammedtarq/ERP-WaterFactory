@@ -377,44 +377,41 @@ public partial class CloudSyncService
 
         // زبائنه المسندون إليه، وإن لم يُسند له أحد بعد فكل الزبائن الفعّالين
         var assigned = await _db.RepCustomerAssignments.AsNoTracking().Where(a => a.EmployeeId == rep.Id).Select(a => a.CustomerId).ToListAsync();
-        var customersQuery = _db.Customers.AsNoTracking().Where(c => c.IsActive);
+        // الوكلاء وعملاؤهم الفرعيون لا يظهرون في الهاتف: المكتب هو من يبيع لهم
+        var customersQuery = _db.Customers.AsNoTracking().Where(c => c.IsActive && c.CustomerType == CustomerType.Direct);
         if (assigned.Count > 0) customersQuery = customersQuery.Where(c => assigned.Contains(c.Id));
         var customers = await customersQuery.OrderBy(c => c.Name).ToListAsync();
         var balances = (await _db.Database.SqlQueryRaw<BalanceRow>("SELECT CustomerId, Balance FROM vw_CustomerBalances").ToListAsync())
                        .ToDictionary(b => b.CustomerId, b => b.Balance);
-        int? PriceAgent(Customer c) => c.CustomerType switch
-        {
-            CustomerType.Agent => c.Id,
-            CustomerType.SubCustomer => c.ParentAgentId,
-            _ => null
-        };
-        var snapCustomers = customers.Select(c => new SnapshotCustomer(c.Id, c.Name, c.Phone, c.Address, c.CustomerType.ToString(), PriceAgent(c),
+        var snapCustomers = customers.Select(c => new SnapshotCustomer(c.Id, c.Name, c.Phone, c.Address, c.CustomerType.ToString(), null,
                                                                        c.CreditLimit, balances.GetValueOrDefault(c.Id))).ToList();
 
         var items = await _db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased)
                                    .OrderBy(i => i.ItemName).ToListAsync();
         var itemIds = items.Select(i => i.Id).ToList();
+        // عبوات البيع فقط (لا قطعة لمنتج له عبوة) وأسعارها كما تُكتب، موحّدة لكل الزبائن
         var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId) && l.IsSellableUnit).ToListAsync())
-                     .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
+                     .GroupBy(l => l.ItemId)
+                     .ToDictionary(g => g.Key, g => (g.Any(l => l.EquivalentBaseUnits > 1) ? g.Where(l => l.EquivalentBaseUnits > 1) : g).OrderByDescending(l => l.EquivalentBaseUnits).ToList());
+        var packPrices = await _db.PackPrices.AsNoTracking().Where(p => itemIds.Contains(p.ItemId)).ToListAsync();
         // الاسم الموحد في الهاتف: الحجم واسم الأساسي والمتغيرات (الطلبات الخاصة بأسمائها المختصرة وأسعارها العامة)
         var baseVariant = (await new CompanyProfileService(_db).GetAsync())?.BaseVariantName;
         var variants = (await _db.CustomRecipes.AsNoTracking().Where(r => r.IsActive && itemIds.Contains(r.FinishedItemId))
                 .Select(r => new { r.Id, r.FinishedItemId, r.ShortName, Customer = r.Customer != null ? r.Customer.Name : null, r.Name, r.SalePrice }).ToListAsync())
             .GroupBy(r => r.FinishedItemId)
             .ToDictionary(g => g.Key, g => g.OrderBy(r => r.Id)
-                .Select(r => new SnapshotVariant(r.Id, ProductName.Variant(r.ShortName, r.Customer, r.Name, false, null), r.SalePrice)).ToList());
+                .Select(r => new SnapshotVariant(r.Id, ProductName.Variant(r.ShortName, r.Customer, r.Name, false, null), r.SalePrice,
+                                                 packPrices.Where(p => p.CustomRecipeId == r.Id).OrderBy(p => p.PackagingLevelId)
+                                                           .Select(p => new SnapshotPackPrice(p.PackagingLevelId, p.Price)).ToList())).ToList());
         var products = items.Where(i => levels.ContainsKey(i.Id))
             .Select(i => new SnapshotProduct(i.Id, i.ItemCode, i.ItemName, i.SalePrice,
-                                             levels[i.Id].Select(l => new SnapshotLevel(l.Id, l.LevelName, l.EquivalentBaseUnits)).ToList(),
+                                             levels[i.Id].Select(l => new SnapshotLevel(l.Id, l.LevelName, l.EquivalentBaseUnits,
+                                                 packPrices.FirstOrDefault(p => p.PackagingLevelId == l.Id && p.CustomRecipeId == null)?.Price)).ToList(),
                                              i.SizeMl, ProductName.Variant(null, null, null, true, baseVariant), variants.GetValueOrDefault(i.Id)))
             .ToList();
-        var productIds = products.Select(p => p.ItemId).ToList();
 
-        var agentIds = snapCustomers.Where(c => c.PriceAgentId is not null).Select(c => c.PriceAgentId!.Value).Distinct().ToList();
-        // أسعار الوكلاء للمنتج الأساسي (الطلب الخاص يسعّره المعمل عند الترحيل)
-        var agentPrices = await _db.AgentItemPrices.AsNoTracking().Where(p => agentIds.Contains(p.CustomerId) && productIds.Contains(p.ItemId))
-            .OrderBy(p => p.CustomerId).ThenBy(p => p.ItemId).ThenBy(p => p.CustomRecipeId)
-            .Select(p => new SnapshotAgentPrice(p.CustomerId, p.ItemId, p.AgentPrice, p.CustomRecipeId)).ToListAsync();
+        // لا أسعار وكلاء: الهاتف يأخذ الأسعار من النظام بلا أي تعديل أو خصم
+        var agentPrices = new List<SnapshotAgentPrice>();
 
         var van = await _db.Warehouses.AsNoTracking().FirstOrDefaultAsync(w => w.IsActive && w.WarehouseType == WarehouseType.RepVan && w.OwnerEmployeeId == rep.Id);
         var stock = van is null ? new List<SnapshotStock>()

@@ -100,21 +100,15 @@ public class SalesService
 
     // ====================== التسعير ======================
 
-    /// <summary>السعر المقترح لوحدة البيع المختارة (كارتون/شرنك/قطعة) — للعرض الفوري في السطر.</summary>
+    /// <summary>سعر العبوة الموحّد لكل الزبائن (fn_Sales_PackPrice): سعر الطلب الخاص لعبوته ← العام للعبوة.</summary>
     /// <param name="recipeId">الطلب الخاص (المتغير) للسطر: سعره الخاص إن حُدّد، وإلا سعر المنتج الأساسي.</param>
-    public async Task<decimal> GetSuggestedUnitPriceAsync(int customerId, int itemId, int packagingLevelId, bool useAgentPricing, int? recipeId = null)
-    {
-        var baseUnits = await _db.ItemPackagingLevels
-            .Where(p => p.Id == packagingLevelId && p.ItemId == itemId)
-            .Select(p => (decimal?)p.EquivalentBaseUnits)
-            .FirstOrDefaultAsync() ?? 0;
+    public async Task<decimal> GetPackPriceAsync(int itemId, int packagingLevelId, int? recipeId = null)
+        => await ScalarAsync<decimal?>("SELECT dbo.fn_Sales_PackPrice(@i, @l, @r)",
+               P("@i", itemId), P("@l", packagingLevelId), P("@r", (object?)recipeId ?? DBNull.Value)) ?? 0;
 
-        var piecePrice = await ScalarAsync<decimal?>(
-            "SELECT dbo.fn_Sales_UnitPrice(@c, @i, @r, @a)",
-            P("@c", customerId), P("@i", itemId), P("@r", (object?)recipeId ?? DBNull.Value), P("@a", useAgentPricing)) ?? 0;
-
-        return Math.Round(piecePrice * baseUnits, 2);
-    }
+    /// <summary>السعر المقترح لوحدة البيع: سعر العبوة الموحّد (العميل وخيار الوكيل لم يعودا يغيّران السعر).</summary>
+    public Task<decimal> GetSuggestedUnitPriceAsync(int customerId, int itemId, int packagingLevelId, bool useAgentPricing, int? recipeId = null)
+        => GetPackPriceAsync(itemId, packagingLevelId, recipeId);
 
     /// <summary>سعر مستلزمات التحميل للقطعة الساري في تاريخ الفاتورة.</summary>
     public async Task<decimal> GetLoadingRateAsync(DateTime onDate)

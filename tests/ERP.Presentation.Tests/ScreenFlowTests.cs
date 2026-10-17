@@ -59,7 +59,7 @@ public class ScreenFlowTests
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var sales = shell.Open<SalesModuleViewModel>(ModuleCode.Sales);
         Assert.IsType<HomeSectionViewModel>(sales.SelectedTab);
-        Assert.Equal(11, sales.Home.Sections.Count());                // + صندوقي + تأمينات العملاء + مرتجع زبون + تقارير المبيعات + حدود الأسماء الخاصة
+        Assert.Equal(12, sales.Home.Sections.Count());                // + صندوقي + تأمينات العملاء + مرتجع زبون + تقارير المبيعات + حدود الأسماء الخاصة + تقرير الخصم
 
         // الرصيد قبل البيع من شاشة الرصيد الحالي
         var warehouse = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
@@ -73,18 +73,17 @@ public class ScreenFlowTests
         await sales.IdleAsync();
         Assert.Same(inv, sales.SelectedTab);
 
-        // اختيار العميل يعرض نوع التسعير تلقائيًا
+        // اختيار العميل يعرض قاعدة التسعير: السعر العام بالعبوة موحّد لكل الزبائن
         inv.Customer = inv.Customers.Single(c => c.Id == _f.SubCustomerId);
         await inv.IdleAsync();
-        Assert.Contains("عميل فرعي", inv.PricingTypeLabel);
-        Assert.Contains("وكيل الزبير", inv.PricingTypeLabel);
+        Assert.Contains("موحّد لكل الزبائن", inv.PricingTypeLabel);
         inv.Warehouse = inv.Warehouses.Single(w => w.Id == _f.MainWarehouseId);
 
         // السطر: الصنف ← وحدة البيع ← السعر المقترح من الخدمة
         inv.LineItem = inv.ItemsLookup.Single(i => i.Id == _f.WaterItemId);
         await inv.IdleAsync();
         Assert.Equal("كارتون", inv.LineLevel!.LevelName);        // أكبر وحدة أولًا
-        Assert.Equal(2400m, inv.LinePrice);                        // 12 × 200 سعر الوكيل الأب
+        Assert.Equal(3000m, inv.LinePrice);                        // سعر الكارتون العام (لا سعر وكيل)
         Assert.NotNull(inv.LineAvailable);
         inv.LineQuantity = 5;
         await inv.AddLineCommand.ExecuteAsync();
@@ -94,17 +93,18 @@ public class ScreenFlowTests
         inv.LoadingEnabled = true;
         inv.TaxEnabled = true;
         inv.PaymentMethod = inv.PaymentOptions.Single(o => o.Value == InvoicePaymentMethod.Credit);
-        Assert.Equal(12000m, inv.SubTotal);
+        Assert.Equal(15000m, inv.SubTotal);
         Assert.Equal(600m, inv.LoadingAmount);                     // 60 قطعة × 10
-        Assert.Equal(1680m, inv.TaxAmount);
-        Assert.Equal(14280m, inv.Total);
-        Assert.Equal(14280m, inv.AmountDue);
+        Assert.Equal(2100m, inv.TaxAmount);
+        Assert.Equal(17700m, inv.Total);
+        Assert.Equal(17700m, inv.AmountDue);
+        Assert.Equal("5 كارتون", inv.PacksTotalText);
 
         await inv.PostCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.NotNull(inv.LastPosted);
         var number = inv.LastPosted!.InvoiceNumber;
-        Assert.Equal(14280m, inv.LastPosted.TotalAmount);
+        Assert.Equal(17700m, inv.LastPosted.TotalAmount);
         Assert.NotNull(inv.LastPosted.JournalEntryId);
         Assert.Empty(inv.Lines);                                   // الشاشة جاهزة لفاتورة جديدة
 
@@ -114,9 +114,12 @@ public class ScreenFlowTests
         Assert.Null(printed.Stamp);
         Assert.Contains(printed.HeaderFields, f => f.Label == "رقم الفاتورة" && f.Value == number);
         Assert.Contains(printed.HeaderFields, f => f.Label == "العميل" && f.Value == "محل أبو حيدر");
-        Assert.Equal(7, printed.Columns.Count);
-        Assert.Equal(new[] { "1", "ماء 500 مل (W500)", "كارتون", "5", "60", "2,400", "12,000" }, printed.Rows.Single());
-        Assert.Contains(printed.Totals, t => t.Label == "الإجمالي" && t.Value == "14,280 د.ع" && t.Emphasis);
+        Assert.Equal(new[] { "#", "الصنف", "الكمية", "السعر", "الخصم", "المبلغ" }, printed.Columns);
+        var printedRow = printed.Rows.Single();
+        Assert.Contains("12×500", printedRow[1]);                  // الاسم الموحد بالعبوة
+        Assert.Equal(new[] { "1", "5 كارتون", "3,000", "", "15,000" }, printedRow.Where((_, i) => i != 1));
+        Assert.DoesNotContain(printed.Totals, t => t.Label == "إجمالي الخصم");   // بلا خصم لا يظهر
+        Assert.Contains(printed.Totals, t => t.Label == "الإجمالي" && t.Value == "17,700 د.ع" && t.Emphasis);
         Assert.Contains(printed.Totals, t => t.Label == "رسوم التحميل" && t.Value == "600 د.ع");
 
         // كشف حساب العميل يُظهر الفاتورة والرصيد
@@ -125,18 +128,18 @@ public class ScreenFlowTests
         await sales.Statement.IdleAsync();
         var row = Assert.Single(sales.Statement.Rows, r => r.DocNumber == number);
         Assert.Equal("فاتورة مبيعات", row.TxType);
-        Assert.Equal(14280m, row.Debit);
-        Assert.True(sales.Statement.Balance >= 14280m);
+        Assert.Equal(17700m, row.Debit);
+        Assert.True(sales.Statement.Balance >= 17700m);
         Assert.Contains(sales.Statement.Balances, b => b.CustomerId == _f.SubCustomerId && b.Balance == sales.Statement.Balance);
         sales.Statement.PrintCommand.Execute(null);
         var stmt = dialogs.Reports.Last();
         Assert.Equal("كشف حساب عميل", stmt.Title);
         Assert.Equal(sales.Statement.Rows.Count, stmt.Rows.Count);
-        Assert.Contains(stmt.Rows, r => r[2] == number && r[4] == "14,280");
+        Assert.Contains(stmt.Rows, r => r[2] == number && r[4] == "17,700");
 
         // الفواتير بالمدفوع والمتبقي والحالة، وإجمالي الدين في أعلى الكشف
         var invoiceRow = Assert.Single(sales.Statement.Invoices, i => i.InvoiceNumber == number);
-        Assert.Equal(14280m, invoiceRow.Total);
+        Assert.Equal(17700m, invoiceRow.Total);
         Assert.Equal(invoiceRow.Total - invoiceRow.Paid, invoiceRow.Remaining);
         Assert.Contains("إجمالي الدين", sales.Statement.DebtHeadline);
         sales.Statement.PrintInvoicesCommand.Execute(null);
@@ -159,8 +162,8 @@ public class ScreenFlowTests
         Assert.Contains(sales.InvoiceList.Rows, r => r.InvoiceNumber == number && r.Status == "Posted");
         // إعادة طباعة الفاتورة المرحّلة من القائمة (من قاعدة البيانات)
         await sales.InvoiceList.PrintCommand.ExecuteAsync(sales.InvoiceList.Rows.Single(r => r.InvoiceNumber == number));
-        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الإجمالي" && t.Value == "14,280 د.ع");
-        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الإجمالي كتابةً" && t.Value.Contains("أربعة عشر ألف ومئتان وثمانون"));
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الإجمالي" && t.Value == "17,700 د.ع");
+        Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الإجمالي كتابةً" && t.Value.Contains("سبعة عشر ألف") && t.Value.Contains("سبعمئة"));
         Assert.Empty(_f.Unhandled);
     }
 
@@ -323,16 +326,17 @@ public class ScreenFlowTests
         await inv.AddLineCommand.ExecuteAsync();
         Assert.Equal(3000m, inv.Lines[0].UnitPrice);
 
-        // تغيير العميل إلى وكيل يعيد تسعير السطر تلقائيًا
+        Assert.False(inv.HasDiscount);
+        Assert.DoesNotContain(inv.LevelOptions, l => l.EquivalentBaseUnits == 1);   // لا بيع بالقطعة: العبوة فقط
+
+        // السعر موحّد: تغيير العميل إلى وكيل لا يغيّر السعر؛ خصمه يُكتب سعرًا أقل فيظهر في عمود الخصم وإجماليه
         inv.Customer = inv.Customers.Single(c => c.Id == _f.AgentId);
         await inv.IdleAsync();
-        Assert.Equal(2400m, inv.Lines[0].UnitPrice);
-        // إلغاء تسعير الوكيل يدويًا يعيد السعر العادي
-        inv.UseAgentPricing = false;
-        await inv.IdleAsync();
         Assert.Equal(3000m, inv.Lines[0].UnitPrice);
-        inv.UseAgentPricing = true;
-        await inv.IdleAsync();
+        inv.Lines[0].UnitPrice = 2400m;
+        Assert.Equal((3000m, 600m), (inv.Lines[0].ListPrice, inv.Lines[0].Discount));
+        Assert.Equal(600m, inv.TotalDiscount);
+        Assert.Contains(inv.BuildReport().Totals, t => t.Label == "إجمالي الخصم" && t.Value == "600 د.ع");
 
         await inv.SaveDraftCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
@@ -355,6 +359,7 @@ public class ScreenFlowTests
         Assert.Equal(_f.EarlyBatchId, line.BatchId);
 
         line.QuantityInLevel = 2;                                   // تعديل الكمية في الجدول
+        Assert.Equal(1200m, inv.TotalDiscount);                     // (3,000 − 2,400) × 2 من سعر القائمة المحفوظ بعد إعادة الفتح
         inv.PaymentMethod = inv.PaymentOptions.Single(o => o.Value == InvoicePaymentMethod.Partial);
         inv.AmountPaidNow = 1000;
         await inv.PostCommand.ExecuteAsync();
