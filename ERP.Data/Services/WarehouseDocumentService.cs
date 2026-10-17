@@ -110,6 +110,10 @@ public class StockDocumentRow
     public string QuantityText { get; set; } = "";
     public List<DocumentLineSummary> LineSummaries { get; set; } = new();
     public bool HasManyLines => LineSummaries.Count > 1;
+    public bool IsVoided { get; init; }
+    public string? VoidReason { get; init; }
+    /// <summary>«مرحَّل» أو «ملغى — السبب».</summary>
+    public string StatusText => IsVoided ? $"ملغى — {VoidReason}" : "مرحَّل";
 }
 
 /// <summary>سطر مختصر في المستند: الاسم الموحد/الكامل والكمية بوحدته.</summary>
@@ -134,6 +138,66 @@ public class WarehouseDocumentService
         StockDocumentType.RepReturn => "RR",
         _ => "SF"
     };
+
+    /// <summary>
+    /// إلغاء مستند مخزني بسبب إلزامي: حركات عكسية بنفس النوع والتشغيلة والكلفة وكمية معاكسة، ويبقى المستند ظاهرًا «ملغى».
+    /// لصاحب صلاحية «إلغاء المستندات المرحّلة». يُمنع في فترة مقفلة، أو إن جعل رصيد صنف سالبًا (بيع أو صُرف منه)،
+    /// ولا تُلغى هنا مستندات المندوب ولا بيع المواد التالفة (تُصحَّح من مصدرها).
+    /// </summary>
+    public async Task<FinanceOperationResult> VoidAsync(int documentId, string reason, int userId)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب الإلغاء");
+        if (!await SpecialPermission.HasAsync(_db, userId, SpecialPermission.VoidPosted))
+            return FinanceOperationResult.Fail("إلغاء المستندات لمن يملك صلاحية «إلغاء المستندات المرحّلة» فقط");
+        var doc = await _db.StockDocuments.FirstOrDefaultAsync(d => d.Id == documentId);
+        if (doc is null) return FinanceOperationResult.Fail("المستند غير موجود");
+        if (doc.IsVoided) return FinanceOperationResult.Fail("المستند ملغى مسبقًا");
+        if (doc.DocumentType is StockDocumentType.RepLoad or StockDocumentType.RepReturn)
+            return FinanceOperationResult.Fail("مستندات المندوب تُصحَّح من شاشات المندوب (طلب التحميل أو مستند إرجاع معاكس)");
+        if (await _db.DamagedSales.AnyAsync(x => x.StockDocumentId == doc.Id))
+            return FinanceOperationResult.Fail("هذا المستند من «بيع المواد التالفة» — يُصحَّح من شاشة البيع");
+        if (await new PeriodLockService(_db).GetLockedThroughAsync() is DateTime locked && doc.DocumentDate.Date <= locked)
+            return FinanceOperationResult.Fail($"الفترة حتى {locked:yyyy/MM/dd} مقفلة — لا يُلغى مستند بتاريخ داخلها");
+
+        var original = await _db.StockTransactions.AsNoTracking()
+            .Where(t => t.ReferenceTable == "StockDocuments" && t.ReferenceId == doc.Id && !t.IsReversal).ToListAsync();
+        if (original.Count == 0) return FinanceOperationResult.Fail("لا حركات لهذا المستند");
+
+        // لا رصيد سالب بعد العكس: لكل (صنف، مخزن، تشغيلة) ما سيُسحب ≤ المتاح
+        foreach (var g in original.GroupBy(t => new { t.ItemId, t.WarehouseId, t.BatchId }).Where(g => g.Sum(t => t.QuantityBaseUnits) > 0))
+        {
+            var balance = await _db.StockTransactions.Where(t => t.ItemId == g.Key.ItemId && t.WarehouseId == g.Key.WarehouseId && t.BatchId == g.Key.BatchId)
+                .SumAsync(t => (decimal?)t.QuantityBaseUnits) ?? 0;
+            var take = g.Sum(t => t.QuantityBaseUnits);
+            if (balance - take < 0)
+            {
+                var item = await _db.Items.Where(i => i.Id == g.Key.ItemId).Select(i => i.ItemName).FirstAsync();
+                var wh = await _db.Warehouses.Where(w => w.Id == g.Key.WarehouseId).Select(w => w.Name).FirstAsync();
+                var packs = await PackFormatter.LoadAsync(_db, new[] { g.Key.ItemId });
+                return FinanceOperationResult.Fail($"لا يمكن الإلغاء: صُرف أو بيع من «{item}» في «{wh}» — المتبقي {packs.Of(g.Key.ItemId, Math.Max(balance, 0))} " +
+                                                   $"والإلغاء يحتاج {packs.Of(g.Key.ItemId, take)}. صحّح بمستند معاكس بدل الإلغاء.");
+            }
+        }
+
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        var now = DateTime.UtcNow;
+        foreach (var t in original)
+            _db.StockTransactions.Add(new StockTransaction
+            {
+                ItemId = t.ItemId, WarehouseId = t.WarehouseId, BatchId = t.BatchId, QuantityBaseUnits = -t.QuantityBaseUnits,
+                UnitCost = t.UnitCost, TransactionType = t.TransactionType, DamageReason = t.DamageReason, DamageCause = t.DamageCause,
+                FreeIssueRecipient = t.FreeIssueRecipient, ReferenceTable = "StockDocuments", ReferenceId = doc.Id,
+                IsReversal = true, TransactionDate = now, CreatedByUserId = userId
+            });
+        doc.IsVoided = true;
+        doc.VoidReason = reason.Trim();
+        doc.VoidedByUserId = userId;
+        doc.VoidedAt = now;
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Void", "StockDocuments", doc.Id, $"{doc.DocumentNumber} — {doc.VoidReason}");
+        if (tx is not null) await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
 
     public async Task<(FinanceOperationResult result, StockDocument? document)> CreateAsync(StockDocumentRequest r)
     {
@@ -379,7 +443,7 @@ public class WarehouseDocumentService
             .Where(x => x.WarehouseId == warehouseId && x.TransactionDate >= f && x.TransactionDate < t && (itemId == null || x.ItemId == itemId))
             .OrderBy(x => x.TransactionDate).ThenBy(x => x.Id)
             .Select(x => new { x.TransactionDate, x.ItemId, x.Item.ItemName,
-                               x.TransactionType, x.DamageReason, x.DamageCause, x.ReferenceTable, x.ReferenceId,
+                               x.TransactionType, x.DamageReason, x.DamageCause, x.IsReversal, x.ReferenceTable, x.ReferenceId,
                                BatchNumber = x.Batch != null ? x.Batch.BatchNumber : null, RecipeId = x.Batch != null ? x.Batch.CustomRecipeId : null,
                                x.FreeIssueRecipient, x.QuantityBaseUnits })
             .ToListAsync();
@@ -422,7 +486,7 @@ public class WarehouseDocumentService
             rows.Add(Named(new StockLedgerRow
             {
                 Date = x.TransactionDate.ToLocalTime(), ItemId = x.ItemId, ItemName = x.ItemName,
-                TypeLabel = TypeLabel(x.TransactionType, x.QuantityBaseUnits) + (x.DamageReason is null ? "" : $" ({DamageLabel(x.DamageReason.Value)}{(x.DamageCause is null ? "" : " · " + CauseLabel(x.DamageCause.Value))})"),
+                TypeLabel = (x.IsReversal ? "إلغاء: " + TypeLabel(x.TransactionType, -x.QuantityBaseUnits) : TypeLabel(x.TransactionType, x.QuantityBaseUnits)) + (x.DamageReason is null ? "" : $" ({DamageLabel(x.DamageReason.Value)}{(x.DamageCause is null ? "" : " · " + CauseLabel(x.DamageCause.Value))})"),
                 Reference = x.ReferenceId is null ? (x.ReferenceTable == "OpeningBalance" ? "رصيد افتتاحي" : "")
                           : source.Number ?? $"{x.ReferenceTable} #{x.ReferenceId}",
                 BatchNumber = x.BatchNumber, Party = x.FreeIssueRecipient ?? source.Party,
@@ -559,18 +623,20 @@ public class WarehouseDocumentService
             .Select(d => new
             {
                 d.Id, d.DocumentNumber, d.DocumentType, d.DocumentDate, Counter = d.CounterWarehouse != null ? d.CounterWarehouse.Name : null,
-                d.PartyName, Lines = d.Lines.Count, Pieces = d.Lines.Sum(l => (decimal?)l.QuantityBaseUnits) ?? 0, User = d.CreatedByUser.Username
+                d.PartyName, Lines = d.Lines.Count, Pieces = d.Lines.Sum(l => (decimal?)l.QuantityBaseUnits) ?? 0, User = d.CreatedByUser.Username,
+                d.IsVoided, d.VoidReason
             }).ToListAsync();
         return await WithPackTotalsAsync(rows.Select(d => new StockDocumentRow
         {
             Id = d.Id, DocumentNumber = d.DocumentNumber, DocumentType = d.DocumentType, DocumentDate = d.DocumentDate,
-            CounterWarehouse = d.Counter, PartyName = d.PartyName, LinesCount = d.Lines, TotalPieces = d.Pieces, CreatedBy = d.User
+            CounterWarehouse = d.Counter, PartyName = d.PartyName, LinesCount = d.Lines, TotalPieces = d.Pieces, CreatedBy = d.User,
+            IsVoided = d.IsVoided, VoidReason = d.VoidReason
         }).ToList());
     }
 
     public Task<StockDocument?> GetDocumentAsync(int id) =>
         _db.StockDocuments.AsNoTracking()
-            .Include(d => d.Warehouse).Include(d => d.CounterWarehouse).Include(d => d.CreatedByUser).Include(d => d.RepEmployee)
+            .Include(d => d.Warehouse).Include(d => d.CounterWarehouse).Include(d => d.CreatedByUser).Include(d => d.RepEmployee).Include(d => d.VoidedByUser)
             .Include(d => d.Lines).ThenInclude(l => l.Item)
             .Include(d => d.Lines).ThenInclude(l => l.PackagingLevel)
             .Include(d => d.Lines).ThenInclude(l => l.Batch)

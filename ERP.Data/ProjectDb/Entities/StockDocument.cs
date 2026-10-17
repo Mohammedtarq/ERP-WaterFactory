@@ -33,6 +33,13 @@ public class StockDocument
     public User CreatedByUser { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    /// <summary>ملغى بحركات عكسية (57_stock_document_void.sql) — يبقى ظاهرًا ولا يُحذف.</summary>
+    public bool IsVoided { get; set; }
+    public string? VoidReason { get; set; }
+    public int? VoidedByUserId { get; set; }
+    public User? VoidedByUser { get; set; }
+    public DateTime? VoidedAt { get; set; }
+
     public List<StockDocumentLine> Lines { get; set; } = new();
 }
 

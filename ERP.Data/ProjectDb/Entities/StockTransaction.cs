@@ -49,6 +49,8 @@ public class StockTransaction
     public StockTransactionType TransactionType { get; set; }
     public DamageReason? DamageReason { get; set; }
     public DamageCause? DamageCause { get; set; }
+    /// <summary>حركة عكسية لإلغاء مستند مخزني (نفس النوع والكلفة بكمية معاكسة).</summary>
+    public bool IsReversal { get; set; }
     public string? FreeIssueRecipient { get; set; }
 
     public string? ReferenceTable { get; set; }

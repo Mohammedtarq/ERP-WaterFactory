@@ -22,7 +22,8 @@ public class RecordingDialogs : IDialogService
 
     public void Info(string message) => Infos.Add(message);
     public void Error(string message) => Errors.Add(message);
-    public bool Confirm(string message) => ConfirmAnswer;
+    public List<string> Confirms { get; } = new();
+    public bool Confirm(string message) { Confirms.Add(message); return ConfirmAnswer; }
     public List<string> Urls { get; } = new();
     public void OpenUrl(string url) => Urls.Add(url);
     public List<ReportDocument> Reports { get; } = new();

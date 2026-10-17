@@ -92,6 +92,8 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         ClearCommand = new RelayCommand(() => { if (Lines.Count == 0 || Dialogs.Confirm("تفريغ سطور المستند؟")) ClearForm(); });
         PrintDocumentCommand = new AsyncRelayCommand(p => p is StockDocumentRow r ? PrintDocumentAsync(r.Id) : Task.CompletedTask);
+        VoidDocumentCommand = new AsyncRelayCommand(p => p is StockDocumentRow r ? VoidDocumentAsync(r) : Task.CompletedTask);
+        CopyDocumentCommand = new AsyncRelayCommand(p => p is StockDocumentRow r ? CopyDocumentAsync(r) : Task.CompletedTask);
         LoadReportsCommand = new AsyncRelayCommand(LoadReportsAsync);
         PrintBalancesCommand = new RelayCommand(() => Dialogs.ShowReport(BuildBalancesReport()));
         ClearSearchCommand = new RelayCommand(() => SearchText = "");
@@ -329,6 +331,13 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public ObservableCollection<StockLedgerRow> Ledger { get; } = new();
 
     public AsyncRelayCommand PrintDocumentCommand { get; }
+    /// <summary>إلغاء مستند بسبب إلزامي (حركات عكسية، ويبقى ظاهرًا «ملغى») — لصاحب صلاحية «إلغاء المستندات المرحّلة».</summary>
+    public AsyncRelayCommand VoidDocumentCommand { get; }
+    /// <summary>«نسخ»: مستند جديد بنفس السطور في «عملية جديدة» لتعديلها وحفظها (هو التعديل بعد الإلغاء).</summary>
+    public AsyncRelayCommand CopyDocumentCommand { get; }
+    private string? _voidReason;
+    public string? VoidReason { get => _voidReason; set => SetProperty(ref _voidReason, value); }
+    public bool CanVoidDocuments => Has(SpecialPermission.VoidPosted);
     public AsyncRelayCommand LoadReportsCommand { get; }
     public RelayCommand PrintBalancesCommand { get; }
     public RelayCommand PrintSummaryCommand { get; }
@@ -565,9 +574,16 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         if (!Require(CanAdd, "تسجيل مستندات المخزن")) return;
         if (Lines.Count == 0) { Dialogs.Error("أضف صنفًا واحدًا على الأقل"); return; }
-        var confirm = $"حفظ مستند {Operation.Label} ({Lines.Count} سطر، {LinesPacks})" +
-                      (IsTransfer && CounterWarehouse is not null ? $" إلى \"{CounterWarehouse.Name}\"" : "") + "؟";
-        if (!Dialogs.Confirm(confirm)) return;
+        // تأكيد قبل الحفظ في حالتين فقط: عملية حساسة (مناقلة، تالف، مسحوب مجاني) أو كمية غير معتادة لصنف
+        var unusual = await UnusualQuantityAsync();
+        var sensitive = Operation.Value is StockDocumentType.Transfer or StockDocumentType.Damaged or StockDocumentType.FreeIssue;
+        if (sensitive || unusual is not null)
+        {
+            var confirm = $"حفظ مستند {Operation.Label} ({Lines.Count} سطر، {LinesPacks})" +
+                          (IsTransfer && CounterWarehouse is not null ? $" إلى \"{CounterWarehouse.Name}\"" : "") + "؟" +
+                          (unusual is null ? "" : $"\n\n⚠ كمية غير معتادة: {unusual}");
+            if (!Dialogs.Confirm(confirm)) return;
+        }
 
         IsBusy = true;
         try
@@ -593,6 +609,77 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// كمية غير معتادة: أكثر من 3 أضعاف معدل آخر 20 مستندًا للصنف في هذا المخزن أو أقل من ثلثه
+    /// (لا يُطبَّق قبل وجود 5 مستندات سابقة). يعيد وصف أول سطر غير معتاد أو null.
+    /// </summary>
+    private async Task<string?> UnusualQuantityAsync()
+    {
+        await using var db = Session.NewDb();
+        var type = Operation.Value;
+        foreach (var g in Lines.GroupBy(l => l.ItemId))
+        {
+            var pieces = g.Sum(l => l.Pieces);
+            var history = await db.StockDocumentLines.AsNoTracking()
+                .Where(l => l.ItemId == g.Key && l.StockDocument.WarehouseId == WarehouseId && l.StockDocument.DocumentType == type && !l.StockDocument.IsVoided)
+                .GroupBy(l => l.StockDocumentId).Select(x => new { Id = x.Key, Qty = x.Sum(l => l.QuantityBaseUnits) })
+                .OrderByDescending(x => x.Id).Take(20).ToListAsync();
+            if (history.Count < 5) continue;
+            var avg = history.Average(x => x.Qty);
+            if (avg <= 0 || (pieces <= avg * 3 && pieces >= avg / 3)) continue;
+            return $"{g.First().ItemName}: {_packs.Of(g.Key, pieces)} والمعتاد نحو {_packs.Of(g.Key, Math.Round(avg))}";
+        }
+        return null;
+    }
+
+    private async Task VoidDocumentAsync(StockDocumentRow row)
+    {
+        if (row.IsVoided) { Dialogs.Error("المستند ملغى مسبقًا"); return; }
+        if (!Require(CanVoidDocuments, "إلغاء المستندات المرحّلة")) return;
+        if (string.IsNullOrWhiteSpace(VoidReason)) { Dialogs.Error("اكتب سبب الإلغاء في الخانة أعلى القائمة أولًا"); return; }
+        if (!Dialogs.Confirm($"إلغاء المستند {row.DocumentNumber} ({row.QuantityText})؟\n\nيُعكس أثره على الرصيد ويبقى ظاهرًا بحالة «ملغى».\nالسبب: {VoidReason!.Trim()}")) return;
+        await using var db = Session.NewDb();
+        var result = await new WarehouseDocumentService(db).VoidAsync(row.Id, VoidReason!, Session.UserId);
+        if (!result.Success) { Dialogs.Error(result.ErrorMessage!); return; }
+        VoidReason = null;
+        StatusMessage = $"أُلغي المستند {row.DocumentNumber}";
+        await LoadKpisAndBalancesAsync();
+        await LoadReportsAsync();
+    }
+
+    private async Task CopyDocumentAsync(StockDocumentRow row)
+    {
+        await using var db = Session.NewDb();
+        var d = await new WarehouseDocumentService(db).GetDocumentAsync(row.Id);
+        if (d is null) { Dialogs.Error("المستند غير موجود"); return; }
+        var op = OperationOptions.FirstOrDefault(o => o.Value == d.DocumentType);
+        if (op is null || d.WarehouseId != WarehouseId) { Dialogs.Error("يُنسخ المستند من مخزنه المصدر وبنوع متاح في «عملية جديدة»"); return; }
+        if (Lines.Count > 0 && !Dialogs.Confirm("في «عملية جديدة» سطور غير محفوظة — استبدالها بسطور المستند المنسوخ؟")) return;
+        Lines.Clear();
+        Operation = op;
+        Lines.Clear();
+        var names = await ProductNames.LoadAsync(db, d.Lines.Select(l => l.ItemId));
+        foreach (var l in d.Lines)
+        {
+            var recipe = l.Batch?.CustomRecipeId;
+            Lines.Add(new DocumentLineDraft
+            {
+                ItemId = l.ItemId, ItemCode = l.Item.ItemCode,
+                ItemName = recipe is null ? l.Item.ItemName : $"{l.Item.ItemName} — {names.Variant(recipe)}", CustomRecipeId = recipe,
+                PackagingLevelId = l.PackagingLevelId, LevelName = l.PackagingLevel.LevelName, QuantityInLevel = l.QuantityInLevel, Pieces = l.QuantityBaseUnits,
+                BatchId = l.BatchId, BatchLabel = l.Batch?.BatchNumber ?? (IsReceipt ? "—" : "تلقائي")
+            });
+        }
+        PartyName = d.PartyName;
+        Notes = $"نسخة من {d.DocumentNumber}" + (string.IsNullOrWhiteSpace(d.Notes) ? "" : $" — {d.Notes}");
+        if (d.CounterWarehouseId is int cw) CounterWarehouse = OtherWarehouses.FirstOrDefault(w => w.Id == cw);
+        if (d.DamageReason is { } dr) DamageReason = ReasonOptions.FirstOrDefault(o => o.Value == dr) ?? DamageReason;
+        if (d.DamageCause is { } dc) DamageCause = CauseOptions.FirstOrDefault(o => o.Value == dc);
+        OnPropertyChanged(nameof(LinesTotalText));
+        SelectedTabIndex = 0;
+        StatusMessage = $"نُسخ {d.DocumentNumber} إلى «عملية جديدة» — عدّل ثم احفظ" + (d.IsVoided ? "" : " (ألغِ الأصل إن كان خطأ)");
     }
 
     private void ClearForm()

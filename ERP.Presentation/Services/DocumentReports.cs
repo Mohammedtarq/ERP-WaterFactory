@@ -162,7 +162,8 @@ public static class DocumentReports
          }, d.RepEmployee?.FullName ?? d.PartyName)
          .Field("مكان التلف", d.DamageReason is null ? null : ArabicLabels.Of(d.DamageReason))
          .Field("سبب التلف", d.DamageCause is null ? null : ArabicLabels.Of(d.DamageCause))
-         .Field("المستخدم", d.CreatedByUser.Username);
+         .Field("المستخدم", d.CreatedByUser.Username)
+         .Field("الحالة", d.IsVoided ? $"ملغى — {d.VoidReason} ({d.VoidedByUser?.Username}، {d.VoidedAt?.ToLocalTime():yyyy/MM/dd})" : null);
         var isReturn = d.DocumentType == StockDocumentType.RepReturn;
         r.Columns.AddRange(isReturn
             ? new[] { "#", "الصنف", "الكمية", "الحالة", "التشغيلة" }

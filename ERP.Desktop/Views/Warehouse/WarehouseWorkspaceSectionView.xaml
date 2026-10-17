@@ -366,8 +366,23 @@
                                     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
                                         <TextBlock Text="النوع:" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <ComboBox ItemsSource="{Binding DocumentFilters}" SelectedItem="{Binding DocumentFilter}" DisplayMemberPath="Label" Width="200"/>
+                                        <StackPanel Orientation="Horizontal" Margin="24,0,0,0" Visibility="{Binding CanVoidDocuments, Converter={StaticResource BoolToVisibility}}">
+                                            <TextBlock Text="سبب الإلغاء:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBox Text="{Binding VoidReason, UpdateSourceTrigger=PropertyChanged}" Width="260"
+                                                     ToolTip="اكتب السبب ثم اضغط «إلغاء» في صف المستند — يُعكس أثره ويبقى ظاهرًا «ملغى»"/>
+                                        </StackPanel>
                                     </StackPanel>
                                     <DataGrid ItemsSource="{Binding Documents}" IsReadOnly="True" RowDetailsVisibilityMode="VisibleWhenSelected">
+                                        <DataGrid.RowStyle>
+                                            <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsVoided}" Value="True">
+                                                        <Setter Property="Foreground" Value="#94A3B8"/>
+                                                        <Setter Property="TextBlock.TextDecorations" Value="Strikethrough"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </DataGrid.RowStyle>
                                         <DataGrid.RowDetailsTemplate>
                                             <DataTemplate>
                                                 <ItemsControl ItemsSource="{Binding LineSummaries}" Margin="40,2,12,8" Visibility="{Binding HasManyLines, Converter={StaticResource BoolToVisibility}}">
@@ -391,11 +406,19 @@
                                             <DataGridTextColumn Header="السطور" Binding="{Binding LinesCount}" Width="60"/>
                                             <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="2*" MinWidth="220"/>
                                             <DataGridTextColumn Header="المستخدم" Binding="{Binding CreatedBy}" Width="100"/>
-                                            <DataGridTemplateColumn Header="" Width="46">
+                                            <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="120"/>
+                                            <DataGridTemplateColumn Header="" Width="120">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
-                                                        <Button Content="&#xE749;" ToolTip="طباعة المستند" Style="{StaticResource RowIconButton}" Tag="#0F766E"
-                                                                Command="{Binding DataContext.PrintDocumentCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Button Content="&#xE749;" ToolTip="طباعة المستند" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                                                    Command="{Binding DataContext.PrintDocumentCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                            <Button Content="&#xE8C8;" ToolTip="نسخ: مستند جديد بنفس السطور لتعديله وحفظه" Style="{StaticResource RowIconButton}" Tag="#2563EB"
+                                                                    Command="{Binding DataContext.CopyDocumentCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                            <Button Content="&#xE711;" ToolTip="إلغاء المستند (بسبب) — يُعكس أثره ويبقى ظاهرًا «ملغى»" Style="{StaticResource RowIconButton}" Tag="#B42318"
+                                                                    Command="{Binding DataContext.VoidDocumentCommand, ElementName=Root}" CommandParameter="{Binding}"
+                                                                    Visibility="{Binding DataContext.CanVoidDocuments, ElementName=Root, Converter={StaticResource BoolToVisibility}}"/>
+                                                        </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
