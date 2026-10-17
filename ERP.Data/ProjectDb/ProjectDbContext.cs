@@ -269,6 +269,9 @@ public partial class ProjectDbContext : DbContext
             .Property(t => t.DamageReason)
             .HasConversion<string>();
         modelBuilder.Entity<StockTransaction>()
+            .Property(t => t.DamageCause)
+            .HasConversion<string>();
+        modelBuilder.Entity<StockTransaction>()
             .HasOne(t => t.CreatedByUser)
             .WithMany()
             .HasForeignKey(t => t.CreatedByUserId)
@@ -345,6 +348,7 @@ public partial class ProjectDbContext : DbContext
         {
             e.Property(d => d.DocumentType).HasConversion<string>();
             e.Property(d => d.DamageReason).HasConversion<string>();
+            e.Property(d => d.DamageCause).HasConversion<string>();
             e.Property(d => d.BeneficiaryCategory).HasConversion<string>();
             e.HasOne(d => d.Warehouse).WithMany().HasForeignKey(d => d.WarehouseId).OnDelete(DeleteBehavior.NoAction);
             e.HasOne(d => d.CounterWarehouse).WithMany().HasForeignKey(d => d.CounterWarehouseId).OnDelete(DeleteBehavior.NoAction);

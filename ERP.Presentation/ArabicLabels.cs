@@ -69,6 +69,8 @@ public static class ArabicLabels
         [StockDocumentType.FreeIssue] = "مسحوب مجاني",
         [StockDocumentType.RepLoad] = "إسناد حمولة لمندوب", [StockDocumentType.RepReturn] = "إرجاع من مندوب",
         [DamageReason.Field] = "تلف ميداني",
+        [DamageCause.PoorStorage] = "سوء خزن", [DamageCause.Leakage] = "تسرب", [DamageCause.Expired] = "انتهاء صلاحية",
+        [DamageCause.ManufacturingDefect] = "خطأ تصنيع", [DamageCause.Misprint] = "طباعة خاطئة", [DamageCause.Other] = "أخرى",
         [BeneficiaryCategory.Government] = "جهة حكومية", [BeneficiaryCategory.Drivers] = "سائقون",
         [BeneficiaryCategory.Partners] = "شركاء وإدارة", [BeneficiaryCategory.Staff] = "موظفون", [BeneficiaryCategory.Reps] = "مندوبون",
         [BeneficiaryCategory.Other] = "أخرى",

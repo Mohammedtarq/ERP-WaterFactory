@@ -106,6 +106,13 @@ public class WarehouseCashBoxTests
         Assert.Equal("= 1 كارتون + 3 قطعة", fg.LinePiecesText);         // القطع تُحوَّل للعبوة الكبرى
         fg.LineQuantity = 5;
         await fg.AddLineCommand.ExecuteAsync();
+        var prevDoc = fg.LastDocument;
+        await fg.SaveCommand.ExecuteAsync();                            // السبب إلزامي بجانب المكان
+        Assert.Contains(dialogs.Errors, e => e.Contains("سبب التلف"));
+        Assert.Same(prevDoc, fg.LastDocument);
+        dialogs.Errors.Clear();
+        Assert.Equal("داخل المخزن", fg.DamageReason!.Label);             // «مكان التلف» الافتراضي
+        fg.DamageCause = fg.CauseOptions.Single(o => o.Value == DamageCause.Leakage);
         await fg.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.StartsWith("SD-", fg.LastDocument!.DocumentNumber);
@@ -155,7 +162,7 @@ public class WarehouseCashBoxTests
         Assert.Contains(fg.Ledger, l => l.TypeLabel == "مناقلة صادرة" && l.Out == 24);
         // التالف قد يتوزع على أكثر من تشغيلة (الأقرب انتهاءً أولًا) — مجموعه 5
         Assert.Equal(5m, fg.Ledger.Where(l => l.Reference == damageDoc).Sum(l => l.Out));
-        Assert.All(fg.Ledger.Where(l => l.Reference == damageDoc), l => Assert.StartsWith("تالف", l.TypeLabel));
+        Assert.All(fg.Ledger.Where(l => l.Reference == damageDoc), l => Assert.Equal("تالف (مخزن · تسرب)", l.TypeLabel));   // المكان والسبب
         fg.PrintLedgerCommand.Execute(null);
         // الرصيد بالعبوات: كراتين كاملة + ما تبقّى بالقطعة
         var packsText = finalBalance % 12 == 0 ? $"{finalBalance / 12:N0} كارتون" : $"{Math.Floor(finalBalance / 12):N0} كارتون + {finalBalance % 12:N0} قطعة";

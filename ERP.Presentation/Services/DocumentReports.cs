@@ -160,7 +160,8 @@ public static class DocumentReports
              StockDocumentType.Receipt => "المصدر", StockDocumentType.Issue => "الجهة المستلمة",
              StockDocumentType.RepLoad or StockDocumentType.RepReturn => "المندوب", _ => "الجهة المستفيدة"
          }, d.RepEmployee?.FullName ?? d.PartyName)
-         .Field("سبب التلف", d.DamageReason is null ? null : ArabicLabels.Of(d.DamageReason))
+         .Field("مكان التلف", d.DamageReason is null ? null : ArabicLabels.Of(d.DamageReason))
+         .Field("سبب التلف", d.DamageCause is null ? null : ArabicLabels.Of(d.DamageCause))
          .Field("المستخدم", d.CreatedByUser.Username);
         var isReturn = d.DocumentType == StockDocumentType.RepReturn;
         r.Columns.AddRange(isReturn

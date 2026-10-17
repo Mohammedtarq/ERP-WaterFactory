@@ -12,7 +12,7 @@ public record StockDocumentLineInput(int ItemId, int PackagingLevelId, decimal Q
 public record StockDocumentRequest(
     StockDocumentType Type, int WarehouseId, DateTime Date, IReadOnlyList<StockDocumentLineInput> Lines, int UserId,
     int? CounterWarehouseId = null, string? PartyName = null, DamageReason? DamageReason = null, string? Notes = null,
-    bool MoveDamagedToDamagedWarehouse = true, BeneficiaryCategory? Category = null);
+    bool MoveDamagedToDamagedWarehouse = true, BeneficiaryCategory? Category = null, DamageCause? DamageCause = null);
 
 /// <summary>ملخص حركة صنف في مخزن خلال فترة (تقرير "الرصيد والمتبقي").</summary>
 public class StockSummaryRow
@@ -174,7 +174,9 @@ public class WarehouseDocumentService
                 return (FinanceOperationResult.Fail("الصرف لتحت التصنيع يكون من أمر الإنتاج فقط"), null);
         }
         if (r.Type == StockDocumentType.Damaged && r.DamageReason is null)
-            return (FinanceOperationResult.Fail("حدّد سبب التلف (نقل / مخزن / إنتاج)"), null);
+            return (FinanceOperationResult.Fail("حدّد مكان التلف (نقل / مخزن / إنتاج)"), null);
+        if (r.Type == StockDocumentType.Damaged && r.DamageCause is null)
+            return (FinanceOperationResult.Fail("حدّد سبب التلف (سوء خزن / تسرب / انتهاء صلاحية / خطأ تصنيع / طباعة خاطئة / أخرى)"), null);
         if (r.Type == StockDocumentType.FreeIssue && string.IsNullOrWhiteSpace(r.PartyName))
             return (FinanceOperationResult.Fail("اكتب الجهة المستفيدة من المسحوب المجاني"), null);
         if (r.Type == StockDocumentType.Issue && string.IsNullOrWhiteSpace(r.PartyName))
@@ -210,6 +212,7 @@ public class WarehouseDocumentService
             DocumentDate = r.Date.Date, PartyName = rep?.FullName ?? Clean(r.PartyName), RepEmployeeId = rep?.Id,
             DamageReason = r.Type == StockDocumentType.Damaged ? r.DamageReason
                          : r.Type == StockDocumentType.RepReturn && r.Lines.Any(l => l.IsDamaged) ? ProjectDb.Entities.DamageReason.Field : null,
+            DamageCause = r.Type == StockDocumentType.Damaged ? r.DamageCause : null,
             Notes = Clean(r.Notes), CreatedByUserId = r.UserId, BeneficiaryCategory = category
         };
         _db.StockDocuments.Add(doc);
@@ -223,9 +226,15 @@ public class WarehouseDocumentService
 
             if (r.Type == StockDocumentType.Receipt)
             {
-                if (batchId is null && !string.IsNullOrWhiteSpace(l.NewBatchNumber))
+                // طلب خاص بلا تشغيلة: تشغيلة تلقائية لمتغيره في يوم المستند حتى لا يُسجَّل كأساسي
+                var newNumber = !string.IsNullOrWhiteSpace(l.NewBatchNumber) ? l.NewBatchNumber.Trim()
+                              : batchId is null && l.CustomRecipeId is int rid ? $"V{rid}-{r.Date:yyyyMMdd}" : null;
+                if (batchId is not null && l.CustomRecipeId is not null
+                    && await _db.ItemBatches.Where(b => b.Id == batchId).Select(b => b.CustomRecipeId).FirstOrDefaultAsync() != l.CustomRecipeId)
+                    return (FinanceOperationResult.Fail("التشغيلة المختارة لمتغير آخر — اختر تشغيلة هذا الاسم الخاص أو تشغيلة جديدة"), null);
+                if (batchId is null && newNumber is not null)
                 {
-                    var number = l.NewBatchNumber.Trim();
+                    var number = newNumber;
                     var batch = await _db.ItemBatches.FirstOrDefaultAsync(b => b.ItemId == l.ItemId && b.BatchNumber == number);
                     if (batch is null)
                     {
@@ -295,7 +304,7 @@ public class WarehouseDocumentService
             _db.StockTransactions.Add(new StockTransaction
             {
                 ItemId = itemId, WarehouseId = whId, BatchId = batch, QuantityBaseUnits = qty, TransactionType = type,
-                DamageReason = reason, FreeIssueRecipient = Clean(r.PartyName), ReferenceTable = "StockDocuments", ReferenceId = doc.Id,
+                DamageReason = reason, DamageCause = reason is null ? null : doc.DamageCause, FreeIssueRecipient = Clean(r.PartyName), ReferenceTable = "StockDocuments", ReferenceId = doc.Id,
                 TransactionDate = when, CreatedByUserId = r.UserId
             });
     }
@@ -370,7 +379,7 @@ public class WarehouseDocumentService
             .Where(x => x.WarehouseId == warehouseId && x.TransactionDate >= f && x.TransactionDate < t && (itemId == null || x.ItemId == itemId))
             .OrderBy(x => x.TransactionDate).ThenBy(x => x.Id)
             .Select(x => new { x.TransactionDate, x.ItemId, x.Item.ItemName,
-                               x.TransactionType, x.DamageReason, x.ReferenceTable, x.ReferenceId,
+                               x.TransactionType, x.DamageReason, x.DamageCause, x.ReferenceTable, x.ReferenceId,
                                BatchNumber = x.Batch != null ? x.Batch.BatchNumber : null, RecipeId = x.Batch != null ? x.Batch.CustomRecipeId : null,
                                x.FreeIssueRecipient, x.QuantityBaseUnits })
             .ToListAsync();
@@ -413,7 +422,7 @@ public class WarehouseDocumentService
             rows.Add(Named(new StockLedgerRow
             {
                 Date = x.TransactionDate.ToLocalTime(), ItemId = x.ItemId, ItemName = x.ItemName,
-                TypeLabel = TypeLabel(x.TransactionType, x.QuantityBaseUnits) + (x.DamageReason is null ? "" : $" ({DamageLabel(x.DamageReason.Value)})"),
+                TypeLabel = TypeLabel(x.TransactionType, x.QuantityBaseUnits) + (x.DamageReason is null ? "" : $" ({DamageLabel(x.DamageReason.Value)}{(x.DamageCause is null ? "" : " · " + CauseLabel(x.DamageCause.Value))})"),
                 Reference = x.ReferenceId is null ? (x.ReferenceTable == "OpeningBalance" ? "رصيد افتتاحي" : "")
                           : source.Number ?? $"{x.ReferenceTable} #{x.ReferenceId}",
                 BatchNumber = x.BatchNumber, Party = x.FreeIssueRecipient ?? source.Party,
@@ -624,5 +633,15 @@ public class WarehouseDocumentService
         ProjectDb.Entities.DamageReason.Warehouse => "مخزن",
         ProjectDb.Entities.DamageReason.Field => "ميداني",
         _ => "إنتاج"
+    };
+
+    public static string CauseLabel(DamageCause c) => c switch
+    {
+        ProjectDb.Entities.DamageCause.PoorStorage => "سوء خزن",
+        ProjectDb.Entities.DamageCause.Leakage => "تسرب",
+        ProjectDb.Entities.DamageCause.Expired => "انتهاء صلاحية",
+        ProjectDb.Entities.DamageCause.ManufacturingDefect => "خطأ تصنيع",
+        ProjectDb.Entities.DamageCause.Misprint => "طباعة خاطئة",
+        _ => "أخرى"
     };
 }

@@ -42,7 +42,7 @@ public class WpfNavigator : INavigator
         var main = new MainWindow { DataContext = vm };
         Replace(main);
         // حركة الترحيب: قطرة ماء تصير شعار المعمل ثم تنكشف الواجهة
-        WelcomeIntro.Show(main, vm.Session.FullName, vm.Session.ProjectName, LoginViewModel.SloganFor(vm.Session.ProjectName));
+        WelcomeIntro.Show(main, vm.Session.GlobalUsername, vm.Session.ProjectName, LoginViewModel.SloganFor(vm.Session.ProjectName));
     }
 
     public void UseControlConnection(string controlConnectionString)

@@ -123,4 +123,49 @@ public class WarehouseNamesTests
         Assert.Contains(doc.LineSummaries, l => l.Name == "سدادة — أبيض (أسماء)" && l.Quantity == "500 قطعة");
         Assert.Contains(doc.LineSummaries, l => l.Name == "ليبل - مطعم ليالي (أسماء)" && l.Quantity == "300 قطعة");
     }
+
+    [Fact]
+    public async Task Manual_finished_receipt_picks_the_special_name_variant()
+    {
+        int recipeId;
+        await using (var db = _f.NewDb())
+        {
+            var r = new CustomRecipe { FinishedItemId = _f.WaterItemId, Name = "طلب خاص — مطعم المتغير", ShortName = "مطعم المتغير" };
+            db.CustomRecipes.Add(r);
+            await db.SaveChangesAsync();
+            recipeId = r.Id;
+        }
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var wh = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
+        await wh.IdleAsync();
+        var fg = wh.Workspace(_f.MainWarehouseId);
+        await Open(wh, fg);
+        fg.Operation = fg.OperationOptions.Single(o => o.Value == StockDocumentType.Receipt);
+        fg.LineItem = null;
+        fg.LineItem = fg.ItemsLookup.Single(i => i.Id == _f.WaterItemId);
+        await fg.IdleAsync();
+        Assert.True(fg.ShowVariant);                                                  // المنتج التام بطلب خاص: قائمة «المتغير»
+        Assert.Null(fg.VariantOptions[0].RecipeId);
+        Assert.EndsWith("(أساسي)", fg.VariantOptions[0].Label);
+        fg.LineVariant = fg.VariantOptions.Single(v => v.RecipeId == recipeId);
+        await fg.IdleAsync();
+        Assert.All(fg.BatchOptions.Where(b => b.BatchId is not null), b => Assert.Equal(recipeId, b.RecipeId));   // تشغيلات هذا الاسم فقط
+        fg.LineQuantity = 3;
+        await fg.AddLineCommand.ExecuteAsync();
+        Assert.Contains("مطعم المتغير", fg.Lines.Single().ItemName);
+        await fg.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+
+        // سُجّل على تشغيلة تحمل المتغير (تلقائية لعدم كتابة رقم) لا كأساسي
+        await using var check = _f.NewDb();
+        var tx = await check.StockTransactions.Include(t => t.Batch)
+            .Where(t => t.ReferenceTable == "StockDocuments" && t.ReferenceId == fg.LastDocument!.Id).SingleAsync();
+        Assert.Equal(recipeId, tx.Batch!.CustomRecipeId);
+        Assert.StartsWith($"V{recipeId}-", tx.Batch.BatchNumber);
+
+        // المواد الأولية لا تعرض قائمة المتغير
+        fg.LineItem = null;
+        await fg.IdleAsync();
+        Assert.False(fg.ShowVariant);
+    }
 }

@@ -81,9 +81,9 @@ public static class TrialDayData
         var hsBatch = await db.ItemBatches.Where(b => b.BatchNumber == "HS-2610").Select(b => b.Id).FirstAsync();
         var goldBatch = await db.ItemBatches.Where(b => b.BatchNumber == "RH-OPEN-G").Select(b => b.Id).FirstAsync();
         await Doc(new StockDocumentRequest(StockDocumentType.Damaged, fg.Id, today,
-            new[] { new StockDocumentLineInput(w500.Id, carton, 2, BatchId: hsBatch) }, user, DamageReason: DamageReason.Warehouse));
+            new[] { new StockDocumentLineInput(w500.Id, carton, 2, BatchId: hsBatch) }, user, DamageReason: DamageReason.Warehouse, DamageCause: DamageCause.PoorStorage));
         await Doc(new StockDocumentRequest(StockDocumentType.Damaged, raw.Id, today,
-            new[] { new StockDocumentLineInput(gold.item.Id, gold.level, 1_200, BatchId: goldBatch) }, user, DamageReason: DamageReason.Production));
+            new[] { new StockDocumentLineInput(gold.item.Id, gold.level, 1_200, BatchId: goldBatch) }, user, DamageReason: DamageReason.Production, DamageCause: DamageCause.ManufacturingDefect));
 
         // حد تنبيه لاسم خاص واحد (50 كرتون والرصيد 28 بعد البيع ← تحت الحد وفي الجرس)؛ زواج سعيد بلا حد (غير متابَع)
         db.VariantAlerts.Add(new VariantAlert { ItemId = w500.Id, CustomRecipeId = hsRecipe.Id, MinPacks = 50, UpdatedByUserId = user });

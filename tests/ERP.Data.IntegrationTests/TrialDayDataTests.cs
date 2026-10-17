@@ -69,6 +69,9 @@ public class TrialDayDataTests : IAsyncLifetime
         Assert.All(ledger, l => Assert.False(string.IsNullOrEmpty(l.BalanceText)));
         Assert.Contains(ledger, l => l.DisplayName == "ليبل - مطعم الحسون" && l.Out == 400 && l.BalanceText == "15,600 قطعة");
         Assert.Contains(ledger, l => l.Reference == "رصيد افتتاحي");
+        Assert.Contains(ledger, l => l.TypeLabel == "تالف (إنتاج · خطأ تصنيع)" && l.Out == 1_200);   // مكان التلف وسببه
+        var rawId = Wh(WarehouseType.RawMaterial);
+        Assert.Equal(DamageCause.ManufacturingDefect, (await db.StockDocuments.SingleAsync(d => d.DocumentType == StockDocumentType.Damaged && d.WarehouseId == rawId)).DamageCause);
         Assert.DoesNotContain(ledger, l => l.Reference.Contains('#'));
 
         // المبيعات: فاتورتان مرحّلتان، والآجلة دين على مطعم الحسون

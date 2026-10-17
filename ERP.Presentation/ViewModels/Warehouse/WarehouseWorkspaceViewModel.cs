@@ -22,6 +22,16 @@ public class DocumentLineDraft
     public string? NewBatchNumber { get; init; }
     public DateTime? NewBatchExpiry { get; init; }
     public string BatchLabel { get; init; } = "";
+    /// <summary>متغير المنتج التام عند الإدخال اليدوي (طلب خاص باسم زبون/مناسبة)؛ NULL = الأساسي.</summary>
+    public int? CustomRecipeId { get; init; }
+}
+
+/// <summary>خيار «المتغير» للمنتج التام: الأساسي أو طلب خاص.</summary>
+public class VariantChoice
+{
+    public int? RecipeId { get; init; }
+    public string Label { get; init; } = "";
+    public override string ToString() => Label;
 }
 
 public class BatchChoice
@@ -29,6 +39,7 @@ public class BatchChoice
     public int? BatchId { get; init; }
     public string Label { get; init; } = "";
     public decimal? Available { get; init; }
+    public int? RecipeId { get; init; }
     public override string ToString() => Label;
 }
 
@@ -43,12 +54,14 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     private string? _partyName;
     private WarehouseEntity? _counterWarehouse;
     private Option<DamageReason>? _damageReason;
+    private Option<DamageCause>? _damageCause;
     private bool _moveToDamaged = true;
     private string? _notes;
     private bool _showAllItems;
     private Item? _lineItem;
     private ItemPackagingLevel? _lineLevel;
     private BatchChoice? _lineBatch;
+    private VariantChoice? _lineVariant;
     private string? _lineNewBatch;
     private DateTime? _lineExpiry;
     private decimal _lineQuantity = 1;
@@ -163,10 +176,14 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     /// <summary>التلف الميداني خاص بالإرجاع من المندوب.</summary>
     public IReadOnlyList<Option<DamageReason>> ReasonOptions { get; } =
         ArabicLabels.OptionsOf<DamageReason>().Where(o => o.Value != Data.ProjectDb.Entities.DamageReason.Field).ToList();
+    /// <summary>سبب التلف بجانب مكانه (سوء خزن، تسرب، انتهاء صلاحية، خطأ تصنيع، طباعة خاطئة، أخرى).</summary>
+    public IReadOnlyList<Option<DamageCause>> CauseOptions { get; } = ArabicLabels.OptionsOf<DamageCause>();
     public ObservableCollection<WarehouseEntity> OtherWarehouses { get; } = new();
     public ObservableCollection<Item> ItemsLookup { get; } = new();
     public ObservableCollection<ItemPackagingLevel> LevelOptions { get; } = new();
     public ObservableCollection<BatchChoice> BatchOptions { get; } = new();
+    /// <summary>متغيرات المنتج التام المختار (الأساسي + الطلبات الخاصة الفعّالة) — تظهر في الإدخال فقط.</summary>
+    public ObservableCollection<VariantChoice> VariantOptions { get; } = new();
     public ObservableCollection<DocumentLineDraft> Lines { get; } = new();
 
     public Option<StockDocumentType> Operation
@@ -175,7 +192,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         set
         {
             if (!SetProperty(ref _operation, value)) return;
-            foreach (var n in new[] { nameof(IsReceipt), nameof(IsOutgoing), nameof(IsTransfer), nameof(IsDamaged), nameof(NeedsParty), nameof(PartyLabel), nameof(OperationHint), nameof(SaveLabel) })
+            foreach (var n in new[] { nameof(IsReceipt), nameof(IsOutgoing), nameof(IsTransfer), nameof(IsDamaged), nameof(NeedsParty), nameof(PartyLabel), nameof(OperationHint), nameof(SaveLabel), nameof(ShowVariant) })
                 OnPropertyChanged(n);
             if (Lines.Count > 0 && Dialogs.Confirm("تغيير نوع العملية يفرّغ السطور المضافة. متابعة؟")) Lines.Clear();
             Background(RefreshBatchesAsync());
@@ -208,6 +225,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public ObservableCollection<string> PartySuggestions { get; } = new();
     public WarehouseEntity? CounterWarehouse { get => _counterWarehouse; set => SetProperty(ref _counterWarehouse, value); }
     public Option<DamageReason>? DamageReason { get => _damageReason; set => SetProperty(ref _damageReason, value); }
+    public Option<DamageCause>? DamageCause { get => _damageCause; set => SetProperty(ref _damageCause, value); }
     public bool MoveToDamaged { get => _moveToDamaged; set => SetProperty(ref _moveToDamaged, value); }
     public string? Notes { get => _notes; set => SetProperty(ref _notes, value); }
 
@@ -222,6 +240,13 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public ItemPackagingLevel? LineLevel { get => _lineLevel; set { if (SetProperty(ref _lineLevel, value)) OnPropertyChanged(nameof(LinePiecesText)); } }
     public BatchChoice? LineBatch { get => _lineBatch; set { if (SetProperty(ref _lineBatch, value)) OnPropertyChanged(nameof(LineAvailableText)); } }
     public string? LineNewBatch { get => _lineNewBatch; set => SetProperty(ref _lineNewBatch, value); }
+    public VariantChoice? LineVariant
+    {
+        get => _lineVariant;
+        set { if (SetProperty(ref _lineVariant, value) && IsReceipt) Background(RefreshBatchesAsync()); }
+    }
+    /// <summary>قائمة «المتغير» للمنتج التام في الإدخال اليدوي فقط، وحين له طلبات خاصة.</summary>
+    public bool ShowVariant => IsReceipt && VariantOptions.Count > 1;
     public DateTime? LineExpiry { get => _lineExpiry; set => SetProperty(ref _lineExpiry, value); }
     public decimal LineQuantity { get => _lineQuantity; set { if (SetProperty(ref _lineQuantity, value)) OnPropertyChanged(nameof(LinePiecesText)); } }
     /// <summary>تحويل الكمية المدخلة بوحدة صغرى (قطعة/شرنك) إلى العبوة الكبرى: «= 2 كارتون + 5 قطعة».</summary>
@@ -444,11 +469,26 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         LevelOptions.Clear();
         LineLevel = null;
+        VariantOptions.Clear();
+        _lineVariant = null;
+        OnPropertyChanged(nameof(LineVariant));
+        OnPropertyChanged(nameof(ShowVariant));
         if (LineItem is null) { BatchOptions.Clear(); OnPropertyChanged(nameof(LineAvailableText)); return; }
         await using var db = Session.NewDb();
         foreach (var l in await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == LineItem.Id).OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync())
             LevelOptions.Add(l);
         LineLevel = LevelOptions.FirstOrDefault();
+        if (LineItem.SourcingMethod != SourcingMethod.Purchased)
+        {
+            var itemId = LineItem.Id;
+            var names = await ProductNames.LoadAsync(db, new[] { itemId });
+            VariantOptions.Add(new VariantChoice { RecipeId = null, Label = names.Variant(null) + " (أساسي)" });
+            foreach (var r in await db.CustomRecipes.AsNoTracking().Where(r => r.FinishedItemId == itemId && r.IsActive).OrderBy(r => r.Name).Select(r => r.Id).ToListAsync())
+                VariantOptions.Add(new VariantChoice { RecipeId = r, Label = names.Variant(r) });
+            _lineVariant = VariantOptions[0];
+            OnPropertyChanged(nameof(LineVariant));
+            OnPropertyChanged(nameof(ShowVariant));
+        }
         await RefreshBatchesAsync();
     }
 
@@ -460,8 +500,10 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         if (IsReceipt)
         {
             BatchOptions.Add(new BatchChoice { BatchId = null, Label = "بدون تشغيلة / تشغيلة جديدة (اكتب رقمها)" });
-            foreach (var b in await db.ItemBatches.AsNoTracking().Where(b => b.ItemId == LineItem.Id).OrderByDescending(b => b.Id).ToListAsync())
-                BatchOptions.Add(new BatchChoice { BatchId = b.Id, Label = b.BatchNumber + (b.ExpiryDate is { } e ? $" — ينتهي {e:yyyy/MM/dd}" : "") });
+            // تشغيلات المتغير المختار فقط (لا يُدخَل طلب خاص على تشغيلة الأساسي أو العكس)
+            var recipe = ShowVariant ? LineVariant?.RecipeId : null;
+            foreach (var b in await db.ItemBatches.AsNoTracking().Where(b => b.ItemId == LineItem.Id && (!ShowVariant || b.CustomRecipeId == recipe)).OrderByDescending(b => b.Id).ToListAsync())
+                BatchOptions.Add(new BatchChoice { BatchId = b.Id, RecipeId = b.CustomRecipeId, Label = b.BatchNumber + (b.ExpiryDate is { } e ? $" — ينتهي {e:yyyy/MM/dd}" : "") });
         }
         else
         {
@@ -502,9 +544,11 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
             if (pieces + already > available) { Dialogs.Error($"الكمية أكبر من المتاح ({_packs.Of(LineItem.Id, available - already)})"); return; }
         }
         var newBatch = IsReceipt && LineBatch?.BatchId is null && !string.IsNullOrWhiteSpace(LineNewBatch) ? LineNewBatch.Trim() : null;
+        var variant = ShowVariant ? LineVariant?.RecipeId : null;
         Lines.Add(new DocumentLineDraft
         {
-            ItemId = LineItem.Id, ItemCode = LineItem.ItemCode, ItemName = LineItem.ItemName,
+            ItemId = LineItem.Id, ItemCode = LineItem.ItemCode,
+            ItemName = variant is null ? LineItem.ItemName : $"{LineItem.ItemName} — {LineVariant!.Label}", CustomRecipeId = variant,
             PackagingLevelId = LineLevel.Id, LevelName = LineLevel.LevelName, QuantityInLevel = LineQuantity, Pieces = pieces,
             BatchId = LineBatch?.BatchId, NewBatchNumber = newBatch, NewBatchExpiry = newBatch is null ? null : LineExpiry,
             BatchLabel = newBatch is not null ? $"{newBatch} (جديدة)" + (LineExpiry is { } e ? $" — {e:yyyy/MM/dd}" : "")
@@ -530,9 +574,11 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         {
             await using var db = Session.NewDb();
             var request = new StockDocumentRequest(Operation.Value, WarehouseId, DocumentDate,
-                Lines.Select(l => new StockDocumentLineInput(l.ItemId, l.PackagingLevelId, l.QuantityInLevel, l.BatchId, l.NewBatchNumber, l.NewBatchExpiry)).ToList(),
+                Lines.Select(l => new StockDocumentLineInput(l.ItemId, l.PackagingLevelId, l.QuantityInLevel, l.BatchId, l.NewBatchNumber, l.NewBatchExpiry,
+                                                          CustomRecipeId: l.CustomRecipeId)).ToList(),
                 Session.UserId, IsTransfer ? CounterWarehouse?.Id : null, NeedsParty ? PartyName : null,
-                IsDamaged ? DamageReason?.Value : null, Notes, MoveToDamaged);
+                IsDamaged ? DamageReason?.Value : null, Notes, MoveToDamaged,
+                DamageCause: IsDamaged ? DamageCause?.Value : null);
             var (result, doc) = await new WarehouseDocumentService(db).CreateAsync(request);
             if (!result.Success) { Dialogs.Error(result.ErrorMessage!); return; }
             LastDocument = doc;
@@ -554,6 +600,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         Lines.Clear();
         PartyName = null;
         Notes = null;
+        DamageCause = null;
         LineQuantity = 1;
         LineNewBatch = null;
         LineExpiry = null;

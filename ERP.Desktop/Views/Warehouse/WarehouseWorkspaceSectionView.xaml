@@ -72,8 +72,22 @@
                                               ToolTip="اختر جهة من القائمة الثابتة أو اكتب اسمًا جديدًا"/>
                                 </StackPanel>
                                 <StackPanel Visibility="{Binding IsDamaged, Converter={StaticResource BoolToVisibility}}">
-                                    <TextBlock Text="سبب التلف" Style="{StaticResource FieldLabel}"/>
-                                    <ComboBox ItemsSource="{Binding ReasonOptions}" SelectedItem="{Binding DamageReason}" DisplayMemberPath="Label"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="8"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="مكان التلف" Style="{StaticResource FieldLabel}"/>
+                                            <ComboBox ItemsSource="{Binding ReasonOptions}" SelectedItem="{Binding DamageReason}" DisplayMemberPath="Label"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="سبب التلف" Style="{StaticResource FieldLabel}"/>
+                                            <ComboBox ItemsSource="{Binding CauseOptions}" SelectedItem="{Binding DamageCause}" DisplayMemberPath="Label"
+                                                      ToolTip="سوء خزن، تسرب، انتهاء صلاحية، خطأ تصنيع، طباعة خاطئة، أخرى"/>
+                                        </StackPanel>
+                                    </Grid>
                                     <CheckBox Content="نقل الكمية التالفة إلى مخزن التالف" IsChecked="{Binding MoveToDamaged}"/>
                                 </StackPanel>
                                 <TextBlock Text="ملاحظات" Style="{StaticResource FieldLabel}"/>
@@ -126,15 +140,22 @@
                                 </Grid>
                                 <Grid Margin="0,8,0,0" Visibility="{Binding IsReceipt, Converter={StaticResource BoolToVisibility}}">
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="8"/>
                                         <ColumnDefinition Width="160"/>
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel>
+                                    <!-- المتغير (الاسم الخاص) للمنتج التام: يحدد تشغيلة الطلب الخاص فلا يُسجَّل كأساسي -->
+                                    <StackPanel Width="240" Margin="0,0,8,0" Visibility="{Binding ShowVariant, Converter={StaticResource BoolToVisibility}}">
+                                        <TextBlock Text="المتغير (الاسم الخاص)" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
+                                        <ComboBox ItemsSource="{Binding VariantOptions}" SelectedItem="{Binding LineVariant}" DisplayMemberPath="Label"
+                                                  ToolTip="الأساسي أو طلب خاص باسم زبون/مناسبة"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
                                         <TextBlock Text="رقم تشغيلة جديدة (اختياري)" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
                                         <TextBox Text="{Binding LineNewBatch, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="2">
+                                    <StackPanel Grid.Column="3">
                                         <TextBlock Text="تاريخ الانتهاء" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
                                         <DatePicker SelectedDate="{Binding LineExpiry}"/>
                                     </StackPanel>

@@ -20,6 +20,8 @@ public enum StockTransactionType
 
 /// <summary>Field = تلف ميداني (عند المندوب) — 21_rep_documents.sql</summary>
 public enum DamageReason { Transit, Warehouse, Production, Field }
+/// <summary>سبب التلف (بجانب مكانه DamageReason): سوء خزن، تسرب، انتهاء صلاحية، خطأ تصنيع، طباعة خاطئة، أخرى.</summary>
+public enum DamageCause { PoorStorage, Leakage, Expired, ManufacturingDefect, Misprint, Other }
 
 /// <summary>
 /// سجل حركة واحد. الرصيد الحالي لأي صنف/مخزن/تشغيلة = مجموع QuantityBaseUnits
@@ -46,6 +48,7 @@ public class StockTransaction
     public decimal? UnitCost { get; set; }
     public StockTransactionType TransactionType { get; set; }
     public DamageReason? DamageReason { get; set; }
+    public DamageCause? DamageCause { get; set; }
     public string? FreeIssueRecipient { get; set; }
 
     public string? ReferenceTable { get; set; }
