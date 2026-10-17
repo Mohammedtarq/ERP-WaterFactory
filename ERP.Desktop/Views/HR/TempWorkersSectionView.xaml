@@ -1,0 +1,97 @@
+<UserControl x:Class="ERP.Desktop.Views.HR.TempWorkersSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:TempWorkersSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="460"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock Text="كشف يوم" Style="{StaticResource SectionTitle}" Margin="0,0,8,0"/>
+                    <DatePicker SelectedDate="{Binding Date}" Width="130"/>
+                    <Button Content="الكل حاضر" Style="{StaticResource SecondaryButton}" Command="{Binding AllPresentCommand}" Margin="8,0,0,0"/>
+                </WrapPanel>
+                <StackPanel DockPanel.Dock="Bottom">
+                    <Button Content="حفظ الكشف" Style="{StaticResource SuccessButton}" Command="{Binding SaveDayCommand}" Margin="0,8,0,0" HorizontalAlignment="Stretch"/>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                    <TextBlock Text="الأيام: 0 غائب، 0.5 نصف يوم، 1 يوم، 1.5 يوم ونصف. اليوم المصروف لا يُعدَّل." Style="{StaticResource Muted}" FontSize="11"/>
+                </StackPanel>
+                <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" CanUserAddRows="False">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="العامل" Binding="{Binding FullName}" Width="*" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="القسم" Binding="{Binding Department}" Width="90" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="الأيام" Binding="{Binding Days, UpdateSourceTrigger=PropertyChanged}" Width="60"/>
+                        <DataGridTextColumn Header="ملاحظة" Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
+                        <DataGridTextColumn Header="" Binding="{Binding PaidText}" Width="55" IsReadOnly="True"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+        <Grid Grid.Column="1" Margin="12,0,0,0">
+            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Border Style="{StaticResource Card}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding TotalDue, StringFormat='المستحق غير المصروف: {0:N0} د.ع (حتى تاريخ الكشف)'}" Style="{StaticResource SectionTitle}"/>
+                    <DataGrid ItemsSource="{Binding Balances}" IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="العامل" Binding="{Binding FullName}" Width="*"/>
+                            <DataGridTextColumn Header="الأجر اليومي" Binding="{Binding DailyWage, StringFormat=N0}" Width="85"/>
+                            <DataGridTextColumn Header="أيام غير مصروفة" Binding="{Binding UnpaidDays, StringFormat=0.##}" Width="95"/>
+                            <DataGridTextColumn Header="من" Binding="{Binding FirstUnpaid, StringFormat=yyyy/MM/dd}" Width="85"/>
+                            <DataGridTextColumn Header="إلى" Binding="{Binding LastUnpaid, StringFormat=yyyy/MM/dd}" Width="85"/>
+                            <DataGridTextColumn Header="المستحق" Binding="{Binding Due, StringFormat=N0}" Width="90"/>
+                            <DataGridTemplateColumn Header="" Width="170">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="صرف" Style="{StaticResource SecondaryButton}" Padding="8,2"
+                                                    Command="{Binding DataContext.PayCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                            <Button Content="إنهاء خدمة" Style="{StaticResource DangerButton}" Padding="8,2" Margin="4,0,0,0"
+                                                    Command="{Binding DataContext.EndServiceCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+            <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,12,0,0">
+                <DockPanel>
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock Text="سجل الصرف من" VerticalAlignment="Center" Margin="0,0,6,0" FontWeight="SemiBold"/>
+                        <DatePicker SelectedDate="{Binding From}" Width="125"/>
+                        <TextBlock Text="إلى" VerticalAlignment="Center" Margin="8,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding To}" Width="125"/>
+                        <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding LoadPaymentsCommand}" Margin="8,0,0,0"/>
+                    </WrapPanel>
+                    <DataGrid ItemsSource="{Binding Payments}" IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="الرقم" Binding="{Binding PaymentNumber}" Width="110"/>
+                            <DataGridTextColumn Header="التاريخ" Binding="{Binding PaidDate, StringFormat=yyyy/MM/dd}" Width="85"/>
+                            <DataGridTextColumn Header="العامل" Binding="{Binding FullName}" Width="*"/>
+                            <DataGridTextColumn Header="الأيام" Binding="{Binding Days, StringFormat=0.##}" Width="55"/>
+                            <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="90"/>
+                            <DataGridTextColumn Header="النوع" Binding="{Binding KindText}" Width="80"/>
+                            <DataGridTemplateColumn Header="" Width="40">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="&#xE749;" ToolTip="طباعة الوصل" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                                Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

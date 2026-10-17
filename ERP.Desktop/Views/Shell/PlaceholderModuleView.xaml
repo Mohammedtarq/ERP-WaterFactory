@@ -1,0 +1,18 @@
+<UserControl x:Class="ERP.Desktop.Views.Shell.PlaceholderModuleView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Shell;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:PlaceholderModuleViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="40">
+        <StackPanel HorizontalAlignment="Center">
+            <Border Width="72" Height="72" CornerRadius="36" Background="{Binding Color, Converter={StaticResource HexBrushSoft}}">
+                <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="32" Foreground="{Binding Color, Converter={StaticResource HexBrush}}"/>
+            </Border>
+            <TextBlock Text="{Binding Title}" Style="{StaticResource PageTitle}" HorizontalAlignment="Center" Margin="0,16,0,8"/>
+            <TextBlock Text="{Binding Message}" Style="{StaticResource Muted}" MaxWidth="420" TextAlignment="Center"/>
+        </StackPanel>
+    </Border>
+</UserControl>

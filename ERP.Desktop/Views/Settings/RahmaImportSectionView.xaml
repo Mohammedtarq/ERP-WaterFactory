@@ -1,0 +1,251 @@
+<UserControl x:Class="ERP.Desktop.Views.Settings.RahmaImportSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:RahmaImportSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <!-- تم النقل مسبقًا -->
+        <Border Style="{StaticResource Card}" Visibility="{Binding IsImported, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+                <TextBlock Text="&#xE73E; تم النقل من نظام الرحمة" Style="{StaticResource SectionTitle}" Foreground="{StaticResource SuccessBrush}"/>
+                <TextBlock Text="{Binding ImportedSummary}" TextWrapping="Wrap" LineHeight="24"/>
+                <TextBlock Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,12,0,0"
+                           Text="النقل يُنفَّذ مرة واحدة لكل مشروع. السجل التاريخي (الفواتير والحركات القديمة) يبقى في قاعدة النظام القديم للرجوع إليه."/>
+            </StackPanel>
+        </Border>
+
+        <Grid Visibility="{Binding CanImport, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- 1) المصدر والتحليل -->
+            <Border Style="{StaticResource Card}">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Bottom">
+                        <StackPanel Width="280">
+                            <TextBlock Text="قاعدة نظام الرحمة على هذا السيرفر" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding Source}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock>
+                                            <Run Text="{Binding Name, Mode=OneWay}"/>
+                                            <Run Text="{Binding LastActivity, Mode=OneWay, StringFormat='  — آخر حركة {0:yyyy/MM/dd}'}" Foreground="#64748B"/>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                        <Button Style="{StaticResource PrimaryButton}" Command="{Binding AnalyzeCommand}" Margin="10,0,0,0" VerticalAlignment="Bottom">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="تحليل (قراءة فقط)"/>
+                            </StackPanel>
+                        </Button>
+                        <StackPanel Width="150" Margin="18,0,0,0">
+                            <TextBlock Text="تاريخ الأرصدة الافتتاحية" Style="{StaticResource FieldLabel}"/>
+                            <DatePicker SelectedDate="{Binding CutoverDate}"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                Visibility="{Binding HasPlan, Converter={StaticResource BoolToVisibility}}">
+                        <Button Style="{StaticResource SecondaryButton}" Command="{Binding DryRunCommand}" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE9D5;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="تجربة ومطابقة (لا تحفظ)"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE749;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="طباعة المطابقة"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource SuccessButton}" Command="{Binding ExecuteCommand}" IsEnabled="{Binding DryRunPassed}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE8B5;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="تنفيذ النقل"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <StackPanel Margin="16,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding SourceMessage}" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- قبل التحليل: شرح الخطوات -->
+            <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,12,0,0" Visibility="{Binding HasPlan, Converter={StaticResource InverseBoolToVisibility}}">
+                <StackPanel MaxWidth="760" HorizontalAlignment="Right">
+                    <TextBlock Text="كيف يتم النقل" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="26" Text="1) تحليل: يقرأ قاعدة نظام الرحمة دون أن يكتب فيها شيئًا، ويجهّز ما سيُنقل: الأصناف والوصفات والملصقات الخاصة، العملاء وديونهم وتأميناتهم، الموردين وذممهم، الموظفين وسلفهم، أرصدة المخزون والصناديق."/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="26" Text="2) مراجعة: أدخل جرد النقد الفعلي لكل صندوق، وعدّل كميات المخزون بعد الجرد، وتأكد من ربط كل ملصق خاص بعميله (أو اتركه عامًا لملصقات المناسبات)، وقسط كل سلفة."/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="26" Text="3) تجربة ومطابقة: ينفّذ النقل كاملًا ثم يتراجع عنه، ويعرض كل رقم في النظام القديم مقابل ما سُجّل فعلًا في الجديد. لا يُحفظ شيء."/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="26" Text="4) تنفيذ: يُحفظ النقل في معاملة واحدة فقط إذا تطابقت كل الأرقام، ولا يتكرر على نفس المشروع. ابدأ بمشروع تجريبي للتدريب، ثم المشروع الحقيقي يوم الانتقال."/>
+                    <TextBlock Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="السجل التاريخي (فواتير وحركات السنوات السابقة) يبقى في القاعدة القديمة. المستخدمون يُنشأون من جديد بكلمات مرور جديدة."/>
+                </StackPanel>
+            </Border>
+
+            <!-- 2) المراجعة -->
+            <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,12,0,0" Visibility="{Binding HasPlan, Converter={StaticResource BoolToVisibility}}">
+                <TabControl Background="Transparent" BorderThickness="0">
+                    <TabItem Header="الملخص والتنبيهات">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding SummaryCards}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Width="190" Margin="0,0,10,10" Padding="12,10" CornerRadius="8" Background="#FFF7ED" BorderBrush="#FED7AA" BorderThickness="1">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Label}" Style="{StaticResource Muted}" FontSize="12"/>
+                                                    <TextBlock Text="{Binding Value}" FontSize="17" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="المنتجات التامة" Style="{StaticResource SectionTitle}"/>
+                                <DataGrid ItemsSource="{Binding Products}" IsReadOnly="True" Height="110">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="في النظام القديم" Binding="{Binding LegacyName}" Width="120"/>
+                                        <DataGridTextColumn Header="الصنف الجديد" Binding="{Binding NewName}" Width="*"/>
+                                        <DataGridTextColumn Header="الرمز" Binding="{Binding NewCode}" Width="110"/>
+                                        <DataGridTextColumn Header="سعر العبوة" Binding="{Binding PackPrice, StringFormat=N0}" Width="100"/>
+                                        <DataGridTextColumn Header="سعر القطعة" Binding="{Binding UnitPrice, StringFormat=N2}" Width="100"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <TextBlock Text="تنبيهات قبل النقل" Style="{StaticResource SectionTitle}" Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVisibility}}"/>
+                                <ItemsControl ItemsSource="{Binding Warnings}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#FFFBEB" CornerRadius="6" Padding="10,6" Margin="0,0,0,6">
+                                                <TextBlock Text="{Binding StringFormat='⚠ {0}'}" TextWrapping="Wrap" Foreground="#92400E"/>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <TabItem Header="الصناديق (الجرد) ✎">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8"
+                                       Text="أدخل النقد الموجود فعلًا في كل صندوق يوم الانتقال. صندوق واحد يُدمج في الصندوق الرئيسي للنظام الجديد، والبقية صناديق جديدة تربطها بمستخدميها لاحقًا."/>
+                            <DataGrid ItemsSource="{Binding CashBoxes}" IsReadOnly="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="الصندوق" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="الرصيد في النظام القديم" Binding="{Binding LegacyBalance, StringFormat=N0}" Width="170" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="الجرد الفعلي ✎" Binding="{Binding CountedAmount, StringFormat=N0}" Width="150"/>
+                                    <DataGridCheckBoxColumn Header="يصبح الصندوق الرئيسي ✎" Binding="{Binding MergeIntoDefault, UpdateSourceTrigger=PropertyChanged}" Width="170"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </TabItem>
+
+                    <TabItem Header="المواد الأولية ✎">
+                        <DataGrid ItemsSource="{Binding RawMaterials}" IsReadOnly="False" Margin="0,8,0,0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="الرمز" Binding="{Binding NewCode}" Width="100" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="الصنف الجديد" Binding="{Binding NewName}" Width="*" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="الدفعات" Binding="{Binding Lots}" Width="65" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="المتبقي في القديم" Binding="{Binding LegacyRemaining, StringFormat=N0}" Width="130" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="الكمية المنقولة ✎" Binding="{Binding Quantity, StringFormat=N0}" Width="130"/>
+                                <DataGridTextColumn Header="الكلفة (آخر دفعة)" Binding="{Binding UnitCost, StringFormat=N2, TargetNullValue='—'}" Width="120" IsReadOnly="True"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </TabItem>
+
+                    <TabItem Header="المنتج التام ✎">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8"
+                                       Text="بالعبوة (شرنك/كارتون). كل ملصق ولون يصبح تشغيلة مستقلة. «المسجل» هو المتبقي في النظام القديم، و«المحسوب» = الإنتاج − المحمّل − التالف − المسحوب؛ اعتمد الجرد الفعلي."/>
+                            <DataGrid ItemsSource="{Binding FinishedStock}" IsReadOnly="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="المنتج" Binding="{Binding ProductName}" Width="90" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="الملصق · اللون" Binding="{Binding Label}" Width="*" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="الإنتاج" Binding="{Binding ProducedPacks, StringFormat=N0}" Width="100" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="المسجل" Binding="{Binding RecordedPacks, StringFormat=N0}" Width="90" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="المحسوب" Binding="{Binding ComputedPacks, StringFormat=N0}" Width="90" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="المنقول ✎" Binding="{Binding Packs, StringFormat=N0}" Width="100"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </TabItem>
+
+                    <TabItem Header="الملصقات الخاصة ✎">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8"
+                                       Text="كل ملصق خاص يصبح وصفة مخصصة تستبدل الليبل العام عند الإنتاج. رُبط تلقائيًا بالعميل الذي يطابق اسمه؛ ملصقات المناسبات (رمضان، عيد، زواج...) تبقى عامة."/>
+                            <DataGrid ItemsSource="{Binding Recipes}" IsReadOnly="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="المنتج" Binding="{Binding ProductName}" Width="90" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="الملصق" Binding="{Binding SpecialName}" Width="*" IsReadOnly="True"/>
+                                    <DataGridTemplateColumn Header="العميل صاحب الملصق ✎" Width="300">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox ItemsSource="{Binding DataContext.CustomerOptions, ElementName=Root}" DisplayMemberPath="Name" SelectedValuePath="Key"
+                                                          SelectedValue="{Binding CustomerKey, UpdateSourceTrigger=PropertyChanged}" IsEditable="True" IsTextSearchEnabled="True"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </TabItem>
+
+                    <TabItem Header="سلف الموظفين ✎">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8"
+                                       Text="رصيد كل سلفة يُنقل دون حركة صندوق، ويُستقطع بالقسط الشهري ابتداءً من رواتب شهر الانتقال. القسط المقترح هو آخر قسط استُقطع في النظام القديم."/>
+                            <DataGrid ItemsSource="{Binding LoanEmployees}" IsReadOnly="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="الموظف" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="القسم" Binding="{Binding Department}" Width="140" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="الراتب" Binding="{Binding Salary, StringFormat=N0}" Width="110" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="رصيد السلفة" Binding="{Binding LoanBalance, StringFormat=N0}" Width="120" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="القسط الشهري ✎" Binding="{Binding LoanInstallment, StringFormat=N0}" Width="130"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </TabItem>
+
+                    <TabItem Header="المطابقة">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,8"
+                                       Text="تظهر بعد «تجربة ومطابقة»: كل رقم في النظام القديم مقابل ما سُجّل فعلًا في النظام الجديد. التنفيذ لا يحفظ شيئًا إن اختلف أي بند."/>
+                            <DataGrid ItemsSource="{Binding Reconciliation}" IsReadOnly="True">
+                                <DataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Matches}" Value="False">
+                                                <Setter Property="Background" Value="#FEF2F2"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGrid.RowStyle>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="القسم" Binding="{Binding Section}" Width="110"/>
+                                    <DataGridTextColumn Header="البند" Binding="{Binding Description}" Width="*"/>
+                                    <DataGridTextColumn Header="النظام القديم" Binding="{Binding Legacy, StringFormat=N0}" Width="140"/>
+                                    <DataGridTextColumn Header="النظام الجديد" Binding="{Binding New, StringFormat=N0}" Width="140"/>
+                                    <DataGridTextColumn Header="الفرق" Binding="{Binding Difference, StringFormat=N0}" Width="100"/>
+                                    <DataGridCheckBoxColumn Header="متطابق" Binding="{Binding Matches, Mode=OneWay}" Width="70"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </TabItem>
+                </TabControl>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

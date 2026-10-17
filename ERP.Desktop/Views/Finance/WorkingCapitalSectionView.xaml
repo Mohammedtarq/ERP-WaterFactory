@@ -1,0 +1,95 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.WorkingCapitalSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:WorkingCapitalSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="420"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="المطابقة مع رأس المال التشغيلي" Style="{StaticResource SectionTitle}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <TextBlock Text="صافي الموجودات (بالكلفة)"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Snapshot.NetAssets, StringFormat=N0}"/>
+                        <TextBlock Grid.Row="1" Text="ناقص: صندوق المنزل"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Snapshot.HomeBoxBalance, StringFormat=N0}"/>
+                        <TextBlock Grid.Row="2" Text="ناقص: رأس المال التشغيلي"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Snapshot.Capital, StringFormat=N0}"/>
+                        <TextBlock Grid.Row="3" Text="الفائض المتحقق" FontWeight="Bold" Margin="0,6,0,0"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Snapshot.Surplus, StringFormat=N0}" FontWeight="Bold" Margin="0,6,0,0"/>
+                        <TextBlock Grid.Row="4" Text="النقد المتاح في صناديق العمل" Style="{StaticResource Muted}"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Snapshot.CashInBusinessBoxes, StringFormat=N0}" Style="{StaticResource Muted}"/>
+                    </Grid>
+
+                    <Border Background="#F5F3FF" CornerRadius="8" Padding="10" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="نقل الفائض إلى صندوق المنزل" FontWeight="SemiBold"/>
+                            <TextBlock Text="من صندوق" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding Boxes}" SelectedItem="{Binding FromBox}" DisplayMemberPath="Name"/>
+                            <TextBlock Text="المبلغ" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding MoveAmount}" FlowDirection="LeftToRight"/>
+                            <Button Content="نقل" Style="{StaticResource SuccessButton}" Command="{Binding MoveCommand}" Margin="0,8,0,0" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="تحديد رأس المال التشغيلي" FontWeight="SemiBold"/>
+                            <TextBlock Text="اعتبارًا من" Style="{StaticResource FieldLabel}"/>
+                            <DatePicker SelectedDate="{Binding EffectiveFrom}"/>
+                            <TextBlock Text="المبلغ" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding CapitalAmount}" FlowDirection="LeftToRight"/>
+                            <TextBlock Text="ملاحظة" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding CapitalNotes}"/>
+                            <Button Content="حفظ" Style="{StaticResource PrimaryButton}" Command="{Binding SetCapitalCommand}" Margin="0,8,0,0" HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+        <Grid Grid.Column="1" Margin="12,0,0,0">
+            <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Border Style="{StaticResource Card}">
+                <DockPanel>
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock Text="توزيع الفائض على الشركاء — احتياطي %" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding ReservePercent, UpdateSourceTrigger=LostFocus}" Width="60" FlowDirection="LeftToRight" ToolTip="صفر = توزيع الكل"/>
+                        <TextBlock Text="{Binding Distributable, StringFormat='القابل للتوزيع: {0:N0} د.ع'}" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </WrapPanel>
+                    <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
+                               Text="معاينة فقط: اعتماد التوزيع يتم من «المطابقة الحسابية»، والسحب من شاشة «الشركاء»."/>
+                    <DataGrid ItemsSource="{Binding Shares}" IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="الشريك" Binding="{Binding PartnerName}" Width="*"/>
+                            <DataGridTextColumn Header="النسبة %" Binding="{Binding SharePercent, StringFormat=N2}" Width="80"/>
+                            <DataGridTextColumn Header="الحصة" Binding="{Binding Amount, StringFormat=N0}" Width="120"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+            <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,12,0,0">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="سجل رأس المال التشغيلي" Style="{StaticResource SectionTitle}"/>
+                    <DataGrid ItemsSource="{Binding History}" IsReadOnly="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="اعتبارًا من" Binding="{Binding EffectiveFrom, StringFormat=yyyy/MM/dd}" Width="100"/>
+                            <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="130"/>
+                            <DataGridTextColumn Header="ملاحظة" Binding="{Binding Notes}" Width="*"/>
+                            <DataGridTextColumn Header="بواسطة" Binding="{Binding CreatedByUser.Username}" Width="100"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
