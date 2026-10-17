@@ -70,14 +70,14 @@ EXEC sp_Sales_CreateInvoice @CustomerId = 1, @WarehouseId = 1, @InvoiceDate = '2
      @UserId = 1, @NewInvoiceId = @inv OUTPUT;
 EXEC sp_Sales_AddInvoiceLine @InvoiceId = @inv, @ItemId = 1, @PackagingLevelId = 2, @QuantityInLevel = 10,
      @UserId = 1, @NewLineId = @line OUTPUT;                                   -- 10 كارتون = 120 قطعة
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'سعر الكارتون للوكيل = 12 × 200', (SELECT UnitPrice FROM SalesInvoiceLines WHERE Id = @line), CAST(2400 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'سعر الكارتون للوكيل = السعر العام الموحّد 12 × 250', (SELECT UnitPrice FROM SalesInvoiceLines WHERE Id = @line), CAST(3000 AS DECIMAL(18,2)));
 EXEC sp_Sales_PostInvoice @InvoiceId = @inv, @UserId = 1;
 
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'المجموع الفرعي', (SELECT SubTotal FROM SalesInvoices WHERE Id = @inv), CAST(24000 AS DECIMAL(18,2)));
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'الضريبة 14%', (SELECT TaxAmount FROM SalesInvoices WHERE Id = @inv), CAST(3360 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'المجموع الفرعي', (SELECT SubTotal FROM SalesInvoices WHERE Id = @inv), CAST(30000 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'الضريبة 14%', (SELECT TaxAmount FROM SalesInvoices WHERE Id = @inv), CAST(4200 AS DECIMAL(18,2)));
 INSERT INTO #T (Name, Actual, Expected) VALUES (N'مستلزمات التحميل 120 × 10', (SELECT LoadingSuppliesAmount FROM SalesInvoices WHERE Id = @inv), CAST(1200 AS DECIMAL(18,2)));
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'الإجمالي', (SELECT TotalAmount FROM SalesInvoices WHERE Id = @inv), CAST(28560 AS DECIMAL(18,2)));
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'نقدي ← مدفوع بالكامل', (SELECT AmountPaidNow FROM SalesInvoices WHERE Id = @inv), CAST(28560 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'الإجمالي', (SELECT TotalAmount FROM SalesInvoices WHERE Id = @inv), CAST(35400 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'نقدي ← مدفوع بالكامل', (SELECT AmountPaidNow FROM SalesInvoices WHERE Id = @inv), CAST(35400 AS DECIMAL(18,2)));
 INSERT INTO #T (Name, Actual, Expected) VALUES (N'FIFO: التشغيلة الأقرب انتهاءً استُنفدت (100)',
      (SELECT SUM(QuantityBaseUnits) FROM StockTransactions WHERE ReferenceId = @inv AND ReferenceTable = N'SalesInvoices' AND BatchId = 2), CAST(-100 AS DECIMAL(18,3)));
 INSERT INTO #T (Name, Actual, Expected) VALUES (N'FIFO: الباقي (20) من التشغيلة التالية',
@@ -88,9 +88,9 @@ INSERT INTO #T (Name, Actual, Expected) VALUES (N'نوع الحركة SalesIssue
 DECLARE @je INT = (SELECT JournalEntryId FROM SalesInvoices WHERE Id = @inv);
 INSERT INTO #T (Name, Actual, Expected) VALUES (N'القيد مرحّل', (SELECT IsPosted FROM JournalEntries WHERE Id = @je), CAST(1 AS BIT));
 INSERT INTO #T (Name, Actual, Expected) VALUES (N'القيد متوازن', (SELECT SUM(Debit) - SUM(Credit) FROM JournalEntryLines WHERE JournalEntryId = @je), CAST(0 AS DECIMAL(38,2)));
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'مدين الصندوق', (SELECT Debit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 1), CAST(28560 AS DECIMAL(18,2)));
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'دائن الإيرادات', (SELECT Credit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 6), CAST(24000 AS DECIMAL(18,2)));
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'دائن الضريبة', (SELECT Credit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 5), CAST(3360 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'مدين الصندوق', (SELECT Debit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 1), CAST(35400 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'دائن الإيرادات', (SELECT Credit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 6), CAST(30000 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'دائن الضريبة', (SELECT Credit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 5), CAST(4200 AS DECIMAL(18,2)));
 INSERT INTO #T (Name, Actual, Expected) VALUES (N'دائن التحميل', (SELECT Credit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 7), CAST(1200 AS DECIMAL(18,2)));
 INSERT INTO #T (Name, Actual, Expected) VALUES (N'لا سطر ذمم في النقدي', (SELECT COUNT(*) FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 4), 0);
 
@@ -102,19 +102,19 @@ INSERT INTO #T (Name, Actual, Expected) VALUES (N'رفض إعادة الترحي
 PRINT N'--- 4) فاتورة جزئية لعميل فرعي (سطران لصنفين) ---';
 EXEC sp_Sales_CreateInvoice @CustomerId = 2, @WarehouseId = 1, @InvoiceDate = '2026-09-30',
      @PaymentMethod = N'Partial', @AmountPaidNow = 5000, @UserId = 1, @NewInvoiceId = @inv OUTPUT;
-EXEC sp_Sales_AddInvoiceLine @InvoiceId = @inv, @ItemId = 1, @PackagingLevelId = 1, @QuantityInLevel = 30, @UserId = 1;   -- 30 × 200
+EXEC sp_Sales_AddInvoiceLine @InvoiceId = @inv, @ItemId = 1, @PackagingLevelId = 1, @QuantityInLevel = 30, @UserId = 1;   -- 30 × 250 (السعر العام موحّد)
 EXEC sp_Sales_AddInvoiceLine @InvoiceId = @inv, @ItemId = 2, @PackagingLevelId = 4, @QuantityInLevel = 5, @UserId = 1;    -- 5 شرنك × 6 × 500
 EXEC sp_Sales_PostInvoice @InvoiceId = @inv, @UserId = 1;
 SET @je = (SELECT JournalEntryId FROM SalesInvoices WHERE Id = @inv);
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'الإجمالي 6000 + 15000', (SELECT TotalAmount FROM SalesInvoices WHERE Id = @inv), CAST(21000 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'الإجمالي 7500 + 15000', (SELECT TotalAmount FROM SalesInvoices WHERE Id = @inv), CAST(22500 AS DECIMAL(18,2)));
 INSERT INTO #T (Name, Actual, Expected) VALUES (N'مدين الصندوق = المدفوع', (SELECT Debit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 1), CAST(5000 AS DECIMAL(18,2)));
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'مدين الذمم = المتبقي', (SELECT Debit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 4), CAST(16000 AS DECIMAL(18,2)));
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'رصيد العميل الفرعي مستقل', (SELECT Balance FROM vw_CustomerBalances WHERE CustomerId = 2), CAST(16000 AS DECIMAL(38,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'مدين الذمم = المتبقي', (SELECT Debit FROM JournalEntryLines WHERE JournalEntryId = @je AND AccountId = 4), CAST(17500 AS DECIMAL(18,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'رصيد العميل الفرعي مستقل', (SELECT Balance FROM vw_CustomerBalances WHERE CustomerId = 2), CAST(17500 AS DECIMAL(38,2)));
 INSERT INTO #T (Name, Actual, Expected) VALUES (N'رصيد الوكيل صفر (نقدي)', (SELECT Balance FROM vw_CustomerBalances WHERE CustomerId = 1), CAST(0 AS DECIMAL(38,2)));
 
 INSERT INTO Vouchers (VoucherNumber, VoucherType, PartyType, PartyId, Amount, PaymentMethod, VoucherDate, CreatedByUserId)
 VALUES (N'RV-1', N'Receipt', N'Customer', 2, 6000, N'Cash', '2026-10-01', 1);
-INSERT INTO #T (Name, Actual, Expected) VALUES (N'الرصيد بعد سند القبض', (SELECT Balance FROM vw_CustomerBalances WHERE CustomerId = 2), CAST(10000 AS DECIMAL(38,2)));
+INSERT INTO #T (Name, Actual, Expected) VALUES (N'الرصيد بعد سند القبض', (SELECT Balance FROM vw_CustomerBalances WHERE CustomerId = 2), CAST(11500 AS DECIMAL(38,2)));
 
 PRINT N'--- 5) دفع جزئي بمبلغ غير منطقي ---';
 EXEC sp_Sales_CreateInvoice @CustomerId = 3, @WarehouseId = 1, @InvoiceDate = '2026-09-30',
