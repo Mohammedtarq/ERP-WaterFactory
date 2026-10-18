@@ -244,6 +244,7 @@
     <DataTemplate DataType="{x:Type vmHR:TempWorkersSectionViewModel}"><vHR:TempWorkersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:FingerprintImportSectionViewModel}"><vHR:FingerprintImportSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:PromotionsSectionViewModel}"><vHR:PromotionsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:AnnualRaisesSectionViewModel}"><vHR:AnnualRaisesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:EmployeesSectionViewModel}"><vHR:EmployeesSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:ShiftsSectionViewModel}"><vHR:ShiftsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:DepartmentsSectionViewModel}"><vHR:DepartmentsSectionView/></DataTemplate>

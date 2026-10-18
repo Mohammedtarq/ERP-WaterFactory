@@ -26,7 +26,7 @@ public class HrScreenTests
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
-        Assert.Equal(17, hr.Home.Sections.Count());                  // + الإجازات + أنواع الإجازات والعطل + العمل الإضافي + التقارير
+        Assert.Equal(18, hr.Home.Sections.Count());                  // + الإجازات + أنواع الإجازات والعطل + العمل الإضافي + التقارير + المستحقون للعلاوة
 
         // 1) شفت صباحي
         var shifts = hr.Section<ShiftsSectionViewModel>();

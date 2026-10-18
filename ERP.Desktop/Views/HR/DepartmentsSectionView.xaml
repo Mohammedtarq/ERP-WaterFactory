@@ -36,6 +36,8 @@
                 <DataGrid ItemsSource="{Binding Items}">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="القسم" Binding="{Binding Name}" Width="*"/>
+                        <DataGridTextColumn Header="الشفت الافتراضي" Binding="{Binding DefaultShift.Name, TargetNullValue='— الأساسي / شفت كل موظف —'}" Width="200"/>
+                        <DataGridTextColumn Header="العلاوة السنوية" Binding="{Binding AnnualRaiseAmount, StringFormat=N0, TargetNullValue=''}" Width="120"/>
                         <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -71,6 +73,16 @@
                     <StackPanel>
                         <TextBlock Text="اسم القسم" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.Name}"/>
+                        <TextBlock Text="الشفت الافتراضي للقسم (اختياري)" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="بدون" Style="{StaticResource RowIconButton}" Tag="#64748B"
+                                    Click="ClearCombo" Margin="4,0,0,0"/>
+                            <ComboBox ItemsSource="{Binding Shifts}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Editor.DefaultShiftId}"/>
+                        </DockPanel>
+                        <TextBlock Text="يأخذه كل موظفي القسم ومن يُضاف إليه، عدا من أُشّر له «شفت خاص به» في بطاقته." Style="{StaticResource Muted}" TextWrapping="Wrap"/>
+                        <TextBlock Text="مبلغ العلاوة السنوية لموظفي القسم" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.AnnualRaiseAmount, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"
+                                 ToolTip="المبلغ المقترح في «المستحقون للعلاوة»؛ مبلغ الموظف في بطاقته يعلو عليه"/>
 
                     </StackPanel>
                 </ScrollViewer>

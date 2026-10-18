@@ -25,6 +25,7 @@ public class HrModuleViewModel : ModuleViewModel
         Deductions = Add(new EmployeeDeductionsSectionViewModel(s, d));
         TempWorkers = Add(new TempWorkersSectionViewModel(s, d));
         Add(new PromotionsSectionViewModel(s, d));
+        AnnualRaises = Add(new AnnualRaisesSectionViewModel(s, d));
         Add(new EmployeesSectionViewModel(s, d));
         Add(new ShiftsSectionViewModel(s, d));
         Add(new DepartmentsSectionViewModel(s, d));
@@ -35,6 +36,8 @@ public class HrModuleViewModel : ModuleViewModel
     }
 
     public AttendanceSectionViewModel Attendance { get; }
+    /// <summary>المستحقون للعلاوة السنوية (يفتحها تنبيه الجرس).</summary>
+    public AnnualRaisesSectionViewModel AnnualRaises { get; }
     public FingerprintImportSectionViewModel Fingerprint { get; }
     public LeavesSectionViewModel Leaves { get; }
     public LeaveSettingsSectionViewModel LeaveSettings { get; }
@@ -550,8 +553,10 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
 
     protected override async Task<string?> AfterSaveAsync(Employee e, bool isNew)
     {
-        if (!_photoChanged) return null;
         await using var db = Session.NewDb();
+        // بلا «شفت خاص»: يأخذ الشفت الافتراضي لقسمه
+        if (!e.HasOwnShift && e.DepartmentId is int dept) await AnnualRaiseService.ApplyDepartmentShiftAsync(db, dept);
+        if (!_photoChanged) return null;
         var result = await new PhotoService(db).SetEmployeeAsync(e.Id, EditorPhoto, Session.UserId);
         if (!result.Success) return result.ErrorMessage;
         Session.NotifyPhotoChanged();                 // يوزر مربوط بهذا الموظف يأخذ صورته أسفل القائمة
@@ -605,6 +610,8 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
         : e.HasSocialSecurity && e.SocialSecurityAmount is null or <= 0 ? "فعّلت الضمان الاجتماعي: أدخل مبلغه الشهري"
         : e.HasSocialSolidarity && e.SocialSolidarityAmount is null or <= 0 ? "فعّلت التكافل الاجتماعي: أدخل مبلغه الشهري"
         : (e.HasSocialSecurity || e.HasSocialSolidarity) && e.IsTemporary ? "العامل الوقتي لا تُستقطع منه رواتب شهرية (ضمان أو تكافل)"
+        : e.AnnualRaiseAmount < 0 ? "مبلغ العلاوة لا يكون سالبًا"
+        : e.LastRaiseDate > DateTime.Today ? "تاريخ آخر علاوة لا يكون في المستقبل"
         : null;
 
     protected override async Task BeforeSaveAsync(ProjectDbContext db, Employee e)
@@ -637,12 +644,29 @@ public class ShiftsSectionViewModel : CrudSectionViewModel<Shift>
 public class DepartmentsSectionViewModel : CrudSectionViewModel<Department>
 {
     public DepartmentsSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.HR, "الأقسام", Icons.Layers, "#6366F1", "أقسام الشركة (الإنتاج، المبيعات، المخازن...)") { }
+        : base(s, d, ModuleCode.HR, "الأقسام", Icons.Layers, "#6366F1", "أقسام الشركة، الشفت الافتراضي لكل قسم، ومبلغ العلاوة السنوية") { }
+
+    public ObservableCollection<Shift> Shifts { get; } = new();
 
     protected override int GetId(Department e) => e.Id;
     protected override string Describe(Department e) => e.Name;
-    protected override Task<List<Department>> QueryAsync(ProjectDbContext db) => db.Departments.AsNoTracking().OrderBy(x => x.Name).ToListAsync();
-    protected override string? Validate(Department e) => string.IsNullOrWhiteSpace(e.Name) ? "أدخل اسم القسم" : null;
+    protected override async Task LoadLookupsAsync(ProjectDbContext db)
+    {
+        Shifts.Clear();
+        foreach (var x in await db.Shifts.AsNoTracking().OrderBy(x => x.CheckInTime).ToListAsync()) Shifts.Add(x);
+    }
+    protected override Task<List<Department>> QueryAsync(ProjectDbContext db) =>
+        db.Departments.AsNoTracking().Include(x => x.DefaultShift).OrderBy(x => x.Name).ToListAsync();
+    protected override string? Validate(Department e) =>
+        string.IsNullOrWhiteSpace(e.Name) ? "أدخل اسم القسم" : e.AnnualRaiseAmount < 0 ? "مبلغ العلاوة لا يكون سالبًا" : null;
+
+    /// <summary>موظفو القسم بلا «شفت خاص» يأخذون الشفت الافتراضي الجديد.</summary>
+    protected override async Task<string?> AfterSaveAsync(Department e, bool isNew)
+    {
+        await using var db = Session.NewDb();
+        await AnnualRaiseService.ApplyDepartmentShiftAsync(db, e.Id);
+        return null;
+    }
 }
 
 // ============================ إعدادات الحافز الشهري ============================

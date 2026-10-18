@@ -127,6 +127,19 @@ public class AlertsService
                     ModuleCode.Sales, "VariantAlertsSectionViewModel"));
         }
 
+        // 5ج) العلاوة السنوية: مستحقون (سنة من آخر علاوة) ومن يستحقها خلال 30 يومًا — للمدير ومسؤول الموارد البشرية
+        if (p.CanAdd(ModuleCode.HR))
+        {
+            var raises = await new AnnualRaiseService(_db).UpcomingAsync();
+            var due = raises.Where(r => r.IsDue).ToList();
+            var soon = raises.Count - due.Count;
+            if (raises.Count > 0)
+                alerts.Add(new("annual-raise",
+                    due.Count > 0 ? $"مستحقون للعلاوة السنوية: {due.Count}" + (soon > 0 ? $" — و{soon} خلال 30 يومًا" : "") : $"علاوات سنوية خلال 30 يومًا: {soon}",
+                    Names(raises.Select(r => $"{r.EmployeeName} ({r.StatusText})"), raises.Count),
+                    raises.Count, due.Count > 0 ? AlertLevel.Warning : AlertLevel.Info, ModuleCode.HR, "AnnualRaisesSectionViewModel"));
+        }
+
         // 6) ما بيع قبل تسجيل إنتاجه (نقص في المنتج التام)
         if (p.CanView(ModuleCode.Production))
         {

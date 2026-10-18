@@ -175,6 +175,11 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<PayrollLine>().Property(l => l.SocialSecurityDeduction).HasPrecision(18, 2);
         modelBuilder.Entity<PayrollLine>().Property(l => l.SocialSolidarityDeduction).HasPrecision(18, 2);
         modelBuilder.Entity<Employee>().Property(e => e.OvertimeHourlyRate).HasPrecision(18, 2);
+        modelBuilder.Entity<Employee>().Property(e => e.AnnualRaiseAmount).HasPrecision(18, 2);
+        modelBuilder.Entity<Employee>().Property(e => e.LastRaiseDate).HasColumnType("date");
+        modelBuilder.Entity<Employee>().Property(e => e.RaiseSnoozedUntil).HasColumnType("date");
+        modelBuilder.Entity<Department>().Property(d => d.AnnualRaiseAmount).HasPrecision(18, 2);
+        modelBuilder.Entity<Department>().HasOne(d => d.DefaultShift).WithMany().HasForeignKey(d => d.DefaultShiftId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PayrollLine>(l =>
         {
             l.Property(x => x.OvertimeDays).HasPrecision(6, 2);

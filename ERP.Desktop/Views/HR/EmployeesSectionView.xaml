@@ -118,11 +118,17 @@
                             <ComboBox ItemsSource="{Binding Departments}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Editor.DepartmentId}"/>
                         </DockPanel>
                         <TextBlock Text="الشفت" Style="{StaticResource FieldLabel}"/>
+                        <CheckBox Content="شفت خاص به (لا يتبع الشفت الافتراضي لقسمه)" IsChecked="{Binding Editor.HasOwnShift}" Margin="0,0,0,4"/>
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="بدون" Style="{StaticResource RowIconButton}" Tag="#64748B"
                                     Click="ClearCombo" Margin="4,0,0,0"/>
-                            <ComboBox ItemsSource="{Binding Shifts}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Editor.ShiftId}"/>
+                            <ComboBox ItemsSource="{Binding Shifts}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Editor.ShiftId}"
+                                      ToolTip="بلا «شفت خاص» يُطبَّق الشفت الافتراضي للقسم عند الحفظ (إن حُدّد للقسم)"/>
                         </DockPanel>
+                        <TextBlock Text="مبلغ العلاوة السنوية (فارغ = مبلغ قسمه)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.AnnualRaiseAmount, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <TextBlock Text="تاريخ آخر علاوة قبل النظام (للموظفين القدامى — اختياري)" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker SelectedDate="{Binding Editor.LastRaiseDate}"/>
                         <TextBlock Text="الفرع" Style="{StaticResource FieldLabel}"/>
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="بدون" Style="{StaticResource RowIconButton}" Tag="#64748B"

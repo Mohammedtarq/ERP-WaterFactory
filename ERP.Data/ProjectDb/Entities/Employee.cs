@@ -14,6 +14,16 @@ public class Employee
 
     public int? ShiftId { get; set; }
     public Shift? Shift { get; set; }
+    /// <summary>شفت خاص بالموظف؛ وإلا يأخذ الشفت الافتراضي لقسمه (59_department_shift_annual_raise.sql).</summary>
+    public bool HasOwnShift { get; set; }
+
+    /// <summary>مبلغ علاوته السنوية (فارغ = مبلغ قسمه).</summary>
+    public decimal? AnnualRaiseAmount { get; set; }
+    /// <summary>تاريخ آخر علاوة قبل النظام (للقدامى)؛ وإلا آخر علاوة/ترقية مسجّلة، وإلا تاريخ التعيين.</summary>
+    public DateTime? LastRaiseDate { get; set; }
+    /// <summary>تأجيل تنبيه العلاوة حتى هذا التاريخ، وسببه.</summary>
+    public DateTime? RaiseSnoozedUntil { get; set; }
+    public string? RaiseSnoozeReason { get; set; }
 
     public int? BranchId { get; set; }
     public Branch? Branch { get; set; }
