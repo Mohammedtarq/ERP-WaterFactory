@@ -25,6 +25,9 @@ public class Item
 
     /// <summary>المتوفر في المخزن المختار بعدد عبوة الصنف الكبرى («120»)؛ يملؤه شاشة الاختيار وليس مخزَّنًا.</summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped] public string StockHint { get; set; } = "";
+    /// <summary>الاسم في قوائم الاختيار: العبوة والمحتوى فقط («كارتون 40×330») بلا رمز ولا رصيد؛ فارغ = اسم الصنف.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped] public string DisplayName { get => string.IsNullOrEmpty(_displayName) ? ItemName : _displayName; set => _displayName = value; }
+    private string _displayName = "";
     /// <summary>قليل / نفد / عادي، للون العدد في القائمة.</summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped] public string StockState { get; set; } = "";
     /// <summary>حجم القطعة بالمليلتر (330، 1500…) للاسم الموحد؛ فارغ = يُقرأ من اسم الصنف (48_product_naming.sql).</summary>

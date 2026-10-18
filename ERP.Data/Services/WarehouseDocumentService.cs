@@ -82,8 +82,9 @@ public class StockBalanceRow
     /// <summary>الاسم المعروض في كل مخزن: الاسم الموحد للمصنَّع («شرنك 20×330 زواج سعيد») أو اسم المادة الكامل («سدادة — أبيض»).</summary>
     public string DisplayName { get; set; } = "";
     public string KindText => IsFinished ? "تام" : "أولية";
-    /// <summary>رأس المجموعة «الصنف · الرمز».</summary>
-    public string Group => $"{ItemName} · {ItemCode}";
+    /// <summary>رأس المجموعة: العبوة والمحتوى للمنتج التام («كارتون 40×330») واسم المادة للأولية — بلا رمز.</summary>
+    public string GroupTitle { get; set; } = "";
+    public string Group => GroupTitle.Length > 0 ? GroupTitle : ItemName;
 }
 
 public class StockDocumentRow
@@ -526,6 +527,7 @@ public class WarehouseDocumentService
             {
                 Pack = pack, Content = content, VariantName = variant.Length > 0 ? variant : "أساسي",
                 IsFinished = isFinished, DisplayName = isFinished ? names.Name(r.ItemId, b?.CustomRecipeId) : item.ItemName,
+                GroupTitle = isFinished ? names.PackName(r.ItemId) : item.ItemName,
                 ItemId = r.ItemId, ItemCode = item.ItemCode, ItemName = item.ItemName, BatchNumber = b?.BatchNumber, ExpiryDate = b?.ExpiryDate,
                 Variant = b?.CustomRecipe?.Name,
                 Quantity = r.Qty, Breakdown = Breakdown(r.Qty, levels.GetValueOrDefault(r.ItemId)),

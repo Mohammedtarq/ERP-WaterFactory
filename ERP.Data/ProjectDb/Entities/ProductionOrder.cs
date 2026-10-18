@@ -30,6 +30,9 @@ public class ProductionOrder
 
     public ProductionOrderStatus Status { get; set; } = ProductionOrderStatus.Draft;
 
+    /// <summary>تاريخ إنشاء الأمر (UTC) — لعرض إنتاج اليوم افتراضيًا (61_production_order_date.sql).</summary>
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
     public int CreatedByUserId { get; set; }
     public User CreatedByUser { get; set; } = null!;
 

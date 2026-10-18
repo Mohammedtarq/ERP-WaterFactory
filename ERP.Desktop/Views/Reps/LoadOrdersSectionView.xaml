@@ -37,7 +37,7 @@
                     </WrapPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="0"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
+                            <ColumnDefinition Width="1.6*"/><ColumnDefinition Width="1.8*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="0"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
                         <TextBlock Grid.Column="1" Text="المتغير" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
@@ -64,11 +64,20 @@
                             <DataTemplate>
                                 <Grid Margin="0,0,0,6">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="1.4*"/><ColumnDefinition Width="1.1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="0"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
+                                        <ColumnDefinition Width="1.6*"/><ColumnDefinition Width="1.8*"/><ColumnDefinition Width="1*"/><ColumnDefinition Width="70"/><ColumnDefinition Width="0"/><ColumnDefinition Width="100"/><ColumnDefinition Width="36"/>
                                     </Grid.ColumnDefinitions>
-                                    <ComboBox ItemsSource="{Binding DataContext.Products, ElementName=Root}" SelectedItem="{Binding Product}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" DisplayMemberPath="Name" Margin="6,0,0,0"
-                                              ToolTip="الأساسي = حمولة عامة؛ اسم المطعم = تشغيلاته المحجوزة لتوصيلها له"/>
+                                    <ComboBox ItemsSource="{Binding DataContext.Products, ElementName=Root}" SelectedItem="{Binding Product}" TextSearch.TextPath="DisplayName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding VariantChoices}" SelectedItem="{Binding SelectedChoice}" Margin="6,0,0,0"
+                                              ToolTip="الأساسي = حمولة عامة؛ اسم المطعم = تشغيلاته المحجوزة لتوصيلها له">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Hint}" FontSize="11.5" Foreground="#15803D"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
                                     <ComboBox Grid.Column="2" ItemsSource="{Binding Levels}" SelectedItem="{Binding Level}" DisplayMemberPath="LevelName" Margin="6,0,0,0"/>
                                     <TextBox Grid.Column="3" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                                     

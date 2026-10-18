@@ -149,7 +149,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
-                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" IsTextSearchEnabled="True" TextSearch.TextPath="ItemName"
+                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" IsTextSearchEnabled="True" TextSearch.TextPath="DisplayName"
                                       ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
                             <ListBox ItemsSource="{Binding PackFilters}" SelectedItem="{Binding PackFilter}" BorderThickness="0" Margin="0,4,0,0"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" ToolTip="تصفية الأصناف حسب صيغة التعبئة">

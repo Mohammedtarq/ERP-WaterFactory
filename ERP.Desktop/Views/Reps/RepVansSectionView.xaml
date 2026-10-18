@@ -13,7 +13,7 @@
         </Grid.RowDefinitions>
 
         <!-- اللوحة: البحث والفلتر والمجاميع، ثم بطاقة لكل مندوب -->
-        <Border Style="{StaticResource Card}">
+        <Border Grid.RowSpan="2" Style="{StaticResource Card}" Visibility="{Binding IsDetailOpen, Converter={StaticResource InverseBoolToVisibility}}">
             <DockPanel>
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
@@ -36,7 +36,7 @@
 
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
 
-                <ListBox ItemsSource="{Binding Cards}" SelectedItem="{Binding SelectedCard}" MaxHeight="300" BorderThickness="0" Background="Transparent"
+                <ListBox ItemsSource="{Binding Cards}" SelectedItem="{Binding SelectedCard}" BorderThickness="0" Background="Transparent"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
@@ -80,23 +80,20 @@
             </DockPanel>
         </Border>
 
-        <!-- شاشة السيارة المختارة: نفس شاشة المخزن (الأرصدة، الحركات، المستندات، الطباعة) -->
-        <Grid Grid.Row="1" Margin="0,12,0,0">
-            <Border>
-                <Border.Style>
-                    <Style TargetType="Border" BasedOn="{StaticResource Card}">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding Detail}" Value="{x:Null}">
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Border.Style>
-                <TextBlock Text="اختر بطاقة مندوب لعرض تفاصيل سيارته: الأرصدة بالتشغيلة والمتغير، الحركات، والمستندات" Style="{StaticResource Muted}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap"/>
+        <!-- شاشة السيارة المختارة: صفحة كاملة (نفس شاشة المخزن بتبويباتها) مع شريط «رجوع» واسم المندوب -->
+        <DockPanel Grid.Row="0" Grid.RowSpan="2" Visibility="{Binding IsDetailOpen, Converter={StaticResource BoolToVisibility}}">
+            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="12,8" Margin="0,0,0,10">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource SecondaryButton}" Command="{Binding BackCommand}" Margin="0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE72A;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="رجوع لكل السيارات"/>
+                        </StackPanel>
+                    </Button>
+                    <TextBlock Text="{Binding DetailTitle}" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
             </Border>
             <ContentControl Content="{Binding Detail}"/>
-        </Grid>
+        </DockPanel>
     </Grid>
 </UserControl>

@@ -42,7 +42,7 @@
                         <StackPanel>
                             <TextBlock Text="1) المرتجع" FontWeight="SemiBold"/>
                             <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
-                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
+                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" TextSearch.TextPath="DisplayName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                 <StackPanel><TextBlock Text="العبوة" Style="{StaticResource FieldLabel}"/><ComboBox ItemsSource="{Binding LevelOptions}" SelectedItem="{Binding LineLevel}" DisplayMemberPath="LevelName" Width="110"/></StackPanel>
                                 <StackPanel Margin="6,0"><TextBlock Text="الكمية" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding LineQuantity}" Width="70" FlowDirection="LeftToRight"/></StackPanel>
@@ -71,7 +71,7 @@
                         <StackPanel>
                             <TextBlock Text="2) مجاني المندوب (لمن ولماذا)" FontWeight="SemiBold"/>
                             <TextBlock Text="الصنف" Style="{StaticResource FieldLabel}"/>
-                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding FreeItem}" TextSearch.TextPath="ItemName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
+                            <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding FreeItem}" TextSearch.TextPath="DisplayName" IsTextSearchEnabled="True" ItemTemplate="{StaticResource ItemWithStockTemplate}"/>
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                 <StackPanel><TextBlock Text="العبوة" Style="{StaticResource FieldLabel}"/><ComboBox ItemsSource="{Binding FreeLevelOptions}" SelectedItem="{Binding FreeLevel}" DisplayMemberPath="LevelName" Width="110"/></StackPanel>
                                 <StackPanel Margin="6,0"><TextBlock Text="الكمية" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding FreeQuantity}" Width="70" FlowDirection="LeftToRight"/></StackPanel>

@@ -9,6 +9,16 @@ using Microsoft.EntityFrameworkCore;
 namespace ERP.Presentation.ViewModels.Reps;
 
 /// <summary>سطر طلب تحميل قيد الإدخال: الصنف، الوحدة (مفلترة حسب الصنف)، الكمية.</summary>
+/// <summary>متغير في قائمة سطر التحميل مع المتاح منه في المخزن المختار («متاح 40 كارتون»).</summary>
+public class VariantChoice : ObservableObject
+{
+    private string _hint = "";
+    public VariantChoice(CustomRecipe recipe) => Recipe = recipe;
+    public CustomRecipe Recipe { get; }
+    public string Name => Recipe.Name;
+    public string Hint { get => _hint; set => SetProperty(ref _hint, value); }
+}
+
 public class LoadLineDraft : ObservableObject
 {
     private readonly LoadOrdersSectionViewModel _owner;
@@ -21,6 +31,7 @@ public class LoadLineDraft : ObservableObject
 
     public ObservableCollection<ItemPackagingLevel> Levels { get; } = new();
     public ObservableCollection<CustomRecipe> Recipes { get; } = new();
+    public ObservableCollection<VariantChoice> VariantChoices { get; } = new();
     public Item? Product
     {
         get => _product;
@@ -29,11 +40,14 @@ public class LoadLineDraft : ObservableObject
             if (!SetProperty(ref _product, value)) return;
             Levels.Clear();
             Recipes.Clear();
+            VariantChoices.Clear();
             if (value is not null)
             {
                 foreach (var l in _owner.LevelsOf(value.Id)) Levels.Add(l);
-                Recipes.Add(Production.DailyProductionSectionViewModel.Basic);
+                // أساسي خاص بالسطر (لا المشترك) حتى يحمل متاح هذا الصنف
+                Recipes.Add(new CustomRecipe { Id = 0, Name = "الأساسي" });
                 foreach (var r in _owner.RecipesOf(value.Id)) Recipes.Add(r);
+                foreach (var r in Recipes) VariantChoices.Add(new VariantChoice(r));
             }
             Level = Levels.FirstOrDefault();
             Recipe = Recipes.FirstOrDefault();
@@ -41,18 +55,35 @@ public class LoadLineDraft : ObservableObject
         }
     }
     /// <summary>الأساسي = حمولة عامة؛ اسم مطعم = تحميل تشغيلاته المحجوزة لتوصيلها له.</summary>
-    public CustomRecipe? Recipe { get => _recipe; set => SetProperty(ref _recipe, value); }
+    public CustomRecipe? Recipe
+    {
+        get => _recipe;
+        set
+        {
+            if (!SetProperty(ref _recipe, value)) return;
+            OnPropertyChanged(nameof(SelectedChoice));
+            _owner.RaiseTotals();
+        }
+    }
+    public VariantChoice? SelectedChoice
+    {
+        get => VariantChoices.FirstOrDefault(c => c.Recipe == _recipe);
+        set { if (value is not null) Recipe = value.Recipe; }
+    }
     public int? RecipeId => Recipe is { Id: > 0 } r ? r.Id : null;
     public ItemPackagingLevel? Level { get => _level; set { if (SetProperty(ref _level, value)) Raise(); } }
     public decimal Quantity { get => _quantity; set { if (SetProperty(ref _quantity, value)) Raise(); } }
     public decimal Pieces => Level is null ? 0 : Quantity * Level.EquivalentBaseUnits;
-    /// <summary>المتاح من الصنف في المخزن المختار (بالعبوات).</summary>
-    public string AvailableText => Product is null ? "" : _owner.PacksText(Product.Id, _owner.AvailableOf(Product.Id));
-    /// <summary>مجموع المطلوب من الصنف في كل السطور أكبر من المتاح.</summary>
-    public bool IsShort => Product is not null && _owner.RequestedOf(Product.Id) > _owner.AvailableOf(Product.Id);
+    /// <summary>المتاح من الصنف بمتغيره المختار في المخزن المختار (بالعبوات) — لا يُخلط متغير بآخر.</summary>
+    public string AvailableText => Product is null ? "" : _owner.PacksText(Product.Id, _owner.AvailableOf(Product.Id, RecipeId));
+    /// <summary>مجموع المطلوب من الصنف بهذا المتغير في كل السطور أكبر من المتاح منه.</summary>
+    public bool IsShort => Product is not null && _owner.RequestedOf(Product.Id, RecipeId) > _owner.AvailableOf(Product.Id, RecipeId);
 
     internal void RefreshAvailability()
     {
+        if (Product is not null)
+            foreach (var c in VariantChoices)
+                c.Hint = "متاح " + _owner.PacksText(Product.Id, _owner.AvailableOf(Product.Id, c.Recipe.Id > 0 ? c.Recipe.Id : null));
         OnPropertyChanged(nameof(AvailableText));
         OnPropertyChanged(nameof(IsShort));
     }
@@ -89,6 +120,13 @@ public static class LoadOrderTools
         await db.StockTransactions.AsNoTracking().Where(t => t.WarehouseId == warehouseId)
             .GroupBy(t => t.ItemId).Select(g => new { g.Key, Qty = g.Sum(t => t.QuantityBaseUnits) })
             .ToDictionaryAsync(x => x.Key, x => x.Qty);
+
+    /// <summary>رصيد كل (صنف، متغير) في المخزن بالقطعة؛ المتغير من التشغيلة (فارغ = الأساسي).</summary>
+    public static async Task<Dictionary<(int Item, int? Recipe), decimal>> VariantStockAsync(Data.ProjectDb.ProjectDbContext db, int warehouseId) =>
+        (await db.StockTransactions.AsNoTracking().Where(t => t.WarehouseId == warehouseId)
+            .GroupBy(t => new { t.ItemId, Recipe = t.Batch != null ? t.Batch.CustomRecipeId : null })
+            .Select(g => new { g.Key.ItemId, g.Key.Recipe, Qty = g.Sum(t => t.QuantityBaseUnits) }).ToListAsync())
+        .ToDictionary(x => (x.ItemId, x.Recipe), x => x.Qty);
 
     public static async Task<List<PrepareLineDraft>> PrepareLinesAsync(Data.ProjectDb.ProjectDbContext db, int orderId)
     {
@@ -142,6 +180,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     private List<ItemPackagingLevel> _levels = new();
     private List<CustomRecipe> _recipes = new();
     private Dictionary<int, decimal> _available = new();
+    private Dictionary<(int Item, int? Recipe), decimal> _variantAvailable = new();
 
     public LoadOrdersSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Reps, "طلبات التحميل", Icons.Order, "#2563EB",
@@ -229,7 +268,9 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     }
 
     internal decimal AvailableOf(int itemId) => _available.GetValueOrDefault(itemId);
+    internal decimal AvailableOf(int itemId, int? recipeId) => _variantAvailable.GetValueOrDefault((itemId, recipeId));
     internal decimal RequestedOf(int itemId) => Lines.Where(l => l.Product?.Id == itemId).Sum(l => l.Pieces);
+    internal decimal RequestedOf(int itemId, int? recipeId) => Lines.Where(l => l.Product?.Id == itemId && l.RecipeId == recipeId).Sum(l => l.Pieces);
     internal string PacksText(int itemId, decimal pieces) => WarehouseDocumentService.Breakdown(pieces, LevelsOf(itemId).ToList());
 
     /// <summary>الأصناف التي يزيد مطلوبها على المتاح في المخزن المختار.</summary>
@@ -237,18 +278,19 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     {
         get
         {
-            var shorts = Lines.Where(l => l.Product is not null).GroupBy(l => l.Product!.Id)
-                .Where(g => RequestedOf(g.Key) > AvailableOf(g.Key))
-                .Select(g => $"{g.First().Product!.ItemName} (المتاح {PacksText(g.Key, AvailableOf(g.Key))})").ToList();
+            var shorts = Lines.Where(l => l.Product is not null).GroupBy(l => (l.Product!.Id, l.RecipeId))
+                .Where(g => RequestedOf(g.Key.Id, g.Key.RecipeId) > AvailableOf(g.Key.Id, g.Key.RecipeId))
+                .Select(g => $"{g.First().Product!.DisplayName} {g.First().Recipe?.Name} (المتاح {PacksText(g.Key.Id, AvailableOf(g.Key.Id, g.Key.RecipeId))})").ToList();
             return shorts.Count == 0 ? "" : $"⚠ لا يكفي في {Store?.Name}: {string.Join("، ", shorts)}";
         }
     }
 
     private async Task LoadAvailableAsync()
     {
-        if (Store is null) { _available = new(); RaiseTotals(); return; }
+        if (Store is null) { _available = new(); _variantAvailable = new(); RaiseTotals(); return; }
         await using var db = Session.NewDb();
         _available = await LoadOrderTools.StockAsync(db, Store.Id);
+        _variantAvailable = await LoadOrderTools.VariantStockAsync(db, Store.Id);
         // المتاح في المخزن المختار بجانب كل صنف في قائمة المنتج
         foreach (var i in Products)
             (i.StockHint, i.StockState) = StockHint.Of(_available.GetValueOrDefault(i.Id),
@@ -273,6 +315,7 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         {
             foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync())
                 Products.Add(i);
+            await ProductNames.FillDisplayNamesAsync(db, Products);
             var ids = Products.Select(p => p.Id).ToList();
             _levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => ids.Contains(l.ItemId)).ToListAsync();
             _recipes = await db.CustomRecipes.AsNoTracking().Where(r => r.IsActive && ids.Contains(r.FinishedItemId)).ToListAsync();
@@ -600,6 +643,7 @@ public class RepSettlementSectionViewModel : SectionViewModel
         {
             foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync())
                 ItemsLookup.Add(i);
+            await ProductNames.FillDisplayNamesAsync(db, ItemsLookup);
             var ids = ItemsLookup.Select(i => i.Id).ToList();
             _topPack = (await db.ItemPackagingLevels.AsNoTracking().Where(l => ids.Contains(l.ItemId) && l.EquivalentBaseUnits > 0)
                     .Select(l => new { l.ItemId, l.EquivalentBaseUnits }).ToListAsync())

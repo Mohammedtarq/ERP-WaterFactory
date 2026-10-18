@@ -114,6 +114,9 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
 
     public ObservableCollection<ProductionOrderRow> Orders { get; } = new();
+    /// <summary>فترة العرض: اليوم افتراضيًا؛ لأي يوم سابق «من / إلى» ثم «عرض». الأوامر المفتوحة تظهر دائمًا.</summary>
+    public DateTime OrdersFrom { get; set; } = DateTime.Today;
+    public DateTime OrdersTo { get; set; } = DateTime.Today;
     public ObservableCollection<Item> FinishedItems { get; } = new();
     public ObservableCollection<CustomRecipe> Recipes { get; } = new();
     public ObservableCollection<Data.ProjectDb.Entities.Warehouse> RawWarehouses { get; } = new();
@@ -338,7 +341,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         _machine = Machines.FirstOrDefault(m => m.Id == machineId) ?? Machines.FirstOrDefault();
         OnPropertyChanged(nameof(Machine));
         Orders.Clear();
-        foreach (var o in await new ProductionService(db).GetOrdersAsync()) Orders.Add(o);
+        foreach (var o in await new ProductionService(db).GetOrdersAsync(OrdersFrom, OrdersTo)) Orders.Add(o);
     }
 
     private async Task LoadRecipesAsync()

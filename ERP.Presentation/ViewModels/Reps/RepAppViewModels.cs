@@ -153,6 +153,22 @@ public class RepDevicesSectionViewModel : SectionViewModel
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
         SaveLoginCommand = new AsyncRelayCommand(SaveLoginAsync);
         ClearLoginCommand = new AsyncRelayCommand(ClearLoginAsync);
+        GenerateLoginCommand = new RelayCommand(GenerateLogin);
+    }
+
+    private int? _savedFor;
+    private string? _savedCredentials;
+    /// <summary>الاسم وكلمة المرور بعد الحفظ مباشرة لتسليمهما للمندوب؛ تُعرض مرة واحدة (كلمة المرور مخزنة مشفّرة).</summary>
+    public string? SavedCredentials { get => _savedCredentials; private set { if (SetProperty(ref _savedCredentials, value)) OnPropertyChanged(nameof(HasSavedCredentials)); } }
+    public bool HasSavedCredentials => !string.IsNullOrEmpty(SavedCredentials);
+    public RelayCommand GenerateLoginCommand { get; }
+
+    /// <summary>توليد تلقائي: كلمة مرور من 4 أرقام، واسم دخول من 4 أرقام إن كان فارغًا.</summary>
+    private void GenerateLogin()
+    {
+        static string Digits() => System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 10000).ToString("D4");
+        if (string.IsNullOrWhiteSpace(LoginName)) LoginName = Digits();
+        LoginPassword = Digits();
     }
 
     private string _loginName = "";
@@ -168,9 +184,12 @@ public class RepDevicesSectionViewModel : SectionViewModel
         if (!Require(CanEdit, "ضبط دخول التطبيق")) return;
         if (Selected is not { RepEmployeeId: > 0 } row) { Dialogs.Error("اختر المندوب (جهازه) من الجدول"); return; }
         await using var db = Session.NewDb();
+        var (name, password) = (LoginName.Trim(), LoginPassword.Trim());
         if (await RunOperationAsync(() => new RepAppService(db).SetLoginAsync(row.RepEmployeeId, LoginName, LoginPassword, Session.UserId),
                                     $"ضُبط دخول {row.RepName}: يصل الهاتف مع المزامنة التالية"))
         {
+            _savedFor = row.RepEmployeeId;
+            SavedCredentials = $"{row.RepName}\nاسم الدخول: {name}    كلمة المرور: {password}";
             LoginPassword = "";
             await LoadAsync();
         }
@@ -198,7 +217,16 @@ public class RepDevicesSectionViewModel : SectionViewModel
     public byte[]? LinkQr { get => _linkQr; private set { if (SetProperty(ref _linkQr, value)) OnPropertyChanged(nameof(HasLinkQr)); } }
     public bool HasLinkQr => LinkQr is not null;
     public string? LinkHint { get => _linkHint; private set => SetProperty(ref _linkHint, value); }
-    public RepDeviceRow? Selected { get => _selected; set { if (SetProperty(ref _selected, value)) LoginName = value?.LoginName ?? ""; } }
+    public RepDeviceRow? Selected
+    {
+        get => _selected;
+        set
+        {
+            if (!SetProperty(ref _selected, value)) return;
+            LoginName = value?.LoginName ?? "";
+            if (value?.RepEmployeeId != _savedFor) SavedCredentials = null;
+        }
+    }
     public bool AllowOverLimit { get => _allowOverLimit; set => SetProperty(ref _allowOverLimit, value); }
     public int CashAlertDays { get => _cashAlertDays; set => SetProperty(ref _cashAlertDays, value); }
     public AsyncRelayCommand RegisterCommand { get; }

@@ -98,7 +98,7 @@ public class RepVansScreenTests
         Assert.Equal(idleVan, board.Cards.Single(c => c.RepName.Contains("لوحة")).VanWarehouseId);
         board.Search = "";
 
-        // الضغط على البطاقة يعرض شاشة السيارة نفسها تحتها
+        // الضغط على البطاقة يفتح صفحة السيارة نفسها
         board.SelectedCard = board.Cards.Single(c => c.VanWarehouseId == loadedVan);
         await board.IdleAsync();
         Assert.NotNull(board.Detail);
@@ -106,6 +106,13 @@ public class RepVansScreenTests
         await board.Detail.IdleAsync();
         Assert.Contains(board.Detail.Balances, b => b.ItemCode == "BV-S20" && b.Breakdown == "10 شرنك");
         Assert.Contains(board.Detail.Balances, b => b.ItemCode == "BV-C40" && b.Breakdown == "5 كارتون");
+        // صفحة السيارة تملأ الشاشة بعنوان المندوب، و«رجوع» يعيد البطاقات
+        Assert.True(board.IsDetailOpen);
+        Assert.Contains(board.SelectedCard!.RepName, board.DetailTitle);
+        board.BackCommand.Execute(null);
+        await board.IdleAsync();
+        Assert.False(board.IsDetailOpen);
+        Assert.Null(board.SelectedCard);
 
         board.PrintCommand.Execute(null);
         Assert.StartsWith("سيارات المندوبين", dialogs.Reports.Last().Title);

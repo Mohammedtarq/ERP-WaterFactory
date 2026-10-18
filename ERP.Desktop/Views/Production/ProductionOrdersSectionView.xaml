@@ -31,7 +31,15 @@
                         </Button>
                         <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                     </StackPanel>
-                    <TextBlock Text="المراحل: مسودة ← بدء التشغيل (صرف المواد) ← فحص المختبر ← التعبئة ← مكتمل" Style="{StaticResource Muted}" VerticalAlignment="Center"/>
+                    <!-- إنتاج اليوم افتراضيًا؛ لأي يوم سابق «من / إلى» ثم «عرض» (الأوامر المفتوحة تظهر دائمًا) -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                ToolTip="المراحل: مسودة ← بدء التشغيل (صرف المواد) ← فحص المختبر ← التعبئة ← مكتمل">
+                        <TextBlock Text="من" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding OrdersFrom}" Width="125"/>
+                        <TextBlock Text="إلى" VerticalAlignment="Center" Margin="10,0,6,0"/>
+                        <DatePicker SelectedDate="{Binding OrdersTo}" Width="125"/>
+                        <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding RefreshCommand}" Margin="10,0,0,0"/>
+                    </StackPanel>
                 </DockPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
                 <!-- الصفوف تتمدد للنص الملتف (المنتج/المرحلة) بدل قصّه -->
@@ -54,6 +62,7 @@
                     </DataGrid.RowDetailsTemplate>
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الأمر" Binding="{Binding MONumber}" Width="88" MinWidth="76"/>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding CreatedAt, StringFormat=yyyy/MM/dd}" Width="90" MinWidth="86"/>
                         <DataGridTextColumn Header="المنتج" Binding="{Binding ProductText}" Width="1.2*" MinWidth="105" ElementStyle="{StaticResource WrapCell}"/>
                         <DataGridTemplateColumn Header="المتغير" Width="1.4*" MinWidth="110">
                             <DataGridTemplateColumn.CellTemplate>

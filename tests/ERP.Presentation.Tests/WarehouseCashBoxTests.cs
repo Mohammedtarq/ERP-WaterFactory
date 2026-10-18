@@ -158,7 +158,7 @@ public class WarehouseCashBoxTests
         // كشف الحركة التفصيلي للصنف: الرصيد التراكمي ينتهي بالرصيد الفعلي
         fg.LedgerItem = fg.LedgerItems.Single(i => i.ItemCode == "W500");
         await fg.IdleAsync();
-        Assert.Equal(finalBalance, fg.Ledger.Last().Balance);
+        Assert.Equal(finalBalance, fg.Ledger.First().Balance);
         Assert.Contains(fg.Ledger, l => l.TypeLabel == "مناقلة صادرة" && l.Out == 24);
         // التالف قد يتوزع على أكثر من تشغيلة (الأقرب انتهاءً أولًا) — مجموعه 5
         Assert.Equal(5m, fg.Ledger.Where(l => l.Reference == damageDoc).Sum(l => l.Out));
@@ -166,7 +166,7 @@ public class WarehouseCashBoxTests
         fg.PrintLedgerCommand.Execute(null);
         // الرصيد بالعبوات: كراتين كاملة + ما تبقّى بالقطعة
         var packsText = finalBalance % 12 == 0 ? $"{finalBalance / 12:N0} كارتون" : $"{Math.Floor(finalBalance / 12):N0} كارتون + {finalBalance % 12:N0} قطعة";
-        Assert.Equal(packsText, fg.Ledger.Last().BalanceText);
+        Assert.Equal(packsText, fg.Ledger.First().BalanceText);
         Assert.Contains(dialogs.Reports.Last().Totals, t => t.Label == "الرصيد آخر المدة" && t.Value == packsText);
 
         fg.PrintBalancesCommand.Execute(null);

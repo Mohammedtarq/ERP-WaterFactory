@@ -60,6 +60,8 @@ public class ProductionOrderRow
     public QCOverallResult? LastQc { get; init; }
     public string StageText { get; init; } = "";
     public int LinesCount { get; init; } = 1;
+    /// <summary>تاريخ إنشاء الأمر بالتوقيت المحلي.</summary>
+    public DateTime CreatedAt { get; init; }
     /// <summary>كمية الأمر والمعبّأ منه بالعبوات (كارتون/شرنك)؛ القطع في التلميح.</summary>
     public string QuantityText { get; init; } = "";
     public string PackedText { get; init; } = "";
@@ -615,10 +617,21 @@ public class ProductionService
         }).ToList();
     }
 
-    public async Task<List<ProductionOrderRow>> GetOrdersAsync()
+    /// <summary>
+    /// أوامر الإنتاج؛ مع فترة (أيام محلية من/إلى): ما أُنشئ فيها فقط، والأوامر المفتوحة (مسودة/قيد التشغيل) تظهر دائمًا حتى لا تضيع.
+    /// </summary>
+    public async Task<List<ProductionOrderRow>> GetOrdersAsync(DateTime? fromDay = null, DateTime? toDay = null)
     {
-        var orders = await _db.ProductionOrders.AsNoTracking()
-            .Select(o => new { o.Id, o.MONumber, o.QuantityToProduce, o.Status, Machine = o.Machine != null ? o.Machine.Name : null })
+        var q = _db.ProductionOrders.AsNoTracking();
+        if (fromDay is DateTime f && toDay is DateTime t)
+        {
+            var start = f.Date.ToUniversalTime();
+            var end = t.Date.AddDays(1).ToUniversalTime();
+            q = q.Where(o => (o.CreatedAt >= start && o.CreatedAt < end)
+                          || o.Status == ProductionOrderStatus.Draft || o.Status == ProductionOrderStatus.InProgress);
+        }
+        var orders = await q
+            .Select(o => new { o.Id, o.MONumber, o.QuantityToProduce, o.Status, o.CreatedAt, Machine = o.Machine != null ? o.Machine.Name : null })
             .OrderByDescending(o => o.Id).ToListAsync();
         var all = await GetLinesAsync();
         var lines = all.ToLookup(l => l.OrderId);
@@ -633,6 +646,7 @@ public class ProductionService
             return new ProductionOrderRow
             {
                 Id = o.Id, MONumber = o.MONumber, Status = o.Status, MachineName = o.Machine, QuantityToProduce = o.QuantityToProduce,
+                CreatedAt = DateTime.SpecifyKind(o.CreatedAt, DateTimeKind.Utc).ToLocalTime(),
                 // الصنف نفسه بسطرين (عام وطلب خاص) يُذكر مرة واحدة، والطلب الخاص في عمود الوصفة
                 FinishedItemName = string.Join(" + ", mine.Select(l => l.FinishedItemName).Distinct()),
                 RecipeName = mine.Any(l => l.RecipeName != null) ? string.Join("، ", mine.Where(l => l.RecipeName != null).Select(l => l.RecipeName)) : null,

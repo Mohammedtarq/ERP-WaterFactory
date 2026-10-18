@@ -60,6 +60,22 @@ public sealed class ProductNames
         return ProductName.Of(level.LevelName, level.EquivalentBaseUnits, SizeOf(itemId), item.Item1, Variant(recipeId));
     }
 
+    /// <summary>العبوة والمحتوى بلا متغير («كارتون 40×330») لقوائم الاختيار؛ صنف بلا عبوات: اسمه.</summary>
+    public string PackName(int itemId)
+    {
+        var item = _items.GetValueOrDefault(itemId, ("؟", null));
+        var level = TopLevel(itemId);
+        return level is null ? item.Item1 : ProductName.Of(level.LevelName, level.EquivalentBaseUnits, SizeOf(itemId), item.Item1, null);
+    }
+
+    /// <summary>يملأ اسم القائمة (DisplayName) لكل صنف.</summary>
+    public static async Task FillDisplayNamesAsync(ProjectDbContext db, IEnumerable<Item> items)
+    {
+        var list = items.ToList();
+        var names = await LoadAsync(db, list.Select(i => i.Id));
+        foreach (var i in list) i.DisplayName = names.PackName(i.Id);
+    }
+
     /// <summary>أجزاء الاسم (العبوة، المحتوى، المتغير) للأعمدة المنفصلة؛ صنف بلا عبوات: العبوة «قطعة».</summary>
     public (string Pack, string Content, string Variant) Parts(int itemId, int? recipeId = null, int? levelId = null)
     {

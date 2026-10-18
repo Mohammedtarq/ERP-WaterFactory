@@ -436,6 +436,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             .OrderBy(w => w.Name).ToListAsync());
         _allItems.Clear();
         _allItems.AddRange(await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync());
+        await ProductNames.FillDisplayNamesAsync(db, _allItems);
         var whIds = _allWarehouses.Select(w => w.Id).ToList();
         _stock = (await db.StockTransactions.Where(t => whIds.Contains(t.WarehouseId))
                 .GroupBy(t => new { t.WarehouseId, t.ItemId }).Select(g => new { g.Key.WarehouseId, g.Key.ItemId, Qty = g.Sum(t => t.QuantityBaseUnits) })

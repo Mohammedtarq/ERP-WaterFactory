@@ -142,7 +142,9 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     public decimal TodayOut { get => _todayOut; private set => SetProperty(ref _todayOut, value); }
     private string _totalText = "0", _todayInText = "0", _todayOutText = "0";
     /// <summary>إجمالي الرصيد بالعبوات: «6,196 كارتون + 4,380 شرنك».</summary>
-    public string TotalText { get => _totalText; private set => SetProperty(ref _totalText, value); }
+    public string TotalText { get => _totalText; private set { if (SetProperty(ref _totalText, value)) OnPropertyChanged(nameof(TotalLines)); } }
+    /// <summary>بطاقة الإجمالي: سطر لكل عبوة («819 شرنك 20×330» ثم «22 كارتون 40×330») بدل التفاف الأرقام.</summary>
+    public string TotalLines => _totalText.Replace(" + ", "\n");
     private string _totalLabel = "إجمالي الرصيد";
     public string TotalLabel { get => _totalLabel; private set => SetProperty(ref _totalLabel, value); }
     /// <summary>
@@ -355,6 +357,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         if (_allItems.Count == 0 || (Lines.Count == 0 && LineItem is null))
         {
             _allItems = await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync();
+            await ProductNames.FillDisplayNamesAsync(db, _allItems);
             FillItems();
         }
         PartySuggestions.Clear();
@@ -468,7 +471,8 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         Ledger.Clear();
-        foreach (var r in await new WarehouseDocumentService(db).GetLedgerAsync(WarehouseId, LedgerItem?.Id, ReportFrom, ReportTo)) Ledger.Add(r);
+        // الأحدث أولًا (طلب المالك)؛ الرصيد الجاري يُحسب تصاعديًا في الخدمة ثم يُعكس العرض
+        foreach (var r in Enumerable.Reverse(await new WarehouseDocumentService(db).GetLedgerAsync(WarehouseId, LedgerItem?.Id, ReportFrom, ReportTo))) Ledger.Add(r);
         OnPropertyChanged(nameof(LedgerPartsLayout));
         OnPropertyChanged(nameof(LedgerNameLayout));
     }
@@ -762,11 +766,11 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
             : new[] { "التاريخ", "الحركة", "المستند", "التشغيلة", "الجهة", "وارد", "صادر", "الرصيد" });
         foreach (var x in Ledger)
             r.Rows.Add(LedgerItem is null
-                ? new[] { x.Date.ToString("yyyy/MM/dd HH:mm"), x.ItemName, x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.InText, x.OutText }
-                : new[] { x.Date.ToString("yyyy/MM/dd HH:mm"), x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.Party ?? "", x.InText, x.OutText, x.BalanceText });
+                ? new[] { x.Date.ToString("yyyy/MM/dd"), x.ItemName, x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.InText, x.OutText }
+                : new[] { x.Date.ToString("yyyy/MM/dd"), x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.Party ?? "", x.InText, x.OutText, x.BalanceText });
         r.Total("إجمالي الوارد", _packs.Total(Ledger.Where(x => x.ItemId is not null).Select(x => (x.ItemId!.Value, x.In))))
          .Total("إجمالي الصادر", _packs.Total(Ledger.Where(x => x.ItemId is not null).Select(x => (x.ItemId!.Value, x.Out))));
-        if (LedgerItem is not null) r.Total("الرصيد آخر المدة", Ledger.LastOrDefault()?.BalanceText ?? "0", true);
+        if (LedgerItem is not null) r.Total("الرصيد آخر المدة", Ledger.FirstOrDefault()?.BalanceText ?? "0", true);
         return r;
     }
 }

@@ -28,6 +28,7 @@ public class RepVansSectionViewModel : SectionViewModel
     {
         _filter = Filters[0];
         PrintCommand = new RelayCommand(Print);
+        BackCommand = new RelayCommand(() => SelectedCard = null);
     }
 
     protected override bool ReloadOnActivate => true;
@@ -42,8 +43,18 @@ public class RepVansSectionViewModel : SectionViewModel
     public string Search { get => _search; set { if (SetProperty(ref _search, value)) ApplyFilter(); } }
     public Option<RepVanFilter> Filter { get => _filter; set { if (SetProperty(ref _filter, value)) ApplyFilter(); } }
     public RepVanCard? SelectedCard { get => _selected; set { if (SetProperty(ref _selected, value)) Background(OpenDetailAsync()); } }
-    /// <summary>شاشة السيارة المختارة (نفس شاشة المخزن) — تُعرض تحت البطاقات.</summary>
-    public WarehouseWorkspaceSectionViewModel? Detail { get => _detail; private set => SetProperty(ref _detail, value); }
+    /// <summary>
+    /// شاشة السيارة المختارة (نفس شاشة المخزن) — تملأ الصفحة كلها بدل البطاقات حتى تظهر تبويباتها كاملة
+    /// (عملية جديدة، الأرصدة، حدود التنبيه، التقارير والمستندات)، و«رجوع» يعيد البطاقات.
+    /// </summary>
+    public WarehouseWorkspaceSectionViewModel? Detail
+    {
+        get => _detail;
+        private set { if (SetProperty(ref _detail, value)) { OnPropertyChanged(nameof(IsDetailOpen)); OnPropertyChanged(nameof(DetailTitle)); } }
+    }
+    public bool IsDetailOpen => Detail is not null;
+    public string DetailTitle => SelectedCard is { } c ? $"{c.RepName} — {c.VanName}" : "";
+    public RelayCommand BackCommand { get; }
 
     public int VanCount => _all.Count;
     public int PendingCount => _all.Count(c => c.NeedsSettlement);
