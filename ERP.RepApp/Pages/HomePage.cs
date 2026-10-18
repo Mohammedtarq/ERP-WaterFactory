@@ -33,7 +33,7 @@ public class HomePage : ContentPage
         {
             ColumnSpacing = 12, RowSpacing = 12,
             ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Star) },
-            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto) }
+            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto) }
         };
         void Place(View v, int row, int col) { Grid.SetRow(v, row); Grid.SetColumn(v, col); grid.Children.Add(v); }
         // اتجاه RTL: العمود الأول يمين الشاشة
@@ -43,6 +43,7 @@ public class HomePage : ContentPage
         Place(Ui.Tile("box", "رصيد السيارة", "ما تبقى من البضاعة", Color.FromArgb("#6366F1"), () => Navigation.PushAsync(new VanStockPage())), 1, 1);
         Place(Ui.Tile("list", "حركاتي", "سجل اليوم وحالة كل حركة", Color.FromArgb("#475569"), () => Navigation.PushAsync(new OutboxPage())), 2, 0);
         Place(Ui.Tile("sync", "مزامنة الآن", "إرسال واستلام من المعمل", Ui.Brand, SyncAsync), 2, 1);
+        Place(Ui.Tile("user", "زبائني من النظام", "اختيار زبائنك بموافقة الإدارة", Color.FromArgb("#7C3AED"), () => Navigation.PushAsync(new MyCustomersPage())), 3, 0);
 
         Ui.Setup(this, "الرئيسية", new VerticalStackLayout
         {

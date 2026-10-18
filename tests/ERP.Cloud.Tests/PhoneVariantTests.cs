@@ -64,4 +64,24 @@ public class PhoneVariantTests : IDisposable
         Assert.Contains("كارتون 40×330 داون تاون", work.ReceiptFor(sale)!.TextLines());
         Assert.Contains("بيع نقدي — سوبر ماركت: 2 كارتون 40×330 داون تاون، 1 كارتون 40×330 الرحمة", sale.Summary);
     }
+
+    /// <summary>«زبائني من النظام»: الاختيار يُرسل طلبًا واحدًا، والمطلوب يظهر «بانتظار الموافقة» ولا يُطلب مرتين، وقائمة البيع لا تتغير قبل الموافقة.</summary>
+    [Fact]
+    public void Picking_system_customers_sends_one_link_request_and_marks_them_pending()
+    {
+        var store = new LocalStore(Path.Combine(_dir, "link.db"));
+        store.SaveLink(new LinkCode("https://cloud.test", new string('A', 64)));
+        var snap = new RepSnapshot(9, "علي", DateTime.UtcNow, true, 2, 0, new(), new() { new(1, "زبونه", null, null, "Direct", null, null, 0) }, new(), new(),
+                                   OtherCustomers: new() { new(20, "مطعم أ", "0770"), new(21, "مقهى ب", null), new(22, "محل ج", null) });
+        store.SaveSnapshot(JsonSerializer.Serialize(snap, new JsonSerializerOptions(JsonSerializerDefaults.Web)), "\"x\"");
+        var work = new RepWork(store);
+
+        Assert.Equal(3, work.OtherCustomers().Count);
+        var item = work.SaveCustomerLink(new[] { 20, 21 });
+        Assert.Equal("CustomerLink", item.Kind);
+        Assert.Equal(new[] { 20, 21 }, JsonSerializer.Deserialize<CustomerLinkPayload>(item.Payload, new JsonSerializerOptions(JsonSerializerDefaults.Web))!.CustomerIds);
+        Assert.Equal(new[] { 20, 21 }, work.OtherCustomers().Where(x => x.Pending).Select(x => x.Customer.Id).OrderBy(x => x));
+        Assert.Single(work.Customers());                                    // لا تتغير قائمة البيع قبل الموافقة
+        Assert.Throws<InvalidOperationException>(() => work.SaveCustomerLink(new[] { 20 }));   // مطلوب سابقًا
+    }
 }

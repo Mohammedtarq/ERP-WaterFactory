@@ -19,7 +19,7 @@ public class RepDevice
     public DateTime? RemovedAt { get; set; }
 }
 
-public enum RepRequestKind { CashSale, CreditSale, Free, Collection, NewCustomer, Expense, Return }
+public enum RepRequestKind { CashSale, CreditSale, Free, Collection, NewCustomer, Expense, Return, CustomerLink }
 
 /// <summary>Posted = رُحّل، Pending = بانتظار الاعتماد، Rejected = مرفوض، Failed = تعذّر ترحيله (السبب في ErrorMessage).</summary>
 public enum RepRequestStatus { Posted, Pending, Rejected, Failed }

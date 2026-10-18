@@ -27,3 +27,5 @@ public record ReturnLinePayload(int ItemId, int PackagingLevelId, decimal Quanti
 /// <summary>مرتجع زبون: الافتراضي خصم قيمته من دينه، والرد النقدي باختيار المندوب (Cash = true).</summary>
 public record ReturnPayload(CustomerRef Customer, List<ReturnLinePayload> Lines, string Reason, bool Cash = false);
 
+/// <summary>طلب المندوب ربط زبائن من النظام به: لا يتغير شيء حتى توافق الإدارة من «طلبات المندوبين».</summary>
+public record CustomerLinkPayload(List<int> CustomerIds);

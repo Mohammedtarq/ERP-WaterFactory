@@ -181,4 +181,55 @@ public class RepAppTests
         Assert.True((await svc.ClearLoginAsync(a.Id, _f.AdminId)).Success);
         Assert.Null((await new CloudSyncService(db).BuildSnapshotAsync(a.Id))!.Login);
     }
+
+    /// <summary>
+    /// «زبائني من النظام»: المندوب يختار زبائن من غير المربوطين به، والطلب ينتظر موافقة الإدارة —
+    /// لا تتغير قائمته قبلها، وبعدها يظهرون في نسخة العمل؛ والمرفوض يبقى بلا ربط.
+    /// </summary>
+    [Fact]
+    public async Task Customer_link_from_phone_waits_for_management_approval()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var rep = new Employee { FullName = "مندوب ربط الزبائن", IsSalesRep = true, BaseSalary = 1 };
+        var own = new Customer { Name = "ربط — زبونه الحالي" };
+        var a = new Customer { Name = "ربط — مطعم أ" };
+        var b = new Customer { Name = "ربط — مقهى ب" };
+        var agent = new Customer { Name = "ربط — وكيل", CustomerType = CustomerType.Agent };
+        db.AddRange(rep, own, a, b, agent);
+        await db.SaveChangesAsync();
+        db.RepCustomerAssignments.Add(new RepCustomerAssignment { EmployeeId = rep.Id, CustomerId = own.Id });
+        await db.SaveChangesAsync();
+        var app = new RepAppService(db);
+        var (_, key) = await app.RegisterDeviceAsync(rep.Id, "هاتف الربط", _f.AdminId);
+
+        // نسخة العمل: زبونه فقط في قائمته، وغير المربوطين (المباشرون) للاختيار — بلا الوكيل
+        var snap = (await new CloudSyncService(db).BuildSnapshotAsync(rep.Id))!;
+        Assert.Equal(new[] { own.Id }, snap.Customers.Select(c => c.Id));
+        Assert.Contains(snap.OtherCustomers!, c => c.Id == a.Id);
+        Assert.DoesNotContain(snap.OtherCustomers!, c => c.Id == own.Id || c.Id == agent.Id);
+
+        // الطلب بانتظار الموافقة، ولا ربط قبلها
+        var sent = await app.ReceiveAsync(key!, Env(RepRequestKind.CustomerLink, new CustomerLinkPayload(new() { a.Id, b.Id, own.Id })));
+        Assert.Equal(RepRequestStatus.Pending, sent.Status);
+        var request = await db.RepRequests.AsNoTracking().FirstAsync(r => r.Id == sent.RequestId);
+        Assert.Contains("مطعم أ", request.Summary);
+        Assert.NotNull(request.Warning);                      // زبونه الحالي مربوط أصلًا
+        Assert.False(await db.RepCustomerAssignments.AnyAsync(x => x.EmployeeId == rep.Id && x.CustomerId == a.Id));
+        Assert.Single((await new CloudSyncService(db).BuildSnapshotAsync(rep.Id))!.Customers);
+
+        Assert.True((await app.ApproveAsync(request.Id, _f.AdminId)).Success);
+        var after = (await new CloudSyncService(db).BuildSnapshotAsync(rep.Id))!;
+        Assert.Equal(new[] { own.Id, a.Id, b.Id }.OrderBy(x => x), after.Customers.Select(c => c.Id).OrderBy(x => x));
+        Assert.DoesNotContain(after.OtherCustomers!, c => c.Id == a.Id);
+
+        // طلب آخر مرفوض: لا ربط
+        var c = new Customer { Name = "ربط — محل ج" };
+        db.Add(c);
+        await db.SaveChangesAsync();
+        var second = await app.ReceiveAsync(key!, Env(RepRequestKind.CustomerLink, new CustomerLinkPayload(new() { c.Id })));
+        Assert.True((await app.RejectAsync(second.RequestId!.Value, "ليس من منطقته", _f.AdminId)).Success);
+        Assert.False(await db.RepCustomerAssignments.AnyAsync(x => x.EmployeeId == rep.Id && x.CustomerId == c.Id));
+        // طلب بلا زبون صالح يتعذّر
+        Assert.Equal(RepRequestStatus.Failed, (await app.ReceiveAsync(key!, Env(RepRequestKind.CustomerLink, new CustomerLinkPayload(new() { agent.Id })))).Status);
+    }
 }

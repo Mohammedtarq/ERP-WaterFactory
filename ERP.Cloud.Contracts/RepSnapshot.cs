@@ -22,7 +22,8 @@ public record RepSnapshot(
     string? CompanyName = null,
     byte[]? CompanyLogo = null,
     SnapshotServers? Servers = null,
-    SnapshotLogin? Login = null)
+    SnapshotLogin? Login = null,
+    List<SnapshotCustomerChoice>? OtherCustomers = null)
 {
     /// <summary>الشعار ينتقل مع كل نسخة عمل، فيبقى صغيرًا.</summary>
     public const int MaxLogoBytes = 200 * 1024;
@@ -72,3 +73,6 @@ public record SnapshotAgentPrice(int AgentCustomerId, int ItemId, decimal PieceP
 
 /// <summary>رصيد السيارة بالقطعة لكل منتج ومتغيره (RecipeId فارغ = الأساسي)؛ الهاتف يعرضه بالعبوة.</summary>
 public record SnapshotStock(int ItemId, decimal Pieces, int? RecipeId = null);
+
+/// <summary>زبون في النظام غير مربوط بالمندوب: يختاره من الهاتف ويُرسل طلب ربط للإدارة (بلا رصيد ولا حد دين).</summary>
+public record SnapshotCustomerChoice(int Id, string Name, string? Phone);

@@ -385,6 +385,10 @@ public partial class CloudSyncService
                        .ToDictionary(b => b.CustomerId, b => b.Balance);
         var snapCustomers = customers.Select(c => new SnapshotCustomer(c.Id, c.Name, c.Phone, c.Address, c.CustomerType.ToString(), null,
                                                                        c.CreditLimit, balances.GetValueOrDefault(c.Id))).ToList();
+        // زبائن النظام غير المربوطين به (الكل إن لم يُربط له أحد): يختار منها زبائنه ويرسل طلب ربط للإدارة
+        var others = await _db.Customers.AsNoTracking()
+            .Where(c => c.IsActive && c.CustomerType == CustomerType.Direct && !assigned.Contains(c.Id))
+            .OrderBy(c => c.Name).Take(5000).Select(c => new SnapshotCustomerChoice(c.Id, c.Name, c.Phone)).ToListAsync();
 
         var items = await _db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased)
                                    .OrderBy(i => i.ItemName).ToListAsync();
@@ -436,7 +440,8 @@ public partial class CloudSyncService
         return new RepSnapshot(rep.Id, rep.FullName, DateTime.UtcNow, settings.AllowCreditOverLimit, settings.CashAlertDays, wallet,
                                products, snapCustomers, agentPrices, stock, posted,
                                string.IsNullOrWhiteSpace(company?.NameAr) ? null : company.NameAr.Trim(), logo, servers,
-                               rep.RepLoginName is { } ln && rep.RepLoginSalt is { } ls && rep.RepLoginHash is { } lh ? new SnapshotLogin(ln, ls, lh) : null);
+                               rep.RepLoginName is { } ln && rep.RepLoginSalt is { } ls && rep.RepLoginHash is { } lh ? new SnapshotLogin(ln, ls, lh) : null,
+                               others);
     }
 
     // ============================ الاتصال ============================

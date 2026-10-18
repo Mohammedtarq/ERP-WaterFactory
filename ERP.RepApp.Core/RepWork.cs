@@ -44,7 +44,7 @@ public record LoadedOption(SnapshotProduct Product, SnapshotLevel Level, decimal
     public string Text => Product.Label(Level, RecipeId);
     /// <summary>كم عبوة كاملة من هذا النوع في السيارة.</summary>
     public decimal Available => Level.Units > 0 ? Math.Floor(VanPieces / Level.Units) : 0;
-    public override string ToString() => $"{Text}  (في السيارة {Formats.Qty(Available)})";
+    public override string ToString() => $"{Text}  (في السيارة {Formats.Qty(Available)} {Level.Name})";
 }
 
 /// <summary>مجموع ما خرج من السيارة اليوم لكل صنف وعبوة.</summary>
@@ -147,6 +147,10 @@ public class RepWork
     public List<LiveCustomer> Agents() => Customers().Where(c => c.Customer.Type == "Agent" && !c.IsNew).OrderBy(c => c.Name).ToList();
 
     public LiveCustomer? Customer(int id) => Customers().FirstOrDefault(c => c.Id == id);
+
+    /// <summary>آخر الزبائن الذين تعامل معهم المندوب من الهاتف (الأحدث أولًا) — أعلى قائمة الاختيار.</summary>
+    public List<int> RecentCustomerIds(int take = 8) => _store.Outbox(days: 30).OrderByDescending(i => i.CreatedAtUtc)
+        .Select(i => i.Effect.CustomerId).OfType<int>().Distinct().Take(take).ToList();
 
     /// <summary>مبيعات اليوم (غير المجانية) كما سجّلها الهاتف، ما لم تُرفض أو تتعذّر.</summary>
     public decimal TodaySales() => _store.Outbox(days: 2)
@@ -360,6 +364,38 @@ public class RepWork
         };
         var item = _store.Enqueue("NewCustomer", payload, $"زبون جديد — {payload.Name}", 0, Effect.None);
         return Customers().Single(c => c.NewClientId == item.ClientId);
+    }
+
+    // ============================ ربط زبائن من النظام ============================
+
+    /// <summary>زبائن مطلوب ربطهم وطلبهم لم يُبتّ بعد (بانتظار الإرسال أو موافقة الإدارة).</summary>
+    public HashSet<int> PendingLinkIds() => _store.Outbox(days: 60)
+        .Where(i => i.Kind == "CustomerLink" && (i.State != OutboxState.Done || i.Status == "Pending"))
+        .SelectMany(i => System.Text.Json.JsonSerializer.Deserialize<CustomerLinkPayload>(i.Payload, JsonWeb)?.CustomerIds ?? new())
+        .ToHashSet();
+
+    /// <summary>زبائن النظام غير المربوطين بالمندوب (للاختيار)، مع علامة «بانتظار الموافقة».</summary>
+    public List<(SnapshotCustomerChoice Customer, bool Pending)> OtherCustomers()
+    {
+        var snap = Snapshot;
+        if (snap?.OtherCustomers is not { } others) return new();
+        // المعمل يرسل غير المربوطين به فقط (والكل إن لم يُربط له أحد بعد: يختار منها زبائنه)
+        var pending = PendingLinkIds();
+        return others.Select(c => (c, pending.Contains(c.Id))).ToList();
+    }
+
+    /// <summary>
+    /// طلب ربط الزبائن المختارين بالمندوب: يُرسل للإدارة ولا يتغير شيء في قائمته حتى الموافقة.
+    /// </summary>
+    public OutboxItem SaveCustomerLink(IReadOnlyCollection<int> customerIds)
+    {
+        if (Snapshot is null) throw new InvalidOperationException("لم تصل نسخة العمل من المعمل بعد — اتصل بالشبكة وزامن");
+        var pending = PendingLinkIds();
+        var ids = customerIds.Distinct().Where(id => !pending.Contains(id)).ToList();
+        if (ids.Count == 0) throw new InvalidOperationException("اختر زبونًا واحدًا على الأقل (غير مطلوب سابقًا)");
+        var names = (Snapshot.OtherCustomers ?? new()).Where(c => ids.Contains(c.Id)).Select(c => c.Name).ToList();
+        var summary = $"طلب ربط {ids.Count} زبون — {string.Join("، ", names.Take(3))}{(names.Count > 3 ? "…" : "")}";
+        return _store.Enqueue("CustomerLink", new CustomerLinkPayload(ids), summary, 0, Effect.None);
     }
 
     private static DraftCheck Fail(string message) => new(message, null, 0, new());

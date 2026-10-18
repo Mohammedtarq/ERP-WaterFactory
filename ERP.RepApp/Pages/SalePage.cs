@@ -30,6 +30,7 @@ public class SalePage : ContentPage
         _total.FontAttributes = FontAttributes.Bold;
         _kinds = new[] { KindButton("نقدي", "CashSale"), KindButton("آجل", "CreditSale"), KindButton("مجاني", "Free") };
         _item.SelectedIndexChanged += (_, _) => ShowItemPrice();
+        _qty.TextChanged += (_, _) => ShowItemPrice();           // الباقي في السيارة وسعر السطر يتحدّثان مع كل + و−
         var snap = _work.Snapshot;
         var minus = Ui.Small("−", Ui.Muted, () => _qty.Text = Math.Max(1, (Ui.Number(_qty.Text) ?? 1) - 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
         var plus = Ui.Small("+", Ui.Primary, () => _qty.Text = ((Ui.Number(_qty.Text) ?? 0) + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -80,9 +81,15 @@ public class SalePage : ContentPage
         var snap = _work.Snapshot;
         if (snap is null || _item.SelectedItem is not LoadedOption o) { _itemPrice.Text = ""; return; }
         var inCart = _lines.Where(l => l.ItemId == o.Product.ItemId && l.RecipeId == o.RecipeId).Sum(l => l.Quantity * (o.Product.Levels.FirstOrDefault(x => x.LevelId == l.LevelId)?.Units ?? 0));
-        var left = Formats.Packs(o.VanPieces - inCart, o.Product.Levels);
+        // العدد المكتوب الآن يُطرح فورًا من الباقي (قبل «إضافة للفاتورة») حتى يرى المندوب ما سيبقى
+        var typing = Math.Max(0, Ui.Number(_qty.Text) ?? 0);
+        var leftPieces = o.VanPieces - inCart - typing * o.Level.Units;
+        var left = Formats.Packs(Math.Max(0, leftPieces), o.Product.Levels);
+        var price = RepWork.PackPrice(o.Product, o.Level, o.RecipeId);
         _itemPrice.Text = (_kind == "Free" ? "مجاني"
-            : $"سعر ال{o.Level.Name}: {Formats.Money(RepWork.PackPrice(o.Product, o.Level, o.RecipeId))}") + $" — الباقي في السيارة: {left}";
+            : $"سعر ال{o.Level.Name}: {Formats.Money(price)}" + (typing > 0 ? $" × {Formats.Qty(typing)} = {Formats.Money(price * typing)}" : ""))
+            + $"\nالباقي في السيارة بعد هذا: {left}" + (leftPieces < 0 ? " — العدد أكبر من الموجود" : "");
+        _itemPrice.TextColor = leftPieces < 0 ? Ui.Red : Ui.Muted;
     }
 
     private void Add()

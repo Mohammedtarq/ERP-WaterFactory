@@ -55,6 +55,7 @@ public class RepAppService
         RepRequestKind.Collection => "تحصيل",
         RepRequestKind.NewCustomer => "زبون جديد",
         RepRequestKind.Expense => "مصروف",
+        RepRequestKind.CustomerLink => "ربط زبائن",
         _ => "مرتجع زبون"
     };
 
@@ -254,6 +255,9 @@ public class RepAppService
                     r.Status = RepRequestStatus.Pending;
                 }
                 break;
+            case RepRequestKind.CustomerLink:
+                await CustomerLinkIntakeAsync(r, Parse<CustomerLinkPayload>(r));
+                break;
             default:
                 await ReturnIntakeAsync(r, Parse<ReturnPayload>(r));
                 break;
@@ -261,6 +265,46 @@ public class RepAppService
     }
 
     private static void Fail(RepRequest r, string message) { r.Status = RepRequestStatus.Failed; r.ErrorMessage = message; }
+
+    /// <summary>
+    /// طلب ربط زبائن بالمندوب ينتظر موافقة الإدارة: لا يتغير زبائن المندوب قبلها.
+    /// المقبول: زبائن مباشرون فعّالون غير مربوطين به أصلًا.
+    /// </summary>
+    private async Task CustomerLinkIntakeAsync(RepRequest r, CustomerLinkPayload p)
+    {
+        var ids = (p.CustomerIds ?? new()).Distinct().ToList();
+        if (ids.Count == 0) { Fail(r, "اختر زبونًا واحدًا على الأقل"); return; }
+        if (ids.Count > 200) { Fail(r, "عدد كبير — أرسل 200 زبون أو أقل في الطلب"); return; }
+        var linked = await _db.RepCustomerAssignments.AsNoTracking().Where(a => a.EmployeeId == r.RepEmployeeId).Select(a => a.CustomerId).ToListAsync();
+        var names = await _db.Customers.AsNoTracking()
+            .Where(c => ids.Contains(c.Id) && c.IsActive && c.CustomerType == CustomerType.Direct && !linked.Contains(c.Id))
+            .OrderBy(c => c.Name).Select(c => c.Name).ToListAsync();
+        if (names.Count == 0) { Fail(r, "الزبائن المختارون مربوطون بك أصلًا أو غير موجودين"); return; }
+        r.Status = RepRequestStatus.Pending;
+        r.Summary = $"{names.Count} زبون: {string.Join("، ", names)}";
+        if (r.Summary.Length > 300) r.Summary = r.Summary[..297] + "…";
+        if (names.Count < ids.Count) r.Warning = $"{ids.Count - names.Count} من المختارين مربوطون أصلًا أو غير متاحين";
+    }
+
+    /// <summary>عند الموافقة: يُربط الزبائن بالمندوب فيظهرون في هاتفه مع المزامنة التالية.</summary>
+    private async Task<FinanceOperationResult> ApproveCustomerLinkAsync(RepRequest r, int userId)
+    {
+        var ids = (Parse<CustomerLinkPayload>(r).CustomerIds ?? new()).Distinct().ToList();
+        var linked = await _db.RepCustomerAssignments.Where(a => a.EmployeeId == r.RepEmployeeId).Select(a => a.CustomerId).ToListAsync();
+        var toAdd = await _db.Customers.AsNoTracking()
+            .Where(c => ids.Contains(c.Id) && c.IsActive && c.CustomerType == CustomerType.Direct && !linked.Contains(c.Id))
+            .Select(c => c.Id).ToListAsync();
+        foreach (var id in toAdd)
+            _db.RepCustomerAssignments.Add(new RepCustomerAssignment { EmployeeId = r.RepEmployeeId, CustomerId = id, AssignedAt = DateTime.UtcNow });
+        r.Status = RepRequestStatus.Posted;
+        r.ErrorMessage = null;
+        r.Amount = 0;
+        (r.ReviewedByUserId, r.ReviewedAt) = (userId, DateTime.UtcNow);
+        (r.ResultTable, r.ResultId) = ("RepCustomerAssignments", null);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Add", "RepCustomerAssignments", r.Id, $"اعتماد ربط زبائن بالمندوب: {r.Summary}");
+        return FinanceOperationResult.Ok();
+    }
 
     /// <summary>مرتجع الزبون ينتظر الاعتماد: يُتحقق من محتواه الآن، ويُرحَّل عند الموافقة.</summary>
     private async Task ReturnIntakeAsync(RepRequest r, ReturnPayload p)
@@ -429,6 +473,7 @@ public class RepAppService
         var r = await _db.RepRequests.FirstOrDefaultAsync(x => x.Id == requestId);
         if (r is null || r.Status != RepRequestStatus.Pending) return FinanceOperationResult.Fail("الطلب ليس بانتظار الاعتماد");
         if (r.Kind == RepRequestKind.Return) return await ApproveReturnAsync(r, userId);
+        if (r.Kind == RepRequestKind.CustomerLink) return await ApproveCustomerLinkAsync(r, userId);
         if (r.Kind != RepRequestKind.Expense) return FinanceOperationResult.Fail("هذا النوع لا يُعتمد من هنا");
 
         var e = Parse<ExpensePayload>(r);
@@ -482,7 +527,7 @@ public class RepAppService
         if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب الرفض ليصل للمندوب");
         var r = await _db.RepRequests.FirstOrDefaultAsync(x => x.Id == requestId);
         // الآجل والمجاني لا يُرفضان (سياسة المعمل): يُرحّلان ويُراجَعان فقط
-        if (r is null || r.Status != RepRequestStatus.Pending) return FinanceOperationResult.Fail("لا يُرفض إلا طلب بانتظار الاعتماد (المصروف ومرتجع الزبون)");
+        if (r is null || r.Status != RepRequestStatus.Pending) return FinanceOperationResult.Fail("لا يُرفض إلا طلب بانتظار الاعتماد (المصروف ومرتجع الزبون وربط الزبائن)");
         r.Status = RepRequestStatus.Rejected;
         r.RejectReason = reason.Trim();
         (r.ReviewedByUserId, r.ReviewedAt) = (userId, DateTime.UtcNow);
