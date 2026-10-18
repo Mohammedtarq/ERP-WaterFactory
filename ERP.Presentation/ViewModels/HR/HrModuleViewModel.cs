@@ -29,6 +29,7 @@ public class HrModuleViewModel : ModuleViewModel
         Add(new EmployeesSectionViewModel(s, d));
         Add(new ShiftsSectionViewModel(s, d));
         Add(new DepartmentsSectionViewModel(s, d));
+        Add(new RaiseGradesSectionViewModel(s, d));
         Add(new IncentiveSettingsSectionViewModel(s, d));
         Add(new RepIncentiveRatesSectionViewModel(s, d));
         Add(new ManagerTiersSectionViewModel(s, d));
@@ -465,7 +466,13 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
 public class PromotionsSectionViewModel : CrudSectionViewModel<PromotionAndRaise>
 {
     public PromotionsSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.HR, "الترقيات والعلاوات", Icons.Up, "#8B5CF6", "ترقية، علاوة سنوية دائمة، أو مكافأة لمرة واحدة") { }
+        : base(s, d, ModuleCode.HR, "الترقيات والعلاوات", Icons.Up, "#8B5CF6", "ترقية، علاوة سنوية دائمة، أو مكافأة لمرة واحدة")
+    {
+        PrintLetterCommand = new AsyncRelayCommand(p => p is PromotionAndRaise { Id: > 0 } r ? PrintAsync(db => DocumentReports.RaiseLetterAsync(Session, db, r.Id)) : Task.CompletedTask);
+    }
+
+    /// <summary>طباعة كتاب منح العلاوة/الترقية للموظف.</summary>
+    public AsyncRelayCommand PrintLetterCommand { get; }
 
     public IReadOnlyList<Option<PromotionMovementType>> MovementOptions { get; } = ArabicLabels.OptionsOf<PromotionMovementType>();
     public IReadOnlyList<Option<PromotionApplicationType>> ApplicationOptions { get; } = ArabicLabels.OptionsOf<PromotionApplicationType>();
@@ -504,6 +511,25 @@ public class PromotionsSectionViewModel : CrudSectionViewModel<PromotionAndRaise
         if (e.MovementType == PromotionMovementType.Promotion && !string.IsNullOrWhiteSpace(e.NewJobTitle))
             await db.Employees.Where(x => x.Id == e.EmployeeId).ExecuteUpdateAsync(u => u.SetProperty(x => x.JobTitle, e.NewJobTitle.Trim()));
     }
+}
+
+// ============================ درجات العلاوة ============================
+/// <summary>درجات العلاوة السنوية (A / B / C …) ومبالغها — تحددها الإدارة؛ تعديل المبلغ يسري على العلاوات القادمة فقط.</summary>
+public class RaiseGradesSectionViewModel : CrudSectionViewModel<RaiseGrade>
+{
+    public RaiseGradesSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.HR, "درجات العلاوة", Icons.Layers, "#8B5CF6", "مبلغ العلاوة السنوية لكل درجة (A / B / C)") { }
+
+    protected override int GetId(RaiseGrade e) => e.Id;
+    protected override string Describe(RaiseGrade e) => $"{e.Name} — {e.Amount:N0}";
+    protected override Task<List<RaiseGrade>> QueryAsync(ProjectDbContext db) => db.RaiseGrades.AsNoTracking().OrderBy(x => x.Name).ToListAsync();
+    protected override RaiseGrade CreateNew() => new() { IsActive = true };
+    protected override string? Validate(RaiseGrade e) =>
+        string.IsNullOrWhiteSpace(e.Name) ? "اكتب اسم الدرجة (مثل A)"
+        : e.Amount < 0 ? "المبلغ لا يكون سالبًا"
+        : Items.Any(x => x.Id != e.Id && string.Equals(x.Name.Trim(), e.Name.Trim(), StringComparison.OrdinalIgnoreCase)) ? "هذه الدرجة موجودة"
+        : null;
+    protected override Task BeforeSaveAsync(ProjectDbContext db, RaiseGrade e) { e.Name = e.Name.Trim(); return Task.CompletedTask; }
 }
 
 // ============================ الموظفون ============================
@@ -566,6 +592,7 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
     public ObservableCollection<Branch> Branches { get; } = new();
     public ObservableCollection<Department> Departments { get; } = new();
     public ObservableCollection<Shift> Shifts { get; } = new();
+    public ObservableCollection<RaiseGrade> RaiseGrades { get; } = new();
     public IReadOnlyList<SalaryCurrency> Currencies { get; } = Enum.GetValues<SalaryCurrency>();
 
     protected override int GetId(Employee e) => e.Id;
@@ -591,6 +618,8 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
         foreach (var x in await db.Departments.AsNoTracking().OrderBy(x => x.Name).ToListAsync()) Departments.Add(x);
         Shifts.Clear();
         foreach (var x in await db.Shifts.AsNoTracking().OrderBy(x => x.Name).ToListAsync()) Shifts.Add(x);
+        RaiseGrades.Clear();
+        foreach (var x in await db.RaiseGrades.AsNoTracking().Where(g => g.IsActive).OrderBy(g => g.Name).ToListAsync()) RaiseGrades.Add(x);
     }
 
     protected override async Task<List<Employee>> QueryAsync(ProjectDbContext db)
@@ -617,6 +646,16 @@ public class EmployeesSectionViewModel : CrudSectionViewModel<Employee>
     protected override async Task BeforeSaveAsync(ProjectDbContext db, Employee e)
     {
         e.FingerprintCode = string.IsNullOrWhiteSpace(e.FingerprintCode) ? null : e.FingerprintCode.Trim();
+        // تغيير درجة العلاوة (حالات خاصة بقرار المدير) يُسجَّل: من، متى، من/إلى — ولا يغيّر علاوة سابقة
+        if (e.Id != 0)
+        {
+            var old = await db.Employees.AsNoTracking().Where(x => x.Id == e.Id).Select(x => x.RaiseGradeId).FirstOrDefaultAsync();
+            if (old != e.RaiseGradeId)
+            {
+                string Name(int? id) => id is int g ? RaiseGrades.FirstOrDefault(x => x.Id == g)?.Name ?? $"#{g}" : "بلا درجة";
+                await new AuditService(db).LogAsync(Session.UserId, "Update", "Employees", e.Id, $"تغيير درجة العلاوة لـ {e.FullName}: {Name(old)} ← {Name(e.RaiseGradeId)}");
+            }
+        }
         if (e.FingerprintCode is { } code && await db.Employees.AnyAsync(x => x.FingerprintCode == code && x.Id != e.Id))
             throw new DbUpdateException($"رقم البصمة {code} مربوط بموظف آخر");
     }
@@ -644,7 +683,7 @@ public class ShiftsSectionViewModel : CrudSectionViewModel<Shift>
 public class DepartmentsSectionViewModel : CrudSectionViewModel<Department>
 {
     public DepartmentsSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.HR, "الأقسام", Icons.Layers, "#6366F1", "أقسام الشركة، الشفت الافتراضي لكل قسم، ومبلغ العلاوة السنوية") { }
+        : base(s, d, ModuleCode.HR, "الأقسام", Icons.Layers, "#6366F1", "أقسام الشركة والشفت الافتراضي لكل قسم") { }
 
     public ObservableCollection<Shift> Shifts { get; } = new();
 
@@ -658,7 +697,7 @@ public class DepartmentsSectionViewModel : CrudSectionViewModel<Department>
     protected override Task<List<Department>> QueryAsync(ProjectDbContext db) =>
         db.Departments.AsNoTracking().Include(x => x.DefaultShift).OrderBy(x => x.Name).ToListAsync();
     protected override string? Validate(Department e) =>
-        string.IsNullOrWhiteSpace(e.Name) ? "أدخل اسم القسم" : e.AnnualRaiseAmount < 0 ? "مبلغ العلاوة لا يكون سالبًا" : null;
+        string.IsNullOrWhiteSpace(e.Name) ? "أدخل اسم القسم" : null;
 
     /// <summary>موظفو القسم بلا «شفت خاص» يأخذون الشفت الافتراضي الجديد.</summary>
     protected override async Task<string?> AfterSaveAsync(Department e, bool isNew)

@@ -401,6 +401,38 @@ public static class DocumentReports
     }
 
     /// <summary>بطاقة الموظف (ملفه الوظيفي) بصورته: بياناته الأساسية والراتب والاستقطاعات الثابتة وأرصدة إجازاته الآن.</summary>
+    /// <summary>كتاب منح علاوة سنوية (أو ترقية) لموظف: المبلغ وتاريخ السريان والراتب بعده، للتوقيع والتسليم.</summary>
+    public static async Task<ReportDocument?> RaiseLetterAsync(AppSession s, ProjectDbContext db, int raiseId)
+    {
+        var p = await db.PromotionsAndRaises.AsNoTracking().Include(x => x.Employee).ThenInclude(e => e.Department)
+            .Include(x => x.Employee).ThenInclude(e => e.RaiseGrade).Include(x => x.CreatedByUser).FirstOrDefaultAsync(x => x.Id == raiseId);
+        if (p is null) return null;
+        var e = p.Employee;
+        // الراتب بعد العلاوة = الأساسي + كل الإضافات الدائمة السارية حتى تاريخ هذه العلاوة (ضمنها)
+        var permanent = await db.PromotionsAndRaises.AsNoTracking()
+            .Where(x => x.EmployeeId == e.Id && x.ApplicationType == PromotionApplicationType.PermanentAddition && x.EffectiveDate <= p.EffectiveDate)
+            .SumAsync(x => (decimal?)x.Amount) ?? 0;
+        var kind = ArabicLabels.Of(p.MovementType);
+        var r = New(s, $"كتاب منح {kind}", notes:
+            $"بناءً على استحقاق الموظف «{e.FullName}» قررت الإدارة منحه {kind} بمبلغ {N(p.Amount)} {e.SalaryCurrency} ({ArabicNumberWords.Amount(p.Amount)})"
+            + $" {(p.ApplicationType == PromotionApplicationType.PermanentAddition ? "تُضاف إلى راتبه الشهري" : "لمرة واحدة")} اعتبارًا من {p.EffectiveDate:yyyy/MM/dd}."
+            + (string.IsNullOrWhiteSpace(p.Notes) ? "" : $" ملاحظة: {p.Notes}"));
+        r.Field("رقم الكتاب", $"ع-{p.Id:D5}")
+         .Field("تاريخ الكتاب", DateTime.Today.ToString("yyyy/MM/dd"))
+         .Field("الموظف", e.FullName)
+         .Field("المسمى الوظيفي", p.NewJobTitle ?? e.JobTitle)
+         .Field("القسم", e.Department?.Name)
+         .Field("الدرجة", e.RaiseGrade?.Name)
+         .Field("تاريخ التعيين", e.HireDate?.ToString("yyyy/MM/dd"));
+        r.Total($"مبلغ {kind}", $"{N(p.Amount)} {e.SalaryCurrency}", true)
+         .Total("تاريخ السريان", p.EffectiveDate.ToString("yyyy/MM/dd"))
+         .Total("الراتب الأساسي", $"{N(e.BaseSalary)} {e.SalaryCurrency}");
+        if (p.ApplicationType == PromotionApplicationType.PermanentAddition)
+            r.Total("الراتب بعد العلاوة (مع الإضافات الدائمة)", $"{N(e.BaseSalary + permanent)} {e.SalaryCurrency}", true);
+        r.Signatures.AddRange(new[] { "المدير العام", "مسؤول الموارد البشرية", "الموظف (استلمت)" });
+        return r;
+    }
+
     public static async Task<ReportDocument?> EmployeeCardAsync(AppSession s, ProjectDbContext db, int employeeId)
     {
         var e = await db.Employees.AsNoTracking().Include(x => x.Department).Include(x => x.Branch).Include(x => x.Shift)

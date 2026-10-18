@@ -17,14 +17,17 @@
                 <TextBox Text="{Binding SnoozeReason, UpdateSourceTrigger=PropertyChanged}" Width="220"/>
                 <TextBlock Text="لمدة (يوم):" VerticalAlignment="Center" Margin="10,0,6,0"/>
                 <TextBox Text="{Binding SnoozeDays}" Width="60" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                <Button Content="طباعة كتاب آخر علاوة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintLastLetterCommand}" Margin="16,0,0,0"
+                        ToolTip="كتب العلاوات السابقة تُطبع من «الترقيات والعلاوات»"/>
             </WrapPanel>
             <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,6" TextWrapping="Wrap"
-                       Text="آخر علاوة = آخر علاوة أو ترقية مسجّلة، وإلا التاريخ المكتوب في بطاقة الموظف، وإلا تاريخ التعيين. المبلغ المقترح من بطاقة الموظف وإلا من قسمه (✎ قابل للتعديل قبل المنح)."/>
+                       Text="آخر علاوة = آخر علاوة أو ترقية مسجّلة، وإلا التاريخ المكتوب في بطاقة الموظف، وإلا تاريخ التعيين. المبلغ المقترح: «مبلغ علاوة استثنائي» في بطاقة الموظف، وإلا مبلغ درجته (✎ قابل للتعديل قبل المنح)."/>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
             <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="False" CanUserAddRows="False" CanUserDeleteRows="False">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="الموظف" Binding="{Binding Row.EmployeeName}" Width="*" IsReadOnly="True" FontWeight="SemiBold"/>
                     <DataGridTextColumn Header="القسم" Binding="{Binding Row.DepartmentName}" Width="120" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الدرجة" Binding="{Binding Row.GradeName, TargetNullValue='—'}" Width="70" IsReadOnly="True" FontWeight="SemiBold"/>
                     <DataGridTextColumn Header="آخر علاوة" Binding="{Binding Row.LastRaiseText}" Width="210" IsReadOnly="True"/>
                     <DataGridTextColumn Header="تاريخ الاستحقاق" Binding="{Binding Row.DueDate, StringFormat=yyyy/MM/dd}" Width="120" IsReadOnly="True"/>
                     <DataGridTemplateColumn Header="الحالة" Width="140" IsReadOnly="True">
@@ -45,6 +48,7 @@
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                     <DataGridTextColumn Header="المبلغ ✎" Binding="{Binding Amount, StringFormat=N0, TargetNullValue='', UpdateSourceTrigger=LostFocus}" Width="110"/>
+                    <DataGridTextColumn Header="" Binding="{Binding Row.AmountNote}" Width="100" IsReadOnly="True" Foreground="#A21CAF" FontWeight="SemiBold"/>
                     <DataGridTemplateColumn Header="" Width="150">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>

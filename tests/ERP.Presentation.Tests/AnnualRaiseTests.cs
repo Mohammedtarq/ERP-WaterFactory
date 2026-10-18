@@ -27,14 +27,16 @@ public class AnnualRaiseTests
             var production = new Shift { Name = "شفت الإنتاج — علاوة", CheckInTime = new TimeSpan(7, 0, 0), CheckOutTime = new TimeSpan(15, 0, 0) };
             var night = new Shift { Name = "شفت ليلي — علاوة", CheckInTime = new TimeSpan(18, 0, 0), CheckOutTime = new TimeSpan(6, 0, 0) };
             db.Shifts.AddRange(day, production, night);
-            var dept = new Department { Name = "قسم العلاوات", AnnualRaiseAmount = 25_000 };
+            var dept = new Department { Name = "قسم العلاوات" };
             db.Departments.Add(dept);
+            var gradeC = new RaiseGrade { Name = "C-علاوة", Amount = 25_000 };
+            db.RaiseGrades.Add(gradeC);
             await db.SaveChangesAsync();
             var today = DateTime.Today;
             Employee E(string name, DateTime? hire, bool own = false, Shift? shift = null, decimal? amount = null, DateTime? legacy = null) => new()
             {
                 FullName = name, DepartmentId = dept.Id, HireDate = hire, HasOwnShift = own, ShiftId = (shift ?? day).Id,
-                AnnualRaiseAmount = amount, LastRaiseDate = legacy, BaseSalary = 500_000
+                AnnualRaiseAmount = amount, LastRaiseDate = legacy, BaseSalary = 500_000, RaiseGradeId = gradeC.Id
             };
             var follower = E("تابع القسم — علاوة", today.AddYears(-3));
             var own = E("شفت خاص — علاوة", today.AddYears(-3), own: true, shift: night);
@@ -71,10 +73,10 @@ public class AnnualRaiseTests
         var mine = raises.Rows.Where(r => r.Row.EmployeeName.EndsWith("— علاوة")).ToList();
 
         var overdueRow = mine.Single(r => r.Row.EmployeeId == overdueId);
-        Assert.Equal(("متأخرة 47 يومًا", 25_000m), (overdueRow.Row.StatusText, overdueRow.Amount));          // مبلغ القسم
+        Assert.Equal(("متأخرة 47 يومًا", 25_000m, "C-علاوة", false), (overdueRow.Row.StatusText, overdueRow.Amount, overdueRow.Row.GradeName, overdueRow.Row.IsException));   // مبلغ الدرجة
         Assert.Contains("التعيين", overdueRow.Row.LastRaiseText);
         var soonRow = mine.Single(r => r.Row.EmployeeId == soonId);
-        Assert.Equal(("بعد 18 يومًا", 40_000m, false), (soonRow.Row.StatusText, soonRow.Amount, soonRow.Row.IsDue));   // مبلغ الموظف يعلو
+        Assert.Equal(("بعد 18 يومًا", 40_000m, false, "استثناء"), (soonRow.Row.StatusText, soonRow.Amount, soonRow.Row.IsDue, soonRow.Row.AmountNote));   // الاستثناء يعلو على الدرجة
         Assert.Equal("مستحقة اليوم", mine.Single(r => r.Row.EmployeeId == legacyId).Row.StatusText);           // التاريخ المكتوب للقدامى
         Assert.Contains("مكتوب", mine.Single(r => r.Row.EmployeeId == legacyId).Row.LastRaiseText);
         Assert.Equal("متأخرة 7 يومًا", mine.Single(r => r.Row.EmployeeId == followerId).Row.StatusText);      // آخر علاوة مسجّلة
@@ -87,9 +89,16 @@ public class AnnualRaiseTests
             Assert.Contains(await new AlertsService(db).ForAsync(perms), a => a.Key == "annual-raise" && a.Title.StartsWith("مستحقون للعلاوة السنوية"));
         }
 
-        // منح: علاوة دائمة بتاريخ اليوم، ويخرج من القائمة
+        // منح: علاوة دائمة بتاريخ اليوم، ويخرج من القائمة، ويُطبع كتاب العلاوة
         await raises.GrantCommand.ExecuteAsync(overdueRow);
         Assert.Empty(dialogs.Errors);
+        var letter = dialogs.Reports.Last();
+        Assert.Equal("كتاب منح علاوة سنوية", letter.Title);
+        Assert.Contains(letter.HeaderFields, f => f.Label == "الدرجة" && f.Value == "C-علاوة");
+        Assert.Contains(letter.Totals, t => t.Label == "مبلغ علاوة سنوية" && t.Value.StartsWith("25,000"));
+        Assert.Contains(letter.Totals, t => t.Label.StartsWith("الراتب بعد العلاوة") && t.Value.StartsWith("525,000"));
+        Assert.Contains("متأخر — علاوة", letter.Notes);
+        Assert.NotNull(raises.LastRaiseId);
         Assert.DoesNotContain(raises.Rows, r => r.Row.EmployeeId == overdueId);
         await using (var db = _f.NewDb())
         {
@@ -111,6 +120,26 @@ public class AnnualRaiseTests
         Assert.DoesNotContain(raises.Rows, r => r.Row.EmployeeId == legacyId);
         await using (var db = _f.NewDb())
             Assert.Equal(DateTime.Today.AddDays(60), (await db.Employees.SingleAsync(e => e.Id == legacyId)).RaiseSnoozedUntil);
+
+        // تغيير الدرجة (حالة خاصة بقرار المدير) يُسجَّل في سجل الحركات
+        var employees = hr.Section<EmployeesSectionViewModel>();
+        hr.SelectedTab = employees;
+        await hr.IdleAsync();
+        await hr.LastActivation;
+        await employees.IdleAsync();
+        await using (var db = _f.NewDb())
+        {
+            db.RaiseGrades.Add(new RaiseGrade { Name = "B-علاوة", Amount = 35_000 });
+            await db.SaveChangesAsync();
+        }
+        await employees.RefreshCommand.ExecuteAsync();
+        await employees.IdleAsync();
+        await employees.EditCommand.ExecuteAsync(employees.Items.Single(e => e.Id == soonId));
+        employees.Editor!.RaiseGradeId = employees.RaiseGrades.Single(g => g.Name == "B-علاوة").Id;
+        await employees.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        await using (var db = _f.NewDb())
+            Assert.True(await db.AuditLogs.AnyAsync(a => a.TableName == "Employees" && a.Summary!.Contains("C-علاوة ← B-علاوة")));
         Assert.Empty(_f.Unhandled);
     }
 }

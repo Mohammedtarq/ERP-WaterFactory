@@ -17,7 +17,10 @@ public class Employee
     /// <summary>شفت خاص بالموظف؛ وإلا يأخذ الشفت الافتراضي لقسمه (59_department_shift_annual_raise.sql).</summary>
     public bool HasOwnShift { get; set; }
 
-    /// <summary>مبلغ علاوته السنوية (فارغ = مبلغ قسمه).</summary>
+    /// <summary>درجة العلاوة السنوية (A / B / C) — ثابتة عادةً، وتغييرها بقرار المدير يُسجَّل في سجل الحركات.</summary>
+    public int? RaiseGradeId { get; set; }
+    public RaiseGrade? RaiseGrade { get; set; }
+    /// <summary>مبلغ علاوة استثنائي (فارغ = مبلغ درجته).</summary>
     public decimal? AnnualRaiseAmount { get; set; }
     /// <summary>تاريخ آخر علاوة قبل النظام (للقدامى)؛ وإلا آخر علاوة/ترقية مسجّلة، وإلا تاريخ التعيين.</summary>
     public DateTime? LastRaiseDate { get; set; }

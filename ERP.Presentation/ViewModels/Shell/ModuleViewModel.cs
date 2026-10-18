@@ -400,7 +400,20 @@ public abstract class ModuleViewModel : ViewModelBase
     }
 
     // نسخة ثابتة من القائمة: أقسام تُبنى في الخلفية (مساحات المخازن) قد تُضاف أثناء القراءة
-    public T Section<T>() where T : SectionViewModel => Tabs.ToArray().OfType<T>().Single();
+    public T Section<T>() where T : SectionViewModel => TabsSnapshot().OfType<T>().Single();
+
+    /// <summary>
+    /// نسخة من الأقسام آمنة من التعديل المتزامن: تطبيق تخطيط الدور قد يضيف/ينقل أقسامًا بينما تُقرأ القائمة
+    /// من استمرار غير متزامن (بلا سياق واجهة في الاختبارات) — تُعاد المحاولة بدل الانهيار.
+    /// </summary>
+    public object[] TabsSnapshot()
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try { return Tabs.ToArray(); }
+            catch (Exception) when (attempt < 20) { Thread.Yield(); }
+        }
+    }
 }
 
 /// <summary>وحدة لم تُبنَ بعد (الموارد البشرية، المندوبون، الإنتاج).</summary>

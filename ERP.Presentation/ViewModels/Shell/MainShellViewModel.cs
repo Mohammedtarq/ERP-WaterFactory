@@ -253,7 +253,7 @@ public class MainShellViewModel : ViewModelBase
             if (Entries.FirstOrDefault(e => e.Key == k) is { } e) Favorites.Add(e);
         OnPropertyChanged(nameof(HasFavorites));
         foreach (var m in _modules.Values.OfType<ModuleViewModel>())
-            foreach (var t in m.Tabs.ToArray().OfType<SectionViewModel>()) t.IsFavorite = _favoriteKeys.Contains(SectionCatalog.KeyOf(t));
+            foreach (var t in m.TabsSnapshot().OfType<SectionViewModel>()) t.IsFavorite = _favoriteKeys.Contains(SectionCatalog.KeyOf(t));
     }
 
     /// <summary>تثبيت الشاشة في «مفضلتي» أو إزالتها (الشاشة الظاهرة، أو المعطاة).</summary>
@@ -279,7 +279,7 @@ public class MainShellViewModel : ViewModelBase
                                     .OrderBy(n => n.ModuleCode == entry.HomeModule ? 0 : _modules.ContainsKey(n.ModuleCode) ? 1 : 2))
         {
             SelectedItem = nav;
-            if (CurrentModule is ModuleViewModel m && m.Tabs.ToArray().OfType<SectionViewModel>().FirstOrDefault(t => SectionCatalog.KeyOf(t) == entry.Key) is { } section)
+            if (CurrentModule is ModuleViewModel m && m.TabsSnapshot().OfType<SectionViewModel>().FirstOrDefault(t => SectionCatalog.KeyOf(t) == entry.Key) is { } section)
             {
                 m.SelectedTab = section;
                 return section;
@@ -485,7 +485,7 @@ public class MainShellViewModel : ViewModelBase
             if (nav.ModuleCode != alert.ModuleCode && !_modules.ContainsKey(nav.ModuleCode)) continue;
             SelectedItem = nav;
             // نسخة من التبويبات: وحدة المخازن قد تُحدّث تبويبات مخازنها في الخلفية لحظة فتحها
-            if (CurrentModule is ModuleViewModel m && m.Tabs.ToArray().OfType<SectionViewModel>().FirstOrDefault(t => t.GetType().Name == alert.Section) is { } section)
+            if (CurrentModule is ModuleViewModel m && m.TabsSnapshot().OfType<SectionViewModel>().FirstOrDefault(t => t.GetType().Name == alert.Section) is { } section)
             {
                 m.SelectedTab = section;
                 return section;
@@ -543,7 +543,7 @@ public class MainShellViewModel : ViewModelBase
                 if (module is ModuleViewModel created)
                 {
                     created.AdoptMovedSections(Session, _dialogs, value.ModuleCode);
-                    foreach (var t in created.Tabs.ToArray().OfType<SectionViewModel>()) t.IsFavorite = _favoriteKeys.Contains(SectionCatalog.KeyOf(t));
+                    foreach (var t in created.TabsSnapshot().OfType<SectionViewModel>()) t.IsFavorite = _favoriteKeys.Contains(SectionCatalog.KeyOf(t));
                 }
             }
             else
@@ -576,7 +576,7 @@ public class MainShellViewModel : ViewModelBase
             if (module is ModuleViewModel m)
             {
                 if (m.Dashboard is { } d) await d.IdleAsync();
-                foreach (var s in m.Tabs.ToArray().OfType<SectionViewModel>()) await s.IdleAsync();
+                foreach (var s in m.TabsSnapshot().OfType<SectionViewModel>()) await s.IdleAsync();
             }
         }
     }

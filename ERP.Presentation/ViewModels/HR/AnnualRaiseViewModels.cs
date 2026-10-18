@@ -29,6 +29,7 @@ public class AnnualRaisesSectionViewModel : SectionViewModel
         : base(s, d, ModuleCode.HR, "المستحقون للعلاوة", Icons.Up, "#8B5CF6", "سنة كاملة من آخر علاوة أو ترقية — مع تنبيه قبل 30 يومًا")
     {
         GrantCommand = new AsyncRelayCommand(p => p is AnnualRaiseEditRow r ? GrantAsync(r) : Task.CompletedTask);
+        PrintLastLetterCommand = new AsyncRelayCommand(() => LastRaiseId is int id ? PrintLetterAsync(id) : Task.CompletedTask);
         SnoozeCommand = new AsyncRelayCommand(p => p is AnnualRaiseEditRow r ? SnoozeAsync(r) : Task.CompletedTask);
     }
 
@@ -40,6 +41,15 @@ public class AnnualRaisesSectionViewModel : SectionViewModel
     public int SnoozeDays { get => _snoozeDays; set => SetProperty(ref _snoozeDays, value); }
     public AsyncRelayCommand GrantCommand { get; }
     public AsyncRelayCommand SnoozeCommand { get; }
+    public AsyncRelayCommand PrintLastLetterCommand { get; }
+    /// <summary>آخر علاوة مُنحت من هذه الشاشة (لإعادة طباعة كتابها).</summary>
+    public int? LastRaiseId { get; private set; }
+
+    private async Task PrintLetterAsync(int raiseId)
+    {
+        await using var db = Session.NewDb();
+        if (await DocumentReports.RaiseLetterAsync(Session, db, raiseId) is { } r) Dialogs.ShowReport(r);
+    }
 
     public override async Task LoadAsync()
     {
@@ -59,14 +69,21 @@ public class AnnualRaisesSectionViewModel : SectionViewModel
         if (row.Amount is not > 0) { Dialogs.Error("اكتب مبلغ العلاوة في السطر"); return; }
         if (!row.Row.IsDue && !Dialogs.Confirm($"علاوة {row.Row.EmployeeName} مستحقة {row.Row.StatusText} — منحها الآن مبكرًا؟")) return;
         if (!Dialogs.Confirm($"منح {row.Row.EmployeeName} علاوة سنوية {row.Amount:N0} تُضاف لراتبه من اليوم؟")) return;
-        await using var db = Session.NewDb();
-        if (await RunOperationAsync(() => new AnnualRaiseService(db).GrantAsync(row.Row.EmployeeId, row.Amount!.Value, Session.UserId),
-                                    $"مُنحت العلاوة لـ {row.Row.EmployeeName}"))
+        int? raiseId = null;
+        await using (var db = Session.NewDb())
         {
-            var message = StatusMessage;
-            await LoadAsync();
-            StatusMessage = message;
+            if (!await RunOperationAsync(async () =>
+                {
+                    var (result, id) = await new AnnualRaiseService(db).GrantWithIdAsync(row.Row.EmployeeId, row.Amount!.Value, Session.UserId);
+                    raiseId = id;
+                    return result;
+                }, $"مُنحت العلاوة لـ {row.Row.EmployeeName}")) return;
         }
+        LastRaiseId = raiseId;
+        var message = StatusMessage;
+        await LoadAsync();
+        StatusMessage = message;
+        if (raiseId is int rid && Dialogs.Confirm($"مُنحت العلاوة لـ {row.Row.EmployeeName}.\n\nطباعة كتاب العلاوة الآن؟")) await PrintLetterAsync(rid);
     }
 
     private async Task SnoozeAsync(AnnualRaiseEditRow row)

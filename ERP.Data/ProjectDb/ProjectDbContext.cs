@@ -138,6 +138,7 @@ public partial class ProjectDbContext : DbContext
     public DbSet<WarehouseItemAlert> WarehouseItemAlerts => Set<WarehouseItemAlert>();
     public DbSet<VariantAlert> VariantAlerts => Set<VariantAlert>();
     public DbSet<PackPrice> PackPrices => Set<PackPrice>();
+    public DbSet<RaiseGrade> RaiseGrades => Set<RaiseGrade>();
 
     // ---- المصروفات والحسابات الختامية (31_expenses_final_accounts.sql) ----
     public DbSet<FinanceCategory> FinanceCategories => Set<FinanceCategory>();
@@ -179,6 +180,8 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<Employee>().Property(e => e.LastRaiseDate).HasColumnType("date");
         modelBuilder.Entity<Employee>().Property(e => e.RaiseSnoozedUntil).HasColumnType("date");
         modelBuilder.Entity<Department>().Property(d => d.AnnualRaiseAmount).HasPrecision(18, 2);
+        modelBuilder.Entity<RaiseGrade>().Property(g => g.Amount).HasPrecision(18, 2);
+        modelBuilder.Entity<Employee>().HasOne(e => e.RaiseGrade).WithMany().HasForeignKey(e => e.RaiseGradeId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Department>().HasOne(d => d.DefaultShift).WithMany().HasForeignKey(d => d.DefaultShiftId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PayrollLine>(l =>
         {

@@ -42,10 +42,12 @@
                         <DataGridTextColumn Header="التطبيق" Binding="{Binding ApplicationType, Converter={StaticResource EnumArabicConverter}}" Width="140"/>
                         <DataGridTextColumn Header="تاريخ السريان" Binding="{Binding EffectiveDate, StringFormat=yyyy/MM/dd}" Width="110"/>
                         <DataGridTextColumn Header="ملاحظات" Binding="{Binding Notes}" Width="160"/>
-                        <DataGridTemplateColumn Header="" Width="84">
+                        <DataGridTemplateColumn Header="" Width="120">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Content="&#xE749;" ToolTip="طباعة كتاب العلاوة" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                                Command="{Binding DataContext.PrintLetterCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE70F;" ToolTip="تعديل" Style="{StaticResource RowIconButton}" Tag="#0EA5E9"
                                                 Command="{Binding DataContext.EditCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE74D;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
