@@ -32,7 +32,7 @@
                                 <TextBlock Text="الخادم المحلي — واي فاي المعمل" FontWeight="SemiBold" Margin="8,0,0,0"/>
                             </StackPanel>
                             <TextBlock Text="{Binding LocalText}" TextWrapping="Wrap" Margin="18,4,0,0"/>
-                            <TextBlock Margin="18,4,0,0" FlowDirection="LeftToRight" HorizontalAlignment="Right" Foreground="#475569"
+                            <TextBlock Margin="18,4,0,0" FlowDirection="LeftToRight" HorizontalAlignment="Right" Foreground="#1F2937"
                                        Text="{Binding LocalUrl, StringFormat='العنوان للهواتف: {0}'}"/>
                         </StackPanel>
                     </Border>
@@ -79,7 +79,7 @@
 
                 <Separator Margin="0,16,0,8"/>
                 <TextBlock Text="الخادم السحابي" Style="{StaticResource SectionTitle}"/>
-                <TextBlock TextWrapping="Wrap" Foreground="#475569"
+                <TextBlock TextWrapping="Wrap" Foreground="#1F2937"
                            Text="ملفات نشر جاهزة (الخادم ومفتاح المعمل وشهادة https تلقائية): تُرفع إلى أي خادم Linux عليه Docker ثم أمر واحد. التفاصيل في ملف «اقرأني» معها."/>
                 <Button Content="ملفات نشر الخادم السحابي" Style="{StaticResource SecondaryButton}" Command="{Binding CloudFilesCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
 

@@ -8,9 +8,9 @@
     <Color x:Key="SidebarHoverColor">#24618F</Color>
     <Color x:Key="BackgroundColor">#F2F8FC</Color>
     <Color x:Key="SurfaceColor">#FFFFFF</Color>
-    <Color x:Key="BorderColor">#E2E8F0</Color>
-    <Color x:Key="TextColor">#0F172A</Color>
-    <Color x:Key="MutedTextColor">#64748B</Color>
+    <Color x:Key="BorderColor">#CBD5E1</Color>
+    <Color x:Key="TextColor">#000000</Color>
+    <Color x:Key="MutedTextColor">#1F2937</Color>
     <Color x:Key="DangerColor">#DC2626</Color>
     <Color x:Key="SuccessColor">#059669</Color>
     <Color x:Key="WarningColor">#D97706</Color>

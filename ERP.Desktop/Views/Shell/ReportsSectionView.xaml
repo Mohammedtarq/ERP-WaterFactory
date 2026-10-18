@@ -21,7 +21,7 @@
                         <DataTemplate>
                             <StackPanel Margin="2,6">
                                 <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/>
-                                <TextBlock Text="{Binding Description}" FontSize="11" Foreground="#64748B" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Description}" FontSize="11" Foreground="#1F2937" TextWrapping="Wrap"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

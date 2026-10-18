@@ -24,7 +24,7 @@
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock DockPanel.Dock="Left" Text="{Binding DebtText}" Margin="14,0,0,0" FontWeight="SemiBold" Foreground="#64748B">
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding DebtText}" Margin="14,0,0,0" FontWeight="SemiBold" Foreground="#1F2937">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
                                                 <Style.Triggers>

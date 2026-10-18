@@ -34,7 +34,7 @@
                                     <DataTemplate>
                                         <TextBlock>
                                             <Run Text="{Binding Name, Mode=OneWay}"/>
-                                            <Run Text="{Binding LastActivity, Mode=OneWay, StringFormat='  — آخر حركة {0:yyyy/MM/dd}'}" Foreground="#64748B"/>
+                                            <Run Text="{Binding LastActivity, Mode=OneWay, StringFormat='  — آخر حركة {0:yyyy/MM/dd}'}" Foreground="#1F2937"/>
                                         </TextBlock>
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>

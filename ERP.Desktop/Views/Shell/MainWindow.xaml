@@ -44,7 +44,7 @@
             <Border Style="{StaticResource Pill}" ToolTip="{Binding CloudStatusText}" Visibility="{Binding HasCloudStatus, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="10" Height="10" Fill="{Binding CloudStatusColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding CloudStatusText}" Foreground="#334155" FontSize="13" Margin="7,0,0,0" MaxWidth="240" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding CloudStatusText}" Foreground="#1F2937" FontSize="13" Margin="7,0,0,0" MaxWidth="240" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                 </StackPanel>
             </Border>
 
@@ -69,7 +69,7 @@
                                 Visibility="{Binding HasAlerts, Converter={StaticResource BoolToVisibility}}">
                             <TextBlock Text="{Binding Alerts.Count}" Foreground="White" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="لا تنبيهات" Foreground="#64748B" FontSize="13" Margin="6,0,0,0" VerticalAlignment="Center"
+                        <TextBlock Text="لا تنبيهات" Foreground="#1F2937" FontSize="13" Margin="6,0,0,0" VerticalAlignment="Center"
                                    Visibility="{Binding HasAlerts, Converter={StaticResource InverseBoolToVisibility}}"/>
                     </StackPanel>
                 </ToggleButton>
@@ -95,7 +95,7 @@
                                                         <Border DockPanel.Dock="Left" Width="6" CornerRadius="3" Background="{Binding Color, Converter={StaticResource HexBrush}}" Margin="0,0,10,0"/>
                                                         <StackPanel>
                                                             <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14" TextWrapping="Wrap"/>
-                                                            <TextBlock Text="{Binding Detail}" Foreground="#64748B" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="{Binding Detail}" Foreground="#1F2937" FontSize="13" TextWrapping="Wrap" Margin="0,2,0,0"/>
                                                         </StackPanel>
                                                     </DockPanel>
                                                 </Button>
@@ -116,7 +116,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <c:Avatar Photo="{Binding MyPhoto}" DisplayName="{Binding Session.FullName}" Size="32"/>
                                 <TextBlock Text="{Binding Session.GlobalUsername}" FontSize="13.5" FontWeight="SemiBold" Foreground="#1E293B" Margin="8,0,4,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="10" Foreground="#64748B" VerticalAlignment="Center"/>
+                                <TextBlock Text="&#xE70D;" Style="{StaticResource Icon}" FontSize="10" Foreground="#1F2937" VerticalAlignment="Center"/>
                             </StackPanel>
                         </MenuItem.Header>
                         <MenuItem Header="تغيير صورتي" Command="{Binding ChangeMyPhotoCommand}"/>
@@ -389,7 +389,7 @@
                                                                         </Border>
                                                                         <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                                                                             <TextBlock Text="{Binding Title}" FontWeight="Bold" FontSize="14" TextTrimming="CharacterEllipsis"/>
-                                                                            <TextBlock Text="{Binding Description}" Foreground="#64748B" FontSize="11.5" TextWrapping="Wrap" MaxHeight="32" TextTrimming="CharacterEllipsis"/>
+                                                                            <TextBlock Text="{Binding Description}" Foreground="#1F2937" FontSize="11.5" TextWrapping="Wrap" MaxHeight="32" TextTrimming="CharacterEllipsis"/>
                                                                         </StackPanel>
                                                                     </DockPanel>
                                                                 </Button>
@@ -452,7 +452,7 @@
                                         </Border>
                                         <StackPanel Margin="10,0,0,0">
                                             <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14"/>
-                                            <TextBlock Text="{Binding ModuleTitle}" Foreground="#64748B" FontSize="12"/>
+                                            <TextBlock Text="{Binding ModuleTitle}" Foreground="#1F2937" FontSize="12"/>
                                         </StackPanel>
                                     </DockPanel>
                                 </Button>

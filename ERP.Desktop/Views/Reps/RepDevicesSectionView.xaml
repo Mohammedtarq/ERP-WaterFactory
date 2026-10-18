@@ -36,7 +36,8 @@
             </DockPanel>
         </Border>
 
-        <StackPanel Grid.Column="1" Margin="12,0,0,0">
+        <ScrollViewer Grid.Column="1" Margin="12,0,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,4,0">
             <Border Style="{StaticResource Card}">
                 <StackPanel>
                     <TextBlock Text="تسجيل هاتف جديد" Style="{StaticResource SectionTitle}"/>
@@ -76,5 +77,6 @@
                 </StackPanel>
             </Border>
         </StackPanel>
+        </ScrollViewer>
     </Grid>
 </UserControl>

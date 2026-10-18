@@ -62,7 +62,7 @@
                                     </Border>
                                 </Grid>
                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="15" Margin="0,8,0,0"/>
-                                <TextBlock Text="{Binding Description}" FontSize="12" Foreground="#64748B" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Description}" FontSize="12" Foreground="#1F2937" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
                     </DataTemplate>

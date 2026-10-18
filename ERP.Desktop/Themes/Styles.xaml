@@ -14,7 +14,7 @@
         <TextBlock>
             <Run Text="{Binding Converter={StaticResource RecipeVariant}, Mode=OneWay}" FontWeight="SemiBold"/>
             <Run Text="  "/>
-            <Run Text="{Binding Name, Mode=OneWay}" Foreground="#94A3B8"/>
+            <Run Text="{Binding Name, Mode=OneWay}" Foreground="#374151"/>
         </TextBlock>
     </DataTemplate>
     <m:HexBrushConverter x:Key="HexBrush"/>
@@ -76,12 +76,24 @@
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="MinHeight" Value="32"/>
+        <Style.Triggers>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter Property="BorderBrush" Value="#1D4ED8"/>
+                <Setter Property="BorderThickness" Value="2"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
     <Style TargetType="PasswordBox">
         <Setter Property="Padding" Value="6,5"/>
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="MinHeight" Value="34"/>
+        <Style.Triggers>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter Property="BorderBrush" Value="#1D4ED8"/>
+                <Setter Property="BorderThickness" Value="2"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
     <!--
         كل قائمة منسدلة في النظام: مربع بحث أعلى القائمة (اكتب للتصفية، Enter للاختيار، Esc للإغلاق).
@@ -191,6 +203,10 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Opacity" Value="0.88"/>
                         </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#1D4ED8"/>
+                            <Setter TargetName="Bd" Property="BorderThickness" Value="3"/>
+                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
                         </Trigger>
@@ -202,20 +218,26 @@
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
         <Setter Property="Background" Value="{DynamicResource PrimaryBrush}"/>
         <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderBrush" Value="#1E3A8A"/>
+        <Setter Property="BorderThickness" Value="2"/>
     </Style>
     <Style x:Key="SuccessButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
-        <Setter Property="Background" Value="{StaticResource SuccessBrush}"/>
+        <Setter Property="Background" Value="#15803D"/>
         <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderBrush" Value="#14532D"/>
+        <Setter Property="BorderThickness" Value="2"/>
     </Style>
     <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
-        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="#0F172A"/>
+        <Setter Property="BorderThickness" Value="2"/>
     </Style>
     <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
         <Setter Property="Background" Value="{StaticResource DangerBrush}"/>
         <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderBrush" Value="#7F1D1D"/>
+        <Setter Property="BorderThickness" Value="2"/>
     </Style>
 
     <!-- أزرار صغيرة داخل صفوف الجداول (تعديل/حذف/فتح) — Tag = لون الأيقونة -->
@@ -261,9 +283,19 @@
         <Setter Property="SelectionMode" Value="Single"/>
         <Setter Property="AlternatingRowBackground" Value="#F8FAFC"/>
     </Style>
+    <!-- الصف المحدد: إطار أزرق سميك حتى يبرز -->
+    <Style TargetType="DataGridRow">
+        <Setter Property="BorderThickness" Value="2"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="BorderBrush" Value="#1D4ED8"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
     <Style TargetType="DataGridColumnHeader">
-        <Setter Property="Background" Value="#F1F5F9"/>
-        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+        <Setter Property="Background" Value="#E2E8F0"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Padding" Value="8,7"/>
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
@@ -317,7 +349,7 @@
     <!-- التبويبات الداخلية داخل الشاشات (الأرصدة، التقارير والمستندات...) بنفس شكل تبويبات الوحدة بدل مربعات Windows الرمادية -->
     <Style TargetType="TabItem" BasedOn="{StaticResource ModuleTabItem}">
         <Setter Property="FontWeight" Value="SemiBold"/>
-        <Setter Property="Foreground" Value="#334155"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
     </Style>
     <Style TargetType="TabControl">
         <Setter Property="Background" Value="Transparent"/>
@@ -337,29 +369,28 @@
             <TextBlock Text="{Binding DisplayTitle}" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
         </StackPanel>
     </DataTemplate>
-    <!-- أشرطة التمرير: رفيعة بلا أزرار، ومخفية حتى تمرّ الفأرة فوق ما يُمرَّر (التمرير بالعجلة يعمل دائمًا) -->
+    <!-- أشرطة التمرير: عريضة قليلًا (14) بمقبض داكن ومجرى ظاهر دائمًا، بلا أزرار -->
     <Style x:Key="ScrollThumb" TargetType="Thumb">
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
-                    <Border x:Name="Bd" CornerRadius="4" Background="#94A3B8" Opacity="0.7"/>
+                    <Border x:Name="Bd" CornerRadius="6" Background="#475569"/>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Opacity" Value="1"/></Trigger>
-                        <Trigger Property="IsDragging" Value="True"><Setter TargetName="Bd" Property="Opacity" Value="1"/></Trigger>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#1F2937"/></Trigger>
+                        <Trigger Property="IsDragging" Value="True"><Setter TargetName="Bd" Property="Background" Value="#000000"/></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
     </Style>
     <Style TargetType="ScrollBar">
-        <Setter Property="Width" Value="8"/>
-        <Setter Property="MinWidth" Value="8"/>
-        <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="Opacity" Value="0"/>
+        <Setter Property="Width" Value="14"/>
+        <Setter Property="MinWidth" Value="14"/>
+        <Setter Property="Background" Value="#E2E8F0"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">
-                    <Border Background="Transparent" Padding="1,2">
+                    <Border Background="{TemplateBinding Background}" CornerRadius="7" Padding="2,2">
                         <Track x:Name="PART_Track" IsDirectionReversed="True">
                             <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}"/></Track.Thumb>
                         </Track>
@@ -371,12 +402,12 @@
             <Trigger Property="Orientation" Value="Horizontal">
                 <Setter Property="Width" Value="Auto"/>
                 <Setter Property="MinWidth" Value="0"/>
-                <Setter Property="Height" Value="8"/>
-                <Setter Property="MinHeight" Value="8"/>
+                <Setter Property="Height" Value="14"/>
+                <Setter Property="MinHeight" Value="14"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ScrollBar">
-                            <Border Background="Transparent" Padding="2,1">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="7" Padding="2,2">
                                 <Track x:Name="PART_Track" IsDirectionReversed="False">
                                     <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}"/></Track.Thumb>
                                 </Track>
@@ -384,12 +415,6 @@
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
-            </Trigger>
-            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ScrollViewer}}" Value="True">
-                <Setter Property="Opacity" Value="1"/>
-            </DataTrigger>
-            <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Opacity" Value="1"/>
             </Trigger>
         </Style.Triggers>
     </Style>
