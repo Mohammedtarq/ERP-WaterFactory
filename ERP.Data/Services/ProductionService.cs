@@ -559,17 +559,114 @@ public class ProductionService
         return FinanceOperationResult.Ok();
     }
 
-    /// <summary>الإلغاء: المسودة بلا أثر؛ الأمر قيد التشغيل تبقى مواده المصروفة على الماكينة (تالف أو إرجاع يدويًا).</summary>
-    public async Task<FinanceOperationResult> CancelAsync(int orderId)
+    /// <summary>ما أعاده آخر إلغاء للمخازن وما لم يُعَد (لرسالة الشاشة).</summary>
+    public string? LastCancelNote { get; private set; }
+
+    /// <summary>
+    /// الإلغاء: المسودة بلا أثر. الأمر قيد التشغيل (بلا تعبئة) تعود مواده المصروفة له من الماكينة إلى مخازنها نفسها
+    /// وبتشغيلاتها نفسها، بحركات عكسية مرجعها الأمر. يُعاد فقط ما بقي فعلًا على الماكينة (قد يكون المشرف سجّل تالفًا
+    /// أو متبقيًا)، والفرق يُذكر ولا يُعاد.
+    /// </summary>
+    public async Task<FinanceOperationResult> CancelAsync(int orderId, int userId)
     {
-        var order = await _db.ProductionOrders.FirstOrDefaultAsync(o => o.Id == orderId);
+        LastCancelNote = null;
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var order = await _db.ProductionOrders.Include(o => o.Machine).FirstOrDefaultAsync(o => o.Id == orderId);
         if (order is null) return FinanceOperationResult.Fail("أمر الإنتاج غير موجود");
         if (order.Status is ProductionOrderStatus.Completed or ProductionOrderStatus.Cancelled)
             return FinanceOperationResult.Fail("الأمر مكتمل أو ملغى مسبقًا");
         if (order.Status == ProductionOrderStatus.InProgress && await PackedQuantityAsync(orderId) > 0)
             return FinanceOperationResult.Fail("عُبّئت كمية من هذا الأمر؛ أغلقه بدل إلغائه");
+
+        if (order.Status == ProductionOrderStatus.InProgress && order.Machine is { } machine)
+        {
+            var wip = machine.WipWarehouseId;
+            var mine = await _db.StockTransactions.AsNoTracking()
+                .Where(t => t.ReferenceTable == "ProductionOrders" && t.ReferenceId == orderId)
+                .Select(t => new { t.ItemId, t.WarehouseId, t.BatchId, t.QuantityBaseUnits, t.TransactionType }).ToListAsync();
+            // ما صُرف لهذا الأمر من كل مخزن مواد (سالب في مخزن المصدر) وما عاد منه سابقًا
+            var issued = mine.Where(t => t.WarehouseId != wip && t.TransactionType is StockTransactionType.WipIssue or StockTransactionType.WipReturn)
+                .GroupBy(t => (t.ItemId, t.BatchId, t.WarehouseId)).Select(g => (g.Key, Qty: -g.Sum(t => t.QuantityBaseUnits)))
+                .Where(x => x.Qty > 0).ToList();
+            var shortNotes = new List<string>();
+            decimal returnedLines = 0;
+            foreach (var g in issued.GroupBy(x => (x.Key.ItemId, x.Key.BatchId)))
+            {
+                var (itemId, batchId) = g.Key;
+                var onMachine = await _db.StockTransactions.Where(t => t.WarehouseId == wip && t.ItemId == itemId && t.BatchId == batchId)
+                                                           .SumAsync(t => (decimal?)t.QuantityBaseUnits) ?? 0;
+                var want = g.Sum(x => x.Qty);
+                var left = Math.Min(want, Math.Max(0, onMachine));
+                foreach (var (key, qty) in g)
+                {
+                    var q = Math.Min(qty, left);
+                    if (q <= 0) continue;
+                    left -= q;
+                    _db.StockTransactions.Add(new StockTransaction { ItemId = itemId, WarehouseId = wip, BatchId = batchId, QuantityBaseUnits = -q,
+                        TransactionType = StockTransactionType.WipReturn, ReferenceTable = "ProductionOrders", ReferenceId = orderId, CreatedByUserId = userId });
+                    _db.StockTransactions.Add(new StockTransaction { ItemId = itemId, WarehouseId = key.WarehouseId, BatchId = batchId, QuantityBaseUnits = q,
+                        TransactionType = StockTransactionType.WipReturn, ReferenceTable = "ProductionOrders", ReferenceId = orderId, CreatedByUserId = userId });
+                    returnedLines++;
+                }
+                if (Math.Min(want, Math.Max(0, onMachine)) < want)
+                {
+                    var name = await _db.Items.Where(i => i.Id == itemId).Select(i => i.ItemName).FirstAsync();
+                    shortNotes.Add($"{name}: لم يُعَد {want - Math.Max(0, Math.Min(want, onMachine)):#,0.###} (غير موجود على الماكينة)");
+                }
+            }
+            LastCancelNote = returnedLines == 0 && shortNotes.Count == 0 ? null
+                : (returnedLines > 0 ? "أُعيدت المواد المصروفة إلى مخازنها" : "لم تُعَد مواد") + (shortNotes.Count > 0 ? " — " + string.Join("، ", shortNotes) : "");
+        }
         order.Status = ProductionOrderStatus.Cancelled;
         await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Void", "ProductionOrders", order.Id, $"إلغاء {order.MONumber}{(LastCancelNote is null ? "" : " — " + LastCancelNote)}");
+        await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>
+    /// حذف نهائي لأمر ملغى لم يبقَ له أثر: بلا تعبئة ولا فحص مختبر، وحركاته المخزنية (صرف ثم إعادة) صافيها صفر
+    /// في كل مخزن وتشغيلة، وليست في فترة مقفلة. تُحذف معه دفعاته الفارغة وسطوره واستهلاكه وحركاته المتقابلة.
+    /// لصاحب صلاحية «إلغاء المستندات المرحّلة»، بسبب إلزامي في سجل التدقيق.
+    /// </summary>
+    public async Task<FinanceOperationResult> DeleteCancelledAsync(int orderId, string reason, int userId)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب الحذف");
+        if (!await SpecialPermission.HasAsync(_db, userId, SpecialPermission.VoidPosted))
+            return FinanceOperationResult.Fail($"الحذف النهائي يحتاج صلاحية «{SpecialPermission.NameOf(SpecialPermission.VoidPosted)}»");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var order = await _db.ProductionOrders.Include(o => o.Lines).Include(o => o.Consumptions).FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order is null) return FinanceOperationResult.Fail("أمر الإنتاج غير موجود");
+        if (order.Status != ProductionOrderStatus.Cancelled) return FinanceOperationResult.Fail("لا يُحذف إلا أمر ملغى");
+        if (await _db.PackingOrders.AnyAsync(p => p.ProductionOrderId == orderId)) return FinanceOperationResult.Fail("للأمر تعبئة مسجّلة — لا يُحذف");
+        if (await _db.QCBatchResults.AnyAsync(q => q.ProductionOrderId == orderId)) return FinanceOperationResult.Fail("للأمر فحص مختبر مسجّل — لا يُحذف");
+
+        var moves = await _db.StockTransactions.Where(t => t.ReferenceTable == "ProductionOrders" && t.ReferenceId == orderId).ToListAsync();
+        if (moves.GroupBy(t => (t.ItemId, t.WarehouseId, t.BatchId)).Any(g => g.Sum(t => t.QuantityBaseUnits) != 0))
+            return FinanceOperationResult.Fail("بقيت للأمر حركة مخزنية لم تُعَد (مواد على الماكينة) — لا يُحذف حتى تُسوّى");
+        if (moves.Count > 0 && await new PeriodLockService(_db).GetLockedThroughAsync() is DateTime locked && moves.Min(t => t.TransactionDate).ToLocalTime().Date <= locked)
+            return FinanceOperationResult.Fail($"حركات الأمر في فترة مقفلة حتى {locked:yyyy/MM/dd}");
+
+        var batchIds = order.Lines.Select(l => l.OutputBatchId).Append(order.OutputBatchId).OfType<int>().Distinct().ToList();
+        if (await _db.StockTransactions.AnyAsync(t => t.BatchId != null && batchIds.Contains(t.BatchId.Value) && !(t.ReferenceTable == "ProductionOrders" && t.ReferenceId == orderId)))
+            return FinanceOperationResult.Fail("دفعة هذا الأمر مستعملة في حركات أخرى — لا يُحذف");
+
+        var number = order.MONumber;
+        _db.StockTransactions.RemoveRange(moves);
+        await _db.WipAdjustments.Where(w => w.ProductionOrderId == orderId).ExecuteUpdateAsync(u => u.SetProperty(w => w.ProductionOrderId, (int?)null));
+        var lineIds = order.Lines.Select(l => l.Id).ToList();
+        _db.ProductionOrderComponentOverrides.RemoveRange(await _db.ProductionOrderComponentOverrides.Where(o => lineIds.Contains(o.ProductionOrderLineId)).ToListAsync());
+        _db.ProductionOrderConsumptions.RemoveRange(order.Consumptions);
+        order.OutputBatchId = null;
+        foreach (var l in order.Lines) l.OutputBatchId = null;
+        await _db.SaveChangesAsync();
+        _db.BatchNumberChanges.RemoveRange(await _db.BatchNumberChanges.Where(c => batchIds.Contains(c.BatchId)).ToListAsync());
+        _db.ItemBatches.RemoveRange(await _db.ItemBatches.Where(b => batchIds.Contains(b.Id)).ToListAsync());
+        _db.ProductionOrderLines.RemoveRange(order.Lines);
+        _db.ProductionOrders.Remove(order);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Delete", "ProductionOrders", orderId, $"حذف نهائي لأمر الإنتاج الملغى {number} — {reason.Trim()}");
+        await tx.CommitAsync();
         return FinanceOperationResult.Ok();
     }
 

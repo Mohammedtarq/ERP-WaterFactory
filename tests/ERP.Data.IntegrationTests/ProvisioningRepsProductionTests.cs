@@ -359,8 +359,32 @@ public class ProductionServiceTests
         var (_, bad) = await prod.RecordQcAsync(second.Value, new[] { For("درجة", "9.1"), For("الأملاح", "120"), For("إحكام", "سليم") }, user);
         Assert.Equal(QCOverallResult.Rejected, bad);
         Assert.Contains("مرفوضة", (await prod.PackAsync(second.Value, piece.Id, 1, fg.Id, user)).ErrorMessage);
-        Assert.True((await prod.CancelAsync(second.Value)).Success);
+        var capBeforeCancel = await Balance(db, cap.Id, raw.Id);
+        Assert.True((await prod.CancelAsync(second.Value, user)).Success);
         Assert.Contains((await prod.GetOrdersAsync()), o => o.Id == second && o.StageText == "ملغى");
+        // الإلغاء يعيد مواده من الماكينة إلى مخزنها (100 غطاء)، ولا يُحذف الأمر لأن له فحص مختبر
+        Assert.Equal(capBeforeCancel + 100, await Balance(db, cap.Id, raw.Id));
+        Assert.NotNull(prod.LastCancelNote);
+        Assert.Contains("فحص مختبر", (await prod.DeleteCancelledAsync(second.Value, "تجربة", user)).ErrorMessage);
+        Assert.Contains("ملغى", (await prod.DeleteCancelledAsync(orderId.Value, "تجربة", user)).ErrorMessage);   // المكتمل لا يُحذف
+
+        // أمر ثالث: بدء ثم إلغاء بلا فحص ← تعود المواد كاملة ← يُحذف نهائيًا مع دفعته الفارغة وحركاته المتقابلة
+        var capThird = await Balance(db, cap.Id, raw.Id);
+        var (_, third) = await prod.CreateOrderAsync(w500.Id, 50, null, raw.Id, machineId, user);
+        Assert.True((await prod.StartAsync(third!.Value, user)).Success);
+        Assert.Equal(capThird - 50, await Balance(db, cap.Id, raw.Id));
+        Assert.True((await prod.CancelAsync(third.Value, user)).Success);
+        Assert.Equal(capThird, await Balance(db, cap.Id, raw.Id));
+        var thirdBatch = await db.ProductionOrderLines.Where(l => l.ProductionOrderId == third).Select(l => l.OutputBatchId).FirstAsync();
+        Assert.Contains("سبب", (await prod.DeleteCancelledAsync(third.Value, " ", user)).ErrorMessage);
+        Assert.True((await prod.DeleteCancelledAsync(third.Value, "أمر تجريبي خاطئ", user)).Success);
+        await using (var check = _f.NewDb())
+        {
+            Assert.False(await check.ProductionOrders.AnyAsync(o => o.Id == third));
+            Assert.False(await check.ItemBatches.AnyAsync(b => b.Id == thirdBatch));
+            Assert.False(await check.StockTransactions.AnyAsync(t => t.ReferenceTable == "ProductionOrders" && t.ReferenceId == third));
+            Assert.Equal(capThird, await Balance(check, cap.Id, raw.Id));
+        }
 
         // نقص مواد أولية ← البدء يُرفض دون أي صرف جزئي
         var (_, huge) = await prod.CreateOrderAsync(w500.Id, 1_000_000, null, raw.Id, machineId, user);

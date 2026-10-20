@@ -39,6 +39,8 @@
                         <TextBlock Text="إلى" VerticalAlignment="Center" Margin="10,0,6,0"/>
                         <DatePicker SelectedDate="{Binding OrdersTo}" Width="125"/>
                         <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding RefreshCommand}" Margin="10,0,0,0"/>
+                        <TextBlock Text="سبب الحذف" VerticalAlignment="Center" Margin="16,0,6,0" ToolTip="للحذف النهائي لأمر ملغى من قائمة ⋮"/>
+                        <TextBox Text="{Binding DeleteReason, UpdateSourceTrigger=PropertyChanged}" Width="160"/>
                     </StackPanel>
                 </DockPanel>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
@@ -117,6 +119,7 @@
                                                 <MenuItem Header="طباعة محضر التعبئة" Command="{Binding DataContext.PrintPackingCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                                 <Separator/>
                                                 <MenuItem Header="إلغاء الأمر" Foreground="#DC2626" Command="{Binding DataContext.CancelOrderCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                <MenuItem Header="حذف نهائي (أمر ملغى)" Foreground="#991B1B" Command="{Binding DataContext.DeleteOrderCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                             </MenuItem>
                                         </Menu>
                                     </StackPanel>

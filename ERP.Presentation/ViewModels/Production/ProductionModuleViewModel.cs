@@ -107,6 +107,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         StartCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? StartAsync(r) : Task.CompletedTask);
         CompleteCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? CompleteAsync(r) : Task.CompletedTask);
         CancelOrderCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? CancelAsync(r) : Task.CompletedTask);
+        DeleteOrderCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? DeleteCancelledAsync(r) : Task.CompletedTask);
         PrintCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? PrintAsync(db => DocumentReports.ProductionOrderAsync(Session, db, r.Id)) : Task.CompletedTask);
         PrintPackingCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? PrintAsync(db => DocumentReports.PackingAsync(Session, db, r.Id)) : Task.CompletedTask);
     }
@@ -308,6 +309,10 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public AsyncRelayCommand StartCommand { get; }
     public AsyncRelayCommand CompleteCommand { get; }
     public AsyncRelayCommand CancelOrderCommand { get; }
+    public AsyncRelayCommand DeleteOrderCommand { get; }
+    private string? _deleteReason;
+    /// <summary>سبب الحذف النهائي لأمر ملغى (إلزامي، يُسجَّل في سجل التدقيق).</summary>
+    public string? DeleteReason { get => _deleteReason; set => SetProperty(ref _deleteReason, value); }
     public AsyncRelayCommand PrintCommand { get; }
     public AsyncRelayCommand PrintPackingCommand { get; }
 
@@ -505,11 +510,30 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private async Task CancelAsync(ProductionOrderRow row)
     {
         if (!Require(CanDelete, "إلغاء أوامر الإنتاج")) return;
-        var warn = row.Status == ProductionOrderStatus.InProgress ? " المواد المصروفة لن تُعاد (تُحسب هدرًا)." : "";
+        var warn = row.Status == ProductionOrderStatus.InProgress ? " المواد المصروفة له تعود من الماكينة إلى مخازنها (ما بقي منها فعلًا)." : "";
         if (!Dialogs.Confirm($"إلغاء {row.MONumber}؟{warn}")) return;
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(() => new ProductionService(db).CancelAsync(row.Id), $"أُلغي {row.MONumber}"))
+        var svc = new ProductionService(db);
+        if (await RunOperationAsync(() => svc.CancelAsync(row.Id, Session.UserId), $"أُلغي {row.MONumber}"))
+        {
+            if (svc.LastCancelNote is { } note) StatusMessage = $"أُلغي {row.MONumber} — {note}";
             await LoadAsync();
+        }
+    }
+
+    /// <summary>حذف نهائي لأمر ملغى لا أثر له (بلا تعبئة ولا فحص، ومواده أُعيدت) — بسبب وصلاحية خاصة.</summary>
+    private async Task DeleteCancelledAsync(ProductionOrderRow row)
+    {
+        if (row.Status != ProductionOrderStatus.Cancelled) { Dialogs.Error("الحذف النهائي لأمر ملغى فقط — ألغِه أولًا"); return; }
+        if (!Require(Has(SpecialPermission.VoidPosted), "الحذف النهائي لأوامر الإنتاج")) return;
+        if (string.IsNullOrWhiteSpace(DeleteReason)) { Dialogs.Error("اكتب سبب الحذف في خانة «سبب الحذف» أعلى القائمة أولًا"); return; }
+        if (!Dialogs.Confirm($"حذف {row.MONumber} نهائيًا؟ لا يمكن التراجع.\nالسبب: {DeleteReason!.Trim()}")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ProductionService(db).DeleteCancelledAsync(row.Id, DeleteReason!, Session.UserId), $"حُذف {row.MONumber} نهائيًا"))
+        {
+            DeleteReason = null;
+            await LoadAsync();
+        }
     }
 }
 
