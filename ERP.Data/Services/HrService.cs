@@ -93,9 +93,12 @@ public class HrService
             return FinanceOperationResult.Fail("رواتب هذا الشهر معتمدة؛ لا يمكن تعديل حضوره");
         var ids = inputs.Select(i => i.EmployeeId).ToList();
         var employees = await _db.Employees.Include(e => e.Shift).Where(e => ids.Contains(e.Id)).ToDictionaryAsync(e => e.Id);
+        // شفت اليوم: شفت البطاقة أو الاستثناء المؤقت (نقل شفت / وقت دخول خاص)
+        var resolver = await ShiftResolver.LoadAsync(_db, ids, date, date);
+        Shift? ShiftOf(int emp) => resolver.For(emp, employees[emp].Shift, date);
         // الخروج قبل الدخول مسموح فقط في الشفت الليلي (يعبر منتصف الليل)
         foreach (var i in inputs)
-            if (i.CheckIn is not null && i.CheckOut is not null && i.CheckOut < i.CheckIn && employees[i.EmployeeId].Shift?.IsOvernight != true)
+            if (i.CheckIn is not null && i.CheckOut is not null && i.CheckOut < i.CheckIn && ShiftOf(i.EmployeeId)?.IsOvernight != true)
                 return FinanceOperationResult.Fail($"وقت الخروج قبل وقت الدخول للموظف {employees[i.EmployeeId].FullName}");
         var existing = await _db.AttendanceRecords.Where(a => a.AttendanceDate == date && ids.Contains(a.EmployeeId))
                                                   .ToDictionaryAsync(a => a.EmployeeId);
@@ -105,7 +108,7 @@ public class HrService
         var hourly = await leaves.HourlyOnAsync(date, ids);
         foreach (var input in inputs)
         {
-            var shift = HrCalendar.EffectiveShift(employees[input.EmployeeId].Shift, hourly.GetValueOrDefault(input.EmployeeId) ?? new());
+            var shift = HrCalendar.EffectiveShift(ShiftOf(input.EmployeeId), hourly.GetValueOrDefault(input.EmployeeId) ?? new());
             var forced = onLeave.Contains(input.EmployeeId) ? AttendanceStatus.ApprovedLeave : input.ForcedStatus;
             var (status, late) = Classify(shift, forced, input.CheckIn);
             if (!existing.TryGetValue(input.EmployeeId, out var rec))

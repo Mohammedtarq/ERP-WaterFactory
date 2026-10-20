@@ -268,6 +268,114 @@ public class DailyProductionSectionViewModel : SectionViewModel
     }
 }
 
+// ============================ ربط التشغيلات المستوردة ============================
+/// <summary>سطر في أداة الربط: التشغيلة المستوردة، والمتغير المختار (المقترح افتراضيًا)، والتأشير.</summary>
+public class ImportedBatchLine : ObservableObject
+{
+    private bool _isChecked;
+    private CustomRecipe? _choice;
+    private readonly Action _changed;
+
+    public ImportedBatchLine(ImportedBatchRow row, IEnumerable<CustomRecipe> options, Action changed)
+    {
+        Row = row;
+        _changed = changed;
+        foreach (var o in options) Options.Add(o);
+        _choice = Options.FirstOrDefault(o => o.Id == row.SuggestedRecipeId);
+        _isChecked = row.Exact && _choice is not null;          // المطابق تمامًا مؤشَّر مسبقًا، والباقي لقرار المستخدم
+    }
+
+    public ImportedBatchRow Row { get; }
+    public ObservableCollection<CustomRecipe> Options { get; } = new();
+    public string MatchText => Row.Exact ? "مطابق تمامًا" : Row.SuggestedRecipeId is not null ? "اقتراح — راجعه" : "يحتاج قرارك";
+    public bool IsChecked { get => _isChecked; set { if (SetProperty(ref _isChecked, value)) _changed(); } }
+    public CustomRecipe? Choice
+    {
+        get => _choice;
+        set
+        {
+            if (!SetProperty(ref _choice, value)) return;
+            if (value is not null && !_isChecked) { _isChecked = true; OnPropertyChanged(nameof(IsChecked)); }
+            _changed();
+        }
+    }
+}
+
+/// <summary>سطر المعاينة: رصيد المتغير قبل الربط وبعده (المجموع لا يتغير).</summary>
+public record ImportedPreviewRow(string Product, string Variant, string Before, string After);
+
+/// <summary>
+/// أداة ربط التشغيلات الافتتاحية المستوردة (RH-…) بمتغيراتها الصحيحة دفعة واحدة: اقتراح بالمطابقة، ومعاينة قبل/بعد،
+/// وتطبيق بسبب واحد (صلاحية «المخزون المحجوز»). لا حركات مخزنية — يتغير متغير التشغيلة فقط.
+/// </summary>
+public class ImportedBatchesSectionViewModel : SectionViewModel
+{
+    private string _reason = "تصحيح متغير رصيد افتتاحي مستورد";
+
+    public ImportedBatchesSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.Production, "ربط التشغيلات المستوردة", Icons.Layers, "#7C3AED", "تشغيلات الرصيد الافتتاحي (RH-…) بمتغيراتها الصحيحة، بمعاينة قبل التطبيق")
+    {
+        ApplyCommand = new AsyncRelayCommand(ApplyAsync);
+        CheckAllExactCommand = new RelayCommand(() => { foreach (var l in Lines.Where(l => l.Row.Exact && l.Choice is not null)) l.IsChecked = true; });
+    }
+
+    protected override bool ReloadOnActivate => true;
+    public ObservableCollection<ImportedBatchLine> Lines { get; } = new();
+    public ObservableCollection<ImportedPreviewRow> Preview { get; } = new();
+    public string Reason { get => _reason; set => SetProperty(ref _reason, value); }
+    public bool CanApply => Has(SpecialPermission.ReservedStock);
+    public int CheckedCount => Lines.Count(l => l.IsChecked && l.Choice is not null);
+    public AsyncRelayCommand ApplyCommand { get; }
+    public RelayCommand CheckAllExactCommand { get; }
+
+    public override async Task LoadAsync()
+    {
+        await using var db = Session.NewDb();
+        var rows = await new VariantStockService(db).ImportedBatchesAsync();
+        var ids = rows.Select(r => r.ItemId).Distinct().ToList();
+        var recipes = await db.CustomRecipes.AsNoTracking().Where(r => ids.Contains(r.FinishedItemId) && r.IsActive).OrderBy(r => r.Name).ToListAsync();
+        _names = await ProductNames.LoadAsync(db, ids);
+        _levels = (await db.ItemPackagingLevels.AsNoTracking().Where(l => ids.Contains(l.ItemId)).ToListAsync())
+            .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => (IReadOnlyList<ItemPackagingLevel>)g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
+        Lines.Clear();
+        foreach (var r in rows) Lines.Add(new ImportedBatchLine(r, recipes.Where(x => x.FinishedItemId == r.ItemId), RefreshPreview));
+        RefreshPreview();
+        StatusMessage = rows.Count == 0 ? "لا توجد تشغيلات مستوردة بلا متغير — كل الأرصدة الافتتاحية مربوطة"
+            : $"{rows.Count} تشغيلة مستوردة بلا متغير: {rows.Count(r => r.Exact)} مطابقة تمامًا، {rows.Count(r => !r.Exact)} تحتاج مراجعتك";
+    }
+
+    private ProductNames? _names;
+    private Dictionary<int, IReadOnlyList<ItemPackagingLevel>> _levels = new();
+
+    /// <summary>المعاينة: لكل منتج، رصيد الأساسي والمتغيرات قبل الربط وبعده (للتشغيلات المستوردة وحدها).</summary>
+    private void RefreshPreview()
+    {
+        Preview.Clear();
+        foreach (var g in Lines.GroupBy(l => l.Row.ItemId))
+        {
+            var product = _names?.PackName(g.Key) ?? g.First().Row.ProductName;
+            var moving = g.Where(l => l.IsChecked && l.Choice is not null).ToList();
+            string Q(decimal pieces) => WarehouseDocumentService.Breakdown(pieces, _levels.GetValueOrDefault(g.Key));
+            var total = g.Sum(l => l.Row.Balance);
+            Preview.Add(new ImportedPreviewRow(product, _names?.Variant(null) ?? "الأساسي", Q(total), Q(total - moving.Sum(l => l.Row.Balance))));
+            foreach (var v in moving.GroupBy(l => l.Choice!.Id))
+                Preview.Add(new ImportedPreviewRow(product, v.First().Choice!.Name, "0", Q(v.Sum(l => l.Row.Balance))));
+        }
+        OnPropertyChanged(nameof(CheckedCount));
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (!Require(CanApply, "ربط التشغيلات المستوردة")) return;
+        var links = Lines.Where(l => l.IsChecked && l.Choice is not null).Select(l => (l.Row.BatchId, l.Choice!.Id)).ToList();
+        if (links.Count == 0) { Dialogs.Error("أشّر على تشغيلة واحدة على الأقل واختر متغيرها"); return; }
+        if (!Dialogs.Confirm($"ربط {links.Count} تشغيلة بمتغيراتها؟\nالمجموع لا يتغير، يتوزع على المتغيرات الصحيحة فقط.\nالسبب: {Reason.Trim()}")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new VariantStockService(db).ApplyImportedAsync(links, Reason, Session.UserId), $"رُبطت {links.Count} تشغيلة بمتغيراتها"))
+            await LoadAsync();
+    }
+}
+
 // ============================ متغيرات المنتج ============================
 /// <summary>
 /// المنتج التام حسب المتغير: ما أُنتج وبيع في الفترة ورصيده الآن وكلفة قطعته، وتشغيلاته بأرصدتها،

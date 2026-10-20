@@ -157,6 +157,7 @@ public partial class ProjectDbContext : DbContext
     // ---- الإجازات والعطل والعمل الإضافي (44_hr_leaves_overtime.sql) ----
     public DbSet<LeaveType> LeaveTypes => Set<LeaveType>();
     public DbSet<EmployeeLeave> EmployeeLeaves => Set<EmployeeLeave>();
+    public DbSet<EmployeeShiftOverride> EmployeeShiftOverrides => Set<EmployeeShiftOverride>();
     public DbSet<PublicHoliday> PublicHolidays => Set<PublicHoliday>();
     public DbSet<OvertimeEntry> OvertimeEntries => Set<OvertimeEntry>();
     public DbSet<HrPolicy> HrPolicies => Set<HrPolicy>();
@@ -195,6 +196,15 @@ public partial class ProjectDbContext : DbContext
         {
             e.Property(x => x.AllowedDays).HasPrecision(6, 2);
             e.Property(x => x.AllowancePeriod).HasConversion<string>();
+        });
+        modelBuilder.Entity<EmployeeShiftOverride>(e =>
+        {
+            e.Property(x => x.FromDate).HasColumnType("date");
+            e.Property(x => x.ToDate).HasColumnType("date");
+            e.Property(x => x.CheckInTime).HasColumnType("time(0)");
+            e.Property(x => x.Reason).HasMaxLength(200);
+            e.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Shift).WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<EmployeeLeave>(e =>
         {

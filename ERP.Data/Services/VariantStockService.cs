@@ -26,6 +26,16 @@ public record VariantBatchRow(int BatchId, int ItemId, string ItemName, string B
 }
 
 /// <summary>
+/// تشغيلة افتتاحية مستوردة من نظام الرحمة (RH-اسم الملصق) بلا متغير، مع المتغير المقترح بمطابقة اسمها.
+/// Exact = الاسم يطابق اسم المتغير الخاص (أو زبونه) تمامًا؛ وإلا اقتراح للمراجعة أو لا اقتراح.
+/// </summary>
+public record ImportedBatchRow(int BatchId, int ItemId, string BatchNumber, string Label, decimal Balance, int? SuggestedRecipeId, bool Exact)
+{
+    public string BalanceText { get; init; } = "";
+    public string ProductName { get; init; } = "";
+}
+
+/// <summary>
 /// المنتج التام حسب المتغير (الأساسي، محجوز مطعم، مناسبة): ملخص الفترة، والتشغيلات بأرصدتها،
 /// وتصحيح متغير تشغيلة سُجّلت خطأً (بالصلاحية الخاصة، ومع سجل الحركات).
 /// </summary>
@@ -99,6 +109,54 @@ public class VariantStockService
         var names = await ProductNames.LoadAsync(_db, itemIds);
         return rows.Select(r => r with { BalanceText = WarehouseDocumentService.Breakdown(r.Balance, levels.GetValueOrDefault(r.ItemId)),
                                          ProductName = names.Name(r.ItemId, r.RecipeId) }).ToList();
+    }
+
+    /// <summary>بادئة تشغيلات الرصيد الافتتاحي في النقل من نظام الرحمة (RahmaImporter).</summary>
+    public const string ImportedPrefix = "RH-";
+
+    /// <summary>
+    /// التشغيلات الافتتاحية المستوردة (RH-…) للمنتج التام التي ما زالت «أساسي» ولها رصيد، مع اقتراح المتغير:
+    /// المتغير الخاص لنفس المنتج الذي اسمه الخاص (قبل « — ») أو اختصاره أو اسم زبونه يساوي اسم الملصق تمامًا،
+    /// وإلا متغير يحتوي الاسم أو يحتويه (للمراجعة).
+    /// </summary>
+    public async Task<List<ImportedBatchRow>> ImportedBatchesAsync()
+    {
+        var batches = (await BatchesAsync()).Where(b => b.RecipeId is null && b.BatchNumber.StartsWith(ImportedPrefix, StringComparison.Ordinal)).ToList();
+        var itemIds = batches.Select(b => b.ItemId).Distinct().ToList();
+        var recipes = await _db.CustomRecipes.AsNoTracking().Where(r => itemIds.Contains(r.FinishedItemId))
+            .Select(r => new { r.Id, r.FinishedItemId, r.Name, r.ShortName, Customer = r.Customer != null ? r.Customer.Name : null }).ToListAsync();
+        static string Norm(string? v) => string.Join(' ', (v ?? "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        return batches.Select(b =>
+        {
+            var label = Norm(b.BatchNumber[ImportedPrefix.Length..]);
+            // اسمان طويلان تطابقا بعد القص في النقل: «…-2»
+            if (System.Text.RegularExpressions.Regex.Match(label, @"^(.*)-\d+$") is { Success: true } m) label = Norm(m.Groups[1].Value);
+            var mine = recipes.Where(r => r.FinishedItemId == b.ItemId).ToList();
+            var exact = mine.Where(r => Norm(r.Name.Split(" — ")[0]) == label || Norm(r.ShortName) == label || Norm(r.Customer) == label).ToList();
+            var partial = exact.Count > 0 ? exact : mine.Where(r => label.Length >= 3 &&
+                (Norm(r.Name).Contains(label, StringComparison.OrdinalIgnoreCase) || label.Contains(Norm(r.Name.Split(" — ")[0]), StringComparison.OrdinalIgnoreCase))).ToList();
+            var pick = partial.Count == 1 ? partial[0].Id : (int?)null;
+            return new ImportedBatchRow(b.BatchId, b.ItemId, b.BatchNumber, label, b.Balance, pick, exact.Count == 1)
+                { BalanceText = b.BalanceText, ProductName = b.ProductName };
+        }).OrderBy(r => r.ProductName).ThenBy(r => r.Label).ToList();
+    }
+
+    /// <summary>ربط تشغيلات مستوردة بمتغيراتها دفعة واحدة بسبب واحد — الكل أو لا شيء، وكل تغيير في سجل التدقيق.</summary>
+    public async Task<FinanceOperationResult> ApplyImportedAsync(IReadOnlyCollection<(int BatchId, int RecipeId)> links, string reason, int userId)
+    {
+        if (links.Count == 0) return FinanceOperationResult.Fail("أشّر على تشغيلة واحدة على الأقل واختر متغيرها");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        foreach (var (batchId, recipeId) in links)
+        {
+            var r = await SetBatchVariantAsync(batchId, recipeId, reason, userId);
+            if (!r.Success)
+            {
+                var number = await _db.ItemBatches.Where(b => b.Id == batchId).Select(b => b.BatchNumber).FirstOrDefaultAsync();
+                return FinanceOperationResult.Fail($"{number}: {r.ErrorMessage}");
+            }
+        }
+        await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
     }
 
     /// <summary>تصحيح متغير تشغيلة (مثلًا إنتاج مطعم سُجّل أساسيًا): يغيّر من يحق له الصرف منها من الآن.</summary>

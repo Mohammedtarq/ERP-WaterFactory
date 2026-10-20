@@ -369,12 +369,34 @@ public class HrLeaveService
         }
     }
 
+    /// <summary>
+    /// بعد إضافة أو تعديل استثناء شفت: يعيد حساب التأخير لأيام الموظف المسجّلة في المدة
+    /// (عدا أشهر رواتبها معتمدة). يعيد عدد الأيام التي أُعيد حسابها.
+    /// </summary>
+    public async Task<int> ReclassifyRangeAsync(int employeeId, DateTime from, DateTime to)
+    {
+        var days = await _db.AttendanceRecords.AsNoTracking()
+            .Where(a => a.EmployeeId == employeeId && a.AttendanceDate >= from.Date && a.AttendanceDate <= to.Date && a.CheckInTime != null)
+            .Select(a => a.AttendanceDate).ToListAsync();
+        var approved = (await _db.PayrollRuns.AsNoTracking().Where(r => r.Status == PayrollRunStatus.Approved).Select(r => new { r.PeriodMonth, r.PeriodYear }).ToListAsync())
+            .Select(r => (r.PeriodMonth, r.PeriodYear)).ToHashSet();
+        var n = 0;
+        foreach (var d in days.Where(d => !approved.Contains((d.Month, d.Year))))
+        {
+            await ReclassifyDayAsync(employeeId, d);
+            n++;
+        }
+        await _db.SaveChangesAsync();
+        return n;
+    }
+
     /// <summary>يعيد حساب حالة يوم موظف (حاضر/متأخر) من وقت دخوله وشفته بعد زمنياته السارية.</summary>
     private async Task ReclassifyDayAsync(int employeeId, DateTime day)
     {
         var rec = await _db.AttendanceRecords.FirstOrDefaultAsync(a => a.EmployeeId == employeeId && a.AttendanceDate == day.Date);
         if (rec is null || rec.CheckInTime is null || rec.Status is AttendanceStatus.ApprovedLeave or AttendanceStatus.Absent) return;
-        var shift = (await _db.Employees.AsNoTracking().Include(e => e.Shift).FirstAsync(e => e.Id == employeeId)).Shift;
+        var own = (await _db.Employees.AsNoTracking().Include(e => e.Shift).FirstAsync(e => e.Id == employeeId)).Shift;
+        var shift = (await ShiftResolver.LoadAsync(_db, new[] { employeeId }, day, day)).For(employeeId, own, day);
         var hourly = await HourlyOnAsync(day.Date, new[] { employeeId });
         var (status, late) = HrService.Classify(HrCalendar.EffectiveShift(shift, hourly.GetValueOrDefault(employeeId) ?? new()), null, rec.CheckInTime);
         (rec.Status, rec.LateMinutes) = (status, late);

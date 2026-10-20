@@ -516,4 +516,50 @@ public class BatchVariantTests
         Assert.True(month.Revenue >= 27_500m);
         Assert.Contains(month.Products, p => p.ItemName == s.Water.ItemName);
     }
+
+    /// <summary>
+    /// التشغيلات الافتتاحية المستوردة (RH-اسم الملصق) بلا متغير: الأداة تقترح متغير المطعم بمطابقة الاسم،
+    /// وتترك الغامض بلا اقتراح، والتطبيق دفعة واحدة يربطها (الكل أو لا شيء) دون حركات مخزنية.
+    /// </summary>
+    [Fact]
+    public async Task Imported_opening_batches_are_matched_to_their_variants_and_linked_in_one_step()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var water = new Item { ItemCode = "RHV-330", ItemName = "ماء ربط 330", SourcingMethod = SourcingMethod.Manufactured };
+        var shop = new Customer { Name = "مطعم الربط" };
+        db.AddRange(water, shop);
+        await db.SaveChangesAsync();
+        var byName = new CustomRecipe { FinishedItemId = water.Id, Name = $"مطعم الربط — {water.ItemName}", CustomerId = shop.Id };
+        var bySpecial = new CustomRecipe { FinishedItemId = water.Id, Name = $"ملصق رمضان الربط — {water.ItemName}" };
+        db.CustomRecipes.AddRange(byName, bySpecial);
+        var b1 = new ItemBatch { ItemId = water.Id, BatchNumber = "RH-مطعم الربط" };
+        var b2 = new ItemBatch { ItemId = water.Id, BatchNumber = "RH-ملصق رمضان الربط-2" };
+        var b3 = new ItemBatch { ItemId = water.Id, BatchNumber = "RH-غامض الربط" };
+        var own = new ItemBatch { ItemId = water.Id, BatchNumber = "RHV-2026-1" };
+        db.ItemBatches.AddRange(b1, b2, b3, own);
+        await db.SaveChangesAsync();
+        foreach (var (b, q) in new[] { (b1, 400m), (b2, 120m), (b3, 80m), (own, 1000m) })
+            db.StockTransactions.Add(new StockTransaction { ItemId = water.Id, WarehouseId = fg.Id, BatchId = b.Id, QuantityBaseUnits = q,
+                                                            TransactionType = StockTransactionType.Receipt, CreatedByUserId = _f.AdminId });
+        await db.SaveChangesAsync();
+
+        var svc = new VariantStockService(db);
+        var rows = (await svc.ImportedBatchesAsync()).Where(r => r.ItemId == water.Id).ToList();
+        Assert.Equal(3, rows.Count);                                         // تشغيلة الإنتاج العادية ليست مستوردة
+        var r1 = rows.Single(r => r.BatchId == b1.Id);
+        Assert.Equal((byName.Id, true), (r1.SuggestedRecipeId, r1.Exact));  // باسم الزبون/المتغير
+        var r2 = rows.Single(r => r.BatchId == b2.Id);
+        Assert.Equal((bySpecial.Id, true, "ملصق رمضان الربط"), (r2.SuggestedRecipeId, r2.Exact, r2.Label));   // «-2» من القص يُتجاهل
+        Assert.Null(rows.Single(r => r.BatchId == b3.Id).SuggestedRecipeId);
+
+        var moves = await db.StockTransactions.CountAsync(t => t.ItemId == water.Id);
+        Assert.False((await svc.ApplyImportedAsync(new[] { (b1.Id, byName.Id) }, " ", _f.AdminId)).Success);      // السبب إلزامي
+        Assert.True((await svc.ApplyImportedAsync(new[] { (b1.Id, byName.Id), (b2.Id, bySpecial.Id) }, "تصحيح رصيد افتتاحي مستورد", _f.AdminId)).Success);
+        await using var check = _f.NewDb(_f.AdminId);
+        Assert.Equal(byName.Id, (await check.ItemBatches.FindAsync(b1.Id))!.CustomRecipeId);
+        Assert.Equal(bySpecial.Id, (await check.ItemBatches.FindAsync(b2.Id))!.CustomRecipeId);
+        Assert.Equal(moves, await check.StockTransactions.CountAsync(t => t.ItemId == water.Id));          // بلا حركات مخزنية
+        Assert.Single((await new VariantStockService(check).ImportedBatchesAsync()).Where(r => r.ItemId == water.Id));   // الغامض فقط بقي
+    }
 }

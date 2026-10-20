@@ -28,6 +28,7 @@ public class HrModuleViewModel : ModuleViewModel
         AnnualRaises = Add(new AnnualRaisesSectionViewModel(s, d));
         Add(new EmployeesSectionViewModel(s, d));
         Add(new ShiftsSectionViewModel(s, d));
+        Add(new ShiftOverridesSectionViewModel(s, d));
         Add(new DepartmentsSectionViewModel(s, d));
         Add(new RaiseGradesSectionViewModel(s, d));
         Add(new IncentiveSettingsSectionViewModel(s, d));
@@ -676,6 +677,71 @@ public class ShiftsSectionViewModel : CrudSectionViewModel<Shift>
     {
         if (string.IsNullOrWhiteSpace(e.Name)) return "أدخل اسم الشفت";
         if (e.CheckInGraceMinutes < 0 || e.CheckOutGraceMinutes < 0) return "فترة السماح لا يمكن أن تكون سالبة";
+        return null;
+    }
+}
+
+/// <summary>
+/// نقل الشفت ووقت الدخول الخاص: استثناء مؤقت لموظف بمدة وسبب (نقل للمسائي أسبوعًا، أو دخول 07:00 بدل 06:00 شهرًا).
+/// بعد نهاية المدة يعود شفته تلقائيًا، والحضور واستيراد البصمة يأخذان شفت اليوم من هنا.
+/// </summary>
+public class ShiftOverridesSectionViewModel : CrudSectionViewModel<EmployeeShiftOverride>
+{
+    public ShiftOverridesSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.HR, "نقل الشفت ووقت الدخول الخاص", Icons.Clock, "#F97316", "استثناء مؤقت لموظف: شفت آخر أو وقت دخول خاص لمدة وسبب") { }
+
+    public ObservableCollection<Employee> Employees { get; } = new();
+    public ObservableCollection<Shift> Shifts { get; } = new();
+
+    protected override int GetId(EmployeeShiftOverride e) => e.Id;
+    protected override string Describe(EmployeeShiftOverride e) =>
+        $"{e.Employee?.FullName} {e.FromDate:yyyy/MM/dd}–{e.ToDate:yyyy/MM/dd}";
+    protected override bool Matches(EmployeeShiftOverride e, string text) =>
+        base.Matches(e, text) || (e.Shift?.Name.Contains(text) ?? false) || e.Reason.Contains(text);
+
+    protected override async Task LoadLookupsAsync(ProjectDbContext db)
+    {
+        Employees.Clear();
+        foreach (var x in await db.Employees.AsNoTracking().Include(e => e.Shift).Where(e => e.IsActive && !e.IsTemporary).OrderBy(e => e.FullName).ToListAsync()) Employees.Add(x);
+        Shifts.Clear();
+        foreach (var x in await db.Shifts.AsNoTracking().OrderBy(x => x.CheckInTime).ToListAsync()) Shifts.Add(x);
+    }
+
+    protected override Task<List<EmployeeShiftOverride>> QueryAsync(ProjectDbContext db) =>
+        db.EmployeeShiftOverrides.AsNoTracking().Include(o => o.Employee).ThenInclude(e => e.Shift).Include(o => o.Shift)
+          .OrderByDescending(o => o.ToDate).ThenBy(o => o.Employee.FullName).ToListAsync();
+
+    protected override string? Validate(EmployeeShiftOverride e)
+    {
+        if (e.EmployeeId == 0) return "اختر الموظف";
+        if (e.ToDate.Date < e.FromDate.Date) return "تاريخ النهاية قبل البداية";
+        if (e.ShiftId is null && e.CheckInTime is null) return "اختر شفتًا آخر أو اكتب وقت دخول خاص (أو الاثنين)";
+        if (e.CheckInTime is TimeSpan t && (t < TimeSpan.Zero || t >= TimeSpan.FromDays(1))) return "وقت الدخول بين 00:00 و23:59";
+        if (string.IsNullOrWhiteSpace(e.Reason)) return "اكتب السبب";
+        return null;
+    }
+
+    protected override async Task BeforeSaveAsync(ProjectDbContext db, EmployeeShiftOverride e)
+    {
+        e.Reason = e.Reason.Trim();
+        (e.FromDate, e.ToDate) = (e.FromDate.Date, e.ToDate.Date);
+        // استثناء واحد للموظف في اليوم الواحد: لا تتداخل المدد
+        var clash = await db.EmployeeShiftOverrides.AsNoTracking()
+            .Where(o => o.EmployeeId == e.EmployeeId && o.Id != e.Id && o.FromDate <= e.ToDate && o.ToDate >= e.FromDate)
+            .Select(o => new { o.FromDate, o.ToDate }).FirstOrDefaultAsync();
+        if (clash is not null)
+            throw new DbUpdateException($"للموظف استثناء آخر يتداخل مع هذه المدة ({clash.FromDate:yyyy/MM/dd}–{clash.ToDate:yyyy/MM/dd}) — عدّله بدل إضافة جديد");
+    }
+
+    /// <summary>الحضور المسجّل في المدة يُعاد حساب تأخيره على الشفت الجديد.</summary>
+    protected override async Task<string?> AfterSaveAsync(EmployeeShiftOverride e, bool isNew)
+    {
+        await using var db = Session.NewDb();
+        var n = await new HrLeaveService(db).ReclassifyRangeAsync(e.EmployeeId, e.FromDate, e.ToDate);
+        await new AuditService(db).LogAsync(Session.UserId, isNew ? "Insert" : "Update", "Employees", e.EmployeeId,
+            $"استثناء شفت {e.FromDate:yyyy/MM/dd}–{e.ToDate:yyyy/MM/dd}: {Shifts.FirstOrDefault(x => x.Id == e.ShiftId)?.Name ?? "شفته نفسه"}"
+            + (e.CheckInTime is TimeSpan t ? $" دخول {t:hh\\:mm}" : "") + $" — {e.Reason}");
+        if (n > 0) StatusMessage = $"أُعيد حساب {n} يوم حضور على الشفت الجديد";
         return null;
     }
 }

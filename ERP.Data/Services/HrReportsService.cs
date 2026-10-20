@@ -177,6 +177,11 @@ public class HrReportsService
         var onLeave = (await _db.EmployeeLeaves.AsNoTracking().Where(l => ids.Contains(l.EmployeeId) && !l.IsVoided && l.Kind == LeaveKind.Day && l.FromDate <= to && l.ToDate >= from)
                 .Select(l => new { l.EmployeeId, l.FromDate, l.ToDate }).ToListAsync());
         bool Leave(int emp, DateTime day) => onLeave.Any(l => l.EmployeeId == emp && l.FromDate.Date <= day && l.ToDate.Date >= day);
+        // الإجازات الزمنية (بالساعات) لكل موظف ويوم: تظهر في عمود خاص
+        var hourly = (await _db.EmployeeLeaves.AsNoTracking().Where(l => ids.Contains(l.EmployeeId) && !l.IsVoided && l.Kind == LeaveKind.Hourly && l.FromDate >= from && l.FromDate <= to)
+                .Select(l => new { l.EmployeeId, l.FromDate, l.FromTime, l.ToTime }).ToListAsync())
+            .GroupBy(l => (l.EmployeeId, l.FromDate.Date))
+            .ToDictionary(g => g.Key, g => string.Join("، ", g.OrderBy(l => l.FromTime).Select(l => $"{Time(l.FromTime)}←{Time(l.ToTime)}")));
 
         var late = onlyStatus == AttendanceStatus.Late;
         var absent = onlyStatus == AttendanceStatus.Absent;
@@ -186,10 +191,11 @@ public class HrReportsService
             Subtitle = Range(r) + (r.DepartmentId is null && r.EmployeeId is null ? " — كل الأقسام" : ""),
             Notes = late ? "المتأخر: من دخل بعد موعد شفته ومهلة السماح." : absent ? "الغائب: من سُجّل غيابه (لا تشمل الإجازات المسجّلة)." : null
         };
-        t.Columns.AddRange(new[] { "التاريخ", "القسم", "الموظف", "الحالة", "الدخول", "الخروج", "دقائق التأخر" });
+        t.Columns.AddRange(new[] { "التاريخ", "القسم", "الموظف", "الحالة", "الدخول", "الخروج", "دقائق التأخر", "زمنية" });
         t.NumericColumns.Add(6);
         var counts = new Dictionary<string, int>();
         var lateMinutes = 0;
+        var hourlyCount = 0;
         foreach (var day in Enumerable.Range(0, (to - from).Days + 1).Select(i => from.AddDays(i)))
             foreach (var e in emps.Values)
             {
@@ -206,11 +212,14 @@ public class HrReportsService
                 if (absent && status != "غائب") continue;
                 counts[status] = counts.GetValueOrDefault(status) + 1;
                 lateMinutes += status == "متأخر" ? rec!.LateMinutes : 0;
+                var hourlyText = hourly.GetValueOrDefault((e.Id, day)) ?? "";
+                if (hourlyText.Length > 0) hourlyCount++;
                 t.Rows.Add(new[] { day.ToString("yyyy/MM/dd", En), e.Department, e.Name, status, Time(rec?.CheckInTime), Time(rec?.CheckOutTime),
-                                   rec is { LateMinutes: > 0 } ? rec.LateMinutes.ToString(En) : "" });
+                                   rec is { LateMinutes: > 0 } ? rec.LateMinutes.ToString(En) : "", hourlyText });
             }
         foreach (var s in new[] { "حاضر", "متأخر", "غائب", "إجازة", "لم يُسجَّل" })
             if (counts.TryGetValue(s, out var n)) t.Totals.Add((s, n.ToString()));
+        if (hourlyCount > 0) t.Totals.Add(("زمنية", hourlyCount.ToString()));
         if (lateMinutes > 0) t.Totals.Add(("مجموع دقائق التأخر", lateMinutes.ToString("#,0", En)));
         return t;
     }

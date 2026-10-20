@@ -5,12 +5,16 @@ namespace ERP.Desktop.Printing;
 
 public enum PrinterKind { A4, Receipt80 }
 
+/// <summary>اتجاه صفحة A4: تلقائي (عرضي إذا زادت الأعمدة على <see cref="ReportPrinter.AutoLandscapeColumns"/>)، طولي، عرضي.</summary>
+public enum PageOrientationChoice { Auto, Portrait, Landscape }
+
 /// <summary>تفضيلات نوع مستند واحد: آخر نوع طابعة، الأعمدة المخفية (بالاسم)، وإخفاء الصفوف الصفرية.</summary>
 public class ReportPreference
 {
     public PrinterKind Printer { get; set; } = PrinterKind.A4;
     public List<string> HiddenColumns { get; set; } = new();
     public bool HideZeroRows { get; set; }
+    public PageOrientationChoice Orientation { get; set; } = PageOrientationChoice.Auto;
 }
 
 /// <summary>
@@ -46,7 +50,7 @@ public static class PrintPreferences
     {
         lock (Gate)
             return All.TryGetValue(key, out var p)
-                ? new ReportPreference { Printer = p.Printer, HiddenColumns = p.HiddenColumns.ToList(), HideZeroRows = p.HideZeroRows }
+                ? new ReportPreference { Printer = p.Printer, HiddenColumns = p.HiddenColumns.ToList(), HideZeroRows = p.HideZeroRows, Orientation = p.Orientation }
                 : new ReportPreference();
     }
 

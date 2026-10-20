@@ -13,7 +13,17 @@ namespace ERP.Desktop.Printing;
 /// </summary>
 public static class ReportPrinter
 {
-    public static FixedDocument BuildA4(ReportDocument doc) => Prepare(ReportRenderer.A4(doc).ToFixedDocument());
+    /// <summary>التقرير الذي تزيد أعمدته على هذا العدد يُطبع عرضيًا في الوضع التلقائي.</summary>
+    public const int AutoLandscapeColumns = 7;
+
+    public static bool IsLandscape(ReportDocument doc, PageOrientationChoice choice) =>
+        choice == PageOrientationChoice.Landscape || (choice == PageOrientationChoice.Auto && doc.Columns.Count > AutoLandscapeColumns);
+
+    /// <summary>مقاس صفحة A4 طوليًا أو عرضيًا.</summary>
+    public static Size A4Size(bool landscape) =>
+        landscape ? new Size(ReportRenderer.PageHeight, ReportRenderer.PageWidth) : new Size(ReportRenderer.PageWidth, ReportRenderer.PageHeight);
+
+    public static FixedDocument BuildA4(ReportDocument doc, bool landscape = false) => Prepare(ReportRenderer.A4(doc, A4Size(landscape)).ToFixedDocument());
 
     /// <summary>الإيصال الحراري صفحة واحدة بعرض 80mm وبطول المحتوى.</summary>
     public static FixedDocument BuildReceipt(ReportDocument doc, out Size size)
@@ -31,9 +41,9 @@ public static class ReportPrinter
     }
 
     /// <summary>يطبع على طابور محدد بإعدادات الطباعة المختارة (من نافذة الطباعة أو للاختبار).</summary>
-    public static void Print(PrintQueue queue, PrintTicket? ticket, ReportDocument doc, PrinterKind kind, string jobName)
+    public static void Print(PrintQueue queue, PrintTicket? ticket, ReportDocument doc, PrinterKind kind, string jobName, bool landscape = false)
     {
-        var fixedDoc = kind == PrinterKind.A4 ? BuildA4(doc) : BuildReceipt(doc, out _);
+        var fixedDoc = kind == PrinterKind.A4 ? BuildA4(doc, landscape) : BuildReceipt(doc, out _);
         queue.CurrentJobSettings.Description = jobName;
         var writer = PrintQueue.CreateXpsDocumentWriter(queue);
         if (ticket is null) writer.Write(fixedDoc);

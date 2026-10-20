@@ -79,18 +79,42 @@ public class FingerprintImportService
             var parts = line.Split(new[] { '\t', ',' }, StringSplitOptions.RemoveEmptyEntries).Select(p => p.Trim()).ToArray();
             if (parts.Length < 2)
             {
-                // بعض الأجهزة تفصل بمسافات: الرقم ثم التاريخ ثم الوقت
+                // بعض الأجهزة تفصل بمسافات: الرقم ثم التاريخ ثم الوقت (ثم ص/م في نظام 12 ساعة)
                 var sp = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                parts = sp.Length >= 3 ? new[] { sp[0], sp[1] + " " + sp[2] } : parts;
+                parts = sp.Length >= 4 && IsMeridiem(sp[3]) ? new[] { sp[0], $"{sp[1]} {sp[2]} {sp[3]}" }
+                      : sp.Length >= 3 ? new[] { sp[0], sp[1] + " " + sp[2] } : parts;
             }
-            if (parts.Length >= 2 && parts[0].Length is > 0 and <= 20
-                && DateTime.TryParseExact(parts[1], new[] { "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm" },
-                                          CultureInfo.InvariantCulture, DateTimeStyles.None, out var t))
+            if (parts.Length >= 2 && parts[0].Length is > 0 and <= 20 && TryParseTime(parts[1], out var t))
                 list.Add(new FingerprintPunch(parts[0], t));
             else
                 skipped++;
         }
         return (list, skipped);
+    }
+
+    private static readonly string[] Formats24 = { "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy/MM/dd HH:mm:ss", "yyyy/MM/dd HH:mm" };
+    private static readonly string[] Formats12 =
+        { "yyyy-MM-dd h:mm:ss tt", "yyyy-MM-dd h:mm tt", "yyyy/MM/dd h:mm:ss tt", "yyyy/MM/dd h:mm tt" };
+
+    private static bool IsMeridiem(string s) => NormalizeMeridiem(s) is "AM" or "PM";
+
+    /// <summary>ص/صباحًا/AM ← AM، و م/مساءً/PM ← PM (بلا تشكيل ولا نقاط).</summary>
+    private static string NormalizeMeridiem(string s)
+    {
+        var x = s.Trim().Trim('.').Replace("ً", "").Replace(".", "").ToUpperInvariant();
+        return x switch { "AM" or "A" or "ص" or "صباحا" or "صباحاً" => "AM", "PM" or "P" or "م" or "مساء" or "مساءا" or "مساءً" => "PM", _ => x };
+    }
+
+    /// <summary>
+    /// وقت البصمة بنظام 24 ساعة (14:30) أو 12 ساعة (2:30 PM أو 2:30 م) — الصيغتان معًا في الملف نفسه.
+    /// التاريخ يبدأ بالسنة دائمًا (yyyy-MM-dd أو yyyy/MM/dd) حتى لا يلتبس اليوم بالشهر.
+    /// </summary>
+    public static bool TryParseTime(string text, out DateTime time)
+    {
+        var parts = text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 3 && IsMeridiem(parts[2]))
+            return DateTime.TryParseExact($"{parts[0]} {parts[1]} {NormalizeMeridiem(parts[2])}", Formats12, CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
+        return DateTime.TryParseExact(string.Join(' ', parts), Formats24, CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
     }
 
     /// <summary>هل اليوم عطلة لهذا الموظف؟ العطلة الأسبوعية (الافتراضي الجمعة) أو عطلة رسمية.</summary>
@@ -122,10 +146,15 @@ public class FingerprintImportService
         var byCode = employees.ToDictionary(e => e.FingerprintCode!.Trim(), StringComparer.OrdinalIgnoreCase);
         var rules = await _db.WorkDayExceptions.AsNoTracking().ToListAsync();
 
-        // فترة الملف: من أول يوم إلى آخر يوم (بعد نسب بصمات ما بعد منتصف الليل لأيامها)
+        // شفت كل يوم بحسب الاستثناءات المؤقتة (نقل شفت / وقت دخول خاص)، وإلا شفت البطاقة
+        var resolver = distinct.Count == 0 ? ShiftResolver.None
+            : await ShiftResolver.LoadAsync(_db, employees.Select(e => e.Id).ToList(), distinct.Min(p => p.Time).Date.AddDays(-1), distinct.Max(p => p.Time).Date);
+        Shift? ShiftOn(Employee e, DateTime day) => resolver.For(e.Id, e.Shift, day);
+
+        // فترة الملف: من أول يوم إلى آخر يوم (بعد نسب بصمات ما بعد منتصف الليل لأيامها: شفت اليوم السابق إن كان ليليًا)
         DateTime WorkDate(FingerprintPunch p, Employee? e)
         {
-            var shift = e?.Shift;
+            var shift = e is null ? null : ShiftOn(e, p.Time.Date.AddDays(-1));
             if (shift is { IsOvernight: true } && p.Time.TimeOfDay < shift.CheckOutTime + OvernightTail) return p.Time.Date.AddDays(-1);
             return p.Time.Date;
         }
@@ -175,10 +204,11 @@ public class FingerprintImportService
                     var checkIn = times[0];
                     var lastPunch = times[^1];
                     TimeSpan? checkOut = null;
-                    var entryOnly = e.Shift?.IsEntryOnly == true;
+                    var dayShift = ShiftOn(e, day);
+                    var entryOnly = dayShift?.IsEntryOnly == true;
                     if (!entryOnly && lastPunch - checkIn >= MinShiftForCheckOut) checkOut = lastPunch.TimeOfDay;
                     if (!entryOnly && checkOut is null) s.MissingCheckOut++;
-                    var shift = HrCalendar.EffectiveShift(e.Shift, hourlyLeaves.GetValueOrDefault((e.Id, day)) ?? new());
+                    var shift = HrCalendar.EffectiveShift(dayShift, hourlyLeaves.GetValueOrDefault((e.Id, day)) ?? new());
                     var (status, _) = HrService.Classify(shift, null, checkIn.TimeOfDay);
                     if (status == AttendanceStatus.Late) s.LateDays++; else s.PresentDays++;
                     plan.Add((e.Id, day, new AttendanceInput(e.Id, null, checkIn.TimeOfDay, checkOut)));

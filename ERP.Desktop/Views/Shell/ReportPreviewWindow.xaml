@@ -32,6 +32,12 @@
                         <RadioButton x:Name="ReceiptRadio" x:FieldModifier="public" Content="طابعة كاشير حرارية — 80mm" GroupName="Printer" Margin="0,2" Checked="OnOptionChanged"/>
                         <TextBlock x:Name="ReceiptHint" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0"
                                    Text="الكاشير متاح للفواتير وإيصالات الصندوق والسندات."/>
+                        <StackPanel x:Name="OrientationPanel">
+                            <TextBlock Text="اتجاه الصفحة (A4)" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                            <RadioButton x:Name="AutoRadio" x:FieldModifier="public" Content="تلقائي (عرضي إذا كثرت الأعمدة)" GroupName="Orientation" Margin="0,2" Checked="OnOptionChanged"/>
+                            <RadioButton x:Name="PortraitRadio" x:FieldModifier="public" Content="طولي" GroupName="Orientation" Margin="0,2" Checked="OnOptionChanged"/>
+                            <RadioButton x:Name="LandscapeRadio" x:FieldModifier="public" Content="عرضي" GroupName="Orientation" Margin="0,2" Checked="OnOptionChanged"/>
+                        </StackPanel>
 
                         <StackPanel x:Name="ColumnsPanel">
                             <TextBlock Text="الأعمدة الظاهرة" Style="{StaticResource FieldLabel}" Margin="0,14,0,4"/>

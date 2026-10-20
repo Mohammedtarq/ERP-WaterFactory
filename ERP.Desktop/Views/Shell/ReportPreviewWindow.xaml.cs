@@ -30,6 +30,7 @@ public partial class ReportPreviewWindow : Window
     public ReportPreviewWindow(ReportDocument report)
     {
         InitializeComponent();
+        Viewer.Loaded += (_, _) => ArabizeFindBar(Viewer);
         _report = report;
         Title = $"معاينة — {report.Title}";
         DocTitle.Text = report.Title;
@@ -45,11 +46,49 @@ public partial class ReportPreviewWindow : Window
         ReceiptRadio.IsEnabled = report.ReceiptCapable;
         ReceiptHint.Visibility = report.ReceiptCapable ? Visibility.Collapsed : Visibility.Visible;
         (pref.Printer == PrinterKind.Receipt80 && report.ReceiptCapable ? ReceiptRadio : A4Radio).IsChecked = true;
+        (pref.Orientation switch { PageOrientationChoice.Portrait => PortraitRadio, PageOrientationChoice.Landscape => LandscapeRadio, _ => AutoRadio }).IsChecked = true;
         _ready = true;
         Render();
     }
 
+    /// <summary>
+    /// شريط البحث في معاينة الطباعة يأتي من Windows بالإنجليزية («Type text to find…»): تعريب نصوصه وتلميحاته.
+    /// يُطبَّق على ما يُعرض من القالب، ولا يتأثر إن تغيّر القالب (لا خطأ، يبقى كما هو).
+    /// </summary>
+    public static int ArabizeFindBar(DependencyObject root)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Type text to find..."] = "اكتب للبحث…", ["Type text to find…"] = "اكتب للبحث…", ["Find"] = "بحث",
+            ["Find Next"] = "التالي", ["Find Previous"] = "السابق", ["Match case"] = "مطابقة حالة الأحرف", ["Match whole word"] = "الكلمة كاملة",
+            ["Search"] = "بحث", ["Print (Ctrl+P)"] = "طباعة (Ctrl+P)", ["Copy (Ctrl+C)"] = "نسخ (Ctrl+C)",
+            ["Increase the size of the content (Ctrl +)"] = "تكبير (Ctrl +)", ["Decrease the size of the content (Ctrl -)"] = "تصغير (Ctrl -)",
+            ["100%"] = "100%", ["Fit to width"] = "ملء العرض", ["Whole page"] = "الصفحة كاملة", ["Two pages"] = "صفحتان"
+        };
+        string? Tr(object? v) => v is string s && map.TryGetValue(s.Trim(), out var t) ? t : null;
+        var changed = 0;
+        void Walk(DependencyObject d)
+        {
+            switch (d)
+            {
+                case TextBlock tb when Tr(tb.Text) is { } t: tb.Text = t; changed++; break;
+                case ContentControl cc when Tr(cc.Content) is { } t: cc.Content = t; changed++; break;
+            }
+            if (d is FrameworkElement fe && Tr(fe.ToolTip) is { } tip) { fe.ToolTip = tip; changed++; }
+            var n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(d);
+            for (var i = 0; i < n; i++) Walk(System.Windows.Media.VisualTreeHelper.GetChild(d, i));
+        }
+        Walk(root);
+        return changed;
+    }
+
     public PrinterKind Printer => ReceiptRadio.IsChecked == true ? PrinterKind.Receipt80 : PrinterKind.A4;
+
+    public PageOrientationChoice Orientation =>
+        PortraitRadio.IsChecked == true ? PageOrientationChoice.Portrait : LandscapeRadio.IsChecked == true ? PageOrientationChoice.Landscape : PageOrientationChoice.Auto;
+
+    /// <summary>المستند الظاهر يُطبع عرضيًا (اختيار المستخدم، أو تلقائيًا لكثرة الأعمدة الظاهرة).</summary>
+    public bool Landscape => ReportPrinter.IsLandscape(Visible, Orientation);
 
     /// <summary>المستند بعد تطبيق الأعمدة الظاهرة وإخفاء الصفوف الصفرية.</summary>
     public ReportDocument Visible =>
@@ -65,11 +104,13 @@ public partial class ReportPreviewWindow : Window
         var doc = Visible;
         if (Printer == PrinterKind.A4)
         {
-            var paginator = ReportRenderer.A4(doc);
+            var landscape = ReportPrinter.IsLandscape(doc, Orientation);
+            var paginator = ReportRenderer.A4(doc, ReportPrinter.A4Size(landscape));
             Viewer.Document = paginator.ToFixedDocument();
             Viewer.Visibility = Visibility.Visible;
             ReceiptHost.Visibility = Visibility.Collapsed;
-            PagesText.Text = $"عدد الصفحات: {paginator.PageCount} (A4)";
+            OrientationPanel.Visibility = Visibility.Visible;
+            PagesText.Text = $"عدد الصفحات: {paginator.PageCount} (A4 {(landscape ? "عرضي" : "طولي")})";
         }
         else
         {
@@ -77,6 +118,7 @@ public partial class ReportPreviewWindow : Window
             ReceiptFrame.Child = receipt;
             Viewer.Visibility = Visibility.Collapsed;
             ReceiptHost.Visibility = Visibility.Visible;
+            OrientationPanel.Visibility = Visibility.Collapsed;
             PagesText.Text = $"إيصال 80mm — الطول {receipt.ActualHeight / 96 * 25.4:0} مم";
         }
         StatusText.Text = "";
@@ -89,7 +131,7 @@ public partial class ReportPreviewWindow : Window
     {
         PrintPreferences.Save(_report.Key, new ReportPreference
         {
-            Printer = Printer, HideZeroRows = HideZeroBox.IsChecked == true,
+            Printer = Printer, HideZeroRows = HideZeroBox.IsChecked == true, Orientation = Orientation,
             HiddenColumns = _columns.Where(c => !c.IsVisible).Select(c => _report.Columns[c.Index]).ToList()
         });
         StatusText.Text = "حُفظ كإعداد افتراضي لهذا النوع من المستندات";
@@ -111,6 +153,7 @@ public partial class ReportPreviewWindow : Window
         if (Printer == PrinterKind.A4)
         {
             try { dialog.PrintTicket.PageMediaSize = new PageMediaSize(PageMediaSizeName.ISOA4); } catch (Exception) { }
+            try { dialog.PrintTicket.PageOrientation = Landscape ? PageOrientation.Landscape : PageOrientation.Portrait; } catch (Exception) { }
         }
         else
         {
@@ -120,7 +163,7 @@ public partial class ReportPreviewWindow : Window
         if (dialog.ShowDialog() != true) return;
         try
         {
-            ReportPrinter.Print(dialog.PrintQueue, dialog.PrintTicket, doc, Printer, _report.Title);
+            ReportPrinter.Print(dialog.PrintQueue, dialog.PrintTicket, doc, Printer, _report.Title, Printer == PrinterKind.A4 && Landscape);
         }
         catch (Exception ex) when (ex is PrintSystemException or PrintQueueException or InvalidOperationException or ArgumentException)
         {

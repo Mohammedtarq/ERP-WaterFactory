@@ -106,5 +106,8 @@ public class RankChart
     }
 }
 
-/// <summary>بطاقة مؤشر رقمي في رأس لوحة القسم.</summary>
-public record DashboardTile(string Title, string Value, string Glyph, string Color, string Hint);
+/// <summary>بطاقة مؤشر رقمي في رأس لوحة القسم؛ Names = من خلف الرقم (يُعرضون عند الضغط على البطاقة).</summary>
+public record DashboardTile(string Title, string Value, string Glyph, string Color, string Hint, IReadOnlyList<string>? Names = null)
+{
+    public bool HasNames => Names is { Count: > 0 };
+}

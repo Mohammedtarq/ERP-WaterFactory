@@ -161,6 +161,28 @@ public class PrintTests
         });
     }
 
+    /// <summary>الطباعة العرضية: تلقائية إذا زادت الأعمدة على 7 (أو باختيار المستخدم)، فالصفحة أعرض من طولها وأقل عددًا.</summary>
+    [Fact]
+    public async Task Wide_reports_print_landscape_automatically_or_by_choice()
+    {
+        await UiThread.RunAsync(() =>
+        {
+            var wide = StockReport(80);                                         // 8 أعمدة
+            Assert.True(ReportPrinter.IsLandscape(wide, PageOrientationChoice.Auto));
+            Assert.False(ReportPrinter.IsLandscape(wide, PageOrientationChoice.Portrait));
+            var narrow = wide.WithVisibility(new HashSet<int> { 5, 6 }, false);    // 6 أعمدة ظاهرة
+            Assert.False(ReportPrinter.IsLandscape(narrow, PageOrientationChoice.Auto));
+            Assert.True(ReportPrinter.IsLandscape(narrow, PageOrientationChoice.Landscape));
+
+            var landscape = ReportRenderer.A4(wide, ReportPrinter.A4Size(true));
+            var page = landscape.GetPage(0);
+            Assert.Equal(ReportRenderer.PageHeight, page.Size.Width, 1);
+            Assert.True(page.Size.Width > page.Size.Height);
+            SavePage(page.Visual, page.Size, Path.Combine(PrintDir, "A4_landscape_page1.png"));
+            Assert.Single(ReportPrinter.BuildA4(wide, true).Pages.Take(1));
+        });
+    }
+
     /// <summary>A4 متعدد الصفحات: الترويسة في كل صفحة، "صفحة س من ص" صحيحة، وملف XPS حقيقي للطباعة.</summary>
     [Fact]
     public async Task A4_report_repeats_letterhead_and_page_numbers_on_every_page()

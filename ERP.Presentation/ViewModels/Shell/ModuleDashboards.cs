@@ -22,7 +22,13 @@ public class ModuleDashboardViewModel : SessionViewModel
     {
         _loader = loader;
         RefreshCommand = new AsyncRelayCommand(LoadAsync);
+        ToggleTileCommand = new RelayCommand(p => OpenTile = p is DashboardTile t && t.HasNames && !ReferenceEquals(t, OpenTile) ? t : null);
     }
+
+    private DashboardTile? _openTile;
+    /// <summary>البطاقة المفتوحة: أسماء من خلف رقمها تحت البطاقات (الضغط مرة ثانية يغلقها).</summary>
+    public DashboardTile? OpenTile { get => _openTile; private set => SetProperty(ref _openTile, value); }
+    public RelayCommand ToggleTileCommand { get; }
 
     public ObservableCollection<DashboardTile> Tiles { get; } = new();
     public ObservableCollection<ColumnChart> Columns { get; } = new();
@@ -55,6 +61,7 @@ public class ModuleDashboardViewModel : SessionViewModel
         try
         {
             Tiles.Clear();
+            OpenTile = null;
             Columns.Clear();
             Ranks.Clear();
             await using var db = Session.NewDb();
@@ -71,7 +78,8 @@ public class ModuleDashboardViewModel : SessionViewModel
         }
     }
 
-    public void Tile(string title, string value, string glyph, string color, string hint = "") => Tiles.Add(new DashboardTile(title, value, glyph, color, hint));
+    public void Tile(string title, string value, string glyph, string color, string hint = "", IReadOnlyList<string>? names = null) =>
+        Tiles.Add(new DashboardTile(title, value, glyph, color, hint, names));
 
     private static string Money(decimal v) => $"{v:N0} د.ع";
     private static (DateTime fromUtc, DateTime toUtc) UtcRange(DateTime fromDay, DateTime toDay) =>
@@ -247,11 +255,25 @@ public class ModuleDashboardViewModel : SessionViewModel
         var att = await db.AttendanceRecords.AsNoTracking().Where(a => a.AttendanceDate >= first && a.AttendanceDate <= last)
             .Select(a => new { a.AttendanceDate, a.Status }).ToListAsync();
         var today = att.Where(a => a.AttendanceDate.Date == DateTime.Today).ToList();
+        // أسماء اليوم خلف كل بطاقة (تظهر عند الضغط عليها)
+        var named = await db.AttendanceRecords.AsNoTracking().Where(a => a.AttendanceDate == DateTime.Today)
+            .Select(a => new { a.Status, a.LateMinutes, a.CheckInTime, a.Employee.FullName }).ToListAsync();
+        List<string> Names(AttendanceStatus s) => named.Where(a => a.Status == s).OrderBy(a => a.FullName)
+            .Select(a => s == AttendanceStatus.Late ? $"{a.FullName} — {a.LateMinutes} د{(a.CheckInTime is TimeSpan t ? $" (دخل {t:hh\\:mm})" : "")}" : a.FullName).ToList();
+        var leaves = await db.EmployeeLeaves.AsNoTracking()
+            .Where(l => !l.IsVoided && l.FromDate <= DateTime.Today && l.ToDate >= DateTime.Today)
+            .Select(l => new { l.Kind, l.FromTime, l.ToTime, l.Employee.FullName, Type = l.LeaveType.Name }).ToListAsync();
+        var dayLeaves = leaves.Where(l => l.Kind == LeaveKind.Day).OrderBy(l => l.FullName).Select(l => $"{l.FullName} — {l.Type}").ToList();
+        var hourly = leaves.Where(l => l.Kind == LeaveKind.Hourly).OrderBy(l => l.FromTime)
+            .Select(l => $"{l.FullName} — {l.FromTime:hh\\:mm}←{l.ToTime:hh\\:mm}").ToList();
         d.Tile("الموظفون", employees.ToString(), Icons.People, ModuleColors.HR, "فعّالون");
-        d.Tile("حاضرون اليوم", today.Count(a => a.Status == AttendanceStatus.Present).ToString(), Icons.Clock, ModuleColors.Sales, "في الموعد");
-        d.Tile("متأخرون اليوم", today.Count(a => a.Status == AttendanceStatus.Late).ToString(), Icons.Alert, "#F59E0B", "");
+        d.Tile("حاضرون اليوم", today.Count(a => a.Status == AttendanceStatus.Present).ToString(), Icons.Clock, ModuleColors.Sales, "في الموعد — اضغط للأسماء",
+               Names(AttendanceStatus.Present));
+        d.Tile("متأخرون اليوم", today.Count(a => a.Status == AttendanceStatus.Late).ToString(), Icons.Alert, "#F59E0B", "اضغط للأسماء", Names(AttendanceStatus.Late));
         d.Tile("غائبون اليوم", today.Count(a => a.Status == AttendanceStatus.Absent).ToString(), Icons.Lock, "#EF4444",
-               today.Count == 0 ? "لم يُسجَّل حضور اليوم" : "");
+               today.Count == 0 ? "لم يُسجَّل حضور اليوم" : "اضغط للأسماء", Names(AttendanceStatus.Absent));
+        d.Tile("إجازة اليوم", dayLeaves.Count.ToString(), Icons.Calendar, "#0284C7", "يومية", dayLeaves);
+        d.Tile("زمنية اليوم", hourly.Count.ToString(), Icons.Clock, "#7C3AED", "بالساعات", hourly);
 
         var present = att.Where(a => a.Status is AttendanceStatus.Present or AttendanceStatus.Late).GroupBy(a => a.AttendanceDate.Date).ToDictionary(g => g.Key, g => (decimal)g.Count());
         var late = att.Where(a => a.Status == AttendanceStatus.Late).GroupBy(a => a.AttendanceDate.Date).ToDictionary(g => g.Key, g => (decimal)g.Count());
