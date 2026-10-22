@@ -332,8 +332,27 @@ public partial class CloudSyncService
         // البصمات من الخادم في كل فحص (طلب صغير): يبقى صحيحًا حتى لو أُعيد إنشاء قاعدة الخادم
         var known = await SendAsync<Dictionary<int, string>>(http, HttpMethod.Get, CloudRoutes.AgentSnapshotHashes, null, ct);
         var changed = all.Where(s => !(known.TryGetValue(s.RepEmployeeId, out var h) && h == s.Hash)).ToList();
-        if (changed.Count > 0) await SendAsync<JsonElement>(http, HttpMethod.Put, CloudRoutes.AgentSnapshots, changed, ct);
+        // دفعات صغيرة: حد جسم الطلب في الخادم 8MB، ونسخ عدة مندوبين (قائمة زبائنهم وشعار المعمل) قد تتجاوزه فتتوقف نسخ الجميع
+        foreach (var batch in Chunk(changed, MaxSnapshotBatchChars))
+            await SendAsync<JsonElement>(http, HttpMethod.Put, CloudRoutes.AgentSnapshots, batch, ct);
         return changed.Count;
+    }
+
+    /// <summary>أقصى حجم (حروف JSON) لدفعة نسخ العمل في طلب واحد — نصف حد الخادم احتياطًا للترميز.</summary>
+    public const int MaxSnapshotBatchChars = 2_000_000;
+
+    /// <summary>تقسيم النسخ لدفعات لا يزيد مجموع JSON في كل منها على الحد (نسخة واحدة أكبر منه تُرسل وحدها).</summary>
+    public static IEnumerable<List<AgentSnapshot>> Chunk(IReadOnlyList<AgentSnapshot> snapshots, int maxChars)
+    {
+        var batch = new List<AgentSnapshot>();
+        long size = 0;
+        foreach (var s in snapshots)
+        {
+            if (batch.Count > 0 && size + s.Json.Length > maxChars) { yield return batch; batch = new(); size = 0; }
+            batch.Add(s);
+            size += s.Json.Length;
+        }
+        if (batch.Count > 0) yield return batch;
     }
 
     private async Task RecordAsync(string machine, IReadOnlyDictionary<SyncTargetKind, string?> errors, int received, bool snapshotPushed)

@@ -236,4 +236,16 @@ public class RepAppTests
         // طلب بلا زبون صالح يتعذّر
         Assert.Equal(RepRequestStatus.Failed, (await app.ReceiveAsync(key!, Env(RepRequestKind.CustomerLink, new CustomerLinkPayload(new() { agent.Id })))).Status);
     }
+
+    /// <summary>نسخ عدة مندوبين الكبيرة (قائمة زبائن وشعار) لا تُرفع في طلب واحد يتجاوز حد الخادم: دفعات بحد أقصى.</summary>
+    [Fact]
+    public void Snapshot_uploads_are_split_into_batches_under_the_server_limit()
+    {
+        AgentSnapshot Snap(int rep, int chars) => new(rep, "H" + rep, new string('x', chars));
+        var batches = CloudSyncService.Chunk(new[] { Snap(1, 900), Snap(2, 900), Snap(3, 900), Snap(4, 5000), Snap(5, 100) }, 2000).ToList();
+        Assert.Equal(new[] { new[] { 1, 2 }, new[] { 3 }, new[] { 4 }, new[] { 5 } }, batches.Select(b => b.Select(s => s.RepEmployeeId).ToArray()));   // الكبيرة وحدها
+        Assert.Empty(CloudSyncService.Chunk(Array.Empty<AgentSnapshot>(), 2000));
+        Assert.All(CloudSyncService.Chunk(Enumerable.Range(1, 40).Select(i => Snap(i, 700_000)).ToList(), CloudSyncService.MaxSnapshotBatchChars),
+                   b => Assert.True(b.Sum(s => s.Json.Length) <= CloudSyncService.MaxSnapshotBatchChars));
+    }
 }
