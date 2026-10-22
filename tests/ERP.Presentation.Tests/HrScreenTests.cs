@@ -21,6 +21,29 @@ public class HrScreenTests
         await section.IdleAsync();
     }
 
+    /// <summary>اعتماد كل طلبات الصرف المعلّقة من شاشة «المالية ← طلبات الصرف» (المدير يعتمد).</summary>
+    private static async Task ApproveAllPaymentsAsync(MainShellViewModel shell)
+    {
+        var fin = shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);
+        var req = fin.Section<PaymentRequestsSectionViewModel>();
+        await Open(fin, req);
+        await req.LoadAsync();
+        while (req.Rows.FirstOrDefault(r => r.Status == PaymentRequestStatus.Pending) is { } row)
+        {
+            req.Selected = row;
+            await req.ApproveCommand.ExecuteAsync();
+        }
+    }
+
+    /// <summary>يعتمد الطلبات ثم يعود لشاشة السلف (تُفرَّغ عند مغادرتها) ويختار الموظف من جديد.</summary>
+    private static async Task ApproveAndReturnAsync(MainShellViewModel shell, HrModuleViewModel hr, EmployeeDeductionsSectionViewModel ded, int empId)
+    {
+        await ApproveAllPaymentsAsync(shell);
+        shell.Open<HrModuleViewModel>(ModuleCode.HR);
+        await Open(hr, ded);
+        ded.Employee = ded.Employees.Single(e => e.Id == empId);
+    }
+
     [Fact]
     public async Task Hr_module_end_to_end()
     {
@@ -219,6 +242,9 @@ public class HrScreenTests
         Assert.Equal("عدد الأقساط: 4 شهر", ded.InstallmentsText);
         await ded.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
+        Assert.Empty(dialogs.Reports.Where(r => r.Title == "سند صرف سلفة موظف"));      // لا نقد قبل اعتماد المالية
+        await ApproveAndReturnAsync(shell, hr, ded, empId);
+        Assert.Empty(dialogs.Errors);
         var loanReceipt = dialogs.Reports.Last();
         Assert.Equal("سند صرف سلفة موظف", loanReceipt.Title);
         Assert.Contains(loanReceipt.Totals, t => t.Label == "القسط الشهري" && t.Value == "50,000 د.ع");
@@ -228,6 +254,8 @@ public class HrScreenTests
         ded.Kind = ded.Kinds.Single(k => k.Value == EmployeeDeductionKind.Withdrawal);
         ded.Amount = 60_000;
         await ded.SaveCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        await ApproveAndReturnAsync(shell, hr, ded, empId);
         Assert.Empty(dialogs.Errors);
         Assert.Equal("سند صرف مسحوب من الراتب", dialogs.Reports.Last().Title);
 

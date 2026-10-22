@@ -224,12 +224,11 @@ public class PartnersSectionViewModel : SectionViewModel
         if (Selected is null) { Dialogs.Error("اختر الشريك من الجدول"); return; }
         if (Amount <= 0) { Dialogs.Error("أدخل مبلغًا أكبر من صفر"); return; }
         await using var db = Session.NewDb();
-        var (result, tx) = await new ReconciliationService(db).WithdrawAsync(Selected.Id, Amount, Date, WithdrawNotes, Session.UserId);
-        if (!result.Success) { Dialogs.Error(result.ErrorMessage ?? "تعذّر السحب"); return; }
-        StatusMessage = $"سُحب {Amount:N0} د.ع من أرباح {Selected.Name}";
+        // سحب الأرباح يخرج به نقد: طلب صرف ينتظر موافقة المالية، وسند السحب يُطبع عند الاعتماد
+        var (result, request) = await new PaymentApprovalService(db).RequestPartnerWithdrawalAsync(Selected.Id, Amount, Date, WithdrawNotes, null, Session.UserId);
+        if (!result.Success) { Dialogs.Error(result.ErrorMessage ?? "تعذّر تقديم الطلب"); return; }
+        StatusMessage = $"أُرسل طلب سحب {Amount:N0} د.ع من أرباح {Selected.Name} ({request!.RequestNumber}) لموافقة القسم المالي — يُصرف بعد اعتماده من «طلبات الصرف»";
         Amount = 0;
         WithdrawNotes = null;
-        await LoadAsync();
-        await PrintAsync(d => DocumentReports.PartnerWithdrawalAsync(Session, d, tx!.Id));
     }
 }

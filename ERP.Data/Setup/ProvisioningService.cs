@@ -244,6 +244,7 @@ public static class DefaultConfiguration
         (FinanceEntryService.NonOperatingRule, "5104", "1101"),
         (FinanceEntryService.OtherIncomeRule, "1101", "4104"),
         (TempWorkersService.WagesRule, "5102", "1101"),
+        (PaymentApprovalService.PayrollPayoutRule, "2103", "1101"),
     };
 
     private static readonly string[] AllModules =
@@ -260,6 +261,7 @@ public static class DefaultConfiguration
             (ModuleCode.Dashboard, true, false, false, false, false), (ModuleCode.Finance, true, true, true, true, true),
             (ModuleCode.Sales, true, true, true, false, true), (ModuleCode.Suppliers, true, true, true, false, true),
             (ModuleCode.HR, true, false, false, false, true), (ModuleCode.Reps, true, true, true, false, true),
+            (SpecialPermission.PaymentApproval, true, false, false, false, false),
         },
         ["أمين مخزن"] = new[]
         {

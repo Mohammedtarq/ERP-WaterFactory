@@ -153,6 +153,17 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var req = new EmployeeDeductionService.CreateRequest(Kind.Value, Employee.Id, Amount, Date, StartMonth, StartYear,
                                                              IsLoan ? Installment : null, Reason);
+        // السلفة والمسحوب يخرج بهما نقد: طلب صرف ينتظر موافقة المالية (يصلها إشعار)، والعقوبة بلا نقد فتُسجَّل فورًا
+        if (!IsPenalty)
+        {
+            var (asked, request) = await new PaymentApprovalService(db).RequestEmployeePayoutAsync(req, Session.UserId);
+            if (!asked.Success) { Dialogs.Error(asked.ErrorMessage ?? "تعذّر تقديم الطلب"); return; }
+            StatusMessage = $"أُرسل طلب {Kind.Label} {request!.RequestNumber} لـ {Employee.FullName} بمبلغ {Amount:N0} د.ع لموافقة القسم المالي — يُصرف النقد بعد اعتماده من «المالية ← طلبات الصرف»";
+            Amount = 0;
+            Installment = 0;
+            Reason = null;
+            return;
+        }
         var (result, created) = await new EmployeeDeductionService(db).CreateAsync(req, Session.UserId);
         if (!result.Success) { Dialogs.Error(result.ErrorMessage ?? "تعذّر الحفظ"); return; }
         StatusMessage = $"حُفظت {Kind.Label} {created!.DeductionNumber} لـ {Employee.FullName} بمبلغ {Amount:N0} د.ع";

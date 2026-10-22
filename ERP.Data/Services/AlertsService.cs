@@ -89,6 +89,22 @@ public class AlertsService
                     ModuleCode.Warehouse, "SettlementConfirmSectionViewModel"));
         }
 
+        // 2-ج) طلبات صرف بانتظار اعتماد المالية (سلف، مسحوبات، رواتب، سحب شركاء)
+        if (p.Has(SpecialPermission.PaymentApproval))
+        {
+            var requests = await _db.PaymentRequests.AsNoTracking().Where(r => r.Status == PaymentRequestStatus.Pending)
+                .GroupBy(r => r.Kind).Select(g => new { g.Key, Count = g.Count(), Total = g.Sum(r => r.Amount), Oldest = g.Min(r => r.RequestedAt) }).ToListAsync();
+            var count = requests.Sum(k => k.Count);
+            if (count > 0)
+            {
+                var oldest = requests.Min(k => k.Oldest).ToLocalTime();
+                var parts = requests.OrderByDescending(k => k.Count).Select(k => $"{PaymentApprovalService.KindText(k.Key)} {k.Count}");
+                alerts.Add(new("payment-requests", $"طلبات صرف بانتظار اعتماد المالية: {count}",
+                    $"{string.Join("، ", parts)} — المبلغ {requests.Sum(k => k.Total):N0} د.ع — أقدمها {Ago(oldest)}", count,
+                    oldest.Date < DateTime.Today ? AlertLevel.Danger : AlertLevel.Warning, ModuleCode.Finance, "PaymentRequestsSectionViewModel"));
+            }
+        }
+
         // 3) طلبات المندوبين بانتظار الاعتماد (المرتجع والمصروف)
         if (p.Has(SpecialPermission.RepApproval))
         {

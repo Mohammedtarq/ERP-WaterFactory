@@ -368,6 +368,7 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
     {
         GenerateCommand = new AsyncRelayCommand(GenerateAsync);
         ApproveCommand = new AsyncRelayCommand(ApproveAsync);
+        RequestPayoutCommand = new AsyncRelayCommand(RequestPayoutAsync);
         PrintCommand = new AsyncRelayCommand(() => RunId is int id ? PrintAsync(db => DocumentReports.PayrollAsync(Session, db, id)) : Error("ولّد رواتب الشهر أولًا"));
     }
 
@@ -388,11 +389,33 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
     public int? RunId { get => _runId; private set { if (SetProperty(ref _runId, value)) OnPropertyChanged(nameof(StatusText)); } }
     public bool IsApproved { get => _isApproved; private set { if (SetProperty(ref _isApproved, value)) OnPropertyChanged(nameof(StatusText)); } }
     public PayrollSummary? Summary { get => _summary; private set => SetProperty(ref _summary, value); }
-    public string StatusText => RunId is null ? "لم تُولَّد رواتب هذا الشهر بعد" : IsApproved ? "معتمدة ✓ (الشهر مقفل)" : "مسودة — راجعها ثم اعتمدها";
+    public string StatusText => RunId is null ? "لم تُولَّد رواتب هذا الشهر بعد" : IsPaid ? "معتمدة ومصروفة ✓ (الشهر مقفل)" : IsApproved ? "معتمدة ✓ (الشهر مقفل) — لم تُصرف بعد" : "مسودة — راجعها ثم اعتمدها";
 
     public AsyncRelayCommand GenerateCommand { get; }
     public AsyncRelayCommand ApproveCommand { get; }
     public AsyncRelayCommand PrintCommand { get; }
+
+    // ---- صرف الرواتب من الصندوق بعد الاعتماد: طلب لموافقة المالية ----
+    private bool _isPaid;
+    private CashBox? _payoutBox;
+    public ObservableCollection<CashBox> PayoutBoxes { get; } = new();
+    public CashBox? PayoutBox { get => _payoutBox; set => SetProperty(ref _payoutBox, value); }
+    public bool IsPaid { get => _isPaid; private set { if (SetProperty(ref _isPaid, value)) { OnPropertyChanged(nameof(StatusText)); OnPropertyChanged(nameof(CanRequestPayout)); } } }
+    public bool CanRequestPayout => IsApproved && !IsPaid;
+    public AsyncRelayCommand RequestPayoutCommand { get; }
+
+    private async Task RequestPayoutAsync()
+    {
+        if (!Require(CanPost, "طلب صرف الرواتب")) return;
+        if (RunId is null || !IsApproved) { Dialogs.Error("اعتمد الرواتب أولًا — الصرف بعد الاعتماد"); return; }
+        if (IsPaid) { Dialogs.Error("هذه الرواتب مصروفة"); return; }
+        if (PayoutBox is null) { Dialogs.Error("اختر الصندوق الذي تُصرف منه الرواتب"); return; }
+        if (!Dialogs.Confirm($"إرسال طلب صرف رواتب {PeriodText} من {PayoutBox.Name} لموافقة القسم المالي؟")) return;
+        await using var db = Session.NewDb();
+        var (asked, request) = await new PaymentApprovalService(db).RequestPayrollPayoutAsync(RunId.Value, PayoutBox.Id, Session.UserId);
+        if (!asked.Success) { Dialogs.Error(asked.ErrorMessage ?? "تعذّر تقديم الطلب"); return; }
+        StatusMessage = $"أُرسل طلب صرف رواتب {PeriodText} ({request!.RequestNumber}) لموافقة المالية — يخرج النقد بعد اعتماده من «المالية ← طلبات الصرف»";
+    }
     private Task Error(string message) { Dialogs.Error(message); return Task.CompletedTask; }
 
     public override async Task LoadAsync()
@@ -406,6 +429,12 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
         var run = await db.PayrollRuns.AsNoTracking().FirstOrDefaultAsync(r => r.PeriodMonth == Month && r.PeriodYear == Year);
         RunId = run?.Id;
         IsApproved = run?.Status == PayrollRunStatus.Approved;
+        IsPaid = run?.PaidAt is not null;
+        var boxKeep = PayoutBox?.Id;
+        PayoutBoxes.Clear();
+        foreach (var b in await db.CashBoxes.AsNoTracking().Where(b => b.IsActive).OrderByDescending(b => b.IsDefault).ThenBy(b => b.Name).ToListAsync()) PayoutBoxes.Add(b);
+        _payoutBox = PayoutBoxes.FirstOrDefault(b => b.Id == boxKeep) ?? PayoutBoxes.FirstOrDefault();
+        OnPropertyChanged(nameof(PayoutBox));
         Rows.Clear();
         Summary = null;
         OnPropertyChanged(nameof(VisibleRows));

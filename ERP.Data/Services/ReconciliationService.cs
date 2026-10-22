@@ -406,7 +406,7 @@ public class ReconciliationService
         var boxBalance = await cash.GetBalanceAsync(boxId.Value);
         if (boxBalance < amount) return (FinanceOperationResult.Fail($"رصيد الصندوق غير كافٍ: المتاح {boxBalance:N0} د.ع"), null);
 
-        await using var dbTx = await _db.Database.BeginTransactionAsync();
+        await using var dbTx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;   // أو داخل معاملة المعتمد
         var number = await NextTxNumberAsync(date);
         var text = $"سحب أرباح {number} — {partner.Name}" + (string.IsNullOrWhiteSpace(notes) ? "" : $" ({notes.Trim()})");
         var (entry, error) = await LedgerHelper.PostJournalAsync(_db, WithdrawalRule, amount, date, JournalEntryType.AutoVoucher, text, userId, "PartnerTransactions", null, "PW");
@@ -422,7 +422,7 @@ public class ReconciliationService
         entry.SourceId = t.Id;
         await _db.SaveChangesAsync();
         await cash.RecordAutoAsync(userId, CashBoxTxType.PartnerWithdrawal, -amount, date, "PartnerTransactions", t.Id, partner.Name, text, entry.Id, boxId);
-        await dbTx.CommitAsync();
+        if (dbTx is not null) await dbTx.CommitAsync();
         return (FinanceOperationResult.Ok(), t);
     }
 

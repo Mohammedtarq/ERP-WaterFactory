@@ -59,6 +59,7 @@ public partial class ProjectDbContext : DbContext
     // ---- الموارد البشرية ----
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<PayrollRun> PayrollRuns => Set<PayrollRun>();
+    public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
     public DbSet<PayrollLine> PayrollLines => Set<PayrollLine>();
     public DbSet<PromotionAndRaise> PromotionsAndRaises => Set<PromotionAndRaise>();
     public DbSet<IncentiveScoreWeights> IncentiveScoreWeights => Set<IncentiveScoreWeights>();
@@ -478,6 +479,18 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<AttendanceRecord>().HasOne(a => a.Employee).WithMany().HasForeignKey(a => a.EmployeeId).OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<PayrollRun>().HasIndex(p => new { p.PeriodMonth, p.PeriodYear }).IsUnique();
+        modelBuilder.Entity<PaymentRequest>(e =>
+        {
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(30);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.RequestNumber).HasMaxLength(30);
+            e.Property(x => x.Summary).HasMaxLength(300);
+            e.Property(x => x.RejectReason).HasMaxLength(300);
+            e.HasIndex(x => x.RequestNumber).IsUnique();
+            e.HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.DecidedByUser).WithMany().HasForeignKey(x => x.DecidedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
         // الأعمدة في SQL من نوع TINYINT/SMALLINT بينما الخاصية int — بدون التحويل تفشل القراءة عند أول صف
         modelBuilder.Entity<PayrollRun>().Property(p => p.PeriodMonth).HasConversion<byte>();
         modelBuilder.Entity<PayrollRun>().Property(p => p.PeriodYear).HasConversion<short>();

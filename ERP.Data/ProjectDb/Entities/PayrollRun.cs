@@ -15,6 +15,11 @@ public class PayrollRun
     public int? ApprovedByUserId { get; set; }
     public User? ApprovedByUser { get; set; }
 
+    /// <summary>صُرفت الرواتب من الصندوق (بعد موافقة المالية على طلب الصرف) — 65_payment_requests.sql.</summary>
+    public DateTime? PaidAt { get; set; }
+    public int? PaidByUserId { get; set; }
+    public int? PayoutJournalEntryId { get; set; }
+
     public ICollection<PayrollLine> Lines { get; set; } = new List<PayrollLine>();
 }
 
