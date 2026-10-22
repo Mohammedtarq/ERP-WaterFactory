@@ -77,6 +77,18 @@ public class AlertsService
                     reps ? ModuleCode.Reps : ModuleCode.Warehouse, reps ? "RepSettlementSectionViewModel" : "WarehouseRepVansSectionViewModel"));
         }
 
+        // 2-ب) تسويات مندوبين بانتظار تأكيد المخازن (النقد رُحّل، والمرتجع ينتظر عدّ أمين المخزن)
+        if (p.Has(SpecialPermission.SettlementConfirm))
+        {
+            var settlements = await _db.RepSettlements.AsNoTracking().Where(s => s.Status == RepSettlementStatus.PendingWarehouse)
+                .OrderBy(s => s.SettlementDate).Select(s => new { s.SettlementNumber, s.SettlementDate, Rep = s.RepEmployee.FullName }).ToListAsync();
+            if (settlements.Count > 0)
+                alerts.Add(new("settlements-pending", $"تسويات مندوبين بانتظار تأكيد المخازن: {settlements.Count}",
+                    $"{Names(settlements.Select(s => s.Rep), settlements.Count)} — أقدمها {Ago(settlements[0].SettlementDate)}",
+                    settlements.Count, settlements.Any(s => (DateTime.Today - s.SettlementDate).Days >= 1) ? AlertLevel.Danger : AlertLevel.Warning,
+                    ModuleCode.Warehouse, "SettlementConfirmSectionViewModel"));
+        }
+
         // 3) طلبات المندوبين بانتظار الاعتماد (المرتجع والمصروف)
         if (p.Has(SpecialPermission.RepApproval))
         {

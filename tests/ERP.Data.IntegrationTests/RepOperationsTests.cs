@@ -59,6 +59,68 @@ public class RepOperationsTests
         Assert.True(await db.AuditLogs.AnyAsync(a => a.TableName == "RepLoadOrders" && a.RecordId == order.Id.ToString()));
     }
 
+    /// <summary>
+    /// تسوية أمين الصندوق: المصاريف والنقد فورًا، والمرتجع ينتظر عدّ أمين المخزن. لا تسوية ثانية ولا تحميل جديد قبل التأكيد،
+    /// والتأكيد بصلاحيته فقط، والعدّ الفعلي يحلّ محل المسجّل (فرق العدّ في الملاحظات وما نقص يبقى في السيارة).
+    /// </summary>
+    [Fact]
+    public async Task Settlement_cash_posts_now_and_returns_wait_for_the_store_keeper_count()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var w500 = await db.Items.FirstAsync(i => i.ItemCode == "W-500");
+        var carton = await db.ItemPackagingLevels.FirstAsync(l => l.ItemId == w500.Id && l.EquivalentBaseUnits == 12);
+        var piece = await db.ItemPackagingLevels.FirstAsync(l => l.ItemId == w500.Id && l.EquivalentBaseUnits == 1);
+        var rep = new Employee { FullName = "مندوب التأكيد", IsSalesRep = true, BaseSalary = 1 };
+        db.Employees.Add(rep);
+        await db.SaveChangesAsync();
+        var van = new Warehouse { BranchId = fg.BranchId, Name = "سيارة التأكيد", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id };
+        db.Warehouses.Add(van);
+        await db.SaveChangesAsync();
+        await ReceiveAsync(db, fg.Id, w500.Id, carton.Id, 10, "CONF-T1", _f.AdminId);
+        Assert.True((await new RepsService(db).LoadVanAsync(van.Id, fg.Id, new[] { new StockLineInput(w500.Id, null, 60) }, _f.AdminId)).Success);
+        var svc = new RepOperationsService(db);
+        async Task<decimal> Van() => await db.StockTransactions.Where(t => t.WarehouseId == van.Id && t.ItemId == w500.Id).SumAsync(t => t.QuantityBaseUnits);
+        Assert.Equal(60m, await Van());
+
+        var request = new RepSettlementRequest(van.Id, fg.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(w500.Id, carton.Id, 1), new StockDocumentLineInput(w500.Id, piece.Id, 2, IsDamaged: true) },
+            Array.Empty<RepFreeLineInput>(), Array.Empty<RepExpenseInput>(), 0, _f.AdminId);
+        var (requested, st) = await svc.RequestSettlementAsync(request);
+        Assert.True(requested.Success, requested.ErrorMessage);
+        Assert.Equal((RepSettlementStatus.PendingWarehouse, 0m, (int?)null), (st!.Status, st.ReturnedPieces, st.ReturnDocumentId));
+        Assert.Equal(60m, await Van());                                       // لم يخرج شيء من السيارة
+
+        // لا تسوية ثانية ولا تحميل جديد قبل التأكيد
+        Assert.Contains("بانتظار تأكيد المخازن", (await svc.RequestSettlementAsync(request)).result.ErrorMessage);
+        Assert.Contains("بانتظار تأكيد المخازن", (await svc.CreateLoadOrderAsync(van.Id, fg.Id, DateTime.Today, new[] { new RepLoadLineInput(w500.Id, carton.Id, 1) }, null, _f.AdminId)).result.ErrorMessage);
+        var detail = await svc.GetPendingDetailAsync(st.Id);
+        Assert.Equal((2, "مندوب التأكيد"), (detail!.Returns.Count, detail.RepName));
+        Assert.Contains(await svc.PendingSettlementsAsync(), p => p.Id == st.Id);
+
+        // بلا الصلاحية لا يؤكد (أمين صندوق)
+        var role = await db.Roles.FirstAsync(r => r.Name == "أمين صندوق");
+        var cashier = new User { Username = "cashier_confirm", PasswordHash = PasswordHasher.Hash("x"), RoleId = role.Id };
+        db.Users.Add(cashier);
+        await db.SaveChangesAsync();
+        Assert.False((await svc.ConfirmSettlementAsync(st.Id, null, cashier.Id)).Success);
+
+        // أمين المخزن عدّ الكارتون كاملًا لكن التالف قطعة واحدة بدل اثنتين
+        var counted = new[] { new StockDocumentLineInput(w500.Id, carton.Id, 1), new StockDocumentLineInput(w500.Id, piece.Id, 1, IsDamaged: true) };
+        var fgBefore = await db.StockTransactions.Where(t => t.WarehouseId == fg.Id && t.ItemId == w500.Id).SumAsync(t => t.QuantityBaseUnits);
+        var confirmed = await svc.ConfirmSettlementAsync(st.Id, counted, _f.AdminId);
+        Assert.True(confirmed.Success, confirmed.ErrorMessage);
+        db.ChangeTracker.Clear();
+        var after = await db.RepSettlements.AsNoTracking().SingleAsync(x => x.Id == st.Id);
+        Assert.Equal((RepSettlementStatus.Confirmed, 13m, _f.AdminId), (after.Status, after.ReturnedPieces, after.ConfirmedByUserId));
+        Assert.Contains("فرق عدّ المخازن", after.Notes);
+        Assert.Null(after.PendingStockJson);
+        Assert.Equal(47m, await Van());                                       // 60 − 12 − 1، والقطعة الناقصة بقيت في السيارة
+        Assert.Equal(fgBefore + 12, await db.StockTransactions.Where(t => t.WarehouseId == fg.Id && t.ItemId == w500.Id).SumAsync(t => t.QuantityBaseUnits));
+        Assert.False((await svc.ConfirmSettlementAsync(st.Id, null, _f.AdminId)).Success);   // لا تأكيد مرتين
+        Assert.DoesNotContain(await svc.PendingSettlementsAsync(), p => p.Id == st.Id);
+    }
+
     [Fact]
     public async Task Settlement_returns_free_goods_invoices_rest_and_keeps_the_shortfall_in_the_wallet()
     {

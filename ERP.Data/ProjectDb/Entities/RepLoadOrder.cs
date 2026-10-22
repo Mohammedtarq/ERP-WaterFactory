@@ -59,9 +59,17 @@ public class RepLoadOrderLine
 }
 
 /// <summary>تسوية المندوب اليومية مع أمين الصندوق.</summary>
+/// <summary>حالة التسوية: مؤكَّدة (كل شيء رُحّل)، أو بانتظار تأكيد المخازن (النقد رُحّل، والمرتجع والمجاني وفاتورة المتبقي ينتظرون).</summary>
+public enum RepSettlementStatus { Confirmed, PendingWarehouse }
+
 public class RepSettlement
 {
     public int Id { get; set; }
+    public RepSettlementStatus Status { get; set; } = RepSettlementStatus.Confirmed;
+    /// <summary>الجزء المخزني المنتظر تأكيد المخازن (مرتجع، مجاني، فاتورة المتبقي) بصيغة JSON حتى يُرحَّل.</summary>
+    public string? PendingStockJson { get; set; }
+    public int? ConfirmedByUserId { get; set; }
+    public DateTime? ConfirmedAt { get; set; }
     public string SettlementNumber { get; set; } = "";
     public int RepEmployeeId { get; set; }
     public Employee RepEmployee { get; set; } = null!;

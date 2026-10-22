@@ -33,6 +33,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
         // سيارات المندوبين في شاشة واحدة (بعد تبويبات المخازن) بدل تبويب لكل سيارة
         Vans = Add(new WarehouseRepVansSectionViewModel(s, d));
         PrepareLoads = Add(new PrepareLoadOrdersSectionViewModel(s, d));
+        Add(new SettlementConfirmSectionViewModel(s, d));
         Add(new WarehousesSectionViewModel(s, d, RefreshWorkspacesAsync));
         Add(new PackagingSectionViewModel(s, d));
         Add(new LocationsSectionViewModel(s, d));

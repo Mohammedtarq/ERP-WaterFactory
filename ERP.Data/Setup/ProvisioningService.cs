@@ -265,6 +265,7 @@ public static class DefaultConfiguration
         {
             (ModuleCode.Dashboard, true, false, false, false, false), (ModuleCode.Warehouse, true, true, true, false, false),
             (ModuleCode.Suppliers, true, true, false, false, false), (ModuleCode.Production, true, true, true, false, false),
+            (SpecialPermission.SettlementConfirm, true, false, false, false, false),
         },
         ["موظف مبيعات"] = new[]
         {

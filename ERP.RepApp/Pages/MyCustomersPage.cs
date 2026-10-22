@@ -24,7 +24,7 @@ public class MyCustomersPage : ContentPage
             Children =
             {
                 Ui.Text("أشّر على زبائنك ثم أرسل الطلب. تظهر في قائمتك بعد موافقة الإدارة.", 15, Ui.Muted),
-                Ui.Card(new VerticalStackLayout { Spacing = 6, Children = { _search, _count, _list } }),
+                Ui.Card(new VerticalStackLayout { Spacing = 6, Children = { _search, _count, Ui.Small("مزامنة الآن", Ui.Blue, async () => { await AppServices.Instance.SyncNowAsync(); Fill(); }), _list } }),
                 Ui.Big("إرسال للإدارة للموافقة", Ui.Primary, SendAsync)
             }
         });
@@ -36,9 +36,19 @@ public class MyCustomersPage : ContentPage
         _list.Children.Clear();
         var all = _work.OtherCustomers();
         var q = (_search.Text ?? "").Trim();
+        if (!_work.OtherCustomersSupported)
+        {
+            // نسخة العمل وصلت بلا قائمة الزبائن: برنامج المعمل (أو وكيل المزامنة) قديم، فيجب تحديثه ثم المزامنة
+            _count.Text = _work.Snapshot is null ? "لم تصل نسخة العمل من المعمل بعد — اضغط «مزامنة الآن»"
+                : "قائمة زبائن النظام لم تصل من المعمل: برنامج المعمل (ووكيل المزامنة) يحتاج التحديث للنسخة الجديدة، ثم اضغط «مزامنة الآن».";
+            _count.TextColor = Ui.Red;
+            return;
+        }
+        _count.TextColor = Ui.Muted;
         var rows = all.Where(x => q.Length == 0 || x.Customer.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (x.Customer.Phone ?? "").Contains(q))
                       .OrderBy(x => x.Pending).ThenBy(x => x.Customer.Name).Take(60).ToList();
-        _count.Text = all.Count == 0 ? "لا يوجد زبائن آخرون في النظام — زامن لتحديث القائمة"
+        _count.Text = all.Count == 0 ? "لا يوجد زبائن آخرون في النظام غير المربوطين بك — زامن لتحديث القائمة"
+            : rows.Count == 0 ? $"لا نتائج لـ «{q}» بين {all.Count} زبون — جرّب جزءًا آخر من الاسم"
             : $"المختار: {_picked.Count}   ·   المعروض {rows.Count} من {all.Count}";
         foreach (var (c, pending) in rows)
         {

@@ -754,6 +754,8 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<RepSettlement>(e =>
         {
             e.Property(x => x.SettlementDate).HasColumnType("date");
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.ConfirmedByUserId).OnDelete(DeleteBehavior.Restrict);
             foreach (var p in new[] { nameof(RepSettlement.ReturnedPieces), nameof(RepSettlement.FreePieces) }) e.Property(p).HasPrecision(18, 3);
             foreach (var p in new[] { nameof(RepSettlement.FreeCost), nameof(RepSettlement.FieldExpenses), nameof(RepSettlement.ExpectedCash),
                                       nameof(RepSettlement.ReceivedCash), nameof(RepSettlement.Difference) }) e.Property(p).HasPrecision(18, 2);

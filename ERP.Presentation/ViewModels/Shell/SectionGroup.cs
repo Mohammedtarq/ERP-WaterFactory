@@ -40,7 +40,7 @@ public static class SectionGrouping
         [ModuleCode.Warehouse] = new[]
         {
             new GroupDef("مساحات المخازن", Blue, "WarehouseWorkspace", "WarehouseRepVans"),
-            new GroupDef("الحركة اليومية", Green, "PrepareLoadOrders", "Stocktake", "Losses", "DamagedSales", "StockAdjustment"),
+            new GroupDef("الحركة اليومية", Green, "PrepareLoadOrders", "SettlementConfirm", "Stocktake", "Losses", "DamagedSales", "StockAdjustment"),
             new GroupDef("الأرصدة والتنبيهات", Amber, "CurrentStock", "StockAlerts", "Beneficiaries"),
             new GroupDef("التصنيع", Teal, "ManufacturingRequirement", "Bom", "PackagingTemplates"),
             new GroupDef("التعريفات", Purple, "Items", "Warehouses", "Packaging", "Locations"),

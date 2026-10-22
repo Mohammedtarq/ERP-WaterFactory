@@ -207,6 +207,10 @@ public class RepAppTests
         Assert.Equal(new[] { own.Id }, snap.Customers.Select(c => c.Id));
         Assert.Contains(snap.OtherCustomers!, c => c.Id == a.Id);
         Assert.DoesNotContain(snap.OtherCustomers!, c => c.Id == own.Id || c.Id == agent.Id);
+        // وتصل الهاتف كما هي عبر JSON (الوكيل ← الخادم ← الهاتف بالخيارات نفسها)
+        var wire = JsonSerializer.Deserialize<RepSnapshot>(JsonSerializer.Serialize(snap, CloudSyncService.Json), CloudSyncService.Json)!;
+        Assert.Equal(snap.OtherCustomers!.Count, wire.OtherCustomers!.Count);
+        Assert.Contains(wire.OtherCustomers, c => c.Id == a.Id && c.Name == a.Name);
 
         // الطلب بانتظار الموافقة، ولا ربط قبلها
         var sent = await app.ReceiveAsync(key!, Env(RepRequestKind.CustomerLink, new CustomerLinkPayload(new() { a.Id, b.Id, own.Id })));

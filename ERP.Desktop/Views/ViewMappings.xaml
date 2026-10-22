@@ -297,6 +297,7 @@
     <DataTemplate DataType="{x:Type vmSales:CustomerReturnSectionViewModel}"><vSales:CustomerReturnSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:WarehouseRepVansSectionViewModel}"><vReps:RepVansSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:PrepareLoadOrdersSectionViewModel}"><vWarehouse:PrepareLoadOrdersSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:SettlementConfirmSectionViewModel}"><vWarehouse:SettlementConfirmSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:LoadOrdersSectionViewModel}"><vReps:LoadOrdersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:RepSettlementSectionViewModel}"><vReps:RepSettlementSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:WalletSectionViewModel}"><vReps:WalletSectionView/></DataTemplate>

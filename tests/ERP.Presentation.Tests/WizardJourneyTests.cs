@@ -250,10 +250,27 @@ public class WizardJourneyTests : IAsyncLifetime
         settle.ReceivedCash = 4000;
         await settle.SaveCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
+        // النقد والمصروف رُحّلا فورًا، والمرتجع ينتظر تأكيد أمين المخزن
         var settled = Assert.Single(settle.History);
-        Assert.Equal((48m, 1000m, 4000m, 0m), (settled.ReturnedPieces, settled.FieldExpenses, settled.ReceivedCash, settled.Difference));
-        Assert.Equal(120m, settle.VanPieces);
+        Assert.Equal((RepSettlementStatus.PendingWarehouse, 0m, 1000m, 4000m, 0m),
+                     (settled.Status, settled.ReturnedPieces, settled.FieldExpenses, settled.ReceivedCash, settled.Difference));
+        Assert.Equal(168m, settle.VanPieces);                         // لم يخرج المرتجع من السيارة بعد
         Assert.Equal(0m, settle.WalletBalance);
+        var whs = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
+        var confirm = whs.Section<SettlementConfirmSectionViewModel>();
+        await Open(whs, confirm);
+        Assert.Equal(settled.SettlementNumber, Assert.Single(confirm.Pending).SettlementNumber);
+        await confirm.IdleAsync();
+        var counted = Assert.Single(confirm.Lines);
+        Assert.Equal(4m, counted.Counted);
+        await confirm.ConfirmCommand.ExecuteAsync();                  // أمين المخزن يؤكد العدّ
+        Assert.Empty(dialogs.Errors);
+        Assert.Empty(confirm.Pending);
+        await settle.LoadHistoryCommand.ExecuteAsync();
+        settled = Assert.Single(settle.History);
+        Assert.Equal((RepSettlementStatus.Confirmed, 48m), (settled.Status, settled.ReturnedPieces));
+        await settle.LoadAsync();
+        Assert.Equal(120m, settle.VanPieces);
         await settle.PrintCommand.ExecuteAsync(settled);
         Assert.StartsWith("تسوية مندوب", dialogs.Reports.Last().Title);
 

@@ -56,6 +56,8 @@ public class RepSettlementRow
     public decimal Difference { get; init; }
     public string? InvoiceNumber { get; init; }
     public string CreatedBy { get; init; } = "";
+    public RepSettlementStatus Status { get; init; }
+    public string StatusText => Status == RepSettlementStatus.PendingWarehouse ? "بانتظار تأكيد المخازن" : "مؤكدة";
 }
 
 /// <summary>مندوب تأخرت تسويته أكثر من يوم وعنده بضاعة في السيارة أو نقد في المحفظة.</summary>
@@ -136,6 +138,8 @@ public class RepOperationsService
             return (FinanceOperationResult.Fail(error), null);
         if (await _db.RepLoadOrders.AnyAsync(o => o.VanWarehouseId == vanWarehouseId && o.Status == RepLoadOrderStatus.Pending))
             return (FinanceOperationResult.Fail($"لدى {van!.Name} طلب تحميل بانتظار التجهيز — جهّزه أو ألغه أولًا"), null);
+        if (await _db.RepSettlements.AnyAsync(s => s.VanWarehouseId == vanWarehouseId && s.Status == RepSettlementStatus.PendingWarehouse))
+            return (FinanceOperationResult.Fail($"لدى {van!.Name} تسوية بانتظار تأكيد المخازن — يؤكدها أمين المخزن قبل تحميلها من جديد"), null);
 
         var year = date.Year;
         var count = await _db.RepLoadOrders.CountAsync(o => o.LoadDate.Year == year);
@@ -233,6 +237,22 @@ public class RepOperationsService
 
     // ============================ التسوية اليومية ============================
 
+    /// <summary>الجزء المخزني من التسوية: المرتجع، مجاني المندوب، وفاتورة ما بقي في السيارة — يُرحَّل فورًا أو عند تأكيد المخازن.</summary>
+    public record SettlementStockPart(IReadOnlyList<StockDocumentLineInput> Returns, IReadOnlyList<RepFreeLineInput> FreeGoods,
+                                      int ReturnToWarehouseId, int? InvoiceRemainingToCustomerId, DateTime Date);
+
+    /// <summary>
+    /// تسوية كاملة فورية (كل شيء يُرحَّل في عملية واحدة): للاستعمال الداخلي والاستيراد. الشاشة تستعمل
+    /// <see cref="RequestSettlementAsync"/> ثم <see cref="ConfirmSettlementAsync"/> بتأكيد أمين المخزن.
+    /// </summary>
+    public Task<(FinanceOperationResult result, RepSettlement? settlement)> SettleAsync(RepSettlementRequest r) => SettleCoreAsync(r, deferStock: false);
+
+    /// <summary>
+    /// تسوية أمين الصندوق: النقد والمصاريف تُرحَّل فورًا، والجزء المخزني (المرتجع، المجاني، فاتورة المتبقي) يبقى
+    /// «بانتظار تأكيد المخازن» حتى يعدّه أمين المخزن. لا تسوية جديدة لسيارة لها تسوية منتظرة.
+    /// </summary>
+    public Task<(FinanceOperationResult result, RepSettlement? settlement)> RequestSettlementAsync(RepSettlementRequest r) => SettleCoreAsync(r, deferStock: true);
+
     /// <summary>
     /// تسوية المندوب مع أمين الصندوق، كلها أو لا شيء:
     /// 1) المرتجع (السليم للمخزن، والتالف الميداني لمخزن التالف) بمستند إرجاع مرقّم
@@ -240,8 +260,9 @@ public class RepOperationsService
     /// 3) اختياريًا: ما بقي في السيارة يُفوتر نقدًا تلقائيًا (فيدخل نقده المحفظة)
     /// 4) المصاريف الميدانية من المحفظة (مع السيارة)
     /// 5) النقد المتوقع = رصيد المحفظة؛ المستلم يدخل صندوق المستلم، والفرق يبقى في ذمة المندوب
+    /// عند التأجيل (<c>deferStock</c>) تُرحَّل 4 و5 فقط والباقي عند تأكيد المخازن.
     /// </summary>
-    public async Task<(FinanceOperationResult result, RepSettlement? settlement)> SettleAsync(RepSettlementRequest r)
+    private async Task<(FinanceOperationResult result, RepSettlement? settlement)> SettleCoreAsync(RepSettlementRequest r, bool deferStock)
     {
         var (van, vanError) = await VanAsync(r.VanWarehouseId);
         if (vanError is not null) return (FinanceOperationResult.Fail(vanError), null);
@@ -257,6 +278,8 @@ public class RepOperationsService
         var pending = await new RepAppService(_db).PendingCountAsync(repId);
         if (pending > 0)
             return (FinanceOperationResult.Fail($"للمندوب {pending} طلب من التطبيق بانتظار الاعتماد — اعتمدها أو ارفضها من «طلبات المندوبين» قبل التسوية"), null);
+        if (await _db.RepSettlements.AnyAsync(x => x.VanWarehouseId == r.VanWarehouseId && x.Status == RepSettlementStatus.PendingWarehouse))
+            return (FinanceOperationResult.Fail("لهذه السيارة تسوية سابقة بانتظار تأكيد المخازن — يؤكدها أمين المخزن أولًا"), null);
 
         var reps = new RepsService(_db);
         await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
@@ -267,79 +290,21 @@ public class RepOperationsService
             SettlementNumber = $"RS-{r.Date.Year}-{count + 1:D5}", RepEmployeeId = repId, VanWarehouseId = van.Id,
             SettlementDate = r.Date.Date, Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes.Trim(), CreatedByUserId = r.UserId
         };
+        var part = new SettlementStockPart(r.Returns, r.FreeGoods, r.ReturnToWarehouseId, r.InvoiceRemainingToCustomerId, r.Date);
+        if (deferStock && (part.Returns.Count > 0 || part.FreeGoods.Count > 0 || part.InvoiceRemainingToCustomerId is not null))
+        {
+            settlement.Status = RepSettlementStatus.PendingWarehouse;
+            settlement.PendingStockJson = System.Text.Json.JsonSerializer.Serialize(part);
+        }
+        else
+            settlement.ConfirmedAt = DateTime.UtcNow;
         _db.RepSettlements.Add(settlement);
         await _db.SaveChangesAsync();
 
-        // 1) المرتجع
-        if (r.Returns.Count > 0)
+        if (settlement.Status == RepSettlementStatus.Confirmed)
         {
-            var (ret, doc) = await new WarehouseDocumentService(_db).CreateAsync(new StockDocumentRequest(
-                StockDocumentType.RepReturn, van.Id, r.Date, r.Returns, r.UserId, CounterWarehouseId: r.ReturnToWarehouseId,
-                Notes: $"تسوية {settlement.SettlementNumber}"));
-            if (!ret.Success) return (ret, null);
-            settlement.ReturnDocumentId = doc!.Id;
-            settlement.ReturnedPieces = doc.Lines.Sum(l => l.QuantityBaseUnits);
-        }
-
-        // 2) مجاني المندوب
-        if (r.FreeGoods.Count > 0)
-        {
-            var levelIds = r.FreeGoods.Select(f => f.PackagingLevelId).Distinct().ToList();
-            var levels = await _db.ItemPackagingLevels.Where(l => levelIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.EquivalentBaseUnits);
-            var customerIds = r.FreeGoods.Where(f => f.CustomerId != null).Select(f => f.CustomerId!.Value).Distinct().ToList();
-            var customers = await _db.Customers.Where(c => customerIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
-            var when = r.Date.Date == DateTime.Today ? DateTime.UtcNow : r.Date.Date.AddHours(12).ToUniversalTime();
-            var canReserved = await SpecialPermission.HasAsync(_db, r.UserId, SpecialPermission.ReservedStock);
-            foreach (var f in r.FreeGoods)
-            {
-                var pieces = f.QuantityInLevel * levels[f.PackagingLevelId];
-                var (alloc, error) = await LedgerHelper.AllocateAsync(_db, f.ItemId, van.Id, null, pieces, BatchScope.ForCustomer(f.CustomerId, null, canReserved));
-                if (error is not null) return (FinanceOperationResult.Fail($"المجاني: {error}"), null);
-                var who = f.CustomerId is int cid && customers.TryGetValue(cid, out var name) ? $"{name} — {f.Reason.Trim()}" : f.Reason.Trim();
-                foreach (var (batchId, qty) in alloc)
-                    _db.StockTransactions.Add(new StockTransaction
-                    {
-                        ItemId = f.ItemId, WarehouseId = van.Id, BatchId = batchId, QuantityBaseUnits = -qty, TransactionType = StockTransactionType.RepFreeSale,
-                        FreeIssueRecipient = who.Length > 200 ? who[..200] : who, ReferenceTable = "RepSettlements", ReferenceId = settlement.Id,
-                        TransactionDate = when, CreatedByUserId = r.UserId
-                    });
-                var unitCost = await _db.Items.Where(i => i.Id == f.ItemId).Select(i => i.CostPrice).FirstAsync();
-                settlement.FreeGoods.Add(new RepFreeGood { ItemId = f.ItemId, QuantityBaseUnits = pieces, PackagingLevelId = f.PackagingLevelId, QuantityInLevel = f.QuantityInLevel,
-                                                           UnitCost = unitCost, CustomerId = f.CustomerId, Reason = f.Reason.Trim() });
-                settlement.FreePieces += pieces;
-                settlement.FreeCost += Math.Round(pieces * (unitCost ?? 0), 2);
-                await _db.SaveChangesAsync();
-            }
-        }
-
-        // 3) ما بقي في السيارة يُفوتر نقدًا
-        if (r.InvoiceRemainingToCustomerId is int invoiceCustomer)
-        {
-            // لكل تشغيلة سطر: فلا يختلط متغير مطعم بالأساسي، ويطبّق الترحيل قاعدة الحجز على العميل المختار
-            var remaining = await _db.StockTransactions.Where(t => t.WarehouseId == van.Id)
-                .GroupBy(t => new { t.ItemId, t.BatchId }).Select(g => new { g.Key.ItemId, g.Key.BatchId, Qty = g.Sum(t => t.QuantityBaseUnits) })
-                .Where(x => x.Qty > 0).ToListAsync();
-            if (remaining.Count > 0)
-            {
-                var sales = new SalesService(_db);
-                var (created, invoiceId) = await sales.CreateInvoiceAsync(new SalesInvoiceHeaderInput(
-                    invoiceCustomer, van.Id, r.Date, InvoicePaymentMethod.Cash, SalesRepEmployeeId: repId,
-                    Notes: $"مبيعات اليوم — تسوية {settlement.SettlementNumber}"), r.UserId);
-                if (!created.Success) return (created, null);
-                foreach (var x in remaining)
-                {
-                    // بعبوة المنتج (شرنك/كارتون) إن كان الباقي عبوات كاملة، وإلا بالقطعة
-                    var level = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == x.ItemId && l.EquivalentBaseUnits > 0).ToListAsync())
-                                .OrderByDescending(l => l.EquivalentBaseUnits).FirstOrDefault(l => x.Qty % l.EquivalentBaseUnits == 0);
-                    if (level is null)
-                        return (FinanceOperationResult.Fail("صنف في السيارة بلا وحدة \"قطعة\" — عرّفها من بطاقة الصنف أو فوتره يدويًا"), null);
-                    var added = await sales.AddLineAsync(invoiceId!.Value, new SalesInvoiceLineInput(x.ItemId, level.Id, x.Qty / level.EquivalentBaseUnits, BatchId: x.BatchId), r.UserId);
-                    if (!added.Success) return (added, null);
-                }
-                var (posted, _) = await sales.PostInvoiceAsync(invoiceId!.Value, r.UserId);
-                if (!posted.Success) return (posted, null);
-                settlement.AutoInvoiceId = invoiceId;
-            }
+            var stock = await PostStockPartAsync(settlement, van, repId, part, r.UserId);
+            if (!stock.Success) return (stock, null);
         }
 
         // 4) المصاريف الميدانية
@@ -368,6 +333,148 @@ public class RepOperationsService
         return (FinanceOperationResult.Ok(), settlement);
     }
 
+
+    /// <summary>الجزء المخزني من التسوية (1 المرتجع، 2 المجاني، 3 فاتورة ما بقي في السيارة).</summary>
+    private async Task<FinanceOperationResult> PostStockPartAsync(RepSettlement settlement, Warehouse van, int repId, SettlementStockPart part, int userId)
+    {
+        // 1) المرتجع
+        if (part.Returns.Count > 0)
+        {
+            var (ret, doc) = await new WarehouseDocumentService(_db).CreateAsync(new StockDocumentRequest(
+                StockDocumentType.RepReturn, van.Id, part.Date, part.Returns, userId, CounterWarehouseId: part.ReturnToWarehouseId,
+                Notes: $"تسوية {settlement.SettlementNumber}"));
+            if (!ret.Success) return ret;
+            settlement.ReturnDocumentId = doc!.Id;
+            settlement.ReturnedPieces = doc.Lines.Sum(l => l.QuantityBaseUnits);
+        }
+
+        // 2) مجاني المندوب
+        if (part.FreeGoods.Count > 0)
+        {
+            var levelIds = part.FreeGoods.Select(f => f.PackagingLevelId).Distinct().ToList();
+            var levels = await _db.ItemPackagingLevels.Where(l => levelIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.EquivalentBaseUnits);
+            var customerIds = part.FreeGoods.Where(f => f.CustomerId != null).Select(f => f.CustomerId!.Value).Distinct().ToList();
+            var customers = await _db.Customers.Where(c => customerIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
+            var when = part.Date.Date == DateTime.Today ? DateTime.UtcNow : part.Date.Date.AddHours(12).ToUniversalTime();
+            var canReserved = await SpecialPermission.HasAsync(_db, userId, SpecialPermission.ReservedStock);
+            foreach (var f in part.FreeGoods)
+            {
+                var pieces = f.QuantityInLevel * levels[f.PackagingLevelId];
+                var (alloc, error) = await LedgerHelper.AllocateAsync(_db, f.ItemId, van.Id, null, pieces, BatchScope.ForCustomer(f.CustomerId, null, canReserved));
+                if (error is not null) return FinanceOperationResult.Fail($"المجاني: {error}");
+                var who = f.CustomerId is int cid && customers.TryGetValue(cid, out var name) ? $"{name} — {f.Reason.Trim()}" : f.Reason.Trim();
+                foreach (var (batchId, qty) in alloc)
+                    _db.StockTransactions.Add(new StockTransaction
+                    {
+                        ItemId = f.ItemId, WarehouseId = van.Id, BatchId = batchId, QuantityBaseUnits = -qty, TransactionType = StockTransactionType.RepFreeSale,
+                        FreeIssueRecipient = who.Length > 200 ? who[..200] : who, ReferenceTable = "RepSettlements", ReferenceId = settlement.Id,
+                        TransactionDate = when, CreatedByUserId = userId
+                    });
+                var unitCost = await _db.Items.Where(i => i.Id == f.ItemId).Select(i => i.CostPrice).FirstAsync();
+                settlement.FreeGoods.Add(new RepFreeGood { ItemId = f.ItemId, QuantityBaseUnits = pieces, PackagingLevelId = f.PackagingLevelId, QuantityInLevel = f.QuantityInLevel,
+                                                           UnitCost = unitCost, CustomerId = f.CustomerId, Reason = f.Reason.Trim() });
+                settlement.FreePieces += pieces;
+                settlement.FreeCost += Math.Round(pieces * (unitCost ?? 0), 2);
+                await _db.SaveChangesAsync();
+            }
+        }
+
+        // 3) ما بقي في السيارة يُفوتر نقدًا
+        if (part.InvoiceRemainingToCustomerId is int invoiceCustomer)
+        {
+            // لكل تشغيلة سطر: فلا يختلط متغير مطعم بالأساسي، ويطبّق الترحيل قاعدة الحجز على العميل المختار
+            var remaining = await _db.StockTransactions.Where(t => t.WarehouseId == van.Id)
+                .GroupBy(t => new { t.ItemId, t.BatchId }).Select(g => new { g.Key.ItemId, g.Key.BatchId, Qty = g.Sum(t => t.QuantityBaseUnits) })
+                .Where(x => x.Qty > 0).ToListAsync();
+            if (remaining.Count > 0)
+            {
+                var sales = new SalesService(_db);
+                var (created, invoiceId) = await sales.CreateInvoiceAsync(new SalesInvoiceHeaderInput(
+                    invoiceCustomer, van.Id, part.Date, InvoicePaymentMethod.Cash, SalesRepEmployeeId: repId,
+                    Notes: $"مبيعات اليوم — تسوية {settlement.SettlementNumber}"), userId);
+                if (!created.Success) return created;
+                foreach (var x in remaining)
+                {
+                    // بعبوة المنتج (شرنك/كارتون) إن كان الباقي عبوات كاملة، وإلا بالقطعة
+                    var level = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == x.ItemId && l.EquivalentBaseUnits > 0).ToListAsync())
+                                .OrderByDescending(l => l.EquivalentBaseUnits).FirstOrDefault(l => x.Qty % l.EquivalentBaseUnits == 0);
+                    if (level is null)
+                        return FinanceOperationResult.Fail("صنف في السيارة بلا وحدة \"قطعة\" — عرّفها من بطاقة الصنف أو فوتره يدويًا");
+                    var added = await sales.AddLineAsync(invoiceId!.Value, new SalesInvoiceLineInput(x.ItemId, level.Id, x.Qty / level.EquivalentBaseUnits, BatchId: x.BatchId), userId);
+                    if (!added.Success) return added;
+                }
+                var (posted, _) = await sales.PostInvoiceAsync(invoiceId!.Value, userId);
+                if (!posted.Success) return posted;
+                settlement.AutoInvoiceId = invoiceId;
+            }
+        }
+
+        return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>سطر مرتجع منتظر التأكيد كما سجّله أمين الصندوق (للعدّ).</summary>
+    public record PendingReturnLine(int ItemId, int PackagingLevelId, decimal RecordedQuantity, bool IsDamaged, string ItemName, string LevelName);
+
+    /// <summary>ما ينتظر أمين المخزن في تسوية: المرتجع المسجّل، والمجاني، وهل ستُفوتر البقية.</summary>
+    public record PendingSettlementDetail(int Id, string Number, DateTime Date, string RepName, string VanName, IReadOnlyList<PendingReturnLine> Returns,
+                                          IReadOnlyList<string> FreeGoods, bool InvoiceRemaining, string? Notes);
+
+    public async Task<List<RepSettlementRow>> PendingSettlementsAsync() =>
+        (await GetSettlementsAsync(DateTime.Today.AddYears(-1), DateTime.Today.AddDays(1))).Where(s => s.Status == RepSettlementStatus.PendingWarehouse).ToList();
+
+    public async Task<PendingSettlementDetail?> GetPendingDetailAsync(int settlementId)
+    {
+        var s = await _db.RepSettlements.AsNoTracking().Include(x => x.RepEmployee).Include(x => x.VanWarehouse)
+                         .FirstOrDefaultAsync(x => x.Id == settlementId && x.Status == RepSettlementStatus.PendingWarehouse);
+        if (s?.PendingStockJson is null) return null;
+        var part = System.Text.Json.JsonSerializer.Deserialize<SettlementStockPart>(s.PendingStockJson)!;
+        var itemIds = part.Returns.Select(l => l.ItemId).Concat(part.FreeGoods.Select(f => f.ItemId)).Distinct().ToList();
+        var items = await _db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.ItemName);
+        var levelIds = part.Returns.Select(l => l.PackagingLevelId).Concat(part.FreeGoods.Select(f => f.PackagingLevelId)).Distinct().ToList();
+        var levels = await _db.ItemPackagingLevels.AsNoTracking().Where(l => levelIds.Contains(l.Id)).ToDictionaryAsync(l => l.Id, l => l.LevelName);
+        var lines = part.Returns.Select(l => new PendingReturnLine(l.ItemId, l.PackagingLevelId, l.QuantityInLevel, l.IsDamaged,
+            items.GetValueOrDefault(l.ItemId, "؟"), levels.GetValueOrDefault(l.PackagingLevelId, "؟"))).ToList();
+        var free = part.FreeGoods.Select(f => $"{f.QuantityInLevel:#,0.##} {levels.GetValueOrDefault(f.PackagingLevelId)} {items.GetValueOrDefault(f.ItemId)} — {f.Reason}").ToList();
+        return new PendingSettlementDetail(s.Id, s.SettlementNumber, s.SettlementDate, s.RepEmployee.FullName, s.VanWarehouse.Name, lines, free,
+                                           part.InvoiceRemainingToCustomerId is not null, s.Notes);
+    }
+
+    /// <summary>
+    /// تأكيد أمين المخزن: يعدّ المرتجع فعلًا (الكميات المعدودة تحلّ محل المسجّلة، وإن قلّت يبقى الفرق في السيارة)،
+    /// ثم يُرحَّل المرتجع والمجاني وفاتورة المتبقي (نقدها يدخل محفظة المندوب) في عملية واحدة.
+    /// </summary>
+    public async Task<FinanceOperationResult> ConfirmSettlementAsync(int settlementId, IReadOnlyList<StockDocumentLineInput>? countedReturns, int userId)
+    {
+        if (!await SpecialPermission.HasAsync(_db, userId, SpecialPermission.SettlementConfirm))
+            return FinanceOperationResult.Fail($"التأكيد يحتاج صلاحية «{SpecialPermission.NameOf(SpecialPermission.SettlementConfirm)}»");
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        var settlement = await _db.RepSettlements.Include(x => x.VanWarehouse).FirstOrDefaultAsync(x => x.Id == settlementId);
+        if (settlement is null || settlement.Status != RepSettlementStatus.PendingWarehouse || settlement.PendingStockJson is null)
+            return FinanceOperationResult.Fail("هذه التسوية ليست بانتظار تأكيد المخازن");
+        var part = System.Text.Json.JsonSerializer.Deserialize<SettlementStockPart>(settlement.PendingStockJson)!;
+        var recorded = part.Returns;
+        if (countedReturns is not null) part = part with { Returns = countedReturns };
+        var stock = await PostStockPartAsync(settlement, settlement.VanWarehouse, settlement.RepEmployeeId, part, userId);
+        if (!stock.Success) return stock;
+        string Key(StockDocumentLineInput l) => $"{l.ItemId}/{l.PackagingLevelId}/{l.IsDamaged}";
+        var diffs = recorded.GroupBy(Key).Select(g => (g.First(), Rec: g.Sum(l => l.QuantityInLevel)))
+            .Select(x => (x.Item1, x.Rec, Got: part.Returns.Where(l => Key(l) == Key(x.Item1)).Sum(l => l.QuantityInLevel))).Where(x => x.Rec != x.Got).ToList();
+        if (diffs.Count > 0)
+        {
+            var names = await _db.Items.AsNoTracking().Where(i => diffs.Select(d => d.Item1.ItemId).Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.ItemName);
+            settlement.Notes = (string.IsNullOrEmpty(settlement.Notes) ? "" : settlement.Notes + " | ")
+                + "فرق عدّ المخازن: " + string.Join("، ", diffs.Select(d => $"{names.GetValueOrDefault(d.Item1.ItemId)} مسجّل {d.Rec:#,0.##} معدود {d.Got:#,0.##}"));
+        }
+        settlement.Status = RepSettlementStatus.Confirmed;
+        settlement.PendingStockJson = null;
+        (settlement.ConfirmedByUserId, settlement.ConfirmedAt) = (userId, DateTime.UtcNow);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Post", "RepSettlements", settlement.Id,
+            $"تأكيد المخازن {settlement.SettlementNumber} — مرتجع {settlement.ReturnedPieces:N0} قطعة، مجاني {settlement.FreePieces:N0}" + (diffs.Count > 0 ? "، بفرق عدّ" : ""));
+        if (tx is not null) await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
+
     public async Task<List<RepSettlementRow>> GetSettlementsAsync(DateTime from, DateTime to, int? repEmployeeId = null)
     {
         var q = _db.RepSettlements.AsNoTracking().Where(s => s.SettlementDate >= from.Date && s.SettlementDate <= to.Date);
@@ -378,7 +485,7 @@ public class RepOperationsService
                 Id = s.Id, SettlementNumber = s.SettlementNumber, SettlementDate = s.SettlementDate, RepName = s.RepEmployee.FullName,
                 ReturnedPieces = s.ReturnedPieces, FreePieces = s.FreePieces, FreeCost = s.FreeCost, FieldExpenses = s.FieldExpenses,
                 ExpectedCash = s.ExpectedCash, ReceivedCash = s.ReceivedCash, Difference = s.Difference,
-                InvoiceNumber = s.AutoInvoice != null ? s.AutoInvoice.InvoiceNumber : null, CreatedBy = s.CreatedByUser.Username
+                InvoiceNumber = s.AutoInvoice != null ? s.AutoInvoice.InvoiceNumber : null, CreatedBy = s.CreatedByUser.Username, Status = s.Status
             }).ToListAsync();
     }
 

@@ -374,6 +374,12 @@ public class RepWork
         .SelectMany(i => System.Text.Json.JsonSerializer.Deserialize<CustomerLinkPayload>(i.Payload, JsonWeb)?.CustomerIds ?? new())
         .ToHashSet();
 
+    /// <summary>
+    /// هل أرسل المعمل قائمة زبائن النظام؟ false = برنامج المعمل (أو وكيل المزامنة) نسخة قديمة لا ترسلها،
+    /// وهو غير «لا يوجد زبائن آخرون» (قائمة فارغة).
+    /// </summary>
+    public bool OtherCustomersSupported => Snapshot?.OtherCustomers is not null;
+
     /// <summary>زبائن النظام غير المربوطين بالمندوب (للاختيار)، مع علامة «بانتظار الموافقة».</summary>
     public List<(SnapshotCustomerChoice Customer, bool Pending)> OtherCustomers()
     {

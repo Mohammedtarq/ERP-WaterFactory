@@ -189,6 +189,7 @@
                             <DataGridTextColumn Header="المستلم" Binding="{Binding ReceivedCash, StringFormat=N0}" Width="90"/>
                             <DataGridTextColumn Header="الفرق" Binding="{Binding Difference, StringFormat=N0}" Width="75"/>
                             <DataGridTextColumn Header="فاتورة الباقي" Binding="{Binding InvoiceNumber}" Width="110"/>
+                            <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="140"/>
                             <DataGridTemplateColumn Header="" Width="40">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>

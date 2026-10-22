@@ -23,6 +23,7 @@ public static class SpecialPermission
     public const string CreditLimitOverride = "Special:CreditOverride";
     public const string ReservedStock = "Special:ReservedStock";
     public const string RepApproval = "Special:RepApproval";
+    public const string SettlementConfirm = "Special:SettlementConfirm";
 
     public static readonly (string Code, string Name, string Hint)[] All =
     {
@@ -38,6 +39,7 @@ public static class SpecialPermission
         (CreditLimitOverride, "تجاوز حد دين العميل", "الموافقة على بيع آجل لعميل تجاوز حد دينه"),
         (ReservedStock, "البيع من رصيد محجوز لعميل آخر", "صرف تشغيلات متغير مطعم (ليبله الخاص) لعميل غيره عند نفاد الأساسي، وتصحيح متغير تشغيلة"),
         (RepApproval, "اعتماد طلبات المندوبين", "الموافقة على مصروف المندوب ومرتجع الزبون أو رفضهما، ومراجعة الآجل والمجاني"),
+        (SettlementConfirm, "تأكيد تسوية المندوب (المخازن)", "عدّ مرتجع المندوب وتأكيد الجانب المخزني من تسويته: المرتجع والتالف والمجاني وفاتورة المتبقي"),
     };
 
     public static string NameOf(string code) => All.FirstOrDefault(p => p.Code == code).Name ?? code;

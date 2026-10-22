@@ -603,7 +603,7 @@ public class RepSettlementSectionViewModel : SectionViewModel
     /// <summary>النقد المتوقع قبل الفاتورة التلقائية (إن وُجدت تُضاف قيمتها عند الحفظ).</summary>
     public decimal ExpectedBeforeInvoice => WalletBalance - ExpensesTotal;
     public string CashHint => InvoiceRemaining
-        ? $"في المحفظة {WalletBalance:N0} − مصاريف {ExpensesTotal:N0} = {ExpectedBeforeInvoice:N0} د.ع، تُضاف إليه قيمة فاتورة ما بقي في السيارة عند الحفظ"
+        ? $"في المحفظة {WalletBalance:N0} − مصاريف {ExpensesTotal:N0} = {ExpectedBeforeInvoice:N0} د.ع؛ فاتورة ما بقي في السيارة تُفوتر بعد تأكيد أمين المخزن ويدخل نقدها محفظة المندوب"
         : $"النقد المتوقع: في المحفظة {WalletBalance:N0} − مصاريف {ExpensesTotal:N0} = {ExpectedBeforeInvoice:N0} د.ع"
           + (ReceivedCash > 0 ? $" — الفرق {ExpectedBeforeInvoice - ReceivedCash:N0}" : "");
     public int OverdueCount => Overdue.Count;
@@ -750,7 +750,9 @@ public class RepSettlementSectionViewModel : SectionViewModel
         if (InvoiceRemaining && InvoiceCustomer is null) { Dialogs.Error("اختر العميل الذي تُسجَّل عليه فاتورة ما بقي في السيارة (مثل زبون نقدي)"); return; }
         if (ReceivedCash < 0) { Dialogs.Error("المبلغ المستلم لا يكون سالبًا"); return; }
         if (!Dialogs.Confirm($"تسوية {Van.OwnerEmployee?.FullName} بتاريخ {Date:yyyy/MM/dd}: مرتجع {ReturnPieces:N0} قطعة، مجاني {FreeGoods.Count} سطر، مصاريف {ExpensesTotal:N0}، مستلم {ReceivedCash:N0} د.ع"
-                             + (InvoiceRemaining ? "، وفوترة ما بقي في السيارة نقدًا" : "") + "؟"))
+                             + (InvoiceRemaining ? "، وفوترة ما بقي في السيارة نقدًا" : "") + "؟"
+                             + (Returns.Count > 0 || FreeGoods.Count > 0 || InvoiceRemaining
+                                 ? "\n\nالنقد والمصاريف تُرحَّل الآن. المرتجع والمجاني" + (InvoiceRemaining ? " وفاتورة المتبقي" : "") + " ينتظرون تأكيد أمين المخزن بعد عدّه." : "")))
             return;
         var request = new RepSettlementRequest(Van.Id, Store.Id, Date,
             Returns.Select(l => new StockDocumentLineInput(l.ItemId, l.PackagingLevelId, l.QuantityInLevel, IsDamaged: l.IsDamaged)).ToList(),
@@ -761,13 +763,14 @@ public class RepSettlementSectionViewModel : SectionViewModel
         RepSettlement? settlement = null;
         if (await RunOperationAsync(async () =>
             {
-                var (r, st) = await new RepOperationsService(db).SettleAsync(request);
+                var (r, st) = await new RepOperationsService(db).RequestSettlementAsync(request);
                 settlement = st;
                 return r;
             }, "تمت التسوية"))
         {
             StatusMessage = $"{StatusMessage} {settlement!.SettlementNumber}: متوقع {settlement.ExpectedCash:N0}، مستلم {settlement.ReceivedCash:N0}"
-                            + (settlement.Difference != 0 ? $"، الفرق {settlement.Difference:N0} يبقى في ذمة المندوب" : "");
+                            + (settlement.Difference != 0 ? $"، الفرق {settlement.Difference:N0} يبقى في ذمة المندوب" : "")
+                            + (settlement.Status == RepSettlementStatus.PendingWarehouse ? " — المرتجع بانتظار تأكيد المخازن" : "");
             Returns.Clear();
             FreeGoods.Clear();
             Expenses.Clear();
