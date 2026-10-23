@@ -405,6 +405,15 @@ public class TutorialTests
             await Shot("09-سلفة-بأقساط", ded);
             await ded.SaveCommand.ExecuteAsync();
             Assert.True(dialogs.Errors.Count == 0, string.Join(" | ", dialogs.Errors));
+            // السلفة طلب صرف: يعتمدها القسم المالي فيخرج النقد ويُطبع السند
+            var fin = shell.Open<ERP.Presentation.ViewModels.Finance.FinanceModuleViewModel>(ModuleCode.Finance);
+            var reqs = fin.Section<ERP.Presentation.ViewModels.Finance.PaymentRequestsSectionViewModel>();
+            await Open(fin, reqs);
+            await reqs.LoadAsync();
+            await Shot("10-طلب-صرف-السلفة-بانتظار-المالية", reqs);
+            reqs.Selected = reqs.Rows.First(r => r.Status == PaymentRequestStatus.Pending);
+            await reqs.ApproveCommand.ExecuteAsync();
+            Assert.True(dialogs.Errors.Count == 0, string.Join(" | ", dialogs.Errors));
             await PreviewShot("10-سند-صرف-السلفة", dialogs.Reports.Last());
 
             // 7) مقياس الحافز الشهري
