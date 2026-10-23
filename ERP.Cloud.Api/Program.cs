@@ -38,6 +38,8 @@ builder.Services.AddSingleton<AgentKeyProvider>();
 builder.Services.AddHostedService<DiscoveryResponder>();
 // صورة الوصل (3MB) بترميز base64 داخل JSON
 builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 8 * 1024 * 1024);
+// ضغط الردود (gzip): نسخة العمل مع قائمة زبائن النظام تصغر كثيرًا على واي فاي المعمل والإنترنت
+builder.Services.AddResponseCompression(o => o.EnableForHttps = true);
 
 var app = builder.Build();
 
@@ -45,6 +47,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<RelayDb>().PrepareAsync();
 
+app.UseResponseCompression();
 RelayEndpoints.Map(app);
 app.Run();
 

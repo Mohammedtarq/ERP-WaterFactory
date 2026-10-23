@@ -341,6 +341,55 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         Assert.Equal("ماء", store.Find(sale.ClientId)!.Lines!.Single().Item);
     }
 
+    [Fact]
+    public async Task Large_snapshot_on_slow_factory_wifi_still_arrives_instead_of_reading_as_no_connection()
+    {
+        var seed = await SeedRepAsync("واي فاي بطيء");
+        const string baseUrl = "http://localhost";
+        var agentKey = await EnableSyncAsync(baseUrl + "/");
+        await using var cloud = Cloud(agentKey);
+        using var agent = CloudSyncService.CreateClient(baseUrl + "/", agentKey, cloud.Server.CreateHandler());
+        string deviceKey;
+        await using (var db = NewDb()) deviceKey = (await new RepAppService(db).RegisterDeviceAsync(seed.RepId, "هاتف بطيء", AdminId)).deviceKey!;
+        await using (var db = NewDb()) Assert.True((await new CloudSyncService(db).RunOnceAsync(agent, "SERVER-PC", new CloudSyncState())).Ok);   // الجهاز ونسخة العمل للخادم
+
+        // العنوان هو الخادم المحلي (مهلة الرد القصيرة)، ونسخة العمل يستغرق تنزيلها أطول من تلك المهلة
+        var store = new LocalStore(Path.Combine(_dir, "slow.db"));
+        store.SaveLink(new LinkCode(baseUrl, deviceKey, baseUrl));
+        var slow = new SlowSnapshotHandler(cloud.Server.CreateHandler(), RepCloudClient.LocalTimeout + TimeSpan.FromSeconds(1));
+        var result = await new SyncEngine(store, () => new RepCloudClient(store.Link!, slow)).RunAsync();
+
+        Assert.True(result.Online, result.Error);
+        Assert.True(result.SnapshotUpdated);
+        Assert.NotNull(store.Snapshot);
+        Assert.NotNull(store.Snapshot!.OtherCustomers);                                // «زبائني من النظام» وصلت مع النسخة
+    }
+
+    /// <summary>واي فاي ضعيف: الخادم يرد فورًا لكن محتوى نسخة العمل يتأخر.</summary>
+    private sealed class SlowSnapshotHandler(HttpMessageHandler inner, TimeSpan delay) : DelegatingHandler(inner)
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var res = await base.SendAsync(request, ct);
+            if (!request.RequestUri!.AbsolutePath.EndsWith(CloudRoutes.RepSnapshot, StringComparison.OrdinalIgnoreCase) || !res.IsSuccessStatusCode) return res;
+            var body = await res.Content.ReadAsByteArrayAsync(ct);
+            var slow = new SlowContent(body, delay);
+            foreach (var h in res.Content.Headers) slow.Headers.TryAddWithoutValidation(h.Key, h.Value);
+            res.Content = slow;
+            return res;
+        }
+    }
+
+    private sealed class SlowContent(byte[] body, TimeSpan delay) : HttpContent
+    {
+        protected override async Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context)
+        {
+            await Task.Delay(delay);
+            await stream.WriteAsync(body);
+        }
+        protected override bool TryComputeLength(out long length) { length = -1; return false; }
+    }
+
     /// <summary>هاتف بلا شبكة.</summary>
     private class OfflineHandler : HttpMessageHandler
     {

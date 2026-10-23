@@ -26,8 +26,14 @@ public class RepCloudClient
     private DateTime _nextLocalTry;
     private DateTime _nextDiscovery;
 
+    /// <summary>مهلة ردّ الخادم (الترويسات): قصيرة للمحلي حتى ينتقل الهاتف سريعًا للسحابي خارج المعمل.</summary>
     public static readonly TimeSpan LocalTimeout = TimeSpan.FromSeconds(4);
     public static readonly TimeSpan CloudTimeout = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// مهلة تنزيل المحتوى بعد أن ردّ الخادم: نسخة العمل (مع قائمة «زبائني من النظام») قد تكون كبيرة على واي فاي ضعيف،
+    /// فلا تُقطع بمهلة الرد القصيرة — كانت تُحسب «لا اتصال» فلا تصل نسخة العمل أبدًا.
+    /// </summary>
+    public static readonly TimeSpan BodyTimeout = TimeSpan.FromSeconds(120);
 
     /// <summary>البحث عن الخادم المحلي (الاختبارات تستبدله).</summary>
     public Func<string, CancellationToken, Task<string?>> Discover { get; set; } =
@@ -40,7 +46,9 @@ public class RepCloudClient
     {
         _link = link;
         _onLocalFound = onLocalFound;
-        _http = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+        // المحتوى مضغوط (gzip) من الخادم: نسخة العمل أصغر بكثير على الشبكة
+        _http = handler is null ? new HttpClient(new HttpClientHandler { AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate })
+                                : new HttpClient(handler, disposeHandler: false);
         _http.Timeout = Timeout.InfiniteTimeSpan;   // مهلة لكل خادم على حدة
     }
 
@@ -72,7 +80,20 @@ public class RepCloudClient
         }, ct);
         if (res.StatusCode is HttpStatusCode.NotModified or HttpStatusCode.NotFound) return null;
         await EnsureAsync(res, ct);
-        return (await res.Content.ReadAsStringAsync(ct), res.Headers.ETag?.Tag);
+        var json = await ReadBodyAsync(t => res.Content.ReadAsStringAsync(t), ct);
+        return (json, res.Headers.ETag?.Tag);
+    }
+
+    /// <summary>قراءة المحتوى بمهلة التنزيل الطويلة؛ انقطاعه أثناء التنزيل «بلا اتصال» تُعاد محاولته لاحقًا.</summary>
+    private static async Task<T> ReadBodyAsync<T>(Func<CancellationToken, Task<T>> read, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(BodyTimeout);
+        try { return await read(timeout.Token); }
+        catch (Exception ex) when (ex is HttpRequestException or IOException || ex is OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            throw new OfflineException("انقطع تنزيل نسخة العمل من المعمل — تُعاد المحاولة تلقائيًا");
+        }
     }
 
     private async Task<T?> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct)
@@ -84,7 +105,7 @@ public class RepCloudClient
             return req;
         }, ct);
         await EnsureAsync(res, ct);
-        try { return await res.Content.ReadFromJsonAsync<T>(Json, ct); }
+        try { return await ReadBodyAsync(t => res.Content.ReadFromJsonAsync<T>(Json, t), ct); }
         catch (JsonException) { throw new OfflineException("رد الخادم غير مفهوم — تحقق من العنوان"); }
     }
 
@@ -133,7 +154,8 @@ public class RepCloudClient
             req.RequestUri = new Uri(new Uri(url.TrimEnd('/') + "/"), req.RequestUri!.OriginalString);
             req.Headers.TryAddWithoutValidation(CloudRoutes.DeviceKeyHeader, link.DeviceKey);
             HttpResponseMessage res;
-            try { res = await _http.SendAsync(req, timeout.Token); }
+            // المهلة القصيرة للرد فقط (الترويسات)؛ المحتوى يُقرأ بعدها بمهلة التنزيل
+            try { res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, timeout.Token); }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException && !ct.IsCancellationRequested)
             {
                 if (local) _nextLocalTry = DateTime.UtcNow.AddMinutes(2);
