@@ -575,7 +575,21 @@ public class QcSectionViewModel : SectionViewModel
     {
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         PrintCommand = new AsyncRelayCommand(p => p is QcHistoryRow r ? PrintAsync(db => DocumentReports.QcResultAsync(Session, db, r.Id)) : Task.CompletedTask);
+        ShowCommand = new AsyncRelayCommand(LoadAsync);
+        TodayCommand = new AsyncRelayCommand(() => { (From, To, Search) = (DateTime.Today, DateTime.Today, ""); return LoadAsync(); });
     }
+
+    // العرض يومًا بيوم (اليوم افتراضيًا) أو «من — إلى» مع بحث، حتى لا تختلط الأيام؛ «عرض» يطبّق الفترة
+    private DateTime _from = DateTime.Today, _to = DateTime.Today;
+    private string _search = "";
+    public DateTime From { get => _from; set => SetProperty(ref _from, value.Date); }
+    public DateTime To { get => _to; set => SetProperty(ref _to, value.Date); }
+    /// <summary>بحث برقم الأمر أو الدفعة أو اسم الصنف.</summary>
+    public string Search { get => _search; set => SetProperty(ref _search, value ?? ""); }
+    public AsyncRelayCommand ShowCommand { get; }
+    public AsyncRelayCommand TodayCommand { get; }
+    private bool Matches(params string?[] fields) =>
+        Search.Trim().Length == 0 || fields.Any(f => f?.Contains(Search.Trim(), StringComparison.OrdinalIgnoreCase) == true);
 
     protected override bool ReloadOnActivate => true;
 
@@ -597,20 +611,24 @@ public class QcSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var orderId = Order?.OrderId;
         QcOrders.Clear();
-        // الأمر يُفحص مرة واحدة لكل أصنافه: قيد التشغيل، وإنتاج آخر 30 يومًا
-        foreach (var o in await new ProductionService(db).GetQcOrdersAsync()) QcOrders.Add(o);
+        if (To < From) To = From;
+        // أوامر الفترة المختارة (اليوم افتراضيًا)، والتي لم تُفحص بعد تظهر دائمًا حتى لا يُنسى أمر
+        var days = Math.Max(30, (DateTime.Today - From).Days + 1);
+        foreach (var o in await new ProductionService(db).GetQcOrdersAsync(days))
+            if ((o.LastQc is null || (o.Date?.Date >= From && o.Date?.Date <= To)) && Matches(o.MONumber, o.Items)) QcOrders.Add(o);
         _order = QcOrders.FirstOrDefault(o => o.OrderId == orderId) ?? QcOrders.FirstOrDefault(o => o.LastQc is null) ?? QcOrders.FirstOrDefault();
         OnPropertyChanged(nameof(Order));
         await LoadTestsAsync();
 
-        var results = await db.QCBatchResults.AsNoTracking().OrderByDescending(q => q.Id).Take(100)
+        var (fromUtc, toUtc) = (From.ToUniversalTime(), To.AddDays(1).ToUniversalTime());
+        var results = await db.QCBatchResults.AsNoTracking().Where(q => q.TestDate >= fromUtc && q.TestDate < toUtc).OrderByDescending(q => q.Id).Take(500)
             .Select(q => new
             {
                 q.Id, q.TestDate, q.ProductionOrder.MONumber, q.Batch.BatchNumber, q.OverallResult, q.TestedByUser.Username,
                 Lines = q.ResultLines.Select(l => l.QualityTest.TestName + ": " + l.MeasuredValue + (l.Result == QCLineResult.Pass ? " ✓" : " ✗"))
             }).ToListAsync();
         History.Clear();
-        foreach (var r in results)
+        foreach (var r in results.Where(r => Matches(r.MONumber, r.BatchNumber)))
             History.Add(new QcHistoryRow
             {
                 Id = r.Id, TestDate = r.TestDate.ToLocalTime(), MONumber = r.MONumber, BatchNumber = r.BatchNumber, TestedBy = r.Username,
@@ -683,7 +701,21 @@ public class PackingSectionViewModel : SectionViewModel
     {
         PackCommand = new AsyncRelayCommand(PackAsync);
         PrintCommand = new AsyncRelayCommand(p => p is PackingRow r ? PrintAsync(db => DocumentReports.PackingAsync(Session, db, r.OrderId)) : Task.CompletedTask);
+        ShowCommand = new AsyncRelayCommand(LoadAsync);
+        TodayCommand = new AsyncRelayCommand(() => { (From, To, Search) = (DateTime.Today, DateTime.Today, ""); return LoadAsync(); });
     }
+
+    // العرض يومًا بيوم (اليوم افتراضيًا) أو «من — إلى» مع بحث، حتى لا تختلط الأيام؛ «عرض» يطبّق الفترة
+    private DateTime _from = DateTime.Today, _to = DateTime.Today;
+    private string _search = "";
+    public DateTime From { get => _from; set => SetProperty(ref _from, value.Date); }
+    public DateTime To { get => _to; set => SetProperty(ref _to, value.Date); }
+    /// <summary>بحث برقم الأمر أو الدفعة أو اسم الصنف.</summary>
+    public string Search { get => _search; set => SetProperty(ref _search, value ?? ""); }
+    public AsyncRelayCommand ShowCommand { get; }
+    public AsyncRelayCommand TodayCommand { get; }
+    private bool Matches(params string?[] fields) =>
+        Search.Trim().Length == 0 || fields.Any(f => f?.Contains(Search.Trim(), StringComparison.OrdinalIgnoreCase) == true);
 
     protected override bool ReloadOnActivate => true;
     public ObservableCollection<ProductionLineRow> ReadyOrders { get; } = new();
@@ -734,14 +766,18 @@ public class PackingSectionViewModel : SectionViewModel
         OnPropertyChanged(nameof(RemainingText));
         await LoadLevelsAsync();
 
-        var rows = await db.PackingOrders.AsNoTracking().OrderByDescending(p => p.Id).Take(100)
+        if (To < From) To = From;
+        var (fromUtc, toUtc) = (From.ToUniversalTime(), To.AddDays(1).ToUniversalTime());   // التاريخ محفوظ بتوقيت UTC
+        var rows = await db.PackingOrders.AsNoTracking().Where(p => p.PackingDate >= fromUtc && p.PackingDate < toUtc).OrderByDescending(p => p.Id).Take(500)
             .Select(p => new PackingRow
             {
                 OrderId = p.ProductionOrderId, PackingDate = p.PackingDate, MONumber = p.ProductionOrder.MONumber, LevelName = p.PackagingLevel.LevelName, Units = p.UnitsPackaged,
                 Pieces = p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits, WarehouseName = p.ResultingFinishedGoodsWarehouse.Name
             }).ToListAsync();
         History.Clear();
-        foreach (var r in rows) History.Add(r);
+        foreach (var r in rows.Where(r => Matches(r.MONumber, r.LevelName, r.WarehouseName)))
+            History.Add(new PackingRow { OrderId = r.OrderId, PackingDate = r.PackingDate.ToLocalTime(), MONumber = r.MONumber, LevelName = r.LevelName,
+                                         Units = r.Units, Pieces = r.Pieces, WarehouseName = r.WarehouseName });
     }
 
     /// <summary>

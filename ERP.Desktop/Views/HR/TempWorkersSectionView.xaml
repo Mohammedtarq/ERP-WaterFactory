@@ -71,6 +71,8 @@
                         <TextBlock Text="إلى" VerticalAlignment="Center" Margin="8,0,6,0"/>
                         <DatePicker SelectedDate="{Binding To}" Width="125"/>
                         <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding LoadPaymentsCommand}" Margin="8,0,0,0"/>
+                        <TextBlock Text="سبب إلغاء صرف:" VerticalAlignment="Center" Margin="20,0,6,0"/>
+                        <TextBox Text="{Binding CancelReason, UpdateSourceTrigger=PropertyChanged}" Width="200"/>
                     </WrapPanel>
                     <DataGrid ItemsSource="{Binding Payments}" IsReadOnly="True">
                         <DataGrid.Columns>
@@ -80,11 +82,16 @@
                             <DataGridTextColumn Header="الأيام" Binding="{Binding Days, StringFormat=0.##}" Width="55"/>
                             <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="90"/>
                             <DataGridTextColumn Header="النوع" Binding="{Binding KindText}" Width="80"/>
-                            <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTextColumn Header="الحالة" Binding="{Binding StateText}" Width="120"/>
+                            <DataGridTemplateColumn Header="" Width="76">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
                                         <Button Content="&#xE749;" ToolTip="طباعة الوصل" Style="{StaticResource RowIconButton}" Tag="#0F766E"
                                                 Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Button Content="&#xE711;" ToolTip="إلغاء الصرف بسبب (يعود النقد للصندوق)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                Command="{Binding DataContext.CancelPaymentCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>

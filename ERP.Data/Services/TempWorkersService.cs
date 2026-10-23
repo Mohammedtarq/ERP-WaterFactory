@@ -31,6 +31,9 @@ public class TempPaymentRow
     public decimal DailyWage { get; init; }
     public decimal Amount { get; init; }
     public bool IsFinal { get; init; }
+    public bool IsVoided { get; init; }
+    public string? VoidReason { get; init; }
+    public string StateText => IsVoided ? $"ملغى: {VoidReason}" : "مصروف";
     public string CreatedBy { get; init; } = "";
     public string KindText => IsFinal ? "نهاية خدمة" : "أسبوعي";
 }
@@ -176,13 +179,52 @@ public class TempWorkersService
         }
     }
 
+    /// <summary>
+    /// إلغاء صرف أجر بسبب: يعود النقد للصندوق (حركة الصندوق ملغاة + قيد عكسي)، وتعود أيامه غير مصروفة لتُصرف من جديد،
+    /// ونهاية الخدمة تُلغى فيعود العامل فعّالًا. يبقى السند ظاهرًا مشطوبًا.
+    /// </summary>
+    public async Task<FinanceOperationResult> CancelPaymentAsync(int paymentId, string reason, int userId)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب الإلغاء");
+        if (!await SpecialPermission.HasAsync(_db, userId, SpecialPermission.VoidPosted))
+            return FinanceOperationResult.Fail($"إلغاء صرف الأجر يحتاج صلاحية «{SpecialPermission.NameOf(SpecialPermission.VoidPosted)}»");
+        var p = await _db.TempWorkerPayments.Include(x => x.Employee).Include(x => x.JournalEntry!).ThenInclude(j => j.Lines).FirstOrDefaultAsync(x => x.Id == paymentId);
+        if (p is null) return FinanceOperationResult.Fail("سند الصرف غير موجود");
+        if (p.IsVoided) return FinanceOperationResult.Fail("ملغى مسبقًا");
+        if (await _db.PeriodLocks.OrderByDescending(l => l.Id).Select(l => l.LockedThrough).FirstOrDefaultAsync() is { } locked && p.PaidDate.Date <= locked.Date)
+            return FinanceOperationResult.Fail($"تاريخ الصرف داخل فترة مقفلة حتى {locked:yyyy/MM/dd}");
+        var text = reason.Trim();
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        (p.IsVoided, p.VoidReason) = (true, text);
+        foreach (var d in await _db.TempWorkDays.Where(d => d.PaymentId == p.Id).ToListAsync()) d.PaymentId = null;
+        if (p.IsFinal) (p.Employee.IsActive, p.Employee.EndOfServiceDate) = (true, null);
+        foreach (var c in await _db.CashBoxTransactions.Where(t => t.ReferenceTable == "TempWorkerPayments" && t.ReferenceId == p.Id && !t.IsVoided).ToListAsync())
+            (c.IsVoided, c.VoidReason, c.ModifiedByUserId, c.ModifiedAt) = (true, text, userId, DateTime.UtcNow);
+        if (p.JournalEntry is { } je)
+        {
+            var reversal = new JournalEntry
+            {
+                EntryNumber = $"TWR-{p.PaymentNumber}", EntryDate = DateTime.Today, EntryType = JournalEntryType.AutoVoucher, CreatedByUserId = userId, IsPosted = true,
+                Description = $"عكس صرف أجور ملغى {p.PaymentNumber} — {p.Employee.FullName}: {text}", SourceTable = "TempWorkerPayments", SourceId = p.Id
+            };
+            foreach (var line in je.Lines)
+                reversal.Lines.Add(new JournalEntryLine { AccountId = line.AccountId, Debit = line.Credit, Credit = line.Debit, Description = "عكس: " + line.Description });
+            _db.JournalEntries.Add(reversal);
+        }
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Void", "TempWorkerPayments", p.Id, $"إلغاء صرف {p.PaymentNumber} — {p.Employee.FullName} — {p.Amount:N0}: {text}");
+        await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
+
     public Task<List<TempPaymentRow>> PaymentsAsync(DateTime from, DateTime to) =>
         _db.TempWorkerPayments.AsNoTracking().Where(p => p.PaidDate >= from.Date && p.PaidDate <= to.Date)
            .OrderByDescending(p => p.PaidDate).ThenByDescending(p => p.Id)
            .Select(p => new TempPaymentRow
            {
                Id = p.Id, PaymentNumber = p.PaymentNumber, FullName = p.Employee.FullName, PaidDate = p.PaidDate, FromDate = p.FromDate, ToDate = p.ToDate,
-               Days = p.Days, DailyWage = p.DailyWage, Amount = p.Amount, IsFinal = p.IsFinal, CreatedBy = p.CreatedByUser.Username
+               Days = p.Days, DailyWage = p.DailyWage, Amount = p.Amount, IsFinal = p.IsFinal, CreatedBy = p.CreatedByUser.Username,
+               IsVoided = p.IsVoided, VoidReason = p.VoidReason
            }).ToListAsync();
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

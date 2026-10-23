@@ -124,6 +124,20 @@ public class HrLeaveService
         return FinanceOperationResult.Ok();
     }
 
+    /// <summary>حذف نوع إجازة لم يُستعمل في أي إجازة؛ المستعمل يبقى (يُوقف بدل الحذف حتى لا يضيع أثره).</summary>
+    public async Task<FinanceOperationResult> DeleteTypeAsync(int typeId, int userId)
+    {
+        var t = await _db.LeaveTypes.FindAsync(typeId);
+        if (t is null) return FinanceOperationResult.Fail("نوع الإجازة غير موجود");
+        if (await _db.EmployeeLeaves.AnyAsync(l => l.LeaveTypeId == typeId))
+            return FinanceOperationResult.Fail($"«{t.Name}» مستعمل في إجازات مسجّلة — لا يُحذف؛ أوقفه (أزل علامة «فعّال») بدل الحذف");
+        if (t.IsRegular && t.IsActive) return FinanceOperationResult.Fail($"«{t.Name}» هو نوع «الاعتيادية» الذي تُخصم منه الزمنية — حدّد غيره اعتيادية أولًا");
+        _db.LeaveTypes.Remove(t);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Delete", "LeaveTypes", typeId, $"حذف نوع الإجازة غير المستعمل «{t.Name}»");
+        return FinanceOperationResult.Ok();
+    }
+
     public Task<List<PublicHoliday>> GetHolidaysAsync(int year) =>
         _db.PublicHolidays.AsNoTracking().Where(h => h.HolidayDate.Year == year).OrderBy(h => h.HolidayDate).ToListAsync();
 
@@ -137,6 +151,28 @@ public class HrLeaveService
         _db.AttendanceRecords.RemoveRange(_db.AttendanceRecords.Where(a => a.AttendanceDate == date.Date && a.Status == AttendanceStatus.Absent));
         await _db.SaveChangesAsync();
         await new AuditService(_db).LogAsync(userId, "Insert", "PublicHolidays", null, $"عطلة رسمية {date:yyyy/MM/dd}: {name}");
+        return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>تعديل اسم العطلة أو تاريخها (بدل حذفها وإعادة إضافتها)؛ لا يمسّ شهرًا رواتبه معتمدة.</summary>
+    public async Task<FinanceOperationResult> UpdateHolidayAsync(int id, DateTime date, string name, int userId)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return FinanceOperationResult.Fail("اكتب اسم العطلة");
+        var h = await _db.PublicHolidays.FindAsync(id);
+        if (h is null) return FinanceOperationResult.Fail("العطلة غير موجودة");
+        if (h.HolidayDate.Date != date.Date)
+        {
+            if (await _db.PublicHolidays.AnyAsync(x => x.Id != id && x.HolidayDate == date.Date)) return FinanceOperationResult.Fail($"{date:yyyy/MM/dd} مسجّل عطلة رسمية مسبقًا");
+            foreach (var day in new[] { h.HolidayDate, date })
+                if (await ClosedMonthAsync(day, day) is { } closed) return FinanceOperationResult.Fail(closed);
+        }
+        var before = $"{h.HolidayDate:yyyy/MM/dd} {h.Name}";
+        (h.HolidayDate, h.Name) = (date.Date, name);
+        // التاريخ الجديد صار عطلة: غياب مسجّل فيه يُزال كما عند الإضافة
+        _db.AttendanceRecords.RemoveRange(_db.AttendanceRecords.Where(a => a.AttendanceDate == date.Date && a.Status == AttendanceStatus.Absent));
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Update", "PublicHolidays", id, $"تعديل العطلة الرسمية: {before} ← {date:yyyy/MM/dd} {name}");
         return FinanceOperationResult.Ok();
     }
 
@@ -349,6 +385,21 @@ public class HrLeaveService
         await _db.SaveChangesAsync();
         await new AuditService(_db).LogAsync(userId, "Void", "EmployeeLeaves", leave.Id, $"إلغاء الإجازة {leave.LeaveNumber} لـ {leave.Employee.FullName}: {leave.VoidReason}");
         return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>
+    /// تعديل إجازة = إلغاء القديمة بسبب وتسجيل الجديدة في عملية واحدة (يبقى الأثر في السجل)؛ إن تعذّر التسجيل لا يُلغى شيء.
+    /// </summary>
+    public async Task<(FinanceOperationResult result, List<EmployeeLeave> leaves, string? warning)> ReplaceAsync(int oldLeaveId, LeaveInput input, string reason, int userId)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return (FinanceOperationResult.Fail("اكتب سبب التعديل"), new(), null);
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var voided = await VoidAsync(oldLeaveId, "تعديل: " + reason.Trim(), userId);
+        if (!voided.Success) return (voided, new(), null);
+        var (r, leaves, warning) = await RegisterAsync(input, userId);
+        if (!r.Success) { await tx.RollbackAsync(); _db.ChangeTracker.Clear(); return (r, new(), null); }
+        await tx.CommitAsync();
+        return (r, leaves, warning);
     }
 
     /// <summary>يُطبّق الإجازة على الحضور: أيام العمل «إجازة معتمدة»، والزمنية تُعيد حساب تأخير يومها.</summary>

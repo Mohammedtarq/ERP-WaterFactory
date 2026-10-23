@@ -390,6 +390,19 @@ public class PhoneAppTests : CloudTestBase, IDisposable
         protected override bool TryComputeLength(out long length) { length = -1; return false; }
     }
 
+    [Fact]
+    public void Phone_on_another_router_network_gets_a_clear_hint()
+    {
+        System.Net.IPAddress Ip(string s) => System.Net.IPAddress.Parse(s);
+        const string local = "http://192.168.0.192:5080";
+        // صورة المالك: الهاتف على net-84_5G (192.168.1.x) والحاسبة على 192.168.0.x
+        Assert.Contains("192.168.1.x", NetworkHint.Mismatch(local, new[] { Ip("192.168.1.128"), Ip("10.20.30.40") }));
+        Assert.Null(NetworkHint.Mismatch(local, new[] { Ip("192.168.0.165") }));                    // الشبكة نفسها
+        Assert.Null(NetworkHint.Mismatch(local, new[] { Ip("100.64.5.9") }));                       // بيانات الهاتف فقط
+        Assert.Null(NetworkHint.Mismatch(null, new[] { Ip("192.168.1.128") }));
+        Assert.Null(NetworkHint.Mismatch("https://rep.example.com", new[] { Ip("192.168.1.128") })); // خادم سحابي بالاسم
+    }
+
     /// <summary>هاتف بلا شبكة.</summary>
     private class OfflineHandler : HttpMessageHandler
     {

@@ -42,6 +42,39 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
         });
         CancelVoidCommand = new RelayCommand(() => VoidTarget = null);
         VoidCommand = new AsyncRelayCommand(VoidAsync);
+        BeginEditCommand = new RelayCommand(p => { if (p is EmployeeDeductionRow r) BeginEdit(r); });
+        CancelEditCommand = new RelayCommand(() => EditTarget = null);
+    }
+
+    private EmployeeDeductionRow? _editTarget;
+    private string? _editReason;
+    /// <summary>
+    /// السجل قيد التعديل: يُحمَّل في النموذج، و«الحفظ» يسجّل الجديد (العقوبة فورًا، والسلفة والمسحوب طلب صرف للمالية)
+    /// ثم يُلغى القديم بسبب (يعود نقده للصندوق بقيد عكسي). لا يُعدَّل ما استُقطع منه في رواتب معتمدة.
+    /// </summary>
+    public EmployeeDeductionRow? EditTarget
+    {
+        get => _editTarget;
+        private set { if (SetProperty(ref _editTarget, value)) { OnPropertyChanged(nameof(IsEditing)); OnPropertyChanged(nameof(SaveLabel)); } }
+    }
+    public bool IsEditing => EditTarget is not null;
+    public string? EditReason { get => _editReason; set => SetProperty(ref _editReason, value); }
+    public RelayCommand BeginEditCommand { get; }
+    public RelayCommand CancelEditCommand { get; }
+
+    private void BeginEdit(EmployeeDeductionRow r)
+    {
+        if (r.IsVoided) { Dialogs.Error("ملغى — لا يُعدَّل"); return; }
+        if (r.Deducted > 0) { Dialogs.Error("استُقطع منه في رواتب معتمدة — لا يُعدَّل"); return; }
+        VoidTarget = null;
+        Employee = Employees.FirstOrDefault(e => e.Id == r.EmployeeId);
+        Kind = Kinds.Single(k => k.Value == r.Kind);
+        (Amount, Installment, Reason, Date) = (r.Amount, r.MonthlyInstallment ?? 0, r.Reason, r.EntryDate);
+        var parts = r.StartPeriod.Split('/');
+        if (parts.Length == 2 && int.TryParse(parts[0], out var m) && int.TryParse(parts[1], out var y)) (StartMonth, StartYear) = (m, y);
+        EditReason = null;
+        EditTarget = r;
+        StatusMessage = $"تعديل {r.DeductionNumber}: غيّر ما تريد واكتب السبب ثم احفظ — يُلغى القديم ويُسجَّل الجديد";
     }
 
     protected override bool HasPendingInput => Amount != 0;
@@ -57,6 +90,7 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
         Reason = null;
         VoidTarget = null;
         VoidReason = null;
+        EditTarget = null;
     }
     protected override bool ReloadOnActivate => true;
 
@@ -91,7 +125,8 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
         EmployeeDeductionKind.Withdrawal => $"يُصرف من صندوقك الآن، ويُستقطع كاملًا من راتب الشهر المحدد. المسحوبات تُغلق يوم {HrRules.WithdrawalCutoffDay}: ما بعده يُستقطع من الشهر التالي.",
         _ => "لا يُصرف شيء من الصندوق؛ يُخصم المبلغ من راتب الشهر المحدد. السبب إلزامي."
     };
-    public string SaveLabel => IsPenalty ? "حفظ العقوبة وطباعة الإشعار" : $"صرف {Kind.Label} وطباعة السند";
+    public string SaveLabel => EditTarget is not null ? $"حفظ تعديل {EditTarget.DeductionNumber}"
+        : IsPenalty ? "حفظ العقوبة وطباعة الإشعار" : $"طلب صرف {Kind.Label} (بعد موافقة المالية)";
     public string StartLabel => IsLoan ? "يبدأ الاستقطاع من راتب شهر" : "يُستقطع من راتب شهر";
 
     public decimal Amount { get => _amount; set { if (SetProperty(ref _amount, value)) OnPropertyChanged(nameof(InstallmentsText)); } }
@@ -150,15 +185,36 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
         if (IsLoan && Installment <= 0) { Dialogs.Error("أدخل القسط الشهري"); return; }
         if (IsPenalty && string.IsNullOrWhiteSpace(Reason)) { Dialogs.Error("اكتب سبب العقوبة"); return; }
 
+        var editing = EditTarget;
+        if (editing is not null)
+        {
+            if (string.IsNullOrWhiteSpace(EditReason)) { Dialogs.Error("اكتب سبب التعديل"); return; }
+            await using var adminDb = Session.NewDb();
+            if (!await new CashBoxService(adminDb).IsAdminAsync(Session.UserId)) { Dialogs.Error("تعديل السلف والمسحوبات والعقوبات للأدمن فقط (يلغي السجل القديم)"); return; }
+        }
+
         await using var db = Session.NewDb();
         var req = new EmployeeDeductionService.CreateRequest(Kind.Value, Employee.Id, Amount, Date, StartMonth, StartYear,
                                                              IsLoan ? Installment : null, Reason);
+        // التعديل: يُلغى القديم بعد نجاح تسجيل الجديد؛ إن تعذّر الإلغاء يُتراجع عن الجديد فلا يتكرر شيء
+        async Task<bool> VoidOldAsync(Func<Task> undoNew)
+        {
+            if (editing is null) return true;
+            await using var vdb = Session.NewDb();
+            var voided = await new EmployeeDeductionService(vdb).VoidAsync(editing.Id, "تعديل: " + EditReason!.Trim(), Session.UserId);
+            if (voided.Success) return true;
+            await undoNew();
+            Dialogs.Error($"تعذّر إلغاء {editing.DeductionNumber}: {voided.ErrorMessage} — لم يُسجَّل التعديل");
+            return false;
+        }
         // السلفة والمسحوب يخرج بهما نقد: طلب صرف ينتظر موافقة المالية (يصلها إشعار)، والعقوبة بلا نقد فتُسجَّل فورًا
         if (!IsPenalty)
         {
             var (asked, request) = await new PaymentApprovalService(db).RequestEmployeePayoutAsync(req, Session.UserId);
             if (!asked.Success) { Dialogs.Error(asked.ErrorMessage ?? "تعذّر تقديم الطلب"); return; }
-            StatusMessage = $"أُرسل طلب {Kind.Label} {request!.RequestNumber} لـ {Employee.FullName} بمبلغ {Amount:N0} د.ع لموافقة القسم المالي — يُصرف النقد بعد اعتماده من «المالية ← طلبات الصرف»";
+            if (!await VoidOldAsync(async () => { await using var u = Session.NewDb(); await new PaymentApprovalService(u).WithdrawRequestAsync(request!.Id, Session.UserId); })) return;
+            if (editing is not null) { EditTarget = null; await LoadRowsAsync(); }
+            StatusMessage = (editing is null ? "" : $"أُلغي {editing.DeductionNumber} (عاد نقده للصندوق) و") + $"أُرسل طلب {Kind.Label} {request!.RequestNumber} لـ {Employee.FullName} بمبلغ {Amount:N0} د.ع لموافقة القسم المالي — يُصرف النقد بعد اعتماده من «المالية ← طلبات الصرف»";
             Amount = 0;
             Installment = 0;
             Reason = null;
@@ -166,7 +222,9 @@ public class EmployeeDeductionsSectionViewModel : SectionViewModel
         }
         var (result, created) = await new EmployeeDeductionService(db).CreateAsync(req, Session.UserId);
         if (!result.Success) { Dialogs.Error(result.ErrorMessage ?? "تعذّر الحفظ"); return; }
-        StatusMessage = $"حُفظت {Kind.Label} {created!.DeductionNumber} لـ {Employee.FullName} بمبلغ {Amount:N0} د.ع";
+        if (!await VoidOldAsync(async () => { await using var u = Session.NewDb(); await new EmployeeDeductionService(u).VoidAsync(created!.Id, "تراجع عن تعديل لم يكتمل", Session.UserId); })) return;
+        EditTarget = null;
+        StatusMessage = (editing is null ? "" : $"أُلغي {editing.DeductionNumber} للتعديل و") + $"حُفظت {Kind.Label} {created!.DeductionNumber} لـ {Employee.FullName} بمبلغ {Amount:N0} د.ع";
         Amount = 0;
         Installment = 0;
         Reason = null;

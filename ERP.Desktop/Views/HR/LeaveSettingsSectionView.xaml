@@ -48,6 +48,14 @@
                         <DataGridCheckBoxColumn Header="مدفوعة" Binding="{Binding IsPaid, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
                         <DataGridCheckBoxColumn Header="اعتيادية" Binding="{Binding IsRegular, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
                         <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}" Width="60"/>
+                        <DataGridTemplateColumn Header="" Width="44">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE74D;" ToolTip="حذف النوع (غير المستعمل فقط؛ المستعمل يُوقف بإزالة «فعّال»)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding Data.DeleteTypeCommand, Source={StaticResource Proxy}}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>
@@ -63,7 +71,11 @@
                     <DatePicker SelectedDate="{Binding NewHolidayDate}"/>
                     <TextBlock Text="الاسم (مثل: عيد الفطر)" Style="{StaticResource FieldLabel}"/>
                     <TextBox Text="{Binding NewHolidayName, UpdateSourceTrigger=PropertyChanged}"/>
-                    <Button Style="{StaticResource PrimaryButton}" Content="إضافة العطلة" Command="{Binding AddHolidayCommand}" Margin="0,8,0,0" HorizontalAlignment="Left"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Style="{StaticResource PrimaryButton}" Content="{Binding HolidayButtonText}" Command="{Binding AddHolidayCommand}"/>
+                        <Button Style="{StaticResource SecondaryButton}" Content="إلغاء التعديل" Command="{Binding CancelHolidayEditCommand}" Margin="6,0,0,0"
+                                Visibility="{Binding IsEditingHoliday, Converter={StaticResource BoolToVisibility}}"/>
+                    </StackPanel>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,4,0,6">
                     <TextBlock Text="عطل سنة:" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -73,11 +85,15 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="التاريخ" Binding="{Binding HolidayDate, StringFormat=yyyy/MM/dd}" Width="100"/>
                         <DataGridTextColumn Header="العطلة" Binding="{Binding Name}" Width="*"/>
-                        <DataGridTemplateColumn Header="" Width="44">
+                        <DataGridTemplateColumn Header="" Width="80">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                    <Button Content="&#xE70F;" ToolTip="تعديل الاسم أو التاريخ" Style="{StaticResource RowIconButton}" Tag="#2563EB"
+                                            Command="{Binding DataContext.EditHolidayCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                     <Button Content="&#xE74D;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
                                             Command="{Binding DataContext.DeleteHolidayCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

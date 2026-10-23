@@ -27,7 +27,15 @@
                     <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsHours}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                     <TextBlock Text="ملاحظة (اختياري)" Style="{StaticResource FieldLabel}"/>
                     <TextBox Text="{Binding Note}"/>
-                    <Button Style="{StaticResource SuccessButton}" Command="{Binding AddCommand}" Content="تسجيل" Margin="0,10,0,0" HorizontalAlignment="Left" IsEnabled="{Binding CanAdd}"/>
+                    <StackPanel Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="سبب التعديل" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding EditReason, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Style="{StaticResource SuccessButton}" Command="{Binding AddCommand}" Content="{Binding AddText}" IsEnabled="{Binding CanAdd}"/>
+                        <Button Style="{StaticResource SecondaryButton}" Content="إلغاء التعديل" Command="{Binding CancelEditCommand}" Margin="6,0,0,0"
+                                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}"/>
+                    </StackPanel>
                     <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
 
                     <!-- سعر الساعة -->
@@ -106,11 +114,15 @@
                         <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="80"/>
                         <DataGridTextColumn Header="ملاحظة" Binding="{Binding Note}" Width="*"/>
                         <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="90"/>
-                        <DataGridTemplateColumn Header="" Width="44">
+                        <DataGridTemplateColumn Header="" Width="80">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                    <Button Content="&#xE70F;" ToolTip="تعديل (يُلغى القديم بسبب ويُسجَّل الجديد)" Style="{StaticResource RowIconButton}" Tag="#2563EB"
+                                            Command="{Binding DataContext.BeginEditCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                     <Button Content="&#xE711;" ToolTip="إلغاء" Style="{StaticResource RowIconButton}" Tag="#DC2626"
                                             Command="{Binding DataContext.BeginVoidCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>

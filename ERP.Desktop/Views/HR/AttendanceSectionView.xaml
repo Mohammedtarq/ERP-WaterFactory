@@ -57,6 +57,14 @@
                     </DataGridTemplateColumn>
                     <DataGridTextColumn Header="الحالة المحفوظة" Binding="{Binding SavedStatus}" Width="120" IsReadOnly="True"/>
                     <DataGridTextColumn Header="تأخير (د)" Binding="{Binding SavedLateMinutes}" Width="80" IsReadOnly="True"/>
+                    <DataGridTemplateColumn Header="" Width="44">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="&#xE74D;" ToolTip="مسح تسجيل اليوم لهذا الموظف (قبل اعتماد الرواتب)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                        Command="{Binding DataContext.ClearDayCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                 </DataGrid.Columns>
             </DataGrid>
         </DockPanel>

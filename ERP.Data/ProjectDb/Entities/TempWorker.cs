@@ -30,6 +30,9 @@ public class TempWorkerPayment
     public decimal DailyWage { get; set; }
     public decimal Amount { get; set; }
     public bool IsFinal { get; set; }
+    /// <summary>صرف ملغى بسبب: النقد عاد للصندوق بقيد عكسي، وأيامه عادت غير مصروفة.</summary>
+    public bool IsVoided { get; set; }
+    public string? VoidReason { get; set; }
     public int? JournalEntryId { get; set; }
     public JournalEntry? JournalEntry { get; set; }
     public int CreatedByUserId { get; set; }

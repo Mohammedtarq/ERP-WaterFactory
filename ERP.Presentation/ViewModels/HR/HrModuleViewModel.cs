@@ -128,6 +128,22 @@ public class AttendanceSectionViewModel : SectionViewModel
             // الظاهر فقط (القسم/البحث المختار)
             foreach (var r in VisibleRows.Where(r => r.CheckIn.Length == 0 && r.Forced is null)) r.CheckIn = r.ShiftText.Split(' ')[0] is { Length: 5 } t ? t : "08:00";
         });
+        ClearDayCommand = new AsyncRelayCommand(p => p is AttendanceRow r ? ClearDayAsync(r) : Task.CompletedTask);
+    }
+
+    public AsyncRelayCommand ClearDayCommand { get; }
+
+    /// <summary>مسح تسجيل اليوم لموظف (دخول بالخطأ): يعود «غير مسجّل»، قبل اعتماد رواتب الشهر فقط.</summary>
+    private async Task ClearDayAsync(AttendanceRow row)
+    {
+        if (!Require(CanDelete || CanEdit, "مسح تسجيل الحضور")) return;
+        var others = Rows.Count(r => r.IsChanged && r != row);
+        if (!Dialogs.Confirm($"مسح تسجيل {row.EmployeeName} يوم {Date:yyyy/MM/dd}؟ يعود اليوم «غير مسجّل»."
+                             + (others > 0 ? $"\nتنبيه: {others} سطر معدَّل لم يُحفظ سيُعاد تحميله — احفظه أولًا إن أردته." : ""))) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new HrService(db).ClearAttendanceDayAsync(row.EmployeeId, Date, Session.UserId),
+                                    $"مُسح تسجيل {row.EmployeeName} يوم {Date:yyyy/MM/dd}"))
+            await LoadAsync();
     }
 
     /// <summary>"تلقائي" = تُحدَّد الحالة من وقت الدخول والشفت.</summary>
@@ -370,6 +386,29 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
         ApproveCommand = new AsyncRelayCommand(ApproveAsync);
         RequestPayoutCommand = new AsyncRelayCommand(RequestPayoutAsync);
         PrintCommand = new AsyncRelayCommand(() => RunId is int id ? PrintAsync(db => DocumentReports.PayrollAsync(Session, db, id)) : Error("ولّد رواتب الشهر أولًا"));
+        ReopenCommand = new AsyncRelayCommand(ReopenAsync);
+    }
+
+    // ---- إعادة فتح رواتب معتمدة (بصلاحية وسبب) قبل صرفها ----
+    private string? _reopenReason;
+    public string? ReopenReason { get => _reopenReason; set => SetProperty(ref _reopenReason, value); }
+    public bool CanReopen => IsApproved && !IsPaid;
+    public AsyncRelayCommand ReopenCommand { get; }
+
+    private async Task ReopenAsync()
+    {
+        if (RunId is null || !IsApproved) { Dialogs.Error("الرواتب ليست معتمدة"); return; }
+        if (string.IsNullOrWhiteSpace(ReopenReason)) { Dialogs.Error("اكتب سبب إعادة الفتح"); return; }
+        if (!Dialogs.Confirm($"إعادة فتح رواتب {PeriodText}؟ يُعكس قيد الاستحقاق وتعود مسودة قابلة لإعادة التوليد والاعتماد.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new HrService(db).ReopenAsync(RunId.Value, ReopenReason!, Session.UserId),
+                                    $"أُعيد فتح رواتب {PeriodText} — عدّل ما يلزم ثم أعد التوليد والاعتماد"))
+        {
+            var message = StatusMessage;
+            ReopenReason = null;
+            await LoadAsync();
+            StatusMessage = message;
+        }
     }
 
     protected override bool ReloadOnActivate => true;
@@ -387,7 +426,7 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
     public string DepartmentTotalText => Department.IsAll || Rows.Count == 0 ? ""
         : string.Join(" + ", VisibleRows.GroupBy(r => r.Currency).Select(g => $"{g.Sum(r => r.NetSalary):N0} {g.Key}")) is { Length: > 0 } t ? $"صافي قسم {Department.Name}: {t}" : $"لا موظفين في قسم {Department.Name}";
     public int? RunId { get => _runId; private set { if (SetProperty(ref _runId, value)) OnPropertyChanged(nameof(StatusText)); } }
-    public bool IsApproved { get => _isApproved; private set { if (SetProperty(ref _isApproved, value)) OnPropertyChanged(nameof(StatusText)); } }
+    public bool IsApproved { get => _isApproved; private set { if (SetProperty(ref _isApproved, value)) { OnPropertyChanged(nameof(StatusText)); OnPropertyChanged(nameof(CanReopen)); } } }
     public PayrollSummary? Summary { get => _summary; private set => SetProperty(ref _summary, value); }
     public string StatusText => RunId is null ? "لم تُولَّد رواتب هذا الشهر بعد" : IsPaid ? "معتمدة ومصروفة ✓ (الشهر مقفل)" : IsApproved ? "معتمدة ✓ (الشهر مقفل) — لم تُصرف بعد" : "مسودة — راجعها ثم اعتمدها";
 
@@ -400,7 +439,7 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
     private CashBox? _payoutBox;
     public ObservableCollection<CashBox> PayoutBoxes { get; } = new();
     public CashBox? PayoutBox { get => _payoutBox; set => SetProperty(ref _payoutBox, value); }
-    public bool IsPaid { get => _isPaid; private set { if (SetProperty(ref _isPaid, value)) { OnPropertyChanged(nameof(StatusText)); OnPropertyChanged(nameof(CanRequestPayout)); } } }
+    public bool IsPaid { get => _isPaid; private set { if (SetProperty(ref _isPaid, value)) { OnPropertyChanged(nameof(StatusText)); OnPropertyChanged(nameof(CanRequestPayout)); OnPropertyChanged(nameof(CanReopen)); } } }
     public bool CanRequestPayout => IsApproved && !IsPaid;
     public AsyncRelayCommand RequestPayoutCommand { get; }
 
@@ -891,6 +930,27 @@ public class RepIncentiveRatesSectionViewModel : SectionViewModel
     {
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         AddCommand = new RelayCommand(AddRow);
+        DeleteRowCommand = new AsyncRelayCommand(p => p is RepIncentiveRateEditRow r ? DeleteRowAsync(r) : Task.CompletedTask);
+    }
+
+    public AsyncRelayCommand DeleteRowCommand { get; }
+
+    /// <summary>حذف حافز عبوة: يُزال سعرها (لا حافز لها بعد الآن)؛ السطر الجديد غير المحفوظ يُزال من الجدول فقط.</summary>
+    private async Task DeleteRowAsync(RepIncentiveRateEditRow row)
+    {
+        if (row.StateText.StartsWith("جديد")) { Rows.Remove(row); OnPropertyChanged(nameof(VisibleRows)); return; }
+        if (!Require(CanEdit || CanDelete, "حذف حافز المندوب")) return;
+        if (row.Row.Rate == 0) { Dialogs.Error("لا حافز محفوظ لهذه العبوة"); return; }
+        if (!Dialogs.Confirm($"حذف حافز {row.ItemName} — {row.LevelName} ({row.Row.Rate:N0})؟ لا يُحتسب لها حافز من الآن.")) return;
+        var target = row.Row with { };
+        target.Rate = 0;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new RepIncentiveService(db).SaveRatesAsync(new[] { target }, Session.UserId), $"حُذف حافز {row.ItemName} — {row.LevelName}"))
+        {
+            var message = StatusMessage;
+            await LoadAsync();
+            StatusMessage = message;
+        }
     }
 
     protected override bool HasPendingInput => Rows.Any(r => r.IsChanged);

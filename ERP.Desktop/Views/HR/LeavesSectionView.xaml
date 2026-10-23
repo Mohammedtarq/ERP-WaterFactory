@@ -17,12 +17,21 @@
             <DockPanel Margin="4">
                 <TextBlock DockPanel.Dock="Top" Text="تسجيل إجازة" Style="{StaticResource SectionTitle}"/>
                 <StackPanel DockPanel.Dock="Bottom">
-                    <Button Style="{StaticResource SuccessButton}" Command="{Binding RegisterCommand}" Margin="0,12,0,0" HorizontalAlignment="Left" IsEnabled="{Binding CanAdd}">
+                    <!-- تعديل إجازة: سبب إلزامي، والقديمة تُلغى وتُسجَّل الجديدة معًا -->
+                    <StackPanel Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}" Margin="0,8,0,0">
+                        <TextBlock Text="سبب التعديل" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding EditReason, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding RegisterCommand}" HorizontalAlignment="Left" IsEnabled="{Binding CanAdd}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
-                            <TextBlock Text="تسجيل الإجازة وطباعة الإشعار"/>
+                            <TextBlock Text="{Binding RegisterText}"/>
                         </StackPanel>
                     </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Content="إلغاء التعديل" Command="{Binding CancelEditCommand}" Margin="6,0,0,0"
+                            Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}"/>
+                    </StackPanel>
                     <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
                 </StackPanel>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -127,12 +136,14 @@
                         <DataGridTextColumn Header="الفترة" Binding="{Binding PeriodText}" Width="1.2*" MinWidth="150"/>
                         <DataGridTextColumn Header="الاحتساب" Binding="{Binding ChargeText}" Width="1.2*" MinWidth="140"/>
                         <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="100"/>
-                        <DataGridTemplateColumn Header="" Width="78">
+                        <DataGridTemplateColumn Header="" Width="112">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                         <Button Content="&#xE749;" ToolTip="طباعة الإشعار" Style="{StaticResource RowIconButton}" Tag="#0F766E"
                                                 Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Button Content="&#xE70F;" ToolTip="تعديل (تُلغى القديمة بسبب وتُسجَّل الجديدة)" Style="{StaticResource RowIconButton}" Tag="#2563EB"
+                                                Command="{Binding DataContext.BeginEditCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                         <Button Content="&#xE711;" ToolTip="إلغاء الإجازة" Style="{StaticResource RowIconButton}" Tag="#DC2626"
                                                 Command="{Binding DataContext.BeginVoidCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                     </StackPanel>

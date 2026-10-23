@@ -53,6 +53,17 @@
                     <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                     <TextBlock Text="سجل التعبئة" Style="{StaticResource SectionTitle}" Margin="0"/>
                 </DockPanel>
+                <!-- اليوم افتراضيًا؛ لمراجعة أيام سابقة «من — إلى» والبحث ثم «عرض» -->
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <TextBlock Text="من" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                    <DatePicker SelectedDate="{Binding From}" Width="120"/>
+                    <TextBlock Text="إلى" VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    <DatePicker SelectedDate="{Binding To}" Width="120"/>
+                    <TextBlock Text="بحث" VerticalAlignment="Center" Margin="8,0,4,0"/>
+                    <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" Width="150" ToolTip="رقم الأمر أو الدفعة أو الصنف"/>
+                    <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding ShowCommand}" Padding="12,4" Margin="6,0,0,0"/>
+                    <Button Content="اليوم" Style="{StaticResource SecondaryButton}" Command="{Binding TodayCommand}" Padding="10,4" Margin="4,0,0,0"/>
+                </WrapPanel>
                 <DataGrid ItemsSource="{Binding History}">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="التاريخ" Binding="{Binding PackingDate, StringFormat='yyyy/MM/dd HH:mm'}" Width="130"/>

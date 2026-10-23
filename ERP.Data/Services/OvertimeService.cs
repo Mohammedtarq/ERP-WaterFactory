@@ -69,6 +69,19 @@ public class OvertimeService
         return FinanceOperationResult.Ok();
     }
 
+    /// <summary>تعديل سطر عمل إضافي = إلغاؤه بسبب وتسجيل الجديد في عملية واحدة؛ إن رُفض الجديد يبقى القديم.</summary>
+    public async Task<FinanceOperationResult> ReplaceAsync(int oldId, int employeeId, DateTime workDate, OvertimeKind kind, decimal quantity, string? note, string reason, int userId)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب التعديل");
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var voided = await VoidAsync(oldId, "تعديل: " + reason.Trim(), userId);
+        if (!voided.Success) return voided;
+        var added = await AddAsync(employeeId, workDate, kind, quantity, note, userId);
+        if (!added.Success) { await tx.RollbackAsync(); _db.ChangeTracker.Clear(); return added; }
+        await tx.CommitAsync();
+        return added;
+    }
+
     public async Task<List<OvertimeRow>> ListAsync(int month, int year)
     {
         var start = new DateTime(year, month, 1);

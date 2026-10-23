@@ -122,6 +122,26 @@ public class HrService
         return FinanceOperationResult.Ok();
     }
 
+    /// <summary>
+    /// مسح تسجيل يوم لموظف (دخول بالخطأ): يُحذف سجل حضوره لذلك اليوم فيعود «غير مسجّل»، قبل اعتماد رواتب الشهر فقط.
+    /// يوم الإجازة المعتمدة لا يُمسح من هنا — تُلغى الإجازة نفسها.
+    /// </summary>
+    public async Task<FinanceOperationResult> ClearAttendanceDayAsync(int employeeId, DateTime date, int userId)
+    {
+        date = date.Date;
+        if (await IsPeriodApprovedAsync(date.Month, date.Year)) return FinanceOperationResult.Fail("رواتب هذا الشهر معتمدة؛ لا يُمسح حضوره");
+        if (await _db.PeriodLocks.OrderByDescending(p => p.Id).Select(p => p.LockedThrough).FirstOrDefaultAsync() is { } locked && date <= locked.Date)
+            return FinanceOperationResult.Fail($"الفترة مقفلة حتى {locked:yyyy/MM/dd}");
+        var rec = await _db.AttendanceRecords.Include(a => a.Employee).FirstOrDefaultAsync(a => a.EmployeeId == employeeId && a.AttendanceDate == date);
+        if (rec is null) return FinanceOperationResult.Fail("لا تسجيل لهذا الموظف في هذا اليوم");
+        if (rec.Status == AttendanceStatus.ApprovedLeave) return FinanceOperationResult.Fail("اليوم إجازة معتمدة — ألغِ الإجازة من شاشة الإجازات بدل المسح");
+        var text = $"مسح حضور {rec.Employee.FullName} يوم {date:yyyy/MM/dd} (كان: {rec.Status}{(rec.CheckInTime is { } i ? $" {i:hh\\:mm}" : "")})";
+        _db.AttendanceRecords.Remove(rec);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Delete", "AttendanceRecords", rec.Id, text);
+        return FinanceOperationResult.Ok();
+    }
+
     /// <summary>نقاط الانضباط (0–100) = نقاط أيام الحضور ÷ أيام العمل المسجّلة × 100 (الإجازات المعتمدة مستثناة).</summary>
     public async Task<decimal> ComputeAttendanceScoreAsync(int employeeId, int month, int year)
     {
@@ -419,9 +439,13 @@ public class HrService
         if (solidarityIqd > 0 && solidarityAccount is null)
             return (FinanceOperationResult.Fail($"قاعدة الربط المحاسبي \"{HrRules.SocialSolidarityRule}\" (التكافل الاجتماعي المستحق) غير معرّفة. أضفها من المالية ← العقل المالي."), null);
 
+        // بعد إعادة فتح رواتب معتمدة يبقى قيدها الأول (وعكسه) في الدفتر، فيُرقَّم الاعتماد الجديد بلاحقة
+        var baseNumber = $"PR-{run.PeriodYear}-{run.PeriodMonth:D2}";
+        var entryNumber = baseNumber;
+        for (var n = 2; await _db.JournalEntries.AnyAsync(j => j.EntryNumber == entryNumber); n++) entryNumber = $"{baseNumber}-{n}";
         var entry = new JournalEntry
         {
-            EntryNumber = $"PR-{run.PeriodYear}-{run.PeriodMonth:D2}",
+            EntryNumber = entryNumber,
             EntryDate = Period(run.PeriodMonth, run.PeriodYear).end,
             EntryType = JournalEntryType.AutoPayroll,
             Description = $"استحقاق رواتب {run.PeriodMonth}/{run.PeriodYear} — {run.Lines.Count} موظف" +
@@ -449,5 +473,45 @@ public class HrService
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         return (FinanceOperationResult.Ok(), summary);
+    }
+
+    /// <summary>
+    /// إعادة فتح رواتب معتمدة (بصلاحية «إلغاء المستندات المرحّلة» وسبب): قيد عكسي لقيد الاستحقاق، وتعود المسودة قابلة
+    /// لإعادة التوليد والاعتماد. لا تُفتح رواتب صُرفت نقدًا أو عليها طلب صرف معلّق، ولا شهر في فترة مقفلة.
+    /// </summary>
+    public async Task<FinanceOperationResult> ReopenAsync(int runId, string reason, int userId)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب إعادة الفتح");
+        if (!await SpecialPermission.HasAsync(_db, userId, SpecialPermission.VoidPosted))
+            return FinanceOperationResult.Fail($"إعادة فتح الرواتب تحتاج صلاحية «{SpecialPermission.NameOf(SpecialPermission.VoidPosted)}»");
+        var run = await _db.PayrollRuns.Include(r => r.JournalEntry!).ThenInclude(j => j.Lines).FirstOrDefaultAsync(r => r.Id == runId);
+        if (run is null) return FinanceOperationResult.Fail("الرواتب غير موجودة");
+        if (run.Status != PayrollRunStatus.Approved) return FinanceOperationResult.Fail("الرواتب ليست معتمدة");
+        if (run.PaidAt is not null) return FinanceOperationResult.Fail("صُرفت هذه الرواتب نقدًا من الصندوق — لا تُعاد فتحها");
+        if (await new PaymentApprovalService(_db).HasPendingPayrollPayoutAsync(runId))
+            return FinanceOperationResult.Fail("عليها طلب صرف بانتظار المالية — اسحب الطلب أولًا");
+        var entryDate = Period(run.PeriodMonth, run.PeriodYear).end;
+        if (await _db.PeriodLocks.OrderByDescending(p => p.Id).Select(p => p.LockedThrough).FirstOrDefaultAsync() is { } locked && entryDate <= locked.Date)
+            return FinanceOperationResult.Fail($"شهر الرواتب داخل فترة مقفلة حتى {locked:yyyy/MM/dd} — افتحها أولًا من المالية");
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        if (run.JournalEntry is { } je)
+        {
+            var reversal = new JournalEntry
+            {
+                EntryNumber = $"PRR-{run.PeriodYear}-{run.PeriodMonth:D2}-{await _db.JournalEntries.CountAsync(j => j.SourceTable == "PayrollRuns" && j.SourceId == run.Id) + 1}",
+                EntryDate = entryDate, EntryType = JournalEntryType.AutoPayroll, CreatedByUserId = userId, IsPosted = true,
+                Description = $"عكس استحقاق رواتب {run.PeriodMonth}/{run.PeriodYear} (إعادة فتح): {reason.Trim()}",
+                SourceTable = "PayrollRuns", SourceId = run.Id
+            };
+            foreach (var line in je.Lines)
+                reversal.Lines.Add(new JournalEntryLine { AccountId = line.AccountId, Debit = line.Credit, Credit = line.Debit, Description = "عكس: " + line.Description });
+            _db.JournalEntries.Add(reversal);
+        }
+        (run.Status, run.JournalEntryId, run.ApprovedByUserId) = (PayrollRunStatus.Draft, null, null);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Void", "PayrollRuns", run.Id, $"إعادة فتح رواتب {run.PeriodMonth}/{run.PeriodYear}: {reason.Trim()}");
+        await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
     }
 }

@@ -41,6 +41,7 @@ public class TempWorkersSectionViewModel : SectionViewModel
         EndServiceCommand = new AsyncRelayCommand(p => p is TempWorkerBalanceRow b ? PayAsync(b, true) : Task.CompletedTask);
         LoadPaymentsCommand = new AsyncRelayCommand(LoadPaymentsAsync);
         PrintCommand = new RelayCommand(p => { if (p is TempPaymentRow r) Print(r); });
+        CancelPaymentCommand = new AsyncRelayCommand(p => p is TempPaymentRow r ? CancelPaymentAsync(r) : Task.CompletedTask);
     }
 
     protected override bool ReloadOnActivate => true;
@@ -58,6 +59,25 @@ public class TempWorkersSectionViewModel : SectionViewModel
     public AsyncRelayCommand EndServiceCommand { get; }
     public AsyncRelayCommand LoadPaymentsCommand { get; }
     public RelayCommand PrintCommand { get; }
+    public AsyncRelayCommand CancelPaymentCommand { get; }
+    private string? _cancelReason;
+    /// <summary>سبب إلغاء صرف أجر (بصلاحية «إلغاء المستندات المرحّلة»): يعود النقد للصندوق وتعود الأيام غير مصروفة.</summary>
+    public string? CancelReason { get => _cancelReason; set => SetProperty(ref _cancelReason, value); }
+
+    private async Task CancelPaymentAsync(TempPaymentRow row)
+    {
+        if (row.IsVoided) { Dialogs.Error("ملغى مسبقًا"); return; }
+        if (string.IsNullOrWhiteSpace(CancelReason)) { Dialogs.Error("اكتب سبب الإلغاء فوق سجل الصرف"); return; }
+        if (!Dialogs.Confirm($"إلغاء صرف {row.PaymentNumber} لـ {row.FullName} ({row.Amount:N0} د.ع)؟ يعود النقد للصندوق وتعود {row.Days:0.##} يوم غير مصروفة.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new TempWorkersService(db).CancelPaymentAsync(row.Id, CancelReason!, Session.UserId),
+                                    $"أُلغي صرف {row.PaymentNumber} — عاد المبلغ للصندوق والأيام لرصيد {row.FullName}"))
+        {
+            CancelReason = null;
+            await LoadAsync();
+            await LoadPaymentsAsync();
+        }
+    }
 
     public override async Task LoadAsync()
     {

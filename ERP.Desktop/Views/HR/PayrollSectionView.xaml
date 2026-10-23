@@ -31,6 +31,15 @@
                             <TextBlock Text="طلب صرف الرواتب"/>
                         </StackPanel>
                     </Button>
+                    <TextBox Text="{Binding ReopenReason, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="0,0,4,0" IsEnabled="{Binding CanReopen}"
+                             ToolTip="سبب إعادة فتح الرواتب المعتمدة (قبل صرفها)"/>
+                    <Button Style="{StaticResource DangerButton}" Command="{Binding ReopenCommand}" IsEnabled="{Binding CanReopen}"
+                            ToolTip="يُعكس قيد الاستحقاق وتعود مسودة — بصلاحية «إلغاء المستندات المرحّلة»، وقبل الصرف فقط">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE777;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="إعادة فتح"/>
+                        </StackPanel>
+                    </Button>
                     <Button Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE749;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>

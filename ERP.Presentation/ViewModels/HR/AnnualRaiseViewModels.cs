@@ -31,6 +31,29 @@ public class AnnualRaisesSectionViewModel : SectionViewModel
         GrantCommand = new AsyncRelayCommand(p => p is AnnualRaiseEditRow r ? GrantAsync(r) : Task.CompletedTask);
         PrintLastLetterCommand = new AsyncRelayCommand(() => LastRaiseId is int id ? PrintLetterAsync(id) : Task.CompletedTask);
         SnoozeCommand = new AsyncRelayCommand(p => p is AnnualRaiseEditRow r ? SnoozeAsync(r) : Task.CompletedTask);
+        UndoCommand = new AsyncRelayCommand(p => p is GrantedRaiseRow g ? UndoAsync(g) : Task.CompletedTask);
+    }
+
+    /// <summary>العلاوات الممنوحة مؤخرًا: تُلغى الممنوحة بالخطأ بسبب ما لم تدخل رواتب معتمدة.</summary>
+    public ObservableCollection<GrantedRaiseRow> Granted { get; } = new();
+    private string? _undoReason;
+    public string? UndoReason { get => _undoReason; set => SetProperty(ref _undoReason, value); }
+    public AsyncRelayCommand UndoCommand { get; }
+
+    private async Task UndoAsync(GrantedRaiseRow g)
+    {
+        if (!Require(CanEdit || CanDelete, "إلغاء العلاوة")) return;
+        if (string.IsNullOrWhiteSpace(UndoReason)) { Dialogs.Error("اكتب سبب الإلغاء في الخانة فوق «العلاوات الممنوحة»"); return; }
+        if (!Dialogs.Confirm($"إلغاء علاوة {g.EmployeeName} ({g.Amount:N0} بتاريخ {g.EffectiveDate:yyyy/MM/dd})؟ يعود راتبه كما كان ويعود لقائمة المستحقين.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new AnnualRaiseService(db).UndoAsync(g.Id, UndoReason!, Session.UserId),
+                                    $"أُلغيت علاوة {g.EmployeeName} — إن كانت رواتب الشهر مولّدة فأعد توليدها"))
+        {
+            var message = StatusMessage;
+            UndoReason = null;
+            await LoadAsync();
+            StatusMessage = message;
+        }
     }
 
     protected override bool ReloadOnActivate => true;
@@ -54,9 +77,12 @@ public class AnnualRaisesSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        var rows = await new AnnualRaiseService(db).UpcomingAsync();
+        var svc = new AnnualRaiseService(db);
+        var rows = await svc.UpcomingAsync();
         Rows.Clear();
         foreach (var r in rows) Rows.Add(new AnnualRaiseEditRow(r));
+        Granted.Clear();
+        foreach (var g in await svc.RecentGrantsAsync()) Granted.Add(g);
         OnPropertyChanged(nameof(DueCount));
         OnPropertyChanged(nameof(SoonCount));
         StatusMessage = Rows.Count == 0 ? "لا أحد مستحق للعلاوة الآن ولا خلال 30 يومًا"

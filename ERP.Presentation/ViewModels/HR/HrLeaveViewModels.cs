@@ -47,6 +47,13 @@ public class LeaveSettingsSectionViewModel : SectionViewModel
         SaveTypesCommand = new AsyncRelayCommand(SaveTypesAsync);
         AddHolidayCommand = new AsyncRelayCommand(AddHolidayAsync);
         DeleteHolidayCommand = new AsyncRelayCommand(p => p is PublicHoliday h ? DeleteHolidayAsync(h) : Task.CompletedTask);
+        DeleteTypeCommand = new AsyncRelayCommand(p => p is LeaveTypeEditRow r ? DeleteTypeAsync(r) : Task.CompletedTask);
+        EditHolidayCommand = new RelayCommand(p =>
+        {
+            if (p is not PublicHoliday h) return;
+            (EditingHoliday, NewHolidayDate, NewHolidayName) = (h, h.HolidayDate, h.Name);
+        });
+        CancelHolidayEditCommand = new RelayCommand(() => (EditingHoliday, NewHolidayName) = (null, ""));
     }
 
     public IReadOnlyList<Option<LeaveAllowancePeriod>> Periods { get; } = new[]
@@ -65,6 +72,18 @@ public class LeaveSettingsSectionViewModel : SectionViewModel
     public AsyncRelayCommand SaveTypesCommand { get; }
     public AsyncRelayCommand AddHolidayCommand { get; }
     public AsyncRelayCommand DeleteHolidayCommand { get; }
+    public AsyncRelayCommand DeleteTypeCommand { get; }
+    public RelayCommand EditHolidayCommand { get; }
+    public RelayCommand CancelHolidayEditCommand { get; }
+    private PublicHoliday? _editingHoliday;
+    /// <summary>العطلة قيد التعديل (زر «تعديل» في سطرها): «حفظ» يعدّل اسمها وتاريخها بدل إضافة جديدة.</summary>
+    public PublicHoliday? EditingHoliday
+    {
+        get => _editingHoliday;
+        set { if (SetProperty(ref _editingHoliday, value)) { OnPropertyChanged(nameof(HolidayButtonText)); OnPropertyChanged(nameof(IsEditingHoliday)); } }
+    }
+    public bool IsEditingHoliday => EditingHoliday is not null;
+    public string HolidayButtonText => EditingHoliday is null ? "إضافة عطلة" : "حفظ التعديل";
 
     public override async Task LoadAsync()
     {
@@ -119,6 +138,17 @@ public class LeaveSettingsSectionViewModel : SectionViewModel
     {
         if (!Require(CanAdd || CanEdit, "تسجيل العطل الرسمية")) return;
         await using var db = Session.NewDb();
+        if (EditingHoliday is { } editing)
+        {
+            if (await RunOperationAsync(() => new HrLeaveService(db).UpdateHolidayAsync(editing.Id, NewHolidayDate, NewHolidayName, Session.UserId),
+                                        $"عُدّلت العطلة: {NewHolidayName} ({NewHolidayDate:yyyy/MM/dd})"))
+            {
+                (EditingHoliday, NewHolidayName) = (null, "");
+                SetProperty(ref _holidayYear, NewHolidayDate.Year, nameof(HolidayYear));
+                await LoadHolidaysAsync();
+            }
+            return;
+        }
         if (await RunOperationAsync(() => new HrLeaveService(db).AddHolidayAsync(NewHolidayDate, NewHolidayName, Session.UserId),
                                     $"سُجّلت العطلة {NewHolidayName} ({NewHolidayDate:yyyy/MM/dd}) — لا غياب فيها"))
         {
@@ -127,6 +157,17 @@ public class LeaveSettingsSectionViewModel : SectionViewModel
             SetProperty(ref _holidayYear, NewHolidayDate.Year, nameof(HolidayYear));
             await LoadHolidaysAsync();
         }
+    }
+
+    /// <summary>حذف نوع: الجديد غير المحفوظ يُزال من الجدول، والمحفوظ يُحذف إن لم يُستعمل في أي إجازة.</summary>
+    private async Task DeleteTypeAsync(LeaveTypeEditRow row)
+    {
+        if (row.Id == 0) { Types.Remove(row); return; }
+        if (!Require(CanDelete || CanEdit, "حذف أنواع الإجازات")) return;
+        if (!Dialogs.Confirm($"حذف نوع الإجازة «{row.Name}» نهائيًا؟ (يُحذف فقط إن لم يُستعمل في أي إجازة)")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new HrLeaveService(db).DeleteTypeAsync(row.Id, Session.UserId), $"حُذف نوع الإجازة «{row.Name}»"))
+            await LoadAsync();
     }
 
     private async Task DeleteHolidayAsync(PublicHoliday h)
@@ -182,6 +223,26 @@ public class LeavesSectionViewModel : SectionViewModel
         });
         CancelVoidCommand = new RelayCommand(() => VoidTarget = null);
         VoidCommand = new AsyncRelayCommand(VoidAsync);
+        BeginEditCommand = new RelayCommand(p => { if (p is LeaveRow r) BeginEdit(r); });
+        CancelEditCommand = new RelayCommand(() => EditTarget = null);
+    }
+
+    /// <summary>تعديل إجازة: تُحمَّل في النموذج، و«حفظ التعديل» يلغي القديمة بسبب ويسجّل الجديدة معًا (يبقى الأثر).</summary>
+    private void BeginEdit(LeaveRow r)
+    {
+        if (r.IsVoided) { Dialogs.Error("الإجازة ملغاة — لا تُعدَّل"); return; }
+        VoidTarget = null;
+        Employee = Employees.FirstOrDefault(e => e.Id == r.EmployeeId);
+        Kind = Kinds.Single(k => k.Value == r.Kind);
+        if (r.Kind == LeaveKind.Day) Type = Types.FirstOrDefault(t => t.Name == r.TypeName) ?? Type;
+        FromDate = r.FromDate;
+        ToDate = r.ToDate;
+        if (r.FromTime is { } ft) FromTime = ft.ToString(@"hh\:mm");
+        if (r.ToTime is { } tt) ToTime = tt.ToString(@"hh\:mm");
+        Note = r.Note;
+        EditReason = null;
+        EditTarget = r;
+        StatusMessage = $"تعديل {r.LeaveNumber}: غيّر ما تريد واكتب السبب ثم «حفظ التعديل»";
     }
 
     private Task NoEmployee() { Dialogs.Error("اختر الموظف أولًا"); return Task.CompletedTask; }
@@ -200,6 +261,7 @@ public class LeavesSectionViewModel : SectionViewModel
         Balances.Clear();
         HourlyText = "";
         VoidTarget = null;
+        EditTarget = null;
     }
 
     public IReadOnlyList<Option<LeaveKind>> Kinds { get; } = new[]
@@ -240,6 +302,18 @@ public class LeavesSectionViewModel : SectionViewModel
     public LeaveRow? VoidTarget { get => _voidTarget; private set { if (SetProperty(ref _voidTarget, value)) OnPropertyChanged(nameof(IsVoiding)); } }
     public bool IsVoiding => VoidTarget is not null;
     public string? VoidReason { get => _voidReason; set => SetProperty(ref _voidReason, value); }
+    private LeaveRow? _editTarget;
+    private string? _editReason;
+    public LeaveRow? EditTarget
+    {
+        get => _editTarget;
+        private set { if (SetProperty(ref _editTarget, value)) { OnPropertyChanged(nameof(IsEditing)); OnPropertyChanged(nameof(RegisterText)); } }
+    }
+    public bool IsEditing => EditTarget is not null;
+    public string? EditReason { get => _editReason; set => SetProperty(ref _editReason, value); }
+    public string RegisterText => EditTarget is null ? "تسجيل الإجازة وطباعة الإشعار" : $"حفظ تعديل {EditTarget.LeaveNumber}";
+    public RelayCommand BeginEditCommand { get; }
+    public RelayCommand CancelEditCommand { get; }
 
     public AsyncRelayCommand RegisterCommand { get; }
     public AsyncRelayCommand PrintCommand { get; }
@@ -335,10 +409,16 @@ public class LeavesSectionViewModel : SectionViewModel
     {
         if (!Require(CanAdd, "تسجيل الإجازات")) return;
         if (!TryInput(out var input, showErrors: true)) return;
+        var editing = EditTarget;
+        if (editing is not null && string.IsNullOrWhiteSpace(EditReason)) { Dialogs.Error("اكتب سبب التعديل"); return; }
         await using var db = Session.NewDb();
-        var (result, created, warning) = await new HrLeaveService(db).RegisterAsync(input!, Session.UserId);
+        var svc = new HrLeaveService(db);
+        var (result, created, warning) = editing is null ? await svc.RegisterAsync(input!, Session.UserId)
+                                                         : await svc.ReplaceAsync(editing.Id, input!, EditReason!, Session.UserId);
         if (!result.Success) { Dialogs.Error(result.ErrorMessage ?? "تعذّر التسجيل"); return; }
-        StatusMessage = $"سُجّلت {(IsHourly ? "الزمنية" : $"إجازة {Type!.Name}")} لـ {Employee!.FullName} ({string.Join("، ", created.Select(l => l.LeaveNumber))})"
+        EditTarget = null;
+        StatusMessage = (editing is null ? "" : $"أُلغيت {editing.LeaveNumber} للتعديل و") +
+                        $"سُجّلت {(IsHourly ? "الزمنية" : $"إجازة {Type!.Name}")} لـ {Employee!.FullName} ({string.Join("، ", created.Select(l => l.LeaveNumber))})"
                         + (warning is null ? "" : $" — تنبيه: {warning}");
         Note = null;
         await LoadRowsAsync();
@@ -405,7 +485,33 @@ public class OvertimeSectionViewModel : SectionViewModel
         });
         CancelVoidCommand = new RelayCommand(() => VoidTarget = null);
         VoidCommand = new AsyncRelayCommand(VoidAsync);
+        BeginEditCommand = new RelayCommand(p =>
+        {
+            if (p is not OvertimeRow r) return;
+            if (r.IsVoided) { Dialogs.Error("ملغى — لا يُعدَّل"); return; }
+            VoidTarget = null;
+            Employee = Employees.FirstOrDefault(e => e.Id == r.EmployeeId);
+            Kind = Kinds.Single(k => k.Value == r.Kind);
+            (Date, Quantity, Note, EditReason) = (r.WorkDate, r.Quantity, r.Note, null);
+            EditTarget = r;
+            StatusMessage = $"تعديل سطر {r.EmployeeName} يوم {r.WorkDate:yyyy/MM/dd}: غيّر ما تريد واكتب السبب ثم «حفظ التعديل»";
+        });
+        CancelEditCommand = new RelayCommand(() => EditTarget = null);
     }
+
+    private OvertimeRow? _editTarget;
+    private string? _editReason;
+    /// <summary>سطر قيد التعديل: «حفظ التعديل» يلغيه بسبب ويسجّل الجديد معًا.</summary>
+    public OvertimeRow? EditTarget
+    {
+        get => _editTarget;
+        private set { if (SetProperty(ref _editTarget, value)) { OnPropertyChanged(nameof(IsEditing)); OnPropertyChanged(nameof(AddText)); } }
+    }
+    public bool IsEditing => EditTarget is not null;
+    public string? EditReason { get => _editReason; set => SetProperty(ref _editReason, value); }
+    public string AddText => EditTarget is null ? "تسجيل" : "حفظ التعديل";
+    public RelayCommand BeginEditCommand { get; }
+    public RelayCommand CancelEditCommand { get; }
 
     protected override bool ReloadOnActivate => true;
 
@@ -418,6 +524,7 @@ public class OvertimeSectionViewModel : SectionViewModel
         Quantity = 1;
         Note = null;
         VoidTarget = null;
+        EditTarget = null;
     }
 
     public IReadOnlyList<Option<OvertimeKind>> Kinds { get; } = new[]
@@ -506,12 +613,17 @@ public class OvertimeSectionViewModel : SectionViewModel
     {
         if (!Require(CanAdd, "تسجيل العمل الإضافي")) return;
         if (Employee is null) { Dialogs.Error("اختر الموظف"); return; }
+        var editing = EditTarget;
+        if (editing is not null && string.IsNullOrWhiteSpace(EditReason)) { Dialogs.Error("اكتب سبب التعديل"); return; }
         await using var db = Session.NewDb();
         var (name, kind, qty) = (Employee.FullName, Kind.Label, Quantity);
-        if (await RunOperationAsync(() => new OvertimeService(db).AddAsync(Employee.Id, Date, Kind.Value, Quantity, Note, Session.UserId),
-                                    $"سُجّل {kind} لـ {name}: {(IsHours ? $"{qty:0.##} ساعة" : "يوم")} بتاريخ {Date:yyyy/MM/dd}"))
+        var svc = new OvertimeService(db);
+        if (await RunOperationAsync(() => editing is null ? svc.AddAsync(Employee.Id, Date, Kind.Value, Quantity, Note, Session.UserId)
+                                                          : svc.ReplaceAsync(editing.Id, Employee.Id, Date, Kind.Value, Quantity, Note, EditReason!, Session.UserId),
+                                    $"{(editing is null ? "سُجّل" : "عُدّل (أُلغي القديم بسبب وسُجّل")} {kind} لـ {name}: {(IsHours ? $"{qty:0.##} ساعة" : "يوم")} بتاريخ {Date:yyyy/MM/dd}{(editing is null ? "" : ")")}"))
         {
             Note = null;
+            EditTarget = null;
             if (Date.Month != Month || Date.Year != Year)
             {
                 (_month, _year) = (Date.Month, Date.Year);

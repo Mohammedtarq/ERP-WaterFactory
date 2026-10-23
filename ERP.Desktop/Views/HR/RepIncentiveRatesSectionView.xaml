@@ -62,6 +62,14 @@
                         </DataGridTextColumn.CellStyle>
                     </DataGridTextColumn>
                     <DataGridTextColumn Header="الحالة" Binding="{Binding StateText}" Width="130" IsReadOnly="True"/>
+                    <DataGridTemplateColumn Header="" Width="44" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="&#xE74D;" ToolTip="حذف حافز هذه العبوة" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                        Command="{Binding DataContext.DeleteRowCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                 </DataGrid.Columns>
             </DataGrid>
         </DockPanel>

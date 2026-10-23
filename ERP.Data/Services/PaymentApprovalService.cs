@@ -72,6 +72,13 @@ public class PaymentApprovalService
     }
 
     /// <summary>صرف رواتب شهر معتمد من صندوق (بعد اعتماد المسير): يتحقق من المسير والرصيد ثم يُحفظ طلبًا.</summary>
+    /// <summary>هل على هذه الرواتب طلب صرف بانتظار المالية؟</summary>
+    public Task<bool> HasPendingPayrollPayoutAsync(int runId)
+    {
+        var payload = JsonSerializer.Serialize(new PayrollPayload(runId), Json);
+        return _db.PaymentRequests.AnyAsync(p => p.Kind == PaymentRequestKind.PayrollPayout && p.Status == PaymentRequestStatus.Pending && p.Payload == payload);
+    }
+
     public async Task<(FinanceOperationResult result, PaymentRequest? request)> RequestPayrollPayoutAsync(int runId, int cashBoxId, int userId)
     {
         var (error, run, amount) = await CheckPayoutAsync(runId, cashBoxId);

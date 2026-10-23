@@ -102,6 +102,38 @@ public class AnnualRaiseService
     public async Task<FinanceOperationResult> GrantAsync(int employeeId, decimal amount, int userId, DateTime? date = null, string? notes = null)
         => (await GrantWithIdAsync(employeeId, amount, userId, date, notes)).result;
 
+    /// <summary>آخر العلاوات السنوية الممنوحة (للمراجعة والإلغاء)، وهل ما زال إلغاؤها ممكنًا (لم تُعتمد رواتب بها).</summary>
+    public async Task<List<GrantedRaiseRow>> RecentGrantsAsync(int take = 40)
+    {
+        var lastApproved = await _db.PayrollRuns.Where(p => p.Status == PayrollRunStatus.Approved)
+                                    .Select(p => (int?)(p.PeriodYear * 12 + p.PeriodMonth)).MaxAsync() ?? 0;
+        var rows = await _db.PromotionsAndRaises.AsNoTracking().Where(r => r.MovementType == PromotionMovementType.AnnualRaise)
+            .OrderByDescending(r => r.EffectiveDate).ThenByDescending(r => r.Id).Take(take)
+            .Select(r => new { r.Id, r.Employee.FullName, r.Amount, r.EffectiveDate, r.Notes }).ToListAsync();
+        return rows.Select(r => new GrantedRaiseRow(r.Id, r.FullName, r.Amount, r.EffectiveDate, r.Notes,
+                                                    r.EffectiveDate.Year * 12 + r.EffectiveDate.Month > lastApproved)).ToList();
+    }
+
+    /// <summary>
+    /// إلغاء علاوة سنوية مُنحت بالخطأ (بسبب): تُحذف فيعود الراتب كما كان ويعود الموظف لقائمة المستحقين،
+    /// ما لم تُعتمد رواتب شهر سريانها أو ما بعده (حينها أثرها في رواتب معتمدة — لا يُلغى).
+    /// </summary>
+    public async Task<FinanceOperationResult> UndoAsync(int raiseId, string reason, int userId)
+    {
+        if (!await CanManageAsync(userId)) return FinanceOperationResult.Fail("إلغاء العلاوة للمدير ومسؤول الموارد البشرية فقط");
+        if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب الإلغاء");
+        var r = await _db.PromotionsAndRaises.Include(x => x.Employee).FirstOrDefaultAsync(x => x.Id == raiseId && x.MovementType == PromotionMovementType.AnnualRaise);
+        if (r is null) return FinanceOperationResult.Fail("العلاوة غير موجودة");
+        var key = r.EffectiveDate.Year * 12 + r.EffectiveDate.Month;
+        if (await _db.PayrollRuns.AnyAsync(p => p.Status == PayrollRunStatus.Approved && p.PeriodYear * 12 + p.PeriodMonth >= key))
+            return FinanceOperationResult.Fail($"اعتُمدت رواتب {r.EffectiveDate:MM/yyyy} أو ما بعدها بهذه العلاوة — لا تُلغى");
+        _db.PromotionsAndRaises.Remove(r);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Delete", "PromotionsAndRaises", raiseId,
+            $"إلغاء علاوة سنوية لـ {r.Employee.FullName}: {r.Amount:N0} بتاريخ {r.EffectiveDate:yyyy/MM/dd} — {reason.Trim()}");
+        return FinanceOperationResult.Ok();
+    }
+
     /// <summary>تأجيل التنبيه بسبب إلزامي حتى تاريخ يُختار (يعود بعده إلى القائمة والجرس).</summary>
     public async Task<FinanceOperationResult> SnoozeAsync(int employeeId, DateTime until, string reason, int userId)
     {
@@ -128,4 +160,10 @@ public class AnnualRaiseService
         await db.Employees.Where(e => e.DepartmentId == departmentId && !e.HasOwnShift && e.ShiftId != shift)
             .ExecuteUpdateAsync(u => u.SetProperty(e => e.ShiftId, shift));
     }
+}
+
+/// <summary>علاوة ممنوحة: تُلغى ما دامت رواتب شهرها وما بعده غير معتمدة.</summary>
+public record GrantedRaiseRow(int Id, string EmployeeName, decimal Amount, DateTime EffectiveDate, string? Notes, bool CanUndo)
+{
+    public string UndoText => CanUndo ? "قابلة للإلغاء" : "في رواتب معتمدة";
 }
