@@ -244,7 +244,7 @@ public class RepDocumentsSectionViewModel : SectionViewModel
     private void PrintVanStock()
     {
         if (Van is null) { Dialogs.Error("اختر السيارة"); return; }
-        var r = new ReportDocument { Key = "van-stock", CompanyName = Session.ProjectName, Title = $"جرد سيارة — {Van.Name}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { Key = "van-stock", CompanyName = Session.ProjectName, Title = $"جرد سيارة — {Van.Name}", PrintedBy = Session.Username };
         r.Field("السيارة", Van.Name).Field("المندوب", Van.OwnerEmployee?.FullName).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
         r.Columns.AddRange(new[] { "الكود", "الصنف", "التشغيلة", "الصلاحية", "الكمية", "بالقطعة" });
         foreach (var x in VanStock)

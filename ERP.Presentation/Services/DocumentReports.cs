@@ -12,7 +12,7 @@ namespace ERP.Presentation.Services;
 public static class DocumentReports
 {
     private static ReportDocument New(AppSession s, string title, string? stamp = null, string? notes = null) =>
-        new() { CompanyName = s.ProjectName, Title = title, Stamp = stamp, Notes = notes, PrintedBy = s.FullName };
+        new() { CompanyName = s.ProjectName, Title = title, Stamp = stamp, Notes = notes, PrintedBy = s.Username };
 
     private static string N(decimal v) => $"{v:N0}";
     private static string Q(decimal v) => $"{v:#,0.###}";
@@ -155,7 +155,7 @@ public static class DocumentReports
     /// </remarks>
     public static ReportDocument StockDocumentReport(AppSession s, StockDocument d, ProductNames names, PackFormatter packs)
     {
-        var r = new ReportDocument { Key = $"stock-doc-{d.DocumentType}", CompanyName = s.ProjectName, Title = $"مستند {ArabicLabels.Of(d.DocumentType)}", PrintedBy = s.FullName, Notes = d.Notes };
+        var r = new ReportDocument { Key = $"stock-doc-{d.DocumentType}", CompanyName = s.ProjectName, Title = $"مستند {ArabicLabels.Of(d.DocumentType)}", PrintedBy = s.Username, Notes = d.Notes };
         r.Field("رقم المستند", d.DocumentNumber)
          .Field("التاريخ", d.DocumentDate.ToString("yyyy/MM/dd"))
          .Field(d.DocumentType is StockDocumentType.Transfer or StockDocumentType.RepLoad or StockDocumentType.RepReturn ? "من مخزن" : "المخزن", d.Warehouse.Name)
@@ -223,7 +223,7 @@ public static class DocumentReports
         var receipt = v.VoucherType == VoucherType.Receipt;
         var r = new ReportDocument
         {
-            CompanyName = s.ProjectName, Title = receipt ? "سند قبض" : "سند صرف", Notes = v.IsVoided ? $"ملغى — {v.VoidReason}" : v.Notes, PrintedBy = s.FullName,
+            CompanyName = s.ProjectName, Title = receipt ? "سند قبض" : "سند صرف", Notes = v.IsVoided ? $"ملغى — {v.VoidReason}" : v.Notes, PrintedBy = s.Username,
             Key = "Voucher", ReceiptCapable = true, Stamp = v.IsVoided ? "ملغى" : null
         };
         r.Field("رقم السند", v.VoucherNumber)
@@ -251,7 +251,7 @@ public static class DocumentReports
         };
         var r = new ReportDocument
         {
-            CompanyName = s.ProjectName, Title = title, Stamp = d.IsVoided ? "ملغى" : null, Notes = d.Notes, PrintedBy = s.FullName,
+            CompanyName = s.ProjectName, Title = title, Stamp = d.IsVoided ? "ملغى" : null, Notes = d.Notes, PrintedBy = s.Username,
             Key = "CustomerDeposit", ReceiptCapable = true
         };
         r.Field("رقم السند", d.DepositNumber)
@@ -480,7 +480,7 @@ public static class DocumentReports
         };
         var r = new ReportDocument
         {
-            CompanyName = s.ProjectName, Title = title, Stamp = d.IsVoided ? "ملغى" : null, PrintedBy = s.FullName,
+            CompanyName = s.ProjectName, Title = title, Stamp = d.IsVoided ? "ملغى" : null, PrintedBy = s.Username,
             Key = "EmployeeDeduction", ReceiptCapable = true
         };
         r.Field("الرقم", d.DeductionNumber)
@@ -586,7 +586,7 @@ public static class DocumentReports
         var t = await db.PartnerTransactions.AsNoTracking().Include(x => x.Partner).Include(x => x.CreatedByUser).FirstOrDefaultAsync(x => x.Id == txId);
         if (t is null) return null;
         var balance = await db.PartnerTransactions.Where(x => x.PartnerId == t.PartnerId && x.Id <= t.Id).SumAsync(x => x.Amount);
-        var r = new ReportDocument { CompanyName = s.ProjectName, Title = "سند سحب أرباح شريك", PrintedBy = s.FullName, Notes = t.Notes, Key = "PartnerWithdrawal", ReceiptCapable = true };
+        var r = new ReportDocument { CompanyName = s.ProjectName, Title = "سند سحب أرباح شريك", PrintedBy = s.Username, Notes = t.Notes, Key = "PartnerWithdrawal", ReceiptCapable = true };
         r.Field("الرقم", t.TxNumber).Field("التاريخ", t.TxDate.ToString("yyyy/MM/dd")).Field("الشريك", t.Partner.Name).Field("المستخدم", t.CreatedByUser.Username);
         r.Total("المبلغ", $"{N(-t.Amount)} د.ع", true).Total("المبلغ كتابةً", ArabicNumberWords.Amount(-t.Amount)).Total("رصيد الشريك بعد السحب", $"{N(balance)} د.ع");
         r.Signatures.AddRange(new[] { "المستلم (الشريك)", "أمين الصندوق" });
@@ -597,7 +597,7 @@ public static class DocumentReports
     {
         var x = await new DamagedSaleService(db).GetAsync(saleId);
         if (x is null) return null;
-        var r = new ReportDocument { CompanyName = s.ProjectName, Title = "فاتورة بيع مواد تالفة", Notes = x.Notes, PrintedBy = s.FullName,
+        var r = new ReportDocument { CompanyName = s.ProjectName, Title = "فاتورة بيع مواد تالفة", Notes = x.Notes, PrintedBy = s.Username,
                                      Key = "DamagedSale", ReceiptCapable = true, ReceiptColumns = new[] { 0, 1, 2, 3 } };
         r.Field("الرقم", x.SaleNumber).Field("التاريخ", x.SaleDate.ToString("yyyy/MM/dd")).Field("المشتري", x.BuyerName)
          .Field("مستند الإخراج", x.StockDocument.DocumentNumber).Field("المستخدم", x.CreatedByUser.Username);
@@ -625,7 +625,7 @@ public static class DocumentReports
         var r = new ReportDocument
         {
             CompanyName = s.ProjectName, Title = inv.IsFreeSale ? "إذن صرف — بيع مجاني" : "فاتورة مبيعات", Stamp = inv.Status == DocumentStatus.Voided ? $"ملغاة — {inv.VoidReason}" : posted ? null : "مسودة — غير مرحّلة",
-            Notes = inv.Notes, PrintedBy = s.FullName, Key = "SalesInvoice", ReceiptCapable = true,
+            Notes = inv.Notes, PrintedBy = s.Username, Key = "SalesInvoice", ReceiptCapable = true,
             // الإيصال 80mm: الصنف، الكمية، السعر، [الخصم إن وُجد]، المبلغ
             ReceiptColumns = inv.IsFreeSale ? new[] { 1, 2 } : totalDiscount > 0 ? new[] { 1, 2, 3, 4, 5 } : new[] { 1, 2, 3, 5 }
         };

@@ -78,7 +78,7 @@ public class AuditLogSectionViewModel : SectionViewModel
 
     private void Print()
     {
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"سجل الحركات — {From:yyyy/MM/dd} إلى {To:yyyy/MM/dd}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"سجل الحركات — {From:yyyy/MM/dd} إلى {To:yyyy/MM/dd}", PrintedBy = Session.Username };
         r.Columns.AddRange(new[] { "الوقت", "المستخدم", "العملية", "الجدول", "السجل", "الوصف", "التغييرات" });
         foreach (var x in Rows)
             r.Rows.Add(new[] { x.AtLocal.ToString("yyyy/MM/dd HH:mm"), x.User, x.ActionName, x.TableTitle, x.RecordId ?? "", x.Summary ?? "",

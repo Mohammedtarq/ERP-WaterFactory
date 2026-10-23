@@ -132,7 +132,7 @@ public class ItemsSectionViewModel : CrudSectionViewModel<Item>
     {
         await using var db = Session.NewDb();
         var rows = await ProductNames.CatalogAsync(db);
-        var r = new ReportDocument { Key = "product-names", CompanyName = Session.ProjectName, Title = "الأسماء الموحدة للمنتجات", PrintedBy = Session.FullName,
+        var r = new ReportDocument { Key = "product-names", CompanyName = Session.ProjectName, Title = "الأسماء الموحدة للمنتجات", PrintedBy = Session.Username,
                                      Notes = "الصيغة: العبوة ثم عدد القطع×الحجم ثم المتغير. الحجم يُضبط من «الأصناف»، والاسم المختصر للطلب الخاص من «الوصفات المخصصة»، واسم الأساسي من «هوية الطباعة»." };
         r.Columns.AddRange(new[] { "#", "الصنف · الرمز", "العبوة", "المحتوى", "المتغير", "النوع" });
         var n = 0;

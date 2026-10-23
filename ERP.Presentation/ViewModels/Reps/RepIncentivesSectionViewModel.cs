@@ -62,7 +62,7 @@ public class RepIncentivesSectionViewModel : SectionViewModel
 
     private void Print()
     {
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"حوافز المندوبين — {From:yyyy/MM/dd} إلى {To:yyyy/MM/dd}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"حوافز المندوبين — {From:yyyy/MM/dd} إلى {To:yyyy/MM/dd}", PrintedBy = Session.Username };
         r.Columns.AddRange(new[] { "المندوب", "الصنف", "العبوة", "المحمّل", "الراجع", "المجاني", "المباع", "الحافز للعبوة", "المبلغ" });
         foreach (var x in Rows)
             r.Rows.Add(new[] { x.RepName, x.ItemName, x.LevelName, $"{x.Loaded:N0}", $"{x.Returned:N0}", $"{x.Free:N0}", $"{x.Net:N0}", $"{x.Rate:N0}", $"{x.Amount:N0}" });

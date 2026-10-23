@@ -81,7 +81,7 @@ public class VanOperationsSectionViewModel : SectionViewModel
         PrintStockCommand = new RelayCommand(() =>
         {
             if (Van is null) { Dialogs.Error("اختر السيارة"); return; }
-            var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"جرد سيارة — {Van.Name}", PrintedBy = Session.FullName };
+            var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"جرد سيارة — {Van.Name}", PrintedBy = Session.Username };
             r.Field("السيارة", Van.Name).Field("المندوب", Van.OwnerEmployee?.FullName).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
             r.Columns.AddRange(new[] { "الكود", "الصنف", "التشغيلة", "الصلاحية", "الكمية (قطعة)" });
             foreach (var x in VanStock)
@@ -228,7 +228,7 @@ public class WalletSectionViewModel : SectionViewModel
         PrintStatementCommand = new RelayCommand(() =>
         {
             if (Rep is null) { Dialogs.Error("اختر المندوب"); return; }
-            var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"كشف محفظة المندوب — {Rep.FullName}", PrintedBy = Session.FullName };
+            var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"كشف محفظة المندوب — {Rep.FullName}", PrintedBy = Session.Username };
             r.Field("المندوب", Rep.FullName).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
             r.Columns.AddRange(new[] { "التاريخ", "البيان", "داخل", "خارج", "الرصيد", "القيد" });
             foreach (var x in Rows)

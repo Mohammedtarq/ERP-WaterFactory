@@ -154,7 +154,7 @@ public class TempWorkersSectionViewModel : SectionViewModel
     private void Print(TempPaymentRow p)
     {
         var r = new ReportDocument { Key = "temp-wages", CompanyName = Session.ProjectName,
-                                     Title = p.IsFinal ? $"تسوية نهاية خدمة {p.PaymentNumber}" : $"وصل أجور {p.PaymentNumber}", PrintedBy = Session.FullName };
+                                     Title = p.IsFinal ? $"تسوية نهاية خدمة {p.PaymentNumber}" : $"وصل أجور {p.PaymentNumber}", PrintedBy = Session.Username };
         r.Field("العامل", p.FullName).Field("تاريخ الصرف", p.PaidDate.ToString("yyyy/MM/dd"))
          .Field("عن الفترة", $"{p.FromDate:yyyy/MM/dd} – {p.ToDate:yyyy/MM/dd}");
         r.Columns.AddRange(new[] { "الأيام", "الأجر اليومي", "المبلغ" });

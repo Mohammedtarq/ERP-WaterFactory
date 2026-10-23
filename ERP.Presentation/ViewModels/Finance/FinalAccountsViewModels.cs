@@ -154,7 +154,7 @@ public class ExpensesSectionViewModel : SectionViewModel
 
     private void Print()
     {
-        var r = new ReportDocument { Key = "expenses", CompanyName = Session.ProjectName, Title = "كشف المصروفات والإيرادات الأخرى", PrintedBy = Session.FullName };
+        var r = new ReportDocument { Key = "expenses", CompanyName = Session.ProjectName, Title = "كشف المصروفات والإيرادات الأخرى", PrintedBy = Session.Username };
         r.Field("من", From.ToString("yyyy/MM/dd")).Field("إلى", To.ToString("yyyy/MM/dd")).Field("النوع", FilterCategory?.Name ?? "الكل");
         r.Columns.AddRange(new[] { "الرقم", "التاريخ", "النوع", "التصنيف", "المبلغ", "السيارة / القسم", "الجهة", "الوصل" });
         foreach (var e in Active)
@@ -270,7 +270,7 @@ public class FinalAccountsSectionViewModel : SectionViewModel
     private void Print()
     {
         if (Report is null) return;
-        var r = new ReportDocument { Key = "final-accounts", CompanyName = Session.ProjectName, Title = $"الحسابات الختامية — {Month}/{Year}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { Key = "final-accounts", CompanyName = Session.ProjectName, Title = $"الحسابات الختامية — {Month}/{Year}", PrintedBy = Session.Username };
         r.Field("القطع المباعة", $"{Report.PiecesSold:N0}").Field("كلفة القنينة", $"{Report.CostPerPiece:N2} د.ع")
          .Field("منها مصاريف للقطعة", $"{Report.OverheadPerPiece:N2} د.ع");
         r.Columns.AddRange(new[] { "القسم", "البند", "المبلغ" });
@@ -279,7 +279,7 @@ public class FinalAccountsSectionViewModel : SectionViewModel
         if (Report.MissingCostWarning is { } warn) r.Field("تنبيه", warn);
         Dialogs.ShowReport(r);
 
-        var p = new ReportDocument { Key = "product-margins", CompanyName = Session.ProjectName, Title = $"هامش كل منتج — {Month}/{Year}", PrintedBy = Session.FullName };
+        var p = new ReportDocument { Key = "product-margins", CompanyName = Session.ProjectName, Title = $"هامش كل منتج — {Month}/{Year}", PrintedBy = Session.Username };
         p.Columns.AddRange(new[] { "المنتج", "المباع بالعبوة", "القطع", "الإيراد", "بسعر القائمة", "الخصم", "الكلفة", "الهامش", "%" });
         foreach (var x in Products.Select(e => e.Row))
             p.Rows.Add(new[] { x.ItemName + (x.MissingCost ? " ⚠ بلا كلفة" : ""), x.PacksText, $"{x.PiecesSold:N0}", $"{x.Revenue:N0}", $"{x.ListValue:N0}", $"{x.Discount:N0}", $"{x.Cost:N0}", $"{x.Margin:N0}", $"{x.MarginPercent:N1}" });
@@ -436,7 +436,7 @@ public class CostSimulationSectionViewModel : SectionViewModel
     {
         var changes = string.Join("، ", Materials.Where(m => m.Proposed != m.Current)
             .Select(m => $"{m.ItemName}: {m.Current:N2} ← {m.Proposed:N2} ({m.ChangePercent:+0.0;-0.0}%)"));
-        var r = new ReportDocument { Key = "cost-simulation", CompanyName = Session.ProjectName, Title = "محاكاة الكلفة", PrintedBy = Session.FullName,
+        var r = new ReportDocument { Key = "cost-simulation", CompanyName = Session.ProjectName, Title = "محاكاة الكلفة", PrintedBy = Session.Username,
                                      Notes = changes.Length == 0 ? "بالأسعار الحالية" : "الأسعار المقترحة: " + changes };
         r.Field("مصاريف تشغيلية للقطعة", $"{OverheadPerPiece:N2} د.ع");
         r.Columns.AddRange(new[] { "المنتج", "سعر البيع", "الكلفة الحالية", "الكلفة المقترحة", "الفرق", "الهامش المقترح" });
@@ -480,7 +480,7 @@ public class DailyCashSectionViewModel : SectionViewModel
 
     private void Print()
     {
-        var r = new ReportDocument { Key = "daily-cash", CompanyName = Session.ProjectName, Title = $"التقرير اليومي للصناديق — {Date:yyyy/MM/dd}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { Key = "daily-cash", CompanyName = Session.ProjectName, Title = $"التقرير اليومي للصناديق — {Date:yyyy/MM/dd}", PrintedBy = Session.Username };
         r.Columns.AddRange(new[] { "الصندوق", "البند", "داخل", "خارج" });
         foreach (var b in Boxes)
         {

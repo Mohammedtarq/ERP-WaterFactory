@@ -188,7 +188,7 @@ public class StocktakeSectionViewModel : SectionViewModel
     private void PrintSheet()
     {
         if (Warehouse is null) return;
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"ورقة جرد — {Warehouse.Name}", PrintedBy = Session.FullName,
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"ورقة جرد — {Warehouse.Name}", PrintedBy = Session.Username,
                                      Notes = "اكتب العدد بكل وحدة كما تراه (باليت كامل، كراتين، قطع مفردة). لا تُطبع أرصدة النظام حتى يكون العدّ مستقلًا." };
         r.Columns.AddRange(new[] { "الرمز", "الصنف", "الوحدات", "العدد", "ملاحظة" });
         foreach (var l in Lines)
@@ -236,7 +236,7 @@ public class LossesSectionViewModel : SectionViewModel
 
     private void Print()
     {
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"التلف والمسحوب المجاني وفرق الجرد — {Month}/{Year}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"التلف والمسحوب المجاني وفرق الجرد — {Month}/{Year}", PrintedBy = Session.Username };
         r.Columns.AddRange(CanSeeCost ? new[] { "النوع", "الصنف", "الجهة", "التصنيف", "القطع", "القيمة بالكلفة" } : new[] { "النوع", "الصنف", "الجهة", "التصنيف", "القطع" });
         foreach (var x in Rows)
         {

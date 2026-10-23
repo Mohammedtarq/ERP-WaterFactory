@@ -107,7 +107,7 @@ public class MachineWipSectionViewModel : SectionViewModel
 
     public ReportDocument BuildAdjustmentsReport()
     {
-        var r = new ReportDocument { Key = "wip-adjustments", CompanyName = Session.ProjectName, Title = "سجل تعديلات المشرف — تحت التصنيع", PrintedBy = Session.FullName };
+        var r = new ReportDocument { Key = "wip-adjustments", CompanyName = Session.ProjectName, Title = "سجل تعديلات المشرف — تحت التصنيع", PrintedBy = Session.Username };
         r.Field("الماكينة", Machine?.Name ?? "كل الماكينات");
         r.Columns.AddRange(new[] { "التاريخ", "الماكينة", "المادة", "النوع", "الأمر", "قبل", "بعد", "الفرق", "السبب", "المستخدم" });
         foreach (var a in Adjustments)
@@ -261,7 +261,7 @@ public class MachineWipSectionViewModel : SectionViewModel
 
     public ReportDocument BuildReport()
     {
-        var r = new ReportDocument { Key = "machine-wip", CompanyName = Session.ProjectName, Title = "تقرير تحت التصنيع حسب الماكينة", PrintedBy = Session.FullName };
+        var r = new ReportDocument { Key = "machine-wip", CompanyName = Session.ProjectName, Title = "تقرير تحت التصنيع حسب الماكينة", PrintedBy = Session.Username };
         r.Field("الماكينة", Machine?.Name ?? "كل الماكينات").Field("الفترة", $"{From:yyyy/MM/dd} — {To:yyyy/MM/dd}");
         r.Columns.AddRange(new[] { "الماكينة", "النوع", "المادة الأولية", "المنتج", "المرحّل", "المصروف", "المستهلك فعليًا", "التالف", "المُرجَع", "تعديل مشرف", "المتبقي", "المطابقة" });
         foreach (var x in Rows)

@@ -199,7 +199,7 @@ public class RolesPermissionsSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         var users = await db.Users.AsNoTracking().Include(u => u.Role).ThenInclude(r => r.Permissions).OrderBy(u => u.Username).ToListAsync();
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "تقرير الصلاحيات — من يملك ماذا", PrintedBy = Session.FullName };
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "تقرير الصلاحيات — من يملك ماذا", PrintedBy = Session.Username };
         r.Columns.AddRange(new[] { "المستخدم", "الحالة", "الدور", "الوحدات (ع/إ/ت/ح/ر)", "صلاحيات خاصة", "سقف الصرف" });
         string Flags(RolePermission p) => (p.CanView ? "ع" : "") + (p.CanAdd ? "إ" : "") + (p.CanEdit ? "ت" : "") + (p.CanDelete ? "ح" : "") + (p.CanPost ? "ر" : "");
         foreach (var u in users)

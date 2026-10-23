@@ -700,7 +700,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
 
     // ============================ الطباعة ============================
     private ReportDocument NewReport(string title, string? stamp = null) =>
-        new() { CompanyName = Session.ProjectName, Title = title, Stamp = stamp, PrintedBy = Session.FullName };
+        new() { CompanyName = Session.ProjectName, Title = title, Stamp = stamp, PrintedBy = Session.Username };
 
     public async Task PrintDocumentAsync(int documentId)
     {

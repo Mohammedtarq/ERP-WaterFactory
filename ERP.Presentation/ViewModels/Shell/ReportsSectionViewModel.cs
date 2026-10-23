@@ -159,7 +159,7 @@ public abstract class ReportsSectionViewModel : SectionViewModel
     private void Print()
     {
         if (_last is not { } t) { Dialogs.Error("اعرض التقرير أولًا"); return; }
-        var r = new ReportDocument { Key = $"report-{SelectedReport?.Key}", CompanyName = Session.ProjectName, Title = t.Title, PrintedBy = Session.FullName, Notes = t.Notes };
+        var r = new ReportDocument { Key = $"report-{SelectedReport?.Key}", CompanyName = Session.ProjectName, Title = t.Title, PrintedBy = Session.Username, Notes = t.Notes };
         r.HeaderFields.Add(new ReportField("الفترة", $"{From:yyyy/MM/dd} — {To:yyyy/MM/dd}"));
         if (UsesItem) r.HeaderFields.Add(new ReportField("المنتج", Product?.Label ?? "كل المنتجات"));
         if (UsesRep) r.HeaderFields.Add(new ReportField("المندوب", Rep?.Label ?? "كل المندوبين"));

@@ -779,7 +779,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             Title = IsFreeSale ? "إذن صرف — بيع مجاني" : "فاتورة مبيعات",
             Stamp = IsReadOnly ? null : "مسودة — غير مرحّلة",
             Notes = Notes,
-            PrintedBy = Session.FullName,
+            PrintedBy = Session.Username,
             Key = "SalesInvoice", ReceiptCapable = true,
             // الإيصال 80mm: الصنف، الكمية، السعر، [الخصم إن وُجد]، المبلغ
             ReceiptColumns = IsFreeSale ? new[] { 1, 2 } : HasDiscount ? new[] { 1, 2, 3, 4, 5 } : new[] { 1, 2, 3, 5 }
@@ -1027,7 +1027,7 @@ public class CustomerStatementSectionViewModel : SectionViewModel
 
     public ReportDocument BuildInvoicesReport()
     {
-        var r = new ReportDocument { Key = "customer-invoices", CompanyName = Session.ProjectName, Title = "كشف فواتير عميل (المدفوع والمتبقي)", PrintedBy = Session.FullName };
+        var r = new ReportDocument { Key = "customer-invoices", CompanyName = Session.ProjectName, Title = "كشف فواتير عميل (المدفوع والمتبقي)", PrintedBy = Session.Username };
         r.Field("العميل", Customer?.Name).Field("الوكيل", Customer?.ParentAgent?.Name);
         r.Columns.AddRange(new[] { "رقم الفاتورة", "التاريخ", "القيمة", "المدفوع", "المتبقي", "الحالة" });
         foreach (var i in Invoices)
@@ -1043,7 +1043,7 @@ public class CustomerStatementSectionViewModel : SectionViewModel
 
     public ReportDocument BuildReport()
     {
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "كشف حساب عميل", PrintedBy = Session.FullName };
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "كشف حساب عميل", PrintedBy = Session.Username };
         r.Field("العميل", Customer?.Name)
          .Field("نوع العميل", Customer is null ? null : ArabicLabels.Of(Customer.CustomerType))
          .Field("الوكيل", Customer?.ParentAgent?.Name)

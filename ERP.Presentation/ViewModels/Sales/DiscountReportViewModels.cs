@@ -45,7 +45,7 @@ public class DiscountReportSectionViewModel : SectionViewModel
 
     private void Print()
     {
-        var r = new ReportDocument { Key = "discount-report", CompanyName = Session.ProjectName, Title = $"تقرير الخصم الشهري — {Month}/{Year}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { Key = "discount-report", CompanyName = Session.ProjectName, Title = $"تقرير الخصم الشهري — {Month}/{Year}", PrintedBy = Session.Username };
         r.Columns.AddRange(new[] { "الزبون", "العلامة", "الفواتير", "قبل الخصم", "الخصم", "%", "الصافي" });
         foreach (var x in Rows)
             r.Rows.Add(new[] { x.CustomerName, ArabicLabels.Of(x.Kind), $"{x.InvoicesCount:N0}", $"{x.GrossBeforeDiscount:N0}", $"{x.Discount:N0}", $"{x.DiscountPercent:N1}", $"{x.Net:N0}" });

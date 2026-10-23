@@ -123,7 +123,7 @@ public class BrandingSectionViewModel : SectionViewModel
     {
         var r = new ReportDocument
         {
-            CompanyName = NameAr, Title = "فاتورة مبيعات (نموذج)", PrintedBy = Session.FullName, Key = "BrandingSample",
+            CompanyName = NameAr, Title = "فاتورة مبيعات (نموذج)", PrintedBy = Session.Username, Key = "BrandingSample",
             ReceiptCapable = true, ReceiptColumns = new[] { 1, 3, 5, 6 },
             Branding = new ReportBranding
             {

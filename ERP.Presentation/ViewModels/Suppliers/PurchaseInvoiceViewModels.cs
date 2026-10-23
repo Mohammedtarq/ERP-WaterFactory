@@ -273,7 +273,7 @@ public class ReorderSectionViewModel : SectionViewModel
 
     private void Print()
     {
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "مقترح الشراء", PrintedBy = Session.FullName,
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "مقترح الشراء", PrintedBy = Session.Username,
                                      Notes = $"الاستهلاك محسوب على آخر {HistoryDays} يومًا، والكمية المقترحة تكفي {CoverDays} يومًا بعد الوصول، مع {SafetyDays} أيام أمان." };
         r.Columns.AddRange(new[] { "الرمز", "المادة", "الرصيد", "الاستهلاك اليومي", "يكفي (يوم)", "مدة التجهيز", "حد التنبيه", "نقطة الطلب", "الكمية المقترحة", "الحالة" });
         foreach (var x in Rows.Select(e => e.Row))

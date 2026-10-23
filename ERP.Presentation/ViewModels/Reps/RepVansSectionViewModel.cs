@@ -120,7 +120,7 @@ public class RepVansSectionViewModel : SectionViewModel
 
     private void Print()
     {
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"سيارات المندوبين — {DateTime.Today:yyyy/MM/dd}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"سيارات المندوبين — {DateTime.Today:yyyy/MM/dd}", PrintedBy = Session.Username };
         r.Columns.AddRange(new[] { "المندوب", "السيارة", "الحالة", "حمولة اليوم", "الرصيد الآن", "النقد المتوقع" });
         foreach (var c in Cards)
             r.Rows.Add(new[] { c.RepName, c.VanName, c.StatusText, c.TodayLoadText, c.BalanceText, $"{c.ExpectedCash:N0}" });

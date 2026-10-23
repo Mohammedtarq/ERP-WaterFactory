@@ -153,7 +153,7 @@ public static class LoadOrderTools
     {
         var o = await new RepOperationsService(db).GetLoadOrderAsync(orderId);
         if (o is null) return null;
-        var r = new ReportDocument { Key = "load-order", CompanyName = session.ProjectName, Title = $"طلب تحميل {o.OrderNumber}", PrintedBy = session.FullName };
+        var r = new ReportDocument { Key = "load-order", CompanyName = session.ProjectName, Title = $"طلب تحميل {o.OrderNumber}", PrintedBy = session.Username };
         r.Field("المندوب", o.RepEmployee.FullName).Field("السيارة", o.VanWarehouse.Name).Field("من مخزن", o.FromWarehouse.Name)
          .Field("التاريخ", o.LoadDate.ToString("yyyy/MM/dd")).Field("مستند الإسناد", o.StockDocument?.DocumentNumber ?? "لم يُجهَّز بعد");
         // الاسم الخاص بجانب الصنف: سطران «330*20» لا يُميَّزان بدونه
@@ -831,7 +831,7 @@ public class RepSettlementSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var s = await new RepOperationsService(db).GetSettlementAsync(settlementId);
         if (s is null) { Dialogs.Error("التسوية غير موجودة"); return; }
-        var r = new ReportDocument { Key = "rep-settlement", CompanyName = Session.ProjectName, Title = $"تسوية مندوب {s.SettlementNumber}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { Key = "rep-settlement", CompanyName = Session.ProjectName, Title = $"تسوية مندوب {s.SettlementNumber}", PrintedBy = Session.Username };
         r.Field("المندوب", s.RepEmployee.FullName).Field("السيارة", s.VanWarehouse.Name).Field("التاريخ", s.SettlementDate.ToString("yyyy/MM/dd"))
          .Field("مستند الإرجاع", s.ReturnDocument?.DocumentNumber ?? "—").Field("فاتورة ما بقي", s.AutoInvoice?.InvoiceNumber ?? "—");
         r.Columns.AddRange(new[] { "البند", "الصنف", "الكمية (قطعة)", "التفاصيل" });

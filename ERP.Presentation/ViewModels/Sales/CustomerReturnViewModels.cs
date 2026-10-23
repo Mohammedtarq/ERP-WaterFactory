@@ -141,7 +141,7 @@ public class CustomerReturnSectionViewModel : SectionViewModel
 
     private void Print(CustomerReturnRow x)
     {
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"مرتجع زبون — {x.ReturnNumber}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"مرتجع زبون — {x.ReturnNumber}", PrintedBy = Session.Username };
         r.HeaderFields.Add(new ReportField("الزبون", x.CustomerName));
         r.HeaderFields.Add(new ReportField("التاريخ", x.ReturnDate.ToString("yyyy/MM/dd")));
         r.HeaderFields.Add(new ReportField("المخزن", x.WarehouseName + (x.RepName is null ? "" : $" — {x.RepName}")));

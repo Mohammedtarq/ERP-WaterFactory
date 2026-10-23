@@ -386,7 +386,7 @@ public class CashBoxesSectionViewModel : SectionViewModel
         };
         var r = new ReportDocument
         {
-            CompanyName = Session.ProjectName, Title = title, PrintedBy = Session.FullName,
+            CompanyName = Session.ProjectName, Title = title, PrintedBy = Session.Username,
             Stamp = t.IsVoided ? $"ملغاة — {t.VoidReason}" : t.ModifiedAt is not null ? "معدّلة" : null, Notes = t.Description,
             Key = "CashBoxReceipt", ReceiptCapable = true
         };
@@ -407,7 +407,7 @@ public class CashBoxesSectionViewModel : SectionViewModel
 
     public ReportDocument BuildStatementReport()
     {
-        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"كشف صندوق — {SelectedBox!.Name}", PrintedBy = Session.FullName };
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"كشف صندوق — {SelectedBox!.Name}", PrintedBy = Session.Username };
         r.Field("الصندوق", SelectedBox.Name).Field("النوع", ArabicLabels.Of(SelectedBox.BoxType)).Field("صاحب الصندوق", SelectedBox.OwnerUsername)
          .Field("الفترة", $"{From:yyyy/MM/dd} — {To:yyyy/MM/dd}");
         r.Columns.AddRange(new[] { "التاريخ", "رقم الحركة", "النوع", "البيان", "داخل", "خارج", "الرصيد" });
