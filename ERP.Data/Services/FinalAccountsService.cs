@@ -312,9 +312,16 @@ public class FinalAccountsService
     /// <summary>صندوق المنزل (يُنشأ عند أول استعمال).</summary>
     public async Task<CashBox> HomeBoxAsync()
     {
-        var box = await _db.CashBoxes.FirstOrDefaultAsync(b => b.BoxType == CashBoxType.Home && b.IsActive);
-        if (box is not null) return box;
-        box = new CashBox { Name = "صندوق المنزل", BoxType = CashBoxType.Home, Notes = "الفائض المتحقق عن رأس المال التشغيلي" };
+        const string name = "صندوق المنزل";
+        var box = await _db.CashBoxes.Where(b => b.BoxType == CashBoxType.Home).OrderByDescending(b => b.IsActive).ThenBy(b => b.Id).FirstOrDefaultAsync();
+        if (box is not null)
+        {
+            // معطَّل سابقًا: يُعاد تفعيله بدل إنشاء صندوق باسم مكرر (الاسم فريد)
+            if (!box.IsActive) { box.IsActive = true; await _db.SaveChangesAsync(); }
+            return box;
+        }
+        var taken = await _db.CashBoxes.AnyAsync(b => b.Name == name);
+        box = new CashBox { Name = taken ? $"{name} ({DateTime.Today:yyyy-MM-dd})" : name, BoxType = CashBoxType.Home, Notes = "الفائض المتحقق عن رأس المال التشغيلي" };
         _db.CashBoxes.Add(box);
         await _db.SaveChangesAsync();
         return box;

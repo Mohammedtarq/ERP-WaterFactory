@@ -137,6 +137,21 @@ public class FinalAccountsTests
     }
 
     [Fact]
+    public async Task Deactivated_home_box_is_reused_instead_of_failing_on_the_duplicate_name()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var fa = new FinalAccountsService(db);
+        var home = await fa.HomeBoxAsync();
+        home.IsActive = false;
+        await db.SaveChangesAsync();
+
+        var again = await fa.HomeBoxAsync();
+        Assert.Equal(home.Id, again.Id);
+        Assert.True(again.IsActive);
+        Assert.Single(await db.CashBoxes.Where(b => b.BoxType == CashBoxType.Home).ToListAsync());
+    }
+
+    [Fact]
     public async Task Cost_simulation_reprices_recipe_without_touching_real_costs()
     {
         await using var db = _f.NewDb(_f.AdminId);
