@@ -225,10 +225,64 @@ public class FullCycleJourneyTests
         prepare.SelectedOrder = prepare.Orders.Single(o => o.Status == RepLoadOrderStatus.Pending);
         await prepare.IdleAsync();
         Assert.Equal(2, prepare.PrepareLines.Count);
+        // المتاح لكل اسم لا لمجموع الصنف: الأساسي 10 كراتين، والمطعم 5 فقط (لا 15)
+        var basicLine = prepare.PrepareLines.Single(l => l.VariantName == "أساسي");
+        var restLine = prepare.PrepareLines.Single(l => l.VariantName == Restaurant);
+        Assert.Equal("10 كارتون", basicLine.AvailableText);
+        Assert.Equal("5 كارتون", restLine.AvailableText);
+        restLine.Prepared = 6;
+        Assert.True(restLine.IsShort);                                             // 6 من المطعم والمتاح 5: «لا يكفي»
+        restLine.Prepared = 5;
+        Assert.False(restLine.IsShort);
+        // طباعة الطلب: عمود الاسم يميّز السطرين
+        await using (var pdb = shell.Session.NewDb())
+        {
+            var report = (await LoadOrderTools.ReportAsync(shell.Session, pdb, prepare.SelectedOrder!.Id))!;
+            Assert.Equal(1, report.Columns.IndexOf("الاسم / المتغير"));
+            Assert.Contains(report.Rows, r => r[1] == Restaurant && r[3] == "5");
+            Assert.Contains(report.Rows, r => r[1] == "أساسي" && r[3] == "6");
+        }
         await prepare.PrepareCommand.ExecuteAsync();
         await prepare.IdleAsync();
         NoErrors("التجهيز");
         Assert.Contains("جُهّزت", prepare.StatusMessage);
+
+        // ---------- 7-ب) طلبات التحميل يومًا بيوم، وحذف طلب ملغى ----------
+        shell.Open<RepsModuleViewModel>(ModuleCode.Reps);
+        await Open(reps, loads);
+        loads.Van = loads.Vans.Single(v => v.Name == "كاش فان علي");
+        await loads.IdleAsync();
+        loads.Lines.Clear();
+        loads.AddLineCommand.Execute(null);
+        loads.Lines[0].Product = loads.Products.Single(i => i.ItemCode == ProductCode);
+        loads.Lines[0].Level = loads.Lines[0].Levels.Single(x => x.LevelName == "كارتون");
+        loads.Lines[0].Quantity = 1;
+        await loads.CreateCommand.ExecuteAsync();
+        await loads.IdleAsync();
+        NoErrors("طلب ثانٍ");
+        var extra = loads.Orders.Single(o => o.Status == RepLoadOrderStatus.Pending);
+        loads.SelectedOrder = extra;
+        loads.CancelReason = "طلب مكرر";
+        await loads.CancelOrderCommand.ExecuteAsync();
+        NoErrors("إلغاء الطلب");
+        Assert.DoesNotContain(loads.Orders, o => o.Id == extra.Id);                // الملغى مخفي افتراضيًا
+        loads.ShowCancelled = true;
+        await loads.IdleAsync();
+        loads.SelectedOrder = loads.Orders.Single(o => o.Id == extra.Id);
+        Assert.True(loads.CanDeleteOrder);
+        await loads.DeleteOrderCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("سبب الحذف"));
+        dialogs.Errors.Clear();
+        loads.CancelReason = "أُدخل بالخطأ";
+        await loads.DeleteOrderCommand.ExecuteAsync();
+        NoErrors("حذف الملغى");
+        Assert.DoesNotContain(loads.Orders, o => o.Id == extra.Id);
+        Assert.Contains(loads.Orders, o => o.Status == RepLoadOrderStatus.Prepared);   // مُجهَّز اليوم ظاهر
+        await loads.PreviousDayCommand.ExecuteAsync();
+        Assert.DoesNotContain(loads.Orders, o => o.Status == RepLoadOrderStatus.Prepared);   // أمس: لا طلبات
+        await loads.TodayCommand.ExecuteAsync();
+        Assert.Contains(loads.Orders, o => o.Status == RepLoadOrderStatus.Prepared);
+        loads.ShowCancelled = false;
 
         // ---------- 8) لوحة السيارات: الحمولة على «كاش فان علي» بالكارتون ومتغير المطعم ----------
         shell.Open<RepsModuleViewModel>(ModuleCode.Reps);

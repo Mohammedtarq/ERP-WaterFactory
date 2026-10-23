@@ -105,7 +105,7 @@ public class PrepareLineDraft : ObservableObject
     public string VariantName { get; init; } = "أساسي";
     public decimal Requested { get; init; }
     public decimal Units { get; init; } = 1;
-    /// <summary>المتاح من الصنف في مخزن الطلب الآن (بالقطع، ونصه بالعبوات).</summary>
+    /// <summary>المتاح من هذا الصنف بهذا الاسم (المتغير) في مخزن الطلب الآن — بالقطع، ونصه بالعبوات.</summary>
     public decimal AvailablePieces { get; init; }
     public string AvailableText { get; init; } = "";
     public decimal Prepared { get => _prepared; set { if (SetProperty(ref _prepared, value)) OnPropertyChanged(nameof(IsShort)); } }
@@ -132,13 +132,14 @@ public static class LoadOrderTools
     {
         var order = await new RepOperationsService(db).GetLoadOrderAsync(orderId);
         if (order is null) return new();
-        var stock = await StockAsync(db, order.FromWarehouseId);
+        // المتاح لكل (صنف، اسم): الأساسي لا يُحسب معه رصيد الأسماء الخاصة ولا العكس — كما في شاشة الطلب
+        var stock = await VariantStockAsync(db, order.FromWarehouseId);
         var ids = order.Lines.Select(l => l.ItemId).ToList();
         var levels = (await db.ItemPackagingLevels.AsNoTracking().Where(l => ids.Contains(l.ItemId)).ToListAsync())
                      .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => (IReadOnlyList<ItemPackagingLevel>)g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
-        return order.Lines.OrderBy(l => l.Item.ItemName).Select(l =>
+        return order.Lines.OrderBy(l => l.Item.ItemName).ThenBy(l => l.CustomRecipe?.Name).Select(l =>
         {
-            var have = stock.GetValueOrDefault(l.ItemId);
+            var have = stock.GetValueOrDefault((l.ItemId, l.CustomRecipeId));
             return new PrepareLineDraft
             {
                 LineId = l.Id, ItemName = l.Item.ItemName, LevelName = l.PackagingLevel.LevelName, VariantName = l.CustomRecipe?.Name ?? "أساسي",
@@ -155,9 +156,10 @@ public static class LoadOrderTools
         var r = new ReportDocument { Key = "load-order", CompanyName = session.ProjectName, Title = $"طلب تحميل {o.OrderNumber}", PrintedBy = session.FullName };
         r.Field("المندوب", o.RepEmployee.FullName).Field("السيارة", o.VanWarehouse.Name).Field("من مخزن", o.FromWarehouse.Name)
          .Field("التاريخ", o.LoadDate.ToString("yyyy/MM/dd")).Field("مستند الإسناد", o.StockDocument?.DocumentNumber ?? "لم يُجهَّز بعد");
-        r.Columns.AddRange(new[] { "الصنف", "الوحدة", "المطلوب", "المجهَّز", "القطع" });
-        foreach (var l in o.Lines.OrderBy(l => l.Item.ItemName))
-            r.Rows.Add(new[] { l.Item.ItemName, l.PackagingLevel.LevelName, $"{l.QuantityInLevel:N0}", l.PreparedQuantity is { } p ? $"{p:N0}" : "",
+        // الاسم الخاص بجانب الصنف: سطران «330*20» لا يُميَّزان بدونه
+        r.Columns.AddRange(new[] { "الصنف", "الاسم / المتغير", "الوحدة", "المطلوب", "المجهَّز", "القطع" });
+        foreach (var l in o.Lines.OrderBy(l => l.Item.ItemName).ThenBy(l => l.CustomRecipe?.Name))
+            r.Rows.Add(new[] { l.Item.ItemName, l.CustomRecipe?.Name ?? "أساسي", l.PackagingLevel.LevelName, $"{l.QuantityInLevel:N0}", l.PreparedQuantity is { } p ? $"{p:N0}" : "",
                                $"{(l.PreparedQuantity ?? l.QuantityInLevel) * l.PackagingLevel.EquivalentBaseUnits:N0}" });
         r.Signatures.AddRange(new[] { "مدير المبيعات", "أمين المخزن", "المندوب" });
         return r;
@@ -181,6 +183,9 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     private List<CustomRecipe> _recipes = new();
     private Dictionary<int, decimal> _available = new();
     private Dictionary<(int Item, int? Recipe), decimal> _variantAvailable = new();
+    private DateTime _ordersFrom = DateTime.Today;
+    private DateTime _ordersTo = DateTime.Today;
+    private bool _showCancelled;
 
     public LoadOrdersSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Reps, "طلبات التحميل", Icons.Order, "#2563EB",
@@ -194,10 +199,33 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         PrepareCommand = new AsyncRelayCommand(PrepareAsync);
         CancelOrderCommand = new AsyncRelayCommand(CancelOrderAsync);
         PrintCommand = new AsyncRelayCommand(p => p is RepLoadOrderRow r ? PrintOrderAsync(r.Id) : Task.CompletedTask);
+        DeleteOrderCommand = new AsyncRelayCommand(DeleteOrderAsync);
+        PreviousDayCommand = new AsyncRelayCommand(() => ShowDayAsync(OrdersFrom.AddDays(-1)));
+        NextDayCommand = new AsyncRelayCommand(() => ShowDayAsync(OrdersFrom.AddDays(1)));
+        TodayCommand = new AsyncRelayCommand(() => ShowDayAsync(DateTime.Today));
+        ShowOrdersCommand = new AsyncRelayCommand(LoadOrdersAsync);
     }
 
     protected override bool ReloadOnActivate => true;
     protected override bool HasPendingInput => Lines.Any(l => l.Product is not null && l.Quantity > 0);
+
+    // عرض الطلبات يومًا بيوم (اليوم افتراضيًا) أو «من — إلى»؛ المعلّقة من أيام سابقة تظهر دائمًا حتى لا يُنسى طلب لم يُجهَّز
+    public DateTime OrdersFrom { get => _ordersFrom; set => SetProperty(ref _ordersFrom, value.Date); }
+    public DateTime OrdersTo { get => _ordersTo; set => SetProperty(ref _ordersTo, value.Date); }
+    /// <summary>الملغاة مخفية افتراضيًا.</summary>
+    public bool ShowCancelled { get => _showCancelled; set { if (SetProperty(ref _showCancelled, value)) Background(LoadOrdersAsync()); } }
+    public AsyncRelayCommand PreviousDayCommand { get; }
+    public AsyncRelayCommand NextDayCommand { get; }
+    public AsyncRelayCommand TodayCommand { get; }
+    public AsyncRelayCommand ShowOrdersCommand { get; }
+    public AsyncRelayCommand DeleteOrderCommand { get; }
+
+    private async Task ShowDayAsync(DateTime day)
+    {
+        OrdersFrom = day;
+        OrdersTo = day;
+        await LoadOrdersAsync();
+    }
 
     protected override void ResetInput()
     {
@@ -241,9 +269,10 @@ public class LoadOrdersSectionViewModel : SectionViewModel
     public RepLoadOrderRow? SelectedOrder
     {
         get => _selectedOrder;
-        set { if (SetProperty(ref _selectedOrder, value)) { OnPropertyChanged(nameof(CanPrepare)); Background(LoadPrepareLinesAsync()); } }
+        set { if (SetProperty(ref _selectedOrder, value)) { OnPropertyChanged(nameof(CanPrepare)); OnPropertyChanged(nameof(CanDeleteOrder)); Background(LoadPrepareLinesAsync()); } }
     }
     public bool CanPrepare => SelectedOrder?.Status == RepLoadOrderStatus.Pending;
+    public bool CanDeleteOrder => SelectedOrder?.Status == RepLoadOrderStatus.Cancelled;
     public string? CancelReason { get => _cancelReason; set => SetProperty(ref _cancelReason, value); }
     public int PendingCount => Orders.Count(o => o.Status == RepLoadOrderStatus.Pending);
 
@@ -335,7 +364,9 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var selected = SelectedOrder?.Id;
         Orders.Clear();
-        foreach (var o in await new RepOperationsService(db).GetLoadOrdersAsync(DateTime.Today.AddDays(-14), DateTime.Today.AddDays(7))) Orders.Add(o);
+        if (OrdersTo < OrdersFrom) OrdersTo = OrdersFrom;
+        foreach (var o in await new RepOperationsService(db).GetLoadOrdersAsync(OrdersFrom, OrdersTo))
+            if (ShowCancelled || o.Status != RepLoadOrderStatus.Cancelled) Orders.Add(o);
         SelectedOrder = Orders.FirstOrDefault(o => o.Id == selected) ?? Orders.FirstOrDefault(o => o.Status == RepLoadOrderStatus.Pending);
         OnPropertyChanged(nameof(PendingCount));
     }
@@ -432,7 +463,21 @@ public class LoadOrdersSectionViewModel : SectionViewModel
         if (SelectedOrder is not { Status: RepLoadOrderStatus.Pending } order) { Dialogs.Error("اختر طلبًا بانتظار التجهيز"); return; }
         if (string.IsNullOrWhiteSpace(CancelReason)) { Dialogs.Error("اكتب سبب الإلغاء"); return; }
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(() => new RepOperationsService(db).CancelLoadOrderAsync(order.Id, CancelReason!, Session.UserId), $"أُلغي {order.OrderNumber}"))
+        if (await RunOperationAsync(() => new RepOperationsService(db).CancelLoadOrderAsync(order.Id, CancelReason!, Session.UserId),
+                                    $"أُلغي {order.OrderNumber}" + (ShowCancelled ? "" : " — لحذفه نهائيًا أشّر «إظهار الملغاة»")))
+        {
+            CancelReason = null;
+            await LoadOrdersAsync();
+        }
+    }
+
+    private async Task DeleteOrderAsync()
+    {
+        if (SelectedOrder is not { Status: RepLoadOrderStatus.Cancelled } order) { Dialogs.Error("اختر طلبًا ملغى — يُحذف الملغى فقط"); return; }
+        if (string.IsNullOrWhiteSpace(CancelReason)) { Dialogs.Error("اكتب سبب الحذف"); return; }
+        if (!Dialogs.Confirm($"حذف {order.OrderNumber} نهائيًا؟ لا أثر على المخزون (لم يُجهَّز)، ويبقى الحذف في سجل التدقيق.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new RepOperationsService(db).DeleteCancelledLoadOrderAsync(order.Id, CancelReason!, Session.UserId), $"حُذف {order.OrderNumber}"))
         {
             CancelReason = null;
             await LoadOrdersAsync();

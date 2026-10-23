@@ -112,6 +112,18 @@
             <Border Style="{StaticResource Card}">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="{Binding PendingCount, StringFormat='الطلبات — بانتظار التجهيز: {0}'}" Style="{StaticResource SectionTitle}"/>
+                    <!-- يوم بيوم (اليوم افتراضيًا) أو «من — إلى»؛ المعلّقة من أيام سابقة تظهر دائمًا، والملغاة عند الطلب -->
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <Button Content="◀ السابق" Style="{StaticResource SecondaryButton}" Command="{Binding PreviousDayCommand}" Padding="10,4"/>
+                        <Button Content="اليوم" Style="{StaticResource SecondaryButton}" Command="{Binding TodayCommand}" Padding="10,4" Margin="4,0"/>
+                        <Button Content="التالي ▶" Style="{StaticResource SecondaryButton}" Command="{Binding NextDayCommand}" Padding="10,4"/>
+                        <TextBlock Text="من" VerticalAlignment="Center" Margin="10,0,4,0"/>
+                        <DatePicker SelectedDate="{Binding OrdersFrom}" Width="120"/>
+                        <TextBlock Text="إلى" VerticalAlignment="Center" Margin="8,0,4,0"/>
+                        <DatePicker SelectedDate="{Binding OrdersTo}" Width="120"/>
+                        <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding ShowOrdersCommand}" Padding="12,4" Margin="6,0"/>
+                        <CheckBox Content="إظهار الملغاة" IsChecked="{Binding ShowCancelled}" VerticalAlignment="Center" Margin="6,0"/>
+                    </WrapPanel>
                     <DataGrid ItemsSource="{Binding Orders}" SelectedItem="{Binding SelectedOrder}" IsReadOnly="True">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="الرقم" Binding="{Binding OrderNumber}" Width="110"/>
@@ -141,10 +153,12 @@
                     <TextBlock DockPanel.Dock="Top" Text="تجهيز الطلب المختار (أمين المخزن)" Style="{StaticResource SectionTitle}"/>
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap"
                                Text="عدّل «المجهَّز» إن نقص صنف؛ عند التجهيز تخرج الكميات المجهَّزة فقط بمستند إسناد مرقّم."/>
-                    <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" IsEnabled="{Binding CanPrepare}">
-                        <Button Content="تجهيز وإخراج للسيارة" Style="{StaticResource SuccessButton}" Command="{Binding PrepareCommand}"/>
-                        <TextBox Text="{Binding CancelReason}" Width="200" Margin="12,0,6,0" ToolTip="سبب الإلغاء"/>
-                        <Button Content="إلغاء الطلب" Style="{StaticResource DangerButton}" Command="{Binding CancelOrderCommand}"/>
+                    <WrapPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <Button Content="تجهيز وإخراج للسيارة" Style="{StaticResource SuccessButton}" Command="{Binding PrepareCommand}" IsEnabled="{Binding CanPrepare}"/>
+                        <TextBox Text="{Binding CancelReason, UpdateSourceTrigger=PropertyChanged}" Width="200" Margin="12,0,6,0" ToolTip="سبب الإلغاء أو الحذف"/>
+                        <Button Content="إلغاء الطلب" Style="{StaticResource DangerButton}" Command="{Binding CancelOrderCommand}" IsEnabled="{Binding CanPrepare}"/>
+                        <Button Content="حذف الطلب الملغى" Style="{StaticResource DangerButton}" Command="{Binding DeleteOrderCommand}" IsEnabled="{Binding CanDeleteOrder}" Margin="6,0,0,0"
+                                ToolTip="حذف نهائي للملغى فقط (لم يحرّك مخزونًا) — بسبب، ويُسجَّل في سجل التدقيق"/>
                     </WrapPanel>
                     <DataGrid ItemsSource="{Binding PrepareLines}" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,6,0,0">
                         <DataGrid.Columns>
@@ -152,7 +166,7 @@
                             <DataGridTextColumn Header="المتغير" Binding="{Binding VariantName}" Width="*" IsReadOnly="True"/>
                             <DataGridTextColumn Header="الوحدة" Binding="{Binding LevelName}" Width="80" IsReadOnly="True"/>
                             <DataGridTextColumn Header="المطلوب" Binding="{Binding Requested, StringFormat=N0}" Width="80" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="المتاح" Binding="{Binding AvailableText}" Width="120" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="المتاح (لهذا الاسم)" Binding="{Binding AvailableText}" Width="130" IsReadOnly="True"/>
                             <DataGridTextColumn Header="المجهَّز" Binding="{Binding Prepared, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
                             <DataGridCheckBoxColumn Header="لا يكفي" Binding="{Binding IsShort, Mode=OneWay}" Width="70" IsReadOnly="True"/>
                         </DataGrid.Columns>

@@ -48,7 +48,7 @@
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top" Text="تجهيز الطلب المختار" Style="{StaticResource SectionTitle}"/>
                 <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap"
-                           Text="«المتاح» = رصيد الصنف في المخزن الآن. عدّل «المجهَّز» إن نقص صنف؛ عند التجهيز تخرج الكميات المجهَّزة فقط إلى سيارة المندوب بمستند إسناد مرقّم."/>
+                           Text="«المتاح» = رصيد هذا الصنف بهذا الاسم (الأساسي أو الخاص) في المخزن الآن. عدّل «المجهَّز» إن نقص صنف؛ عند التجهيز تخرج الكميات المجهَّزة فقط إلى سيارة المندوب بمستند إسناد مرقّم."/>
                 <Button DockPanel.Dock="Bottom" Content="تجهيز وإخراج للسيارة" Style="{StaticResource SuccessButton}" Command="{Binding PrepareCommand}"
                         IsEnabled="{Binding CanPrepare}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
                 <DataGrid ItemsSource="{Binding PrepareLines}" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,6,0,0">
@@ -57,7 +57,7 @@
                         <DataGridTextColumn Header="المتغير" Binding="{Binding VariantName}" Width="*" IsReadOnly="True"/>
                         <DataGridTextColumn Header="الوحدة" Binding="{Binding LevelName}" Width="80" IsReadOnly="True"/>
                         <DataGridTextColumn Header="المطلوب" Binding="{Binding Requested, StringFormat=N0}" Width="80" IsReadOnly="True"/>
-                        <DataGridTextColumn Header="المتاح" Binding="{Binding AvailableText}" Width="140" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="المتاح (لهذا الاسم)" Binding="{Binding AvailableText}" Width="140" IsReadOnly="True"/>
                         <DataGridTextColumn Header="المجهَّز" Binding="{Binding Prepared, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
                         <DataGridCheckBoxColumn Header="لا يكفي" Binding="{Binding IsShort, Mode=OneWay}" Width="70" IsReadOnly="True"/>
                     </DataGrid.Columns>

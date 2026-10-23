@@ -207,6 +207,27 @@ public class RepOperationsService
         return FinanceOperationResult.Ok();
     }
 
+    /// <summary>
+    /// حذف نهائي لطلب تحميل ملغى (بسبب، وبصلاحية «إلغاء مستند مرحَّل»): الطلب الملغى لم يحرّك مخزونًا،
+    /// فلا أثر له إلا السجل. المجهَّز لا يُحذف — يُعكس بإلغاء مستند الإسناد من المخزن.
+    /// </summary>
+    public async Task<FinanceOperationResult> DeleteCancelledLoadOrderAsync(int orderId, string reason, int userId)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب الحذف");
+        if (!await SpecialPermission.HasAsync(_db, userId, SpecialPermission.VoidPosted))
+            return FinanceOperationResult.Fail($"الحذف النهائي يحتاج صلاحية «{SpecialPermission.NameOf(SpecialPermission.VoidPosted)}»");
+        var order = await _db.RepLoadOrders.Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order is null) return FinanceOperationResult.Fail("الطلب غير موجود");
+        if (order.Status != RepLoadOrderStatus.Cancelled) return FinanceOperationResult.Fail("لا يُحذف إلا طلب ملغى — ألغِه أولًا");
+        if (order.StockDocumentId is not null) return FinanceOperationResult.Fail("للطلب مستند إسناد — لا يُحذف");
+        var number = order.OrderNumber;
+        _db.RepLoadOrderLines.RemoveRange(order.Lines);
+        _db.RepLoadOrders.Remove(order);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Delete", "RepLoadOrders", orderId, $"حذف طلب التحميل الملغى {number}: {reason.Trim()}");
+        return FinanceOperationResult.Ok();
+    }
+
     public async Task<List<RepLoadOrderRow>> GetLoadOrdersAsync(DateTime from, DateTime to, RepLoadOrderStatus? status = null)
     {
         var q = _db.RepLoadOrders.AsNoTracking().Where(o => o.LoadDate >= from.Date && o.LoadDate <= to.Date || o.Status == RepLoadOrderStatus.Pending);
