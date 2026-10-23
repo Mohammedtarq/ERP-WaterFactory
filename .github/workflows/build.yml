@@ -61,7 +61,15 @@ jobs:
         env:
           ERP_UI_SQL_CONNECTION: Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True;
           ERP_UI_SCREENSHOTS: ${{ github.workspace }}\ui-screenshots
-        run: dotnet test tests/ERP.Desktop.UiTests -p:NuGetAudit=false --logger "console;verbosity=normal"
+        run: |
+          dotnet test tests/ERP.Desktop.UiTests -p:NuGetAudit=false --logger "console;verbosity=normal" 2>&1 | Tee-Object -FilePath ui-test.log
+          $code = $LASTEXITCODE
+          # أسباب الفشل كتعليقات على التشغيل (يصعب جلب السجل الكامل من الخارج)
+          if ($code -ne 0) {
+            $lines = Select-String -Path ui-test.log -Pattern 'Failed |Error Message|Assert|Exception|error CS|Binding' -Context 0,3 | Select-Object -First 12
+            foreach ($l in $lines) { $m = ($l.Line + ' ' + ($l.Context.PostContext -join ' ')) -replace '[\r\n%]', ' '; Write-Host "::error::$($m.Substring(0, [Math]::Min(900, $m.Length)))" }
+          }
+          exit $code
       # دليل الاستخدام المصوَّر: تُحفظ صور الدرس في المستودع (docs/user-guide/images) على نفس الفرع،
       # فقط عند طلبها صراحةً بـ [guide] في رسالة الدفعة، وبـ [skip ci] حتى لا تبدأ دفعة جديدة.
       - name: صور دليل الاستخدام
