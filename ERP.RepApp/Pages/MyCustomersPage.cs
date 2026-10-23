@@ -14,17 +14,22 @@ public class MyCustomersPage : ContentPage
     private readonly VerticalStackLayout _list = new() { Spacing = 4 };
     private readonly Label _count = Ui.Text("", 15, Ui.Muted);
     private readonly HashSet<int> _picked = new();
+    private const int PageSize = 60;
+    private int _shown = PageSize;
+    private Button _more = null!;
 
     public MyCustomersPage()
     {
-        _search.TextChanged += (_, _) => Fill();
+        _search.TextChanged += (_, _) => { _shown = PageSize; Fill(); };     // بحث جديد يبدأ من الصفحة الأولى
+        // القائمة الطويلة تُعرض على دفعات حتى يبقى الهاتف سريعًا؛ «عرض المزيد» يضيف الدفعة التالية
+        _more = Ui.Small("عرض المزيد", Ui.Blue, () => { _shown += PageSize; Fill(); });
         Ui.Setup(this, "زبائني من النظام", new VerticalStackLayout
         {
             Spacing = 8,
             Children =
             {
                 Ui.Text("أشّر على زبائنك ثم أرسل الطلب. تظهر في قائمتك بعد موافقة الإدارة.", 15, Ui.Muted),
-                Ui.Card(new VerticalStackLayout { Spacing = 6, Children = { _search, _count, Ui.Small("مزامنة الآن", Ui.Blue, async () => { await AppServices.Instance.SyncNowAsync(); Fill(); }), _list } }),
+                Ui.Card(new VerticalStackLayout { Spacing = 6, Children = { _search, _count, Ui.Small("مزامنة الآن", Ui.Blue, async () => { await AppServices.Instance.SyncNowAsync(); Fill(); }), _list, _more } }),
                 Ui.Big("إرسال للإدارة للموافقة", Ui.Primary, SendAsync)
             }
         });
@@ -34,6 +39,7 @@ public class MyCustomersPage : ContentPage
     private void Fill()
     {
         _list.Children.Clear();
+        _more.IsVisible = false;
         var all = _work.OtherCustomers();
         var q = (_search.Text ?? "").Trim();
         if (!_work.OtherCustomersSupported)
@@ -45,16 +51,21 @@ public class MyCustomersPage : ContentPage
             return;
         }
         _count.TextColor = Ui.Muted;
-        var rows = all.Where(x => q.Length == 0 || x.Customer.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (x.Customer.Phone ?? "").Contains(q))
-                      .OrderBy(x => x.Pending).ThenBy(x => x.Customer.Name).Take(60).ToList();
+        var matches = all.Where(x => q.Length == 0 || x.Customer.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (x.Customer.Phone ?? "").Contains(q))
+                         .OrderBy(x => x.Pending).ThenBy(x => x.Customer.Name).ToList();
+        var rows = matches.Take(_shown).ToList();
+        var left = matches.Count - rows.Count;
+        _more.Text = $"عرض المزيد ({Math.Min(PageSize, left)} أخرى — الباقي {left})";
+        _more.IsVisible = left > 0;
+        string Counter() => $"المختار: {_picked.Count}   ·   المعروض {rows.Count} من {matches.Count}" + (q.Length > 0 ? $" (نتائج «{q}»)" : "");
         _count.Text = all.Count == 0 ? "لا يوجد زبائن آخرون في النظام غير المربوطين بك — زامن لتحديث القائمة"
             : rows.Count == 0 ? $"لا نتائج لـ «{q}» بين {all.Count} زبون — جرّب جزءًا آخر من الاسم"
-            : $"المختار: {_picked.Count}   ·   المعروض {rows.Count} من {all.Count}";
+            : Counter();
         foreach (var (c, pending) in rows)
         {
             var id = c.Id;
             var box = new CheckBox { IsChecked = _picked.Contains(id), IsEnabled = !pending, Color = Ui.Primary };
-            box.CheckedChanged += (_, e) => { if (e.Value) _picked.Add(id); else _picked.Remove(id); _count.Text = $"المختار: {_picked.Count}"; };
+            box.CheckedChanged += (_, e) => { if (e.Value) _picked.Add(id); else _picked.Remove(id); _count.Text = Counter(); };
             var name = Ui.Text(c.Name + (string.IsNullOrWhiteSpace(c.Phone) ? "" : $"  ·  {c.Phone}"), 16, pending ? Ui.Muted : Ui.Ink);
             name.VerticalTextAlignment = TextAlignment.Center;
             var row = new Grid
