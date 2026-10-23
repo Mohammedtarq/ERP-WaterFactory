@@ -137,6 +137,20 @@ public class FinalAccountsTests
     }
 
     [Fact]
+    public async Task Capital_entry_can_be_edited_and_deleted_with_audit()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var fa = new FinalAccountsService(db);
+        Assert.True((await fa.SetCapitalAsync(DateTime.Today.AddDays(-400), 777, "للحذف", _f.AdminId)).Success);
+        var row = (await fa.CapitalHistoryAsync()).First(h => h.Notes == "للحذف");
+        Assert.True((await fa.UpdateCapitalAsync(row.Id, row.EffectiveFrom, 888, "للحذف", _f.AdminId)).Success);
+        Assert.Equal(888m, (await db.WorkingCapitalSettings.AsNoTracking().FirstAsync(w => w.Id == row.Id)).Amount);
+        Assert.True((await fa.DeleteCapitalAsync(row.Id, _f.AdminId)).Success);
+        Assert.False(await db.WorkingCapitalSettings.AnyAsync(w => w.Id == row.Id));
+        Assert.False((await fa.DeleteCapitalAsync(row.Id, _f.AdminId)).Success);
+    }
+
+    [Fact]
     public async Task Deactivated_home_box_is_reused_instead_of_failing_on_the_duplicate_name()
     {
         await using var db = _f.NewDb(_f.AdminId);

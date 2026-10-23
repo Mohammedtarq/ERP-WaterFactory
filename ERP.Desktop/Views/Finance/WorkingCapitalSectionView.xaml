@@ -50,7 +50,9 @@
                             <TextBox Text="{Binding CapitalAmount}" FlowDirection="LeftToRight"/>
                             <TextBlock Text="ملاحظة" Style="{StaticResource FieldLabel}"/>
                             <TextBox Text="{Binding CapitalNotes}"/>
-                            <Button Content="حفظ" Style="{StaticResource PrimaryButton}" Command="{Binding SetCapitalCommand}" Margin="0,8,0,0" HorizontalAlignment="Stretch"/>
+                            <Button Content="{Binding SaveText}" Style="{StaticResource PrimaryButton}" Command="{Binding SetCapitalCommand}" Margin="0,8,0,0" HorizontalAlignment="Stretch"/>
+                            <Button Content="إلغاء التعديل" Style="{StaticResource SecondaryButton}" Command="{Binding CancelEditCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"
+                                    Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}"/>
                         </StackPanel>
                     </Border>
                     <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
@@ -86,6 +88,18 @@
                             <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="130"/>
                             <DataGridTextColumn Header="ملاحظة" Binding="{Binding Notes}" Width="*"/>
                             <DataGridTextColumn Header="بواسطة" Binding="{Binding CreatedByUser.Username}" Width="100"/>
+                            <DataGridTemplateColumn Header="" Width="84">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="&#xE70F;" ToolTip="تعديل" Style="{StaticResource RowIconButton}"
+                                                    Command="{Binding DataContext.EditRowCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                            <Button Content="&#xE74D;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                    Command="{Binding DataContext.DeleteRowCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

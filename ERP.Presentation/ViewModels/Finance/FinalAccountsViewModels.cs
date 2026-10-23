@@ -303,6 +303,9 @@ public class WorkingCapitalSectionViewModel : SectionViewModel
                "ما زاد عن رأس المال التشغيلي المخصص ربح متحقق: يُنقل لصندوق المنزل ويُوزَّع على الشركاء")
     {
         SetCapitalCommand = new AsyncRelayCommand(SetCapitalAsync);
+        EditRowCommand = new RelayCommand(o => StartEdit(o as WorkingCapitalSetting));
+        DeleteRowCommand = new AsyncRelayCommand(o => DeleteRowAsync(o as WorkingCapitalSetting));
+        CancelEditCommand = new RelayCommand(CancelEdit);
         MoveCommand = new AsyncRelayCommand(MoveAsync);
     }
 
@@ -321,7 +324,41 @@ public class WorkingCapitalSectionViewModel : SectionViewModel
     public decimal Distributable => Snapshot is null ? 0 : Math.Max(0, Math.Round(Snapshot.Surplus * (100 - ReservePercent) / 100, 0));
 
     public AsyncRelayCommand SetCapitalCommand { get; }
+    public RelayCommand EditRowCommand { get; }
+    public AsyncRelayCommand DeleteRowCommand { get; }
+    public RelayCommand CancelEditCommand { get; }
     public AsyncRelayCommand MoveCommand { get; }
+
+    private int? _editingId;
+    public bool IsEditing => _editingId is not null;
+    public string SaveText => IsEditing ? "حفظ التعديل" : "حفظ";
+
+    private void StartEdit(WorkingCapitalSetting? row)
+    {
+        if (row is null) return;
+        _editingId = row.Id;
+        EffectiveFrom = row.EffectiveFrom; CapitalAmount = row.Amount; CapitalNotes = row.Notes;
+        OnPropertyChanged(nameof(IsEditing)); OnPropertyChanged(nameof(SaveText));
+        StatusMessage = "عدّل القيمة ثم اضغط «حفظ التعديل»";
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null; CapitalNotes = null;
+        OnPropertyChanged(nameof(IsEditing)); OnPropertyChanged(nameof(SaveText));
+    }
+
+    private async Task DeleteRowAsync(WorkingCapitalSetting? row)
+    {
+        if (row is null) return;
+        if (!Dialogs.Confirm($"حذف قيمة رأس المال {row.Amount:N0} د.ع (اعتبارًا من {row.EffectiveFrom:yyyy/MM/dd})؟ يعود الحساب إلى القيمة التي قبلها.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new FinalAccountsService(db).DeleteCapitalAsync(row.Id, Session.UserId), "حُذفت القيمة"))
+        {
+            if (_editingId == row.Id) CancelEdit();
+            await LoadAsync();
+        }
+    }
 
     public override async Task LoadAsync()
     {
@@ -358,9 +395,12 @@ public class WorkingCapitalSectionViewModel : SectionViewModel
         if (CapitalAmount < 0) { Dialogs.Error("المبلغ لا يكون سالبًا"); return; }
         if (!Dialogs.Confirm($"رأس المال التشغيلي {CapitalAmount:N0} د.ع اعتبارًا من {EffectiveFrom:yyyy/MM/dd}؟ الأيام السابقة تبقى على القيمة القديمة.")) return;
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(() => new FinalAccountsService(db).SetCapitalAsync(EffectiveFrom, CapitalAmount, CapitalNotes, Session.UserId), "حُفظ رأس المال التشغيلي"))
+        var editing = _editingId;
+        if (await RunOperationAsync(() => editing is int id
+                ? new FinalAccountsService(db).UpdateCapitalAsync(id, EffectiveFrom, CapitalAmount, CapitalNotes, Session.UserId)
+                : new FinalAccountsService(db).SetCapitalAsync(EffectiveFrom, CapitalAmount, CapitalNotes, Session.UserId), "حُفظ رأس المال التشغيلي"))
         {
-            CapitalNotes = null;
+            CancelEdit();
             await LoadAsync();
         }
     }

@@ -289,6 +289,32 @@ public class FinalAccountsService
         return FinanceOperationResult.Ok();
     }
 
+    public async Task<FinanceOperationResult> UpdateCapitalAsync(int id, DateTime effectiveFrom, decimal amount, string? notes, int userId)
+    {
+        if (!await SpecialPermission.HasAsync(_db, userId, SpecialPermission.FinalAccounts))
+            return FinanceOperationResult.Fail("تعديل رأس المال التشغيلي لمن يملك صلاحية «الحسابات الختامية» فقط");
+        if (amount < 0) return FinanceOperationResult.Fail("المبلغ لا يكون سالبًا");
+        var row = await _db.WorkingCapitalSettings.FirstOrDefaultAsync(w => w.Id == id);
+        if (row is null) return FinanceOperationResult.Fail("السجل غير موجود");
+        var old = $"{row.Amount:N0} اعتبارًا من {row.EffectiveFrom:yyyy/MM/dd}";
+        row.EffectiveFrom = effectiveFrom.Date; row.Amount = amount; row.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Update", "WorkingCapitalSettings", id, $"رأس المال التشغيلي: {old} ← {amount:N0} اعتبارًا من {effectiveFrom:yyyy/MM/dd}");
+        return FinanceOperationResult.Ok();
+    }
+
+    public async Task<FinanceOperationResult> DeleteCapitalAsync(int id, int userId)
+    {
+        if (!await SpecialPermission.HasAsync(_db, userId, SpecialPermission.FinalAccounts))
+            return FinanceOperationResult.Fail("حذف رأس المال التشغيلي لمن يملك صلاحية «الحسابات الختامية» فقط");
+        var row = await _db.WorkingCapitalSettings.FirstOrDefaultAsync(w => w.Id == id);
+        if (row is null) return FinanceOperationResult.Fail("السجل غير موجود");
+        _db.WorkingCapitalSettings.Remove(row);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Delete", "WorkingCapitalSettings", id, $"حُذف رأس المال التشغيلي {row.Amount:N0} اعتبارًا من {row.EffectiveFrom:yyyy/MM/dd}");
+        return FinanceOperationResult.Ok();
+    }
+
     /// <summary>صافي الموجودات (بالكلفة) مقابل رأس المال التشغيلي: الفائض ربح متحقق يُنقل لصندوق المنزل.</summary>
     public async Task<WorkingCapitalSnapshot> WorkingCapitalAsync(DateTime date)
     {
