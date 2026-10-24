@@ -181,6 +181,8 @@ public static class RelayEndpoints
             return Results.Ok(new { count = rows.Count });
         });
 
+        ManagerEndpoints.Map(app, agent);
+
         agent.MapGet(CloudRoutes.AgentOpen, async (RelayDb db) =>
             Results.Ok(await db.Requests.AsNoTracking().Where(r => r.State == RelayState.Done && r.ResultStatus == "Pending").Select(r => r.ClientId).ToListAsync()));
 

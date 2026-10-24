@@ -28,3 +28,15 @@ public class CloudSyncSetting
     public string? LocalLastError { get; set; }
     public DateTime? LocalLastErrorAt { get; set; }
 }
+
+/// <summary>حساب دخول لوحة المدير على الإنترنت (67_manager_accounts.sql): كلمة المرور مجزّأة بملح.</summary>
+public class ManagerAccount
+{
+    public int Id { get; set; }
+    public string Username { get; set; } = "";
+    public string Salt { get; set; } = "";
+    public string PasswordHash { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ChangedAt { get; set; }
+}

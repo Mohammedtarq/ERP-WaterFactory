@@ -208,6 +208,7 @@ public partial class CloudSyncService
                     await SendAsync<JsonElement>(t.Http, HttpMethod.Post, CloudRoutes.AgentResults, late, ct);
 
                 await PushDevicesAsync(t.Http, ct);
+                if (t.Kind == SyncTargetKind.Cloud) await PushManagerAccountsAsync(t.Http, ct);
                 for (var round = 0; round < MaxBatchesPerRun; round++)
                 {
                     var inbox = await SendAsync<List<AgentInboxItem>>(t.Http, HttpMethod.Get, $"{CloudRoutes.AgentInbox}?max={Batch}", null, ct);
@@ -274,6 +275,20 @@ public partial class CloudSyncService
                 }
                 catch (CloudSyncException ex) { errors[t.Kind] = ex.Message; }
             }
+            if (due)
+            {
+                // لوحة المدير على الإنترنت: ملخص جاهز للسحابي فقط (لا قاعدة بيانات ولا رواتب)؛ تعذّر بنائه لا يوقف المزامنة
+                ManagerSummary? summary = null;
+                foreach (var t in live.Where(t => t.Kind == SyncTargetKind.Cloud && errors.GetValueOrDefault(t.Kind) is null))
+                {
+                    try
+                    {
+                        summary ??= await BuildManagerSummarySafeAsync();
+                        if (summary is not null) await SendAsync<JsonElement>(t.Http, HttpMethod.Put, ManagerRoutes.AgentSummary, summary, ct);
+                    }
+                    catch (CloudSyncException ex) { errors[t.Kind] = ex.Message; }
+                }
+            }
             state.LastSnapshotCheckUtc = DateTime.UtcNow;
         }
 
@@ -302,6 +317,24 @@ public partial class CloudSyncService
                 ? r
                 : new(false, RepRequestStatus.Failed, null, "تعذّر ترحيل الحركة في المعمل — أعد إرسالها أو راجع الإدارة");
         }
+    }
+
+    private async Task<ManagerSummary?> BuildManagerSummarySafeAsync()
+    {
+        try { return await new ManagerSummaryService(_db).BuildAsync(); }
+        catch (Exception ex) when (ex is Microsoft.Data.SqlClient.SqlException or InvalidOperationException or DbUpdateException)
+        {
+            _db.ChangeTracker.Clear();
+            return null;
+        }
+    }
+
+    private async Task PushManagerAccountsAsync(HttpClient http, CancellationToken ct)
+    {
+        List<AgentManagerAccount> accounts;
+        try { accounts = await new ManagerSummaryService(_db).AgentAccountsAsync(); }
+        catch (Microsoft.Data.SqlClient.SqlException) { return; }   // قاعدة لم تُرقَّ بعد (بلا جدول الحسابات)
+        await SendAsync<JsonElement>(http, HttpMethod.Put, ManagerRoutes.AgentAccounts, accounts, ct);
     }
 
     private async Task PushDevicesAsync(HttpClient http, CancellationToken ct)

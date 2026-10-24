@@ -53,6 +53,33 @@ public class RelayAgentState
     public Guid? RelayId { get; set; }
 }
 
+/// <summary>آخر ملخص للمدير رفعته حاسبة المعمل (JSON جاهز) — سطر واحد.</summary>
+public class RelayManagerSummary
+{
+    public int Id { get; set; } = 1;
+    public string Json { get; set; } = "";
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>حساب مدير كما أرسلته حاسبة المعمل: بصمة كلمة المرور فقط.</summary>
+public class RelayManagerAccount
+{
+    public string Username { get; set; } = "";
+    public string Salt { get; set; } = "";
+    public string Hash { get; set; } = "";
+    public bool IsActive { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>جلسة دخول المدير: بصمة الرمز فقط (الرمز نفسه عند الهاتف)، وتنتهي بتاريخها أو بحذف الحساب.</summary>
+public class RelayManagerSession
+{
+    public string TokenHash { get; set; } = "";
+    public string Username { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public DateTime ExpiresAt { get; set; }
+}
+
 public class RelayDb : DbContext
 {
     public RelayDb(DbContextOptions<RelayDb> options) : base(options) { }
@@ -64,6 +91,19 @@ public class RelayDb : DbContext
     public async Task PrepareAsync()
     {
         await Database.EnsureCreatedAsync();
+        // قاعدة أُنشئت بإصدار أقدم (قبل لوحة المدير): جداول اللوحة تُضاف وحدها
+        if (Database.IsSqlServer())
+        {
+            await Database.ExecuteSqlRawAsync("IF OBJECT_ID('ManagerSummary','U') IS NULL CREATE TABLE ManagerSummary (Id INT NOT NULL PRIMARY KEY, Json NVARCHAR(MAX) NOT NULL, UpdatedAt DATETIME2 NOT NULL);");
+            await Database.ExecuteSqlRawAsync("IF OBJECT_ID('ManagerAccounts','U') IS NULL CREATE TABLE ManagerAccounts (Username NVARCHAR(30) NOT NULL PRIMARY KEY, Salt VARCHAR(40) NOT NULL, Hash VARCHAR(100) NOT NULL, IsActive BIT NOT NULL, UpdatedAt DATETIME2 NOT NULL);");
+            await Database.ExecuteSqlRawAsync("IF OBJECT_ID('ManagerSessions','U') IS NULL CREATE TABLE ManagerSessions (TokenHash VARCHAR(64) NOT NULL PRIMARY KEY, Username NVARCHAR(30) NOT NULL, CreatedAt DATETIME2 NOT NULL, ExpiresAt DATETIME2 NOT NULL);");
+        }
+        else if (Database.IsSqlite())
+        {
+            await Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS ManagerSummary (Id INTEGER NOT NULL PRIMARY KEY, Json TEXT NOT NULL, UpdatedAt TEXT NOT NULL);");
+            await Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS ManagerAccounts (Username TEXT NOT NULL PRIMARY KEY, Salt TEXT NOT NULL, Hash TEXT NOT NULL, IsActive INTEGER NOT NULL, UpdatedAt TEXT NOT NULL);");
+            await Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS ManagerSessions (TokenHash TEXT NOT NULL PRIMARY KEY, Username TEXT NOT NULL, CreatedAt TEXT NOT NULL, ExpiresAt TEXT NOT NULL);");
+        }
         if (Database.IsSqlServer())
             await Database.ExecuteSqlRawAsync("IF COL_LENGTH('AgentState', 'RelayId') IS NULL ALTER TABLE AgentState ADD RelayId UNIQUEIDENTIFIER NULL;");
         else if (Database.IsSqlite())
@@ -77,6 +117,9 @@ public class RelayDb : DbContext
     public DbSet<RelayRequest> Requests => Set<RelayRequest>();
     public DbSet<RelaySnapshot> Snapshots => Set<RelaySnapshot>();
     public DbSet<RelayAgentState> AgentState => Set<RelayAgentState>();
+    public DbSet<RelayManagerSummary> ManagerSummaries => Set<RelayManagerSummary>();
+    public DbSet<RelayManagerAccount> ManagerAccounts => Set<RelayManagerAccount>();
+    public DbSet<RelayManagerSession> ManagerSessions => Set<RelayManagerSession>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -105,6 +148,22 @@ public class RelayDb : DbContext
             e.HasKey(x => x.RepEmployeeId);
             e.Property(x => x.RepEmployeeId).ValueGeneratedNever();
             e.Property(x => x.Hash).HasMaxLength(64).IsUnicode(false);
+        });
+        b.Entity<RelayManagerSummary>(e => { e.ToTable("ManagerSummary"); e.Property(x => x.Id).ValueGeneratedNever(); });
+        b.Entity<RelayManagerAccount>(e =>
+        {
+            e.ToTable("ManagerAccounts");
+            e.HasKey(x => x.Username);
+            e.Property(x => x.Username).HasMaxLength(30);
+            e.Property(x => x.Salt).HasMaxLength(40).IsUnicode(false);
+            e.Property(x => x.Hash).HasMaxLength(100).IsUnicode(false);
+        });
+        b.Entity<RelayManagerSession>(e =>
+        {
+            e.ToTable("ManagerSessions");
+            e.HasKey(x => x.TokenHash);
+            e.Property(x => x.TokenHash).HasMaxLength(64).IsUnicode(false);
+            e.Property(x => x.Username).HasMaxLength(30);
         });
         b.Entity<RelayAgentState>(e =>
         {

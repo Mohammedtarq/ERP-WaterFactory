@@ -17,6 +17,11 @@
     <ProjectReference Include="..\ERP.Cloud.Contracts\ERP.Cloud.Contracts.csproj" />
   </ItemGroup>
 
+  <!-- صفحة لوحة المدير (PWA) مضمّنة في البرنامج: لا ملفات منفصلة تُنسخ ولا مسار يُضبط -->
+  <ItemGroup>
+    <EmbeddedResource Include="Manager\**" LogicalName="Manager/%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="ERP.Cloud.Tests" />
   </ItemGroup>

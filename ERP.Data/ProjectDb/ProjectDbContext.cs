@@ -135,6 +135,7 @@ public partial class ProjectDbContext : DbContext
     public DbSet<CustomerReturnLine> CustomerReturnLines => Set<CustomerReturnLine>();
     // ---- المزامنة السحابية (40_cloud_sync.sql) ----
     public DbSet<CloudSyncSetting> CloudSyncSettings => Set<CloudSyncSetting>();
+    public DbSet<ManagerAccount> ManagerAccounts => Set<ManagerAccount>();
     // ---- حد التنبيه لكل مخزن (41_warehouse_item_alerts.sql) ----
     public DbSet<WarehouseItemAlert> WarehouseItemAlerts => Set<WarehouseItemAlert>();
     public DbSet<VariantAlert> VariantAlerts => Set<VariantAlert>();
