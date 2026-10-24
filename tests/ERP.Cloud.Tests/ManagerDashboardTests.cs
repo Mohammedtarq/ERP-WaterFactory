@@ -114,5 +114,62 @@ public class ManagerDashboardTests : CloudTestBase
         }
     }
 
+    [Fact]
+    public async Task Tv_screen_shows_only_non_sensitive_data_and_its_account_cannot_open_the_manager_dashboard()
+    {
+        ERP.Cloud.Api.ManagerEndpoints.ResetLocks();
+        await SeedRepAsync("تلفاز");
+        var agentKey = await EnableSyncAsync(BaseUrl);
+        await using var cloud = Cloud(agentKey);
+        using var agent = CloudSyncService.CreateClient(BaseUrl, agentKey, cloud.Server.CreateHandler());
+        using var http = cloud.CreateClient();
+        var state = new CloudSyncState();
+
+        await using (var db = NewDb())
+        {
+            Assert.True((await new ManagerSummaryService(db).SaveAccountAsync("tv.hall", "Screen#2026", AdminId, ManagerKinds.Tv)).Success);
+            Assert.True((await new ManagerSummaryService(db).SaveAccountAsync("boss.tv", "Strong#2026", AdminId)).Success);
+            Assert.False((await new ManagerSummaryService(db).SaveAccountAsync("x.kind", "Strong#2026", AdminId, "Other")).Success);
+            Assert.True((await new CloudSyncService(db).SaveTvMessageAsync("الجودة أولًا", AdminId)).Success);
+            Assert.False((await new CloudSyncService(db).SaveTvMessageAsync(new string('م', 301), AdminId)).Success);
+            Assert.True((await new CloudSyncService(db).RunOnceAsync(agent, "SERVER-PC", state)).Ok);
+
+            var tv = await new TvSummaryService(db).BuildAsync();
+            Assert.Equal("الجودة أولًا", tv.Message);
+        }
+
+        // الصفحة ثابتة والتحويل بلا شرطة
+        var page = await http.GetAsync("/tv/");
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, (await cloud.CreateClient(new() { AllowAutoRedirect = false }).GetAsync("/tv")).StatusCode);
+        foreach (var file in new[] { "tv.js", "tv.css" })
+            Assert.Equal(HttpStatusCode.OK, (await http.GetAsync($"/tv/{file}")).StatusCode);
+
+        var tvToken = await LoginAsync(http, "tv.hall", "Screen#2026");
+        var login = await (await http.PostAsJsonAsync("/" + ManagerRoutes.Login, new ManagerLoginRequest("tv.hall", "Screen#2026"))).Content.ReadFromJsonAsync<ManagerLoginResponse>();
+        Assert.Equal(ManagerKinds.Tv, login!.Kind);
+
+        // التلفاز لا يفتح لوحة المدير
+        Assert.Equal(HttpStatusCode.Forbidden, (await http.SendAsync(Get(tvToken))).StatusCode);
+
+        var read = await http.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/" + TvRoutes.Summary) { Headers = { { "Authorization", "Bearer " + tvToken } } });
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        var body = await read.Content.ReadAsStringAsync();
+        Assert.Contains("الجودة أولًا", body);
+        using var doc = JsonDocument.Parse(body);
+        Assert.True(doc.RootElement.GetProperty("summary").TryGetProperty("departments", out _));
+        foreach (var forbidden in new[] { "salary", "advance", "payroll", "debt", "debtors", "boxes" })
+            Assert.DoesNotContain(forbidden, body, StringComparison.OrdinalIgnoreCase);
+
+        // حساب المدير يقرأ لوحته ويعاين شاشة التلفاز أيضًا
+        var bossToken = await LoginAsync(http, "boss.tv", "Strong#2026");
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(Get(bossToken))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/" + TvRoutes.Summary) { Headers = { { "Authorization", "Bearer " + bossToken } } })).StatusCode);
+
+        // بلا دخول لا شيء
+        Assert.Equal(HttpStatusCode.Unauthorized, (await http.GetAsync("/" + TvRoutes.Summary)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await http.PutAsJsonAsync("/" + TvRoutes.AgentSummary, new { })).StatusCode);
+    }
+
     private const int ManagerEndpoints_MaxFailures = ERP.Cloud.Api.ManagerEndpoints.MaxFailures;
 }

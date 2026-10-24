@@ -155,6 +155,19 @@ public partial class CloudSyncService
         return s.AgentKey;
     }
 
+    /// <summary>الرسالة الثابتة على شاشة التلفاز (فارغة = لا رسالة).</summary>
+    public async Task<FinanceOperationResult> SaveTvMessageAsync(string? message, int userId)
+    {
+        var text = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
+        if (text is { Length: > 300 }) return FinanceOperationResult.Fail("الرسالة أطول من 300 حرف");
+        var s = await _db.CloudSyncSettings.FirstOrDefaultAsync();
+        if (s is null) _db.CloudSyncSettings.Add(s = new CloudSyncSetting());
+        s.TvMessage = text;
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Edit", "CloudSyncSettings", 1, text is null ? "حُذفت رسالة شاشة التلفاز" : "عُدّلت رسالة شاشة التلفاز");
+        return FinanceOperationResult.Ok();
+    }
+
     /// <summary>اختبار الاتصال: الخادم يرد ومفتاح المعمل مقبول.</summary>
     public static async Task<(bool ok, string message)> TestAsync(HttpClient http, CancellationToken ct = default)
     {
@@ -279,12 +292,15 @@ public partial class CloudSyncService
             {
                 // لوحة المدير على الإنترنت: ملخص جاهز للسحابي فقط (لا قاعدة بيانات ولا رواتب)؛ تعذّر بنائه لا يوقف المزامنة
                 ManagerSummary? summary = null;
+                TvSummary? tv = null;
                 foreach (var t in live.Where(t => t.Kind == SyncTargetKind.Cloud && errors.GetValueOrDefault(t.Kind) is null))
                 {
                     try
                     {
                         summary ??= await BuildManagerSummarySafeAsync();
                         if (summary is not null) await SendAsync<JsonElement>(t.Http, HttpMethod.Put, ManagerRoutes.AgentSummary, summary, ct);
+                        tv ??= await BuildTvSummarySafeAsync();
+                        if (tv is not null) await SendAsync<JsonElement>(t.Http, HttpMethod.Put, TvRoutes.AgentSummary, tv, ct);
                     }
                     catch (CloudSyncException ex) { errors[t.Kind] = ex.Message; }
                 }
@@ -322,6 +338,16 @@ public partial class CloudSyncService
     private async Task<ManagerSummary?> BuildManagerSummarySafeAsync()
     {
         try { return await new ManagerSummaryService(_db).BuildAsync(); }
+        catch (Exception ex) when (ex is Microsoft.Data.SqlClient.SqlException or InvalidOperationException or DbUpdateException)
+        {
+            _db.ChangeTracker.Clear();
+            return null;
+        }
+    }
+
+    private async Task<TvSummary?> BuildTvSummarySafeAsync()
+    {
+        try { return await new TvSummaryService(_db).BuildAsync(); }
         catch (Exception ex) when (ex is Microsoft.Data.SqlClient.SqlException or InvalidOperationException or DbUpdateException)
         {
             _db.ChangeTracker.Clear();

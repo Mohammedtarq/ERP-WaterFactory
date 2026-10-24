@@ -91,7 +91,8 @@
                 <TextBox Text="{Binding ManagerUsername, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
                 <TextBlock Text="كلمة المرور (8 أحرف فأكثر — اتركها فارغة إن لم تغيّرها)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
                 <PasswordBox x:Name="ManagerPasswordBox" FlowDirection="LeftToRight" PasswordChanged="ManagerPasswordBox_PasswordChanged"/>
-                <Button Content="حفظ حساب المدير" Style="{StaticResource SecondaryButton}" Command="{Binding SaveManagerCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                <CheckBox Content="هذا حساب شاشة التلفاز (بيانات غير حساسة فقط) وليس حساب المدير" IsChecked="{Binding IsTvAccount}" Margin="0,8,0,0"/>
+                <Button Content="حفظ الحساب" Style="{StaticResource SecondaryButton}" Command="{Binding SaveManagerCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
                 <ItemsControl ItemsSource="{Binding ManagerAccounts}" Margin="0,8,0,0">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -101,6 +102,14 @@
                                 <Button DockPanel.Dock="Left" Content="&#xE7E8;" ToolTip="إيقاف / تفعيل" Style="{StaticResource RowIconButton}"
                                         Command="{Binding DataContext.ToggleManagerCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
                                 <TextBlock Text="{Binding Username}" FlowDirection="LeftToRight" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Foreground="#0369A1">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="مدير"/>
+                                            <Style.Triggers><DataTrigger Binding="{Binding Kind}" Value="Tv"><Setter Property="Text" Value="تلفاز"/></DataTrigger></Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                                 <TextBlock Margin="8,0" VerticalAlignment="Center" Foreground="#64748B">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -113,6 +122,14 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <Separator Margin="0,16,0,8"/>
+                <TextBlock Text="شاشة التلفاز في المعمل" Style="{StaticResource SectionTitle}"/>
+                <TextBlock TextWrapping="Wrap" Foreground="#1F2937" Text="تعرض المبيعات والإنتاج والمندوبين والمخزون المنخفض وحضور الأقسام بلا أسماء — دون ديون أو صناديق أو رواتب. أنشئ لها حسابًا من الأعلى (علّم خانة التلفاز) وافتح الرابط في متصفح التلفاز."/>
+                <TextBlock Text="{Binding TvLinkText}" TextWrapping="Wrap" FlowDirection="LeftToRight" HorizontalAlignment="Left" Margin="0,6,0,0" FontWeight="SemiBold"/>
+                <TextBlock Text="رسالة ثابتة تظهر على الشاشة (اختياري — حتى 300 حرف)" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding TvMessage, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MaxLength="300" MinHeight="48"/>
+                <Button Content="حفظ الرسالة" Style="{StaticResource SecondaryButton}" Command="{Binding SaveTvMessageCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
 
                 <Separator Margin="0,16,0,8"/>
                 <TextBlock Text="مفتاح المعمل" Style="{StaticResource FieldLabel}"/>

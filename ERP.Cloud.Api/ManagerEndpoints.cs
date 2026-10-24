@@ -52,6 +52,9 @@ public static class ManagerEndpoints
         [$"{ManagerRoutes.Page}/manifest.webmanifest"] = ("manifest.webmanifest", "application/manifest+json; charset=utf-8"),
         [$"{ManagerRoutes.Page}/sw.js"] = ("sw.js", "text/javascript; charset=utf-8"),
         [$"{ManagerRoutes.Page}/icon.svg"] = ("icon.svg", "image/svg+xml"),
+        [TvRoutes.Page + "/"] = ("tv.html", "text/html; charset=utf-8"),
+        [$"{TvRoutes.Page}/tv.js"] = ("tv.js", "text/javascript; charset=utf-8"),
+        [$"{TvRoutes.Page}/tv.css"] = ("tv.css", "text/css; charset=utf-8"),
     };
 
     public static void Map(WebApplication app, RouteGroupBuilder agent)
@@ -69,7 +72,8 @@ public static class ManagerEndpoints
         // بلا شرطة مائلة: تحويل إلى الصفحة (نطاق التطبيق المثبّت /manager/). بوسيط لأن المسارين يتطابقان في التوجيه
         app.Use(async (ctx, next) =>
         {
-            if (HttpMethods.IsGet(ctx.Request.Method) && ctx.Request.Path.Value == "/" + ManagerRoutes.Page) { ctx.Response.Redirect("/" + ManagerRoutes.Page + "/"); return; }
+            if (HttpMethods.IsGet(ctx.Request.Method) && ctx.Request.Path.Value is { } path && (path == "/" + ManagerRoutes.Page || path == "/" + TvRoutes.Page))
+            { ctx.Response.Redirect(path + "/"); return; }
             await next();
         });
 
@@ -91,7 +95,7 @@ public static class ManagerEndpoints
             db.ManagerSessions.Add(new RelayManagerSession { TokenHash = CloudHash.Of(token), Username = account!.Username, CreatedAt = now, ExpiresAt = now + SessionLife });
             await db.ManagerSessions.Where(s => s.ExpiresAt < now).ExecuteDeleteAsync();
             await db.SaveChangesAsync();
-            return Results.Ok(new ManagerLoginResponse(token, now + SessionLife));
+            return Results.Ok(new ManagerLoginResponse(token, now + SessionLife, ManagerKinds.IsValid(account.Kind) ? account.Kind : ManagerKinds.Manager));
         });
 
         app.MapPost("/api/manager/logout", async (HttpContext http, RelayDb db) =>
@@ -103,17 +107,27 @@ public static class ManagerEndpoints
         // ---------- الملخص (قراءة فقط) ----------
         app.MapGet("/" + ManagerRoutes.Summary, async (HttpContext http, RelayDb db) =>
         {
-            var now = DateTime.UtcNow;
-            if (BearerOf(http) is not { } token) return Problem(401, "سجّل الدخول أولًا");
-            var hash = CloudHash.Of(token);
-            var session = await db.ManagerSessions.AsNoTracking().FirstOrDefaultAsync(s => s.TokenHash == hash && s.ExpiresAt > now);
-            var active = session is not null && await db.ManagerAccounts.AsNoTracking().AnyAsync(a => a.Username == session.Username && a.IsActive);
-            if (!active) return Problem(401, "انتهت الجلسة — سجّل الدخول من جديد");
-            var row = await db.ManagerSummaries.AsNoTracking().FirstOrDefaultAsync();
+            var (account, error) = await AuthenticateAsync(http, db);
+            if (account is null) return error!;
+            // حساب التلفاز لا يرى بيانات المدير أبدًا
+            if (account.Kind != ManagerKinds.Manager) return Problem(403, "هذا الحساب لشاشة التلفاز فقط");
+            var row = await db.ManagerSummaries.AsNoTracking().FirstOrDefaultAsync(r => r.Id == SummaryId);
             http.Response.Headers.CacheControl = "no-store";
             if (row is null) return Problem(404, "لم يصل ملخص من المعمل بعد — حاول بعد دقيقة");
             var agent = await db.AgentState.AsNoTracking().Select(a => (DateTime?)a.LastSeenAt).FirstOrDefaultAsync();
-            return Results.Json(new { serverTimeUtc = now, factoryLastSeenUtc = agent, updatedUtc = row.UpdatedAt, summary = JsonDocument.Parse(row.Json).RootElement });
+            return Results.Json(new { serverTimeUtc = DateTime.UtcNow, factoryLastSeenUtc = agent, updatedUtc = row.UpdatedAt, summary = JsonDocument.Parse(row.Json).RootElement });
+        });
+
+        // شاشة التلفاز: حساب التلفاز (أو المدير للمعاينة) ويقرأ ملخصًا غير حساس منفصلًا
+        app.MapGet("/" + TvRoutes.Summary, async (HttpContext http, RelayDb db) =>
+        {
+            var (account, error) = await AuthenticateAsync(http, db);
+            if (account is null) return error!;
+            var row = await db.ManagerSummaries.AsNoTracking().FirstOrDefaultAsync(r => r.Id == TvSummaryId);
+            http.Response.Headers.CacheControl = "no-store";
+            if (row is null) return Problem(404, "لم يصل ملخص من المعمل بعد — حاول بعد دقيقة");
+            var agent = await db.AgentState.AsNoTracking().Select(a => (DateTime?)a.LastSeenAt).FirstOrDefaultAsync();
+            return Results.Json(new { serverTimeUtc = DateTime.UtcNow, factoryLastSeenUtc = agent, updatedUtc = row.UpdatedAt, summary = JsonDocument.Parse(row.Json).RootElement });
         });
 
         // ---------- من حاسبة المعمل (بمفتاح المعمل) ----------
@@ -121,8 +135,19 @@ public static class ManagerEndpoints
         {
             var json = JsonSerializer.Serialize(summary, Json);
             if (json.Length > MaxSummaryChars) return Problem(400, "الملخص كبير جدًا");
-            var row = await db.ManagerSummaries.FirstOrDefaultAsync();
-            if (row is null) db.ManagerSummaries.Add(row = new RelayManagerSummary());
+            var row = await db.ManagerSummaries.FirstOrDefaultAsync(r => r.Id == SummaryId);
+            if (row is null) db.ManagerSummaries.Add(row = new RelayManagerSummary { Id = SummaryId });
+            (row.Json, row.UpdatedAt) = (json, DateTime.UtcNow);
+            await db.SaveChangesAsync();
+            return Results.Ok(new { ok = true });
+        });
+
+        agent.MapPut(TvRoutes.AgentSummary, async (RelayDb db, TvSummary summary) =>
+        {
+            var json = JsonSerializer.Serialize(summary, Json);
+            if (json.Length > MaxSummaryChars) return Problem(400, "الملخص كبير جدًا");
+            var row = await db.ManagerSummaries.FirstOrDefaultAsync(r => r.Id == TvSummaryId);
+            if (row is null) db.ManagerSummaries.Add(row = new RelayManagerSummary { Id = TvSummaryId });
             (row.Json, row.UpdatedAt) = (json, DateTime.UtcNow);
             await db.SaveChangesAsync();
             return Results.Ok(new { ok = true });
@@ -132,16 +157,16 @@ public static class ManagerEndpoints
         agent.MapPut(ManagerRoutes.AgentAccounts, async (RelayDb db, List<AgentManagerAccount> accounts) =>
         {
             var now = DateTime.UtcNow;
-            if (accounts.Any(a => ManagerLogin.ValidateUsername(a.Username) is not null || string.IsNullOrEmpty(a.Salt) || string.IsNullOrEmpty(a.Hash)))
+            if (accounts.Any(a => ManagerLogin.ValidateUsername(a.Username) is not null || string.IsNullOrEmpty(a.Salt) || string.IsNullOrEmpty(a.Hash) || !ManagerKinds.IsValid(a.Kind)))
                 return Problem(400, "حساب غير صحيح");
             var byName = accounts.GroupBy(a => ManagerLogin.NormalizeName(a.Username)).ToDictionary(g => g.Key, g => g.Last());
             var existing = await db.ManagerAccounts.ToDictionaryAsync(a => a.Username);
-            var changedPassword = existing.Where(kv => byName.TryGetValue(kv.Key, out var n) && n.Hash != kv.Value.Hash).Select(kv => kv.Key).ToList();
+            var changedPassword = existing.Where(kv => byName.TryGetValue(kv.Key, out var n) && (n.Hash != kv.Value.Hash || n.Kind != kv.Value.Kind)).Select(kv => kv.Key).ToList();
             foreach (var (name, a) in byName)
             {
                 if (!existing.TryGetValue(name, out var row)) db.ManagerAccounts.Add(row = new RelayManagerAccount { Username = name });
-                if (row.Salt != a.Salt || row.Hash != a.Hash || row.IsActive != a.IsActive) row.UpdatedAt = now;
-                (row.Salt, row.Hash, row.IsActive) = (a.Salt, a.Hash, a.IsActive);
+                if (row.Salt != a.Salt || row.Hash != a.Hash || row.IsActive != a.IsActive || row.Kind != a.Kind) row.UpdatedAt = now;
+                (row.Salt, row.Hash, row.IsActive, row.Kind) = (a.Salt, a.Hash, a.IsActive, a.Kind);
             }
             var gone = existing.Keys.Where(k => !byName.ContainsKey(k)).ToList();
             db.ManagerAccounts.RemoveRange(gone.Select(k => existing[k]));
@@ -151,6 +176,19 @@ public static class ManagerEndpoints
             if (revoke.Count > 0) await db.ManagerSessions.Where(s => revoke.Contains(s.Username)).ExecuteDeleteAsync();
             return Results.Ok(new { count = byName.Count });
         });
+    }
+
+    private const int SummaryId = 1, TvSummaryId = 2;
+
+    /// <summary>الحساب صاحب الرمز (فعّال)، أو رد الخطأ المناسب.</summary>
+    private static async Task<(RelayManagerAccount? account, IResult? error)> AuthenticateAsync(HttpContext http, RelayDb db)
+    {
+        var now = DateTime.UtcNow;
+        if (BearerOf(http) is not { } token) return (null, Problem(401, "سجّل الدخول أولًا"));
+        var hash = CloudHash.Of(token);
+        var session = await db.ManagerSessions.AsNoTracking().FirstOrDefaultAsync(s => s.TokenHash == hash && s.ExpiresAt > now);
+        var account = session is null ? null : await db.ManagerAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Username == session.Username && a.IsActive);
+        return account is null ? (null, Problem(401, "انتهت الجلسة — سجّل الدخول من جديد")) : (account, null);
     }
 
     private static string? BearerOf(HttpContext http)

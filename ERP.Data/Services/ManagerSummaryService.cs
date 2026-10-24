@@ -101,8 +101,9 @@ public class ManagerSummaryService
 
     public Task<List<ManagerAccount>> AccountsAsync() => _db.ManagerAccounts.AsNoTracking().OrderBy(a => a.Username).ToListAsync();
 
-    public async Task<FinanceOperationResult> SaveAccountAsync(string? username, string? password, int userId)
+    public async Task<FinanceOperationResult> SaveAccountAsync(string? username, string? password, int userId, string kind = ManagerKinds.Manager)
     {
+        if (!ManagerKinds.IsValid(kind)) return FinanceOperationResult.Fail("نوع الحساب غير معروف");
         if (ManagerLogin.ValidateUsername(username) is string badName) return FinanceOperationResult.Fail(badName);
         var name = ManagerLogin.NormalizeName(username);
         var row = await _db.ManagerAccounts.FirstOrDefaultAsync(a => a.Username == name);
@@ -116,8 +117,9 @@ public class ManagerSummaryService
             row.ChangedAt = DateTime.UtcNow;
         }
         row.IsActive = true;
+        row.Kind = kind;
         await _db.SaveChangesAsync();
-        await new AuditService(_db).LogAsync(userId, "Edit", "ManagerAccounts", row.Id, $"حساب لوحة المدير «{name}» {(string.IsNullOrEmpty(password) ? "فُعّل" : "حُفظ بكلمة مرور جديدة")}");
+        await new AuditService(_db).LogAsync(userId, "Edit", "ManagerAccounts", row.Id, $"حساب {(kind == ManagerKinds.Tv ? "شاشة التلفاز" : "لوحة المدير")} «{name}» {(string.IsNullOrEmpty(password) ? "فُعّل" : "حُفظ بكلمة مرور جديدة")}");
         return FinanceOperationResult.Ok();
     }
 
@@ -142,5 +144,5 @@ public class ManagerSummaryService
     }
 
     public async Task<List<AgentManagerAccount>> AgentAccountsAsync() =>
-        (await AccountsAsync()).Select(a => new AgentManagerAccount(a.Username, a.Salt, a.PasswordHash, a.IsActive)).ToList();
+        (await AccountsAsync()).Select(a => new AgentManagerAccount(a.Username, a.Salt, a.PasswordHash, a.IsActive, ManagerKinds.IsValid(a.Kind) ? a.Kind : ManagerKinds.Manager)).ToList();
 }

@@ -69,6 +69,8 @@ public class RelayManagerAccount
     public string Hash { get; set; } = "";
     public bool IsActive { get; set; }
     public DateTime UpdatedAt { get; set; }
+    /// <summary>Manager أو Tv (شاشة التلفاز: بيانات غير حساسة فقط).</summary>
+    public string Kind { get; set; } = "Manager";
 }
 
 /// <summary>جلسة دخول المدير: بصمة الرمز فقط (الرمز نفسه عند الهاتف)، وتنتهي بتاريخها أو بحذف الحساب.</summary>
@@ -95,13 +97,24 @@ public class RelayDb : DbContext
         if (Database.IsSqlServer())
         {
             await Database.ExecuteSqlRawAsync("IF OBJECT_ID('ManagerSummary','U') IS NULL CREATE TABLE ManagerSummary (Id INT NOT NULL PRIMARY KEY, Json NVARCHAR(MAX) NOT NULL, UpdatedAt DATETIME2 NOT NULL);");
-            await Database.ExecuteSqlRawAsync("IF OBJECT_ID('ManagerAccounts','U') IS NULL CREATE TABLE ManagerAccounts (Username NVARCHAR(30) NOT NULL PRIMARY KEY, Salt VARCHAR(40) NOT NULL, Hash VARCHAR(100) NOT NULL, IsActive BIT NOT NULL, UpdatedAt DATETIME2 NOT NULL);");
+            await Database.ExecuteSqlRawAsync("IF OBJECT_ID('ManagerAccounts','U') IS NULL CREATE TABLE ManagerAccounts (Username NVARCHAR(30) NOT NULL PRIMARY KEY, Salt VARCHAR(40) NOT NULL, Hash VARCHAR(100) NOT NULL, IsActive BIT NOT NULL, UpdatedAt DATETIME2 NOT NULL, Kind VARCHAR(10) NOT NULL DEFAULT 'Manager');");
+            await Database.ExecuteSqlRawAsync("IF COL_LENGTH('ManagerAccounts','Kind') IS NULL ALTER TABLE ManagerAccounts ADD Kind VARCHAR(10) NOT NULL DEFAULT 'Manager';");
             await Database.ExecuteSqlRawAsync("IF OBJECT_ID('ManagerSessions','U') IS NULL CREATE TABLE ManagerSessions (TokenHash VARCHAR(64) NOT NULL PRIMARY KEY, Username NVARCHAR(30) NOT NULL, CreatedAt DATETIME2 NOT NULL, ExpiresAt DATETIME2 NOT NULL);");
         }
         else if (Database.IsSqlite())
         {
             await Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS ManagerSummary (Id INTEGER NOT NULL PRIMARY KEY, Json TEXT NOT NULL, UpdatedAt TEXT NOT NULL);");
-            await Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS ManagerAccounts (Username TEXT NOT NULL PRIMARY KEY, Salt TEXT NOT NULL, Hash TEXT NOT NULL, IsActive INTEGER NOT NULL, UpdatedAt TEXT NOT NULL);");
+            await Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS ManagerAccounts (Username TEXT NOT NULL PRIMARY KEY, Salt TEXT NOT NULL, Hash TEXT NOT NULL, IsActive INTEGER NOT NULL, UpdatedAt TEXT NOT NULL, Kind TEXT NOT NULL DEFAULT 'Manager');");
+            // قاعدة أُنشئت قبل شاشة التلفاز: عمود النوع يُضاف مرة واحدة
+            var hasKind = false;
+            await using (var conn = Database.GetDbConnection())
+            {
+                if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('ManagerAccounts') WHERE name = 'Kind'";
+                hasKind = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+            }
+            if (!hasKind) await Database.ExecuteSqlRawAsync("ALTER TABLE ManagerAccounts ADD COLUMN Kind TEXT NOT NULL DEFAULT 'Manager';");
             await Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS ManagerSessions (TokenHash TEXT NOT NULL PRIMARY KEY, Username TEXT NOT NULL, CreatedAt TEXT NOT NULL, ExpiresAt TEXT NOT NULL);");
         }
         if (Database.IsSqlServer())
@@ -157,6 +170,7 @@ public class RelayDb : DbContext
             e.Property(x => x.Username).HasMaxLength(30);
             e.Property(x => x.Salt).HasMaxLength(40).IsUnicode(false);
             e.Property(x => x.Hash).HasMaxLength(100).IsUnicode(false);
+            e.Property(x => x.Kind).HasMaxLength(10).IsUnicode(false);
         });
         b.Entity<RelayManagerSession>(e =>
         {

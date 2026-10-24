@@ -13,14 +13,29 @@ public static class ManagerRoutes
     public const string AgentAccounts = "api/agent/manager/accounts";
 }
 
+/// <summary>شاشة التلفاز: صفحة بملء الشاشة تتبدل شرائحها وحدها، وبيانات غير حساسة (لا ديون ولا صناديق ولا رواتب).</summary>
+public static class TvRoutes
+{
+    public const string Page = "tv";
+    public const string Summary = "api/tv/summary";
+    public const string AgentSummary = "api/agent/tv/summary";
+}
+
+public static class ManagerKinds
+{
+    public const string Manager = "Manager";
+    public const string Tv = "Tv";
+    public static bool IsValid(string? kind) => kind is Manager or Tv;
+}
+
 /// <summary>
 /// حساب المدير كما يصل الخادم السحابي: كلمة المرور مجزّأة بملح (لا نصًّا). الخادم لا يرى كلمة المرور أبدًا،
 /// وحذف الحساب أو إيقافه في المعمل يصل الخادم في الدورة التالية.
 /// </summary>
-public record AgentManagerAccount(string Username, string Salt, string Hash, bool IsActive);
+public record AgentManagerAccount(string Username, string Salt, string Hash, bool IsActive, string Kind = "Manager");
 
 public record ManagerLoginRequest(string? Username, string? Password);
-public record ManagerLoginResponse(string Token, DateTime ExpiresUtc);
+public record ManagerLoginResponse(string Token, DateTime ExpiresUtc, string Kind = "Manager");
 
 public static class ManagerLogin
 {
@@ -67,3 +82,18 @@ public record ManagerSummary(
     DateTime GeneratedAtUtc, string FactoryName, ManagerToday Today, List<ManagerBox> Boxes, List<ManagerDay> Last30,
     List<ManagerRep> Reps, List<ManagerLowStock> LowStock, List<ManagerStockItem> Stock, List<ManagerDebtor> Debtors,
     decimal TotalReceivables, ManagerAlerts Alerts, ManagerHr Hr);
+
+// ============================ ملخص التلفاز ============================
+// غير حساس عمدًا: يراه كل من يمرّ أمام الشاشة.
+
+public record TvDay(string Date, decimal Sales);
+public record TvProduced(string Name, decimal Packs);
+public record TvRep(string Name, decimal SalesToday, bool Online);
+public record TvLowStock(string Item, decimal Balance, decimal Min);
+public record TvDepartment(string Name, int Present, int Total);
+
+public record TvSummary(
+    DateTime GeneratedAtUtc, string FactoryName, string? Message, decimal SalesToday, List<TvDay> Last10,
+    int OrdersDone, int OrdersTotal, List<TvProduced> Produced, int QcPassed, int QcTotal,
+    List<TvRep> Reps, List<TvLowStock> LowStock,
+    int Present, int Late, int Absent, int OnLeave, List<TvDepartment> Departments);

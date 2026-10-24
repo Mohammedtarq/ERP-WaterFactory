@@ -18,6 +18,8 @@ public class CloudSyncSetting
     public int ReceivedCount { get; set; }
     public DateTime? LastSnapshotAt { get; set; }
     public string? AgentMachine { get; set; }
+    /// <summary>رسالة ثابتة تظهر على شاشة التلفاز (69_tv_display.sql).</summary>
+    public string? TvMessage { get; set; }
 
     public bool LocalEnabled { get; set; }
     /// <summary>فُعّل الخادم المحلي تلقائيًا من خدمة المزامنة (52_sync_auto_setup.sql)، أو حسم المستخدم الأمر: لا يتكرر التفعيل.</summary>
@@ -39,4 +41,6 @@ public class ManagerAccount
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ChangedAt { get; set; }
+    /// <summary>Manager = لوحة المدير على الهاتف، Tv = شاشة التلفاز (عرض فقط وبيانات غير حساسة) — 69_tv_display.sql.</summary>
+    public string Kind { get; set; } = "Manager";
 }

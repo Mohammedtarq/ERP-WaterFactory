@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using ERP.Cloud.Contracts;
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
 using ERP.Presentation.Mvvm;
@@ -40,6 +41,7 @@ public class CloudSyncSectionViewModel : SectionViewModel
         SaveManagerCommand = new AsyncRelayCommand(SaveManagerAsync);
         ToggleManagerCommand = new AsyncRelayCommand(o => ToggleManagerAsync(o as ManagerAccount));
         DeleteManagerCommand = new AsyncRelayCommand(o => DeleteManagerAsync(o as ManagerAccount));
+        SaveTvMessageCommand = new AsyncRelayCommand(SaveTvMessageAsync);
     }
 
     // ============================ لوحة المدير على الهاتف (قراءة فقط) ============================
@@ -50,6 +52,13 @@ public class CloudSyncSectionViewModel : SectionViewModel
     /// <summary>تُكتب من حقل كلمة المرور وتُمسح بعد الحفظ؛ لا تُحفظ نصًّا في أي مكان.</summary>
     public string ManagerPassword { get => _managerPassword; set => SetProperty(ref _managerPassword, value); }
     public string ManagerLinkText => string.IsNullOrWhiteSpace(ServerUrl) ? "اكتب عنوان الخادم السحابي واحفظ ليظهر رابط اللوحة" : $"رابط اللوحة: {ServerUrl.Trim().TrimEnd('/')}/manager/";
+    private bool _isTvAccount;
+    private string _tvMessage = "";
+    /// <summary>حساب شاشة التلفاز (بيانات غير حساسة فقط) بدل حساب المدير.</summary>
+    public bool IsTvAccount { get => _isTvAccount; set => SetProperty(ref _isTvAccount, value); }
+    public string TvMessage { get => _tvMessage; set => SetProperty(ref _tvMessage, value); }
+    public string TvLinkText => string.IsNullOrWhiteSpace(ServerUrl) ? "" : $"رابط شاشة التلفاز: {ServerUrl.Trim().TrimEnd('/')}/tv/";
+    public AsyncRelayCommand SaveTvMessageCommand { get; }
     public AsyncRelayCommand SaveManagerCommand { get; }
     public AsyncRelayCommand ToggleManagerCommand { get; }
     public AsyncRelayCommand DeleteManagerCommand { get; }
@@ -58,13 +67,20 @@ public class CloudSyncSectionViewModel : SectionViewModel
     {
         if (!Require(CanEdit, "حساب لوحة المدير")) return;
         await using var db = Session.NewDb();
-        if (await RunOperationAsync(() => new ManagerSummaryService(db).SaveAccountAsync(ManagerUsername, ManagerPassword, Session.UserId),
-                                    "حُفظ حساب لوحة المدير — يصل الخادم السحابي خلال دقيقة"))
+        if (await RunOperationAsync(() => new ManagerSummaryService(db).SaveAccountAsync(ManagerUsername, ManagerPassword, Session.UserId, IsTvAccount ? ManagerKinds.Tv : ManagerKinds.Manager),
+                                    IsTvAccount ? "حُفظ حساب شاشة التلفاز — يصل الخادم السحابي خلال دقيقة" : "حُفظ حساب لوحة المدير — يصل الخادم السحابي خلال دقيقة"))
         {
             ManagerPassword = "";
             ManagerUsername = "";
             await LoadAsync();
         }
+    }
+
+    private async Task SaveTvMessageAsync()
+    {
+        if (!Require(CanEdit, "رسالة شاشة التلفاز")) return;
+        await using var db = Session.NewDb();
+        await RunOperationAsync(() => new CloudSyncService(db).SaveTvMessageAsync(TvMessage, Session.UserId), "حُفظت رسالة الشاشة — تظهر خلال دقيقة");
     }
 
     private async Task ToggleManagerAsync(ManagerAccount? a)
@@ -95,7 +111,7 @@ public class CloudSyncSectionViewModel : SectionViewModel
     protected override bool HasPendingInput => true;
 
     /// <summary>عنوان الخادم السحابي (اختياري).</summary>
-    public string ServerUrl { get => _serverUrl; set { if (SetProperty(ref _serverUrl, value)) OnPropertyChanged(nameof(ManagerLinkText)); } }
+    public string ServerUrl { get => _serverUrl; set { if (SetProperty(ref _serverUrl, value)) { OnPropertyChanged(nameof(ManagerLinkText)); OnPropertyChanged(nameof(TvLinkText)); } } }
     public bool LocalEnabled { get => _localEnabled; set => SetProperty(ref _localEnabled, value); }
     /// <summary>عنوان الخادم المحلي كما تكتبه خدمة المزامنة (للعرض فقط).</summary>
     public string LocalUrl { get => _localUrl; private set => SetProperty(ref _localUrl, value); }
@@ -137,7 +153,9 @@ public class CloudSyncSectionViewModel : SectionViewModel
         (LocalEnabled, LocalUrl) = (s.LocalEnabled, s.LocalUrl ?? "لم يُعرف بعد");
         ManagerAccounts.Clear();
         foreach (var a in await new ManagerSummaryService(db).AccountsAsync()) ManagerAccounts.Add(a);
+        TvMessage = s.TvMessage ?? "";
         OnPropertyChanged(nameof(ManagerLinkText));
+        OnPropertyChanged(nameof(TvLinkText));
         NewKey = null;   // المفتاح يُعرض مرة واحدة فقط بعد توليده
         var now = DateTime.UtcNow;
         (Level, StateText) = CloudSyncStatus.Describe(s, now);
