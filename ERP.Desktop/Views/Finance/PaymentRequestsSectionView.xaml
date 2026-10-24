@@ -1,0 +1,50 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.PaymentRequestsSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:PaymentRequestsSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <CheckBox Content="المنتظرة فقط" IsChecked="{Binding PendingOnly}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#DC2626" Command="{Binding RefreshCommand}"/>
+                </StackPanel>
+                <TextBlock Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center">
+                    <Run Text="طلبات الصرف — بانتظار الاعتماد:"/> <Run Text="{Binding PendingCount, Mode=OneWay}"/> <Run Text="بمبلغ"/> <Run Text="{Binding PendingTotal, Mode=OneWay, StringFormat=N0}"/> <Run Text="د.ع"/>
+                </TextBlock>
+            </DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+            <!-- القرار -->
+            <Border DockPanel.Dock="Bottom" Margin="0,8,0,0" Padding="10" CornerRadius="8" BorderThickness="2" BorderBrush="#1D4ED8" Background="{StaticResource SurfaceBrush}">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                        <Button Content="اعتماد وصرف" Style="{StaticResource SuccessButton}" Command="{Binding ApproveCommand}" IsEnabled="{Binding CanDecide}"/>
+                        <Button Content="رفض بسبب" Style="{StaticResource DangerButton}" Command="{Binding RejectCommand}" IsEnabled="{Binding CanDecide}"/>
+                        <Button Content="سحب طلبي" Style="{StaticResource SecondaryButton}" Command="{Binding WithdrawCommand}" IsEnabled="{Binding CanWithdraw}"/>
+                    </StackPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="سبب الرفض" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                    <TextBox Text="{Binding RejectReason, UpdateSourceTrigger=PropertyChanged}"/>
+                </DockPanel>
+            </Border>
+            <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" IsReadOnly="True" RowHeight="NaN" MinRowHeight="34">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الرقم" Binding="{Binding RequestNumber}" Width="115"/>
+                    <DataGridTextColumn Header="النوع" Binding="{Binding KindText}" Width="120"/>
+                    <DataGridTextColumn Header="التفاصيل" Binding="{Binding Summary}" Width="*" MinWidth="220">
+                        <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style></DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="110"/>
+                    <DataGridTextColumn Header="قدّمه" Binding="{Binding RequestedBy}" Width="90"/>
+                    <DataGridTextColumn Header="التاريخ" Binding="{Binding RequestedAt, StringFormat='yyyy/MM/dd HH:mm'}" Width="130"/>
+                    <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="150"/>
+                    <DataGridTextColumn Header="قرّره" Binding="{Binding DecidedBy}" Width="90"/>
+                    <DataGridTextColumn Header="سبب الرفض" Binding="{Binding RejectReason}" Width="140"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

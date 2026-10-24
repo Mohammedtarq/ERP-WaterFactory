@@ -1,0 +1,202 @@
+using ERP.Data.ProjectDb;
+using ERP.Data.ProjectDb.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace ERP.Data.Services;
+
+public enum AlertLevel { Info, Warning, Danger }
+
+/// <summary>
+/// تنبيه في جرس الشريط الجانبي: عنوان وتفصيل وعدد، والشاشة التي تفتح عند الضغط (الوحدة + اسم نوع الشاشة).
+/// </summary>
+public record AlertItem(string Key, string Title, string Detail, int Count, AlertLevel Level, string ModuleCode, string Section)
+{
+    public string Color => Level switch { AlertLevel.Danger => "#DC2626", AlertLevel.Warning => "#D97706", _ => "#2563EB" };
+}
+
+/// <summary>
+/// التنبيهات حسب صلاحيات المستخدم: كل واحد يرى ما يخص عمله فقط —
+/// أمين المخزن: طلبات التحميل للتجهيز، والسيارات التي لم تُسلّم مرتجعها، والأصناف تحت حد التنبيه؛
+/// المشتريات: أوامر بانتظار الاستلام؛ المعتمِد: طلبات المندوبين (ومنها المرتجع)؛ الإنتاج: ما بيع قبل إنتاجه.
+/// </summary>
+public class AlertsService
+{
+    private readonly ProjectDbContext _db;
+    public AlertsService(ProjectDbContext db) => _db = db;
+
+    private static string Ago(DateTime localDate)
+    {
+        var days = (DateTime.Today - localDate.Date).Days;
+        return days <= 0 ? "اليوم" : days == 1 ? "منذ أمس" : $"منذ {days} يوم";
+    }
+
+    private static string Names(IEnumerable<string> names, int total)
+    {
+        var shown = names.Take(3).ToList();
+        return string.Join("، ", shown) + (total > shown.Count ? $" و{total - shown.Count} غيرها" : "");
+    }
+
+    public async Task<List<AlertItem>> ForAsync(UserPermissions p)
+    {
+        var alerts = new List<AlertItem>();
+        var warehouse = p.CanView(ModuleCode.Warehouse);
+        var reps = p.CanView(ModuleCode.Reps);
+
+        // 1) طلبات تحميل بانتظار التجهيز (أمين المخزن)
+        if (warehouse || reps)
+        {
+            var pending = await _db.RepLoadOrders.AsNoTracking().Where(o => o.Status == RepLoadOrderStatus.Pending)
+                .OrderBy(o => o.LoadDate).Select(o => new { o.OrderNumber, o.LoadDate, Rep = o.RepEmployee.FullName }).ToListAsync();
+            if (pending.Count > 0)
+            {
+                var oldest = pending[0];
+                alerts.Add(new("load-orders", $"طلبات تحميل بانتظار التجهيز: {pending.Count}",
+                    $"{Names(pending.Select(o => o.Rep).Distinct(), pending.Select(o => o.Rep).Distinct().Count())} — أقدمها {oldest.OrderNumber} {Ago(oldest.LoadDate)}",
+                    pending.Count, oldest.LoadDate.Date < DateTime.Today ? AlertLevel.Danger : AlertLevel.Warning,
+                    warehouse ? ModuleCode.Warehouse : ModuleCode.Reps, warehouse ? "PrepareLoadOrdersSectionViewModel" : "LoadOrdersSectionViewModel"));
+            }
+
+            // 2) سيارات حُمّلت قبل اليوم ولم تُسوَّ: مرتجعها لم يُستلم بعد
+            var vans = await _db.Warehouses.AsNoTracking().Where(w => w.IsActive && w.WarehouseType == WarehouseType.RepVan && w.OwnerEmployeeId != null)
+                .Select(w => new { w.Id, RepId = w.OwnerEmployeeId!.Value, Rep = w.OwnerEmployee!.FullName }).ToListAsync();
+            var waiting = new List<(string rep, DateTime since)>();
+            foreach (var v in vans)
+            {
+                var lastLoad = await _db.RepLoadOrders.Where(o => o.VanWarehouseId == v.Id && o.Status == RepLoadOrderStatus.Prepared && o.LoadDate < DateTime.Today)
+                                                      .MaxAsync(o => (DateTime?)o.LoadDate);
+                if (lastLoad is null) continue;
+                var settled = await _db.RepSettlements.AnyAsync(s => s.RepEmployeeId == v.RepId && s.SettlementDate >= lastLoad);
+                if (settled) continue;
+                var pieces = await _db.StockTransactions.Where(t => t.WarehouseId == v.Id).SumAsync(t => (decimal?)t.QuantityBaseUnits) ?? 0;
+                if (pieces > 0) waiting.Add((v.Rep, lastLoad.Value));
+            }
+            if (waiting.Count > 0)
+                alerts.Add(new("van-returns", $"مرتجعات بانتظار الاستلام: {waiting.Count} سيارة",
+                    $"{Names(waiting.OrderBy(w => w.since).Select(w => w.rep), waiting.Count)} — حُمّلت ولم تُسوَّ (تسوية اليوم تستلم المرتجع)",
+                    waiting.Count, waiting.Any(w => (DateTime.Today - w.since.Date).Days > 1) ? AlertLevel.Danger : AlertLevel.Warning,
+                    warehouse ? ModuleCode.Warehouse : ModuleCode.Reps, warehouse ? "RepProductSettlementSectionViewModel" : "RepVansSectionViewModel"));
+        }
+
+        // 2-ب) تسويات مندوبين بانتظار تأكيد المخازن (النقد رُحّل، والمرتجع ينتظر عدّ أمين المخزن)
+        if (p.Has(SpecialPermission.SettlementConfirm))
+        {
+            var settlements = await _db.RepSettlements.AsNoTracking().Where(s => s.Status == RepSettlementStatus.PendingWarehouse)
+                .OrderBy(s => s.SettlementDate).Select(s => new { s.SettlementNumber, s.SettlementDate, Rep = s.RepEmployee.FullName }).ToListAsync();
+            if (settlements.Count > 0)
+                alerts.Add(new("settlements-pending", $"تسويات مندوبين بانتظار تأكيد المخازن: {settlements.Count}",
+                    $"{Names(settlements.Select(s => s.Rep), settlements.Count)} — أقدمها {Ago(settlements[0].SettlementDate)}",
+                    settlements.Count, settlements.Any(s => (DateTime.Today - s.SettlementDate).Days >= 1) ? AlertLevel.Danger : AlertLevel.Warning,
+                    ModuleCode.Warehouse, "SettlementConfirmSectionViewModel"));
+        }
+
+        // 2-ج) طلبات صرف بانتظار اعتماد المالية (سلف، مسحوبات، رواتب، سحب شركاء)
+        if (p.Has(SpecialPermission.PaymentApproval))
+        {
+            var requests = await _db.PaymentRequests.AsNoTracking().Where(r => r.Status == PaymentRequestStatus.Pending)
+                .GroupBy(r => r.Kind).Select(g => new { g.Key, Count = g.Count(), Total = g.Sum(r => r.Amount), Oldest = g.Min(r => r.RequestedAt) }).ToListAsync();
+            var count = requests.Sum(k => k.Count);
+            if (count > 0)
+            {
+                var oldest = requests.Min(k => k.Oldest).ToLocalTime();
+                var parts = requests.OrderByDescending(k => k.Count).Select(k => $"{PaymentApprovalService.KindText(k.Key)} {k.Count}");
+                alerts.Add(new("payment-requests", $"طلبات صرف بانتظار اعتماد المالية: {count}",
+                    $"{string.Join("، ", parts)} — المبلغ {requests.Sum(k => k.Total):N0} د.ع — أقدمها {Ago(oldest)}", count,
+                    oldest.Date < DateTime.Today ? AlertLevel.Danger : AlertLevel.Warning, ModuleCode.Finance, "PaymentRequestsSectionViewModel"));
+            }
+        }
+
+        // 3) طلبات المندوبين بانتظار الاعتماد (المرتجع والمصروف)
+        if (p.Has(SpecialPermission.RepApproval))
+        {
+            var kinds = await _db.RepRequests.AsNoTracking().Where(r => r.Status == RepRequestStatus.Pending)
+                .GroupBy(r => r.Kind).Select(g => new { g.Key, Count = g.Count(), Oldest = g.Min(r => r.ReceivedAt) }).ToListAsync();
+            var total = kinds.Sum(k => k.Count);
+            if (total > 0)
+            {
+                var parts = kinds.OrderByDescending(k => k.Count).Select(k => $"{RepAppService.KindText(k.Key)} {k.Count}");
+                var oldest = kinds.Min(k => k.Oldest).ToLocalTime();
+                alerts.Add(new("rep-requests", $"طلبات مندوبين بانتظار الاعتماد: {total}", $"{string.Join("، ", parts)} — أقدمها {Ago(oldest)}",
+                    total, oldest.Date < DateTime.Today ? AlertLevel.Danger : AlertLevel.Warning, ModuleCode.Reps, "RepRequestsSectionViewModel"));
+            }
+        }
+
+        // 4) أوامر شراء بانتظار الاستلام
+        if (p.CanView(ModuleCode.Suppliers))
+        {
+            var orders = await _db.PurchaseOrders.AsNoTracking()
+                .Where(o => o.Status == PurchaseOrderStatus.Sent || o.Status == PurchaseOrderStatus.PartiallyReceived)
+                .OrderBy(o => o.OrderDate).Select(o => new { o.PONumber, o.OrderDate, Supplier = o.Supplier.Name, o.Status }).ToListAsync();
+            if (orders.Count > 0)
+                alerts.Add(new("purchase-receipt", $"أوامر شراء بانتظار الاستلام: {orders.Count}",
+                    $"{Names(orders.Select(o => o.Supplier).Distinct(), orders.Select(o => o.Supplier).Distinct().Count())}"
+                    + (orders.Any(o => o.Status == PurchaseOrderStatus.PartiallyReceived) ? $" — منها {orders.Count(o => o.Status == PurchaseOrderStatus.PartiallyReceived)} مستلم جزئيًا" : ""),
+                    orders.Count, AlertLevel.Info, ModuleCode.Suppliers, "GoodsReceiptSectionViewModel"));
+        }
+
+        // 5) نقص المواد: أصناف عند حد التنبيه أو تحته
+        if (warehouse)
+        {
+            // كل مخزن برصيده وحدّه (حد التنبيه يُضبط من داخل المخزن)
+            var low = await new StockAlertService(_db).LowAsync();
+            if (low.Count > 0)
+                alerts.Add(new("low-stock", $"نقص مواد: {low.Count} صنف عند حد التنبيه أو تحته",
+                    Names(low.Select(x => $"{x.ItemName} في {x.WarehouseName} ({x.BalanceText} من {x.MinText})"), low.Count),
+                    low.Count, low.Any(x => x.Balance <= 0) ? AlertLevel.Danger : AlertLevel.Warning, ModuleCode.Warehouse, "StockAlertsSectionViewModel"));
+        }
+
+        // 5ب) الأسماء الخاصة (والأساسي) تحت حدّها اليدوي — لمدير المبيعات ليقرر خطة الإنتاج
+        if (p.CanView(ModuleCode.Sales))
+        {
+            var lowNames = await new VariantAlertService(_db).LowAsync();
+            if (lowNames.Count > 0)
+                alerts.Add(new("variant-low", $"أسماء تحت حد التنبيه: {lowNames.Count}",
+                    Names(lowNames.Select(x => $"{x.VariantName}: {x.BalanceText} من {x.MinText}"), lowNames.Count),
+                    lowNames.Count, lowNames.Any(x => x.BalancePieces <= 0) ? AlertLevel.Danger : AlertLevel.Warning,
+                    ModuleCode.Sales, "VariantAlertsSectionViewModel"));
+        }
+
+        // 5ج) العلاوة السنوية: مستحقون (سنة من آخر علاوة) ومن يستحقها خلال 30 يومًا — للمدير ومسؤول الموارد البشرية
+        if (p.CanAdd(ModuleCode.HR))
+        {
+            var raises = await new AnnualRaiseService(_db).UpcomingAsync();
+            var due = raises.Where(r => r.IsDue).ToList();
+            var soon = raises.Count - due.Count;
+            if (raises.Count > 0)
+                alerts.Add(new("annual-raise",
+                    due.Count > 0 ? $"مستحقون للعلاوة السنوية: {due.Count}" + (soon > 0 ? $" — و{soon} خلال 30 يومًا" : "") : $"علاوات سنوية خلال 30 يومًا: {soon}",
+                    Names(raises.Select(r => $"{r.EmployeeName} ({r.StatusText})"), raises.Count),
+                    raises.Count, due.Count > 0 ? AlertLevel.Warning : AlertLevel.Info, ModuleCode.HR, "AnnualRaisesSectionViewModel"));
+        }
+
+        // 6) ما بيع قبل تسجيل إنتاجه (نقص في المنتج التام)
+        if (p.CanView(ModuleCode.Production))
+        {
+            var open = await new PendingProductionService(_db).OpenAsync();
+            if (open.Count > 0)
+                alerts.Add(new("production-shortages", $"بانتظار الإنتاج: {open.Count} سطر",
+                    $"{Names(open.Select(o => o.ItemName).Distinct(), open.Select(o => o.ItemName).Distinct().Count())} — بيع قبل تسجيل إنتاجه",
+                    open.Count, AlertLevel.Warning, ModuleCode.Production, "PendingProductionSectionViewModel"));
+        }
+
+        // 6-ب) أوامر بدأ تشغيلها ولم تُفحص بعد (المختبر)
+        if (p.CanView(ModuleCode.Lab))
+        {
+            var waiting = await _db.ProductionOrders.Where(o => o.Status == ProductionOrderStatus.InProgress && !_db.QCBatchResults.Any(q => q.ProductionOrderId == o.Id))
+                .OrderBy(o => o.Id).Select(o => o.MONumber).ToListAsync();
+            if (waiting.Count > 0)
+                alerts.Add(new("lab-waiting", $"بانتظار فحص المختبر: {waiting.Count} أمر", Names(waiting, waiting.Count),
+                    waiting.Count, AlertLevel.Warning, ModuleCode.Lab, "QcSectionViewModel"));
+        }
+
+        // 7) تعارضات مزامنة المندوبين (أرصدة سالبة)
+        if (reps)
+        {
+            var conflicts = await _db.SyncConflicts.CountAsync(c => c.Status == SyncConflictStatus.Pending);
+            if (conflicts > 0)
+                alerts.Add(new("sync-conflicts", $"تعارضات مزامنة: {conflicts}", "أرصدة سالبة من عمل المندوبين تحتاج تسوية",
+                    conflicts, AlertLevel.Danger, ModuleCode.Reps, "SyncConflictsSectionViewModel"));
+        }
+
+        return alerts.OrderByDescending(a => a.Level).ToList();
+    }
+}

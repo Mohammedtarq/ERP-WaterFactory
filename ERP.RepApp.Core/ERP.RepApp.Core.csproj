@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- منطق تطبيق المندوب بلا واجهة: الحفظ المحلي (SQLite)، والإرسال والمزامنة، والبيع والتحصيل، والأرصدة الحيّة.
+       يختبَر بالكامل على أي جهاز؛ تطبيق أندرويد (ERP.RepApp) واجهة فوقه فقط. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ERP.Cloud.Contracts\ERP.Cloud.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
