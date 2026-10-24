@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
 using ERP.Presentation.Mvvm;
@@ -36,6 +37,51 @@ public class CloudSyncSectionViewModel : SectionViewModel
         TestCommand = new AsyncRelayCommand(TestAsync);
         SyncNowCommand = new AsyncRelayCommand(SyncNowAsync);
         CloudFilesCommand = new AsyncRelayCommand(CloudFilesAsync);
+        SaveManagerCommand = new AsyncRelayCommand(SaveManagerAsync);
+        ToggleManagerCommand = new AsyncRelayCommand(o => ToggleManagerAsync(o as ManagerAccount));
+        DeleteManagerCommand = new AsyncRelayCommand(o => DeleteManagerAsync(o as ManagerAccount));
+    }
+
+    // ============================ لوحة المدير على الهاتف (قراءة فقط) ============================
+    private string _managerUsername = "";
+    private string _managerPassword = "";
+    public ObservableCollection<ManagerAccount> ManagerAccounts { get; } = new();
+    public string ManagerUsername { get => _managerUsername; set => SetProperty(ref _managerUsername, value); }
+    /// <summary>تُكتب من حقل كلمة المرور وتُمسح بعد الحفظ؛ لا تُحفظ نصًّا في أي مكان.</summary>
+    public string ManagerPassword { get => _managerPassword; set => SetProperty(ref _managerPassword, value); }
+    public string ManagerLinkText => string.IsNullOrWhiteSpace(ServerUrl) ? "اكتب عنوان الخادم السحابي واحفظ ليظهر رابط اللوحة" : $"رابط اللوحة: {ServerUrl.Trim().TrimEnd('/')}/manager/";
+    public AsyncRelayCommand SaveManagerCommand { get; }
+    public AsyncRelayCommand ToggleManagerCommand { get; }
+    public AsyncRelayCommand DeleteManagerCommand { get; }
+
+    private async Task SaveManagerAsync()
+    {
+        if (!Require(CanEdit, "حساب لوحة المدير")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ManagerSummaryService(db).SaveAccountAsync(ManagerUsername, ManagerPassword, Session.UserId),
+                                    "حُفظ حساب لوحة المدير — يصل الخادم السحابي خلال دقيقة"))
+        {
+            ManagerPassword = "";
+            ManagerUsername = "";
+            await LoadAsync();
+        }
+    }
+
+    private async Task ToggleManagerAsync(ManagerAccount? a)
+    {
+        if (a is null || !Require(CanEdit, "حساب لوحة المدير")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ManagerSummaryService(db).SetActiveAsync(a.Id, !a.IsActive, Session.UserId), a.IsActive ? "أُوقف الحساب" : "فُعّل الحساب"))
+            await LoadAsync();
+    }
+
+    private async Task DeleteManagerAsync(ManagerAccount? a)
+    {
+        if (a is null || !Require(CanEdit, "حساب لوحة المدير")) return;
+        if (!Dialogs.Confirm($"حذف حساب «{a.Username}»؟ تنتهي جلساته على الهاتف خلال دقيقة.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ManagerSummaryService(db).DeleteAccountAsync(a.Id, Session.UserId), "حُذف الحساب"))
+            await LoadAsync();
     }
 
     /// <summary>مجلد ملفات النشر (الاختبارات تغيّره) والخادم المنشور بجانب البرنامج.</summary>
@@ -49,7 +95,7 @@ public class CloudSyncSectionViewModel : SectionViewModel
     protected override bool HasPendingInput => true;
 
     /// <summary>عنوان الخادم السحابي (اختياري).</summary>
-    public string ServerUrl { get => _serverUrl; set => SetProperty(ref _serverUrl, value); }
+    public string ServerUrl { get => _serverUrl; set { if (SetProperty(ref _serverUrl, value)) OnPropertyChanged(nameof(ManagerLinkText)); } }
     public bool LocalEnabled { get => _localEnabled; set => SetProperty(ref _localEnabled, value); }
     /// <summary>عنوان الخادم المحلي كما تكتبه خدمة المزامنة (للعرض فقط).</summary>
     public string LocalUrl { get => _localUrl; private set => SetProperty(ref _localUrl, value); }
@@ -89,6 +135,9 @@ public class CloudSyncSectionViewModel : SectionViewModel
         var s = await new CloudSyncService(db).SettingsAsync();
         (ServerUrl, IsEnabled, IntervalSeconds, HasKey) = (s.ServerUrl ?? "", s.IsEnabled, s.IntervalSeconds, !string.IsNullOrEmpty(s.AgentKey));
         (LocalEnabled, LocalUrl) = (s.LocalEnabled, s.LocalUrl ?? "لم يُعرف بعد");
+        ManagerAccounts.Clear();
+        foreach (var a in await new ManagerSummaryService(db).AccountsAsync()) ManagerAccounts.Add(a);
+        OnPropertyChanged(nameof(ManagerLinkText));
         NewKey = null;   // المفتاح يُعرض مرة واحدة فقط بعد توليده
         var now = DateTime.UtcNow;
         (Level, StateText) = CloudSyncStatus.Describe(s, now);

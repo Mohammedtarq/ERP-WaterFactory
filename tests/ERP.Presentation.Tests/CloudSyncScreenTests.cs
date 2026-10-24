@@ -17,6 +17,37 @@ public class CloudSyncScreenTests
     public CloudSyncScreenTests(AppFixture f) => _f = f;
 
     [Fact]
+    public async Task Manager_account_is_saved_hashed_toggled_and_deleted_from_the_sync_screen()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var settings = shell.Open<SettingsModuleViewModel>(ModuleCode.SystemSettings);
+        var screen = settings.Section<CloudSyncSectionViewModel>();
+        settings.SelectedTab = screen;
+        await settings.IdleAsync();
+        await screen.IdleAsync();
+
+        screen.ManagerUsername = "mgr.phone";
+        screen.ManagerPassword = "short";
+        await screen.SaveManagerCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("8 أحرف"));
+        Assert.Empty(screen.ManagerAccounts);
+
+        screen.ManagerPassword = "Phone#2026";
+        await screen.SaveManagerCommand.ExecuteAsync();
+        var account = Assert.Single(screen.ManagerAccounts);
+        Assert.Equal("mgr.phone", account.Username);
+        Assert.True(account.IsActive);
+        Assert.NotEqual("Phone#2026", account.PasswordHash);                    // مجزّأة لا نصًّا
+        Assert.Equal("", screen.ManagerPassword);                                // تُمسح بعد الحفظ
+
+        await screen.ToggleManagerCommand.ExecuteAsync(account);
+        Assert.False(Assert.Single(screen.ManagerAccounts).IsActive);
+        dialogs.ConfirmAnswer = true;
+        await screen.DeleteManagerCommand.ExecuteAsync(Assert.Single(screen.ManagerAccounts));
+        Assert.Empty(screen.ManagerAccounts);
+    }
+
+    [Fact]
     public async Task Settings_key_once_enable_and_sidebar_indicator_follows_state()
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);

@@ -84,6 +84,37 @@
                 <Button Content="ملفات نشر الخادم السحابي" Style="{StaticResource SecondaryButton}" Command="{Binding CloudFilesCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
 
                 <Separator Margin="0,16,0,8"/>
+                <TextBlock Text="لوحة المدير على الهاتف (قراءة فقط)" Style="{StaticResource SectionTitle}"/>
+                <TextBlock TextWrapping="Wrap" Foreground="#1F2937" Text="حساب يفتح لوحة المبيعات والصناديق والمندوبين والمخازن من أي مكان. لا تعديل ولا حذف ولا رواتب فيها."/>
+                <TextBlock Text="{Binding ManagerLinkText}" TextWrapping="Wrap" FlowDirection="LeftToRight" HorizontalAlignment="Left" Margin="0,6,0,0" FontWeight="SemiBold"/>
+                <TextBlock Text="اسم المستخدم (3 أحرف فأكثر)" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding ManagerUsername, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                <TextBlock Text="كلمة المرور (8 أحرف فأكثر — اتركها فارغة إن لم تغيّرها)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                <PasswordBox x:Name="ManagerPasswordBox" FlowDirection="LeftToRight" PasswordChanged="ManagerPasswordBox_PasswordChanged"/>
+                <Button Content="حفظ حساب المدير" Style="{StaticResource SecondaryButton}" Command="{Binding SaveManagerCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                <ItemsControl ItemsSource="{Binding ManagerAccounts}" Margin="0,8,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,2">
+                                <Button DockPanel.Dock="Left" Content="&#xE74D;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                        Command="{Binding DataContext.DeleteManagerCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+                                <Button DockPanel.Dock="Left" Content="&#xE7E8;" ToolTip="إيقاف / تفعيل" Style="{StaticResource RowIconButton}"
+                                        Command="{Binding DataContext.ToggleManagerCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+                                <TextBlock Text="{Binding Username}" FlowDirection="LeftToRight" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                <TextBlock Margin="8,0" VerticalAlignment="Center" Foreground="#64748B">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="(موقوف)"/>
+                                            <Style.Triggers><DataTrigger Binding="{Binding IsActive}" Value="True"><Setter Property="Text" Value="(مفعّل)"/></DataTrigger></Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Separator Margin="0,16,0,8"/>
                 <TextBlock Text="مفتاح المعمل" Style="{StaticResource FieldLabel}"/>
                 <TextBox Text="{Binding KeyText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"/>
                 <Button Content="توليد مفتاح جديد" Style="{StaticResource SecondaryButton}" Command="{Binding GenerateKeyCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
