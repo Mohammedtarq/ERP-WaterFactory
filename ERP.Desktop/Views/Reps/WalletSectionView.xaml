@@ -54,6 +54,14 @@
                     <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
                     <TextBlock Text="كشف المحفظة" Style="{StaticResource SectionTitle}" Margin="0"/>
                 </DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="من" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <DatePicker SelectedDate="{Binding StatementFrom}" Width="130"/>
+                    <TextBlock Text="إلى" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                    <DatePicker SelectedDate="{Binding StatementTo}" Width="130"/>
+                    <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding ShowStatementCommand}" Margin="12,0,0,0"/>
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding PeriodHint, StringFormat='يُعرض الآن: {0} — لأيام أخرى حدّد الفترة ثم «عرض»'}" Style="{StaticResource Muted}" Margin="0,0,0,8"/>
                 <DataGrid ItemsSource="{Binding Rows}">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="التاريخ" Binding="{Binding TransactionDate, StringFormat=yyyy/MM/dd}" Width="100"/>

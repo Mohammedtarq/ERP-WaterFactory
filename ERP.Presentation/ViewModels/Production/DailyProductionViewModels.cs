@@ -243,7 +243,9 @@ public class DailyProductionSectionViewModel : SectionViewModel
         if (!Require(CanAdd, "تسجيل الإنتاج")) return;
         var lines = FilledLines();
         if (lines.Count == 0) { Dialogs.Error("أضف منتجًا واحدًا على الأقل بعدد عبوات"); return; }
-        if (!Dialogs.Confirm($"تسجيل إنتاج يوم {Date:yyyy/MM/dd}:\n{string.Join("\n", lines.Select(l => $"• {l.Product!.ItemName}{(l.RecipeId is null ? "" : $" — {l.Recipe!.Name}")}: {l.Packs:N0} {l.Level!.LevelName}"))}\nتُصرف المواد من الوصفة فورًا."))
+        ProductNames confirmNames;
+        await using (var nameDb = Session.NewDb()) confirmNames = await ProductNames.LoadAsync(nameDb, lines.Select(l => l.Product!.Id));
+        if (!Dialogs.Confirm($"تسجيل إنتاج يوم {Date:yyyy/MM/dd}:\n{string.Join("\n", lines.Select(l => $"• {confirmNames.Name(l.Product!.Id, l.RecipeId, l.Level!.Id)}: {l.Packs:N0}"))}\nتُصرف المواد من الوصفة فورًا."))
             return;
         await using var db = Session.NewDb();
         List<DailyProductionLineResult> result = new();
@@ -455,11 +457,12 @@ public class VariantStockSectionViewModel : SectionViewModel
     private void Print()
     {
         var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"متغيرات المنتج {From:yyyy/MM/dd} — {To:yyyy/MM/dd}", PrintedBy = Session.Username };
-        r.Columns.AddRange(CanSeeCost ? new[] { "المنتج", "المتغير", "النوع", "أُنتج", "المبيع", "الرصيد الآن", "كلفة القطعة" }
-                                      : new[] { "المنتج", "المتغير", "النوع", "أُنتج", "المبيع", "الرصيد الآن" });
+        // الاسم الموحد (المنتج + العبوة + المتغير) في عمود واحد
+        r.Columns.AddRange(CanSeeCost ? new[] { "المنتج (الاسم الموحد)", "النوع", "أُنتج", "المبيع", "الرصيد الآن", "كلفة القطعة" }
+                                      : new[] { "المنتج (الاسم الموحد)", "النوع", "أُنتج", "المبيع", "الرصيد الآن" });
         foreach (var x in Rows)
         {
-            var cells = new List<string> { x.ItemName, x.Variant, x.Kind, x.ProducedText, x.SoldText, x.BalanceText };
+            var cells = new List<string> { x.ProductName.Length > 0 ? x.ProductName : $"{x.ItemName} {x.Variant}", x.Kind, x.ProducedText, x.SoldText, x.BalanceText };
             if (CanSeeCost) cells.Add($"{x.UnitCost:N2}");
             r.Rows.Add(cells);
         }
@@ -507,14 +510,15 @@ public class ProductionMonthSectionViewModel : SectionViewModel
     private void Print()
     {
         var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"جرد الإنتاج — {Month}/{Year}", PrintedBy = Session.Username };
-        r.Columns.AddRange(CanSeeCost ? new[] { "التاريخ", "الصنف", "العبوة", "المحتوى", "المتغير", "العدد", "القطع", "الكلفة" } : new[] { "التاريخ", "الصنف", "العبوة", "المحتوى", "المتغير", "العدد", "القطع" });
+        // الاسم الموحد (الصنف + العبوة + المحتوى + المتغير) في عمود واحد، والإجمالي بالأسماء الكاملة
+        r.Columns.AddRange(CanSeeCost ? new[] { "التاريخ", "المنتج (الاسم الموحد)", "العدد", "القطع", "الكلفة" } : new[] { "التاريخ", "المنتج (الاسم الموحد)", "العدد", "القطع" });
         foreach (var x in Rows)
         {
-            var cells = new List<string> { x.Date.ToString("yyyy/MM/dd"), x.Group, x.PackLabel, x.Content, x.Variant, $"{x.Packs:N0}", $"{x.Pieces:N0}" };
+            var cells = new List<string> { x.Date.ToString("yyyy/MM/dd"), x.ProductName, $"{x.Packs:N0}", $"{x.Pieces:N0}" };
             if (CanSeeCost) cells.Add($"{x.Cost:N0}");
             r.Rows.Add(cells);
         }
-        r.Total("الإجمالي", TotalText.Replace("المجموع: ", ""), true);
+        r.Total("الإجمالي", DailyProductionSectionViewModel.PacksTotal(Rows.Select(x => (x.ProductName, x.Packs))).Replace("المجموع: ", ""), true);
         if (CanSeeCost) r.Total("كلفة الإنتاج", $"{TotalCost:N0} د.ع");
         Dialogs.ShowReport(r);
     }

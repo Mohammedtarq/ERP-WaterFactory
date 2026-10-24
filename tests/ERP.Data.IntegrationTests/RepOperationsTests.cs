@@ -121,6 +121,73 @@ public class RepOperationsTests
         Assert.DoesNotContain(await svc.PendingSettlementsAsync(), p => p.Id == st.Id);
     }
 
+    /// <summary>
+    /// التسوية المقسّمة: أمين المخزن يسوّي المنتجات فتُرحَّل فورًا (بصلاحيته فقط) وتبقى التسوية «بانتظار النقد»؛
+    /// ثم تُكمل المالية النقد على التسوية نفسها. لا تسوية منتجات ثانية ولا مسار قديم قبل اكتمالها، والنقد وحده ممكن لسيارة بلا منتجات منتظرة.
+    /// </summary>
+    [Fact]
+    public async Task Split_settlement_products_by_the_store_keeper_then_cash_by_finance()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var w500 = await db.Items.FirstAsync(i => i.ItemCode == "W-500");
+        var carton = await db.ItemPackagingLevels.FirstAsync(l => l.ItemId == w500.Id && l.EquivalentBaseUnits == 12);
+        var rep = new Employee { FullName = "مندوب التقسيم", IsSalesRep = true, BaseSalary = 1 };
+        db.Employees.Add(rep);
+        await db.SaveChangesAsync();
+        var van = new Warehouse { BranchId = fg.BranchId, Name = "سيارة التقسيم", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id };
+        db.Warehouses.Add(van);
+        await db.SaveChangesAsync();
+        await ReceiveAsync(db, fg.Id, w500.Id, carton.Id, 10, "SPLIT-T1", _f.AdminId);
+        Assert.True((await new RepsService(db).LoadVanAsync(van.Id, fg.Id, new[] { new StockLineInput(w500.Id, null, 60) }, _f.AdminId)).Success);
+        db.RepWalletTransactions.Add(new RepWalletTransaction { EmployeeId = rep.Id, AmountIn = 5_000, Description = "نقد اختبار", TransactionDate = DateTime.Today });
+        await db.SaveChangesAsync();
+        var svc = new RepOperationsService(db);
+        async Task<decimal> Van() => await db.StockTransactions.Where(t => t.WarehouseId == van.Id && t.ItemId == w500.Id).SumAsync(t => t.QuantityBaseUnits);
+        var products = new ProductSettlementRequest(van.Id, fg.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(w500.Id, carton.Id, 2) }, Array.Empty<RepFreeLineInput>(), _f.AdminId);
+
+        // بلا صلاحية «تأكيد تسوية المندوب» (أمين صندوق) لا تسوية منتجات
+        var cashierRole = await db.Roles.FirstAsync(r => r.Name == "أمين صندوق");
+        var cashier = new User { Username = "cashier_split", PasswordHash = PasswordHasher.Hash("x"), RoleId = cashierRole.Id };
+        db.Users.Add(cashier);
+        await db.SaveChangesAsync();
+        Assert.Contains("صلاحية", (await svc.SettleProductsAsync(products with { UserId = cashier.Id })).result.ErrorMessage);
+        Assert.Equal(60m, await Van());
+
+        // أمين المخزن: المنتجات تُرحَّل فورًا، ولا نقد ولا فرق
+        var (posted, st) = await svc.SettleProductsAsync(products);
+        Assert.True(posted.Success, posted.ErrorMessage);
+        Assert.Equal((RepSettlementStatus.PendingCash, 24m, 0m, 0m), (st!.Status, st.ReturnedPieces, st.ExpectedCash, st.ReceivedCash));
+        Assert.NotNull(st.ReturnDocumentId);
+        Assert.Equal(36m, await Van());
+        Assert.Equal(5_000m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));        // المحفظة لم تُمَسّ
+        Assert.Contains(await svc.PendingCashSettlementsAsync(), p => p.Id == st.Id);
+
+        // لا تسوية منتجات ثانية ولا مسار قديم قبل اكتمال النقد
+        Assert.Contains("بانتظار النقد", (await svc.SettleProductsAsync(products)).result.ErrorMessage);
+        Assert.Contains("بانتظار النقد", (await svc.RequestSettlementAsync(new RepSettlementRequest(van.Id, fg.Id, DateTime.Today,
+            Array.Empty<StockDocumentLineInput>(), Array.Empty<RepFreeLineInput>(), Array.Empty<RepExpenseInput>(), 0, _f.AdminId))).result.ErrorMessage);
+
+        // المالية: المصروف والمستلم أكبر من المتوقع مرفوض، ثم تسوية صحيحة على التسوية نفسها
+        Assert.False((await svc.SettleCashAsync(new CashSettlementRequest(van.Id, DateTime.Today, new[] { new RepExpenseInput(1_000, "وقود") }, 9_000, _f.AdminId))).result.Success);
+        db.ChangeTracker.Clear();
+        var (cashed, same) = await svc.SettleCashAsync(new CashSettlementRequest(van.Id, DateTime.Today, new[] { new RepExpenseInput(1_000, "وقود") }, 3_500, _f.AdminId));
+        Assert.True(cashed.Success, cashed.ErrorMessage);
+        Assert.Equal(st.Id, same!.Id);                                                          // أُكملت نفسها لا تسوية جديدة
+        db.ChangeTracker.Clear();
+        var done = await db.RepSettlements.AsNoTracking().SingleAsync(x => x.Id == st.Id);
+        Assert.Equal((RepSettlementStatus.Confirmed, 1_000m, 4_000m, 3_500m, 500m), (done.Status, done.FieldExpenses, done.ExpectedCash, done.ReceivedCash, done.Difference));
+        Assert.Equal(500m, await new RepsService(db).GetWalletBalanceAsync(rep.Id));            // الفرق يبقى في ذمة المندوب
+        Assert.DoesNotContain(await svc.PendingCashSettlementsAsync(), p => p.Id == st.Id);
+
+        // نقد وحده لسيارة لا تنتظر منتجاتها: تسوية جديدة مكتملة
+        var (only, alone) = await svc.SettleCashAsync(new CashSettlementRequest(van.Id, DateTime.Today, Array.Empty<RepExpenseInput>(), 500, _f.AdminId));
+        Assert.True(only.Success, only.ErrorMessage);
+        Assert.NotEqual(st.Id, alone!.Id);
+        Assert.Equal((RepSettlementStatus.Confirmed, 0m), (alone.Status, alone.Difference));
+    }
+
     [Fact]
     public async Task Settlement_returns_free_goods_invoices_rest_and_keeps_the_shortfall_in_the_wallet()
     {

@@ -34,6 +34,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
         Vans = Add(new WarehouseRepVansSectionViewModel(s, d));
         PrepareLoads = Add(new PrepareLoadOrdersSectionViewModel(s, d));
         Add(new SettlementConfirmSectionViewModel(s, d));
+        ProductSettlement = Add(new Reps.RepProductSettlementSectionViewModel(s, d));
         Add(new WarehousesSectionViewModel(s, d, RefreshWorkspacesAsync));
         Add(new PackagingSectionViewModel(s, d));
         Add(new LocationsSectionViewModel(s, d));
@@ -53,6 +54,8 @@ public class WarehouseModuleViewModel : ModuleViewModel
     }
 
     public DamagedSalesSectionViewModel DamagedSales { get; }
+    /// <summary>تسوية منتجات المندوب لأمين المخزن (المرتجع والمجاني)؛ نقدها في المالية.</summary>
+    public Reps.RepProductSettlementSectionViewModel ProductSettlement { get; }
     /// <summary>طلبات تحميل سيارات المندوبين بانتظار تجهيز أمين المخزن.</summary>
     public PrepareLoadOrdersSectionViewModel PrepareLoads { get; }
     public WarehouseRepVansSectionViewModel Vans { get; }

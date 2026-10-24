@@ -8,7 +8,7 @@ namespace ERP.Data.Services;
 public record RepLoadLineInput(int ItemId, int PackagingLevelId, decimal QuantityInLevel, int? CustomRecipeId = null);
 
 /// <summary>مجاني أعطاه المندوب: الكمية بوحدة التعبئة، لمن (اختياري) ولماذا (إلزامي).</summary>
-public record RepFreeLineInput(int ItemId, int PackagingLevelId, decimal QuantityInLevel, int? CustomerId, string Reason);
+public record RepFreeLineInput(int ItemId, int PackagingLevelId, decimal QuantityInLevel, int? CustomerId, string Reason, int? CustomRecipeId = null);
 
 public record RepExpenseInput(decimal Amount, string Description, int? VehicleId = null);
 
@@ -17,6 +17,16 @@ public record RepSettlementRequest(
     int VanWarehouseId, int ReturnToWarehouseId, DateTime Date,
     IReadOnlyList<StockDocumentLineInput> Returns, IReadOnlyList<RepFreeLineInput> FreeGoods, IReadOnlyList<RepExpenseInput> Expenses,
     decimal ReceivedCash, int UserId, int? InvoiceRemainingToCustomerId = null, string? Notes = null);
+
+/// <summary>تسوية المنتجات (أمين المخزن): المرتجع ومجاني المندوب وفاتورة ما بقي — تُرحَّل فورًا بلا نقد.</summary>
+public record ProductSettlementRequest(
+    int VanWarehouseId, int ReturnToWarehouseId, DateTime Date,
+    IReadOnlyList<StockDocumentLineInput> Returns, IReadOnlyList<RepFreeLineInput> FreeGoods, int UserId,
+    int? InvoiceRemainingToCustomerId = null, string? Notes = null);
+
+/// <summary>تسوية النقد (المالية): المصاريف الميدانية والنقد المستلم؛ تُكمل تسوية المنتجات المنتظرة أو تُنشئ تسوية نقد فقط.</summary>
+public record CashSettlementRequest(
+    int VanWarehouseId, DateTime Date, IReadOnlyList<RepExpenseInput> Expenses, decimal ReceivedCash, int UserId, string? Notes = null);
 
 public class RepLoadOrderRow
 {
@@ -57,7 +67,12 @@ public class RepSettlementRow
     public string? InvoiceNumber { get; init; }
     public string CreatedBy { get; init; } = "";
     public RepSettlementStatus Status { get; init; }
-    public string StatusText => Status == RepSettlementStatus.PendingWarehouse ? "بانتظار تأكيد المخازن" : "مؤكدة";
+    public string StatusText => Status switch
+    {
+        RepSettlementStatus.PendingWarehouse => "بانتظار تأكيد المخازن",
+        RepSettlementStatus.PendingCash => "المنتجات سُوّيت — بانتظار النقد",
+        _ => "مؤكدة"
+    };
 }
 
 /// <summary>مندوب تأخرت تسويته أكثر من يوم وعنده بضاعة في السيارة أو نقد في المحفظة.</summary>
@@ -301,6 +316,8 @@ public class RepOperationsService
             return (FinanceOperationResult.Fail($"للمندوب {pending} طلب من التطبيق بانتظار الاعتماد — اعتمدها أو ارفضها من «طلبات المندوبين» قبل التسوية"), null);
         if (await _db.RepSettlements.AnyAsync(x => x.VanWarehouseId == r.VanWarehouseId && x.Status == RepSettlementStatus.PendingWarehouse))
             return (FinanceOperationResult.Fail("لهذه السيارة تسوية سابقة بانتظار تأكيد المخازن — يؤكدها أمين المخزن أولًا"), null);
+        if (await _db.RepSettlements.AnyAsync(x => x.VanWarehouseId == r.VanWarehouseId && x.Status == RepSettlementStatus.PendingCash))
+            return (FinanceOperationResult.Fail("لهذه السيارة تسوية منتجات بانتظار النقد — تُكمل من شاشة «تسوية النقد» في المالية"), null);
 
         var reps = new RepsService(_db);
         await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
@@ -355,6 +372,113 @@ public class RepOperationsService
     }
 
 
+    // ============================ التسوية المقسّمة: المخزن ثم المالية ============================
+
+    /// <summary>
+    /// تسوية المنتجات (أمين المخزن، صلاحية «تأكيد تسوية المندوب»): المرتجع والمجاني وفاتورة ما بقي تُرحَّل فورًا،
+    /// وتبقى التسوية «بانتظار النقد» حتى تسوّيه المالية (فتجد المحفظة بعد إضافة نقد فاتورة المتبقي).
+    /// </summary>
+    public async Task<(FinanceOperationResult result, RepSettlement? settlement)> SettleProductsAsync(ProductSettlementRequest r)
+    {
+        if (!await SpecialPermission.HasAsync(_db, r.UserId, SpecialPermission.SettlementConfirm))
+            return (FinanceOperationResult.Fail($"تسوية المنتجات تحتاج صلاحية «{SpecialPermission.NameOf(SpecialPermission.SettlementConfirm)}»"), null);
+        var (van, vanError) = await VanAsync(r.VanWarehouseId);
+        if (vanError is not null) return (FinanceOperationResult.Fail(vanError), null);
+        var repId = van!.OwnerEmployeeId!.Value;
+        if (r.FreeGoods.Any(f => string.IsNullOrWhiteSpace(f.Reason))) return (FinanceOperationResult.Fail("اكتب سبب كل مادة مجانية (لمن ولماذا)"), null);
+        if (r.FreeGoods.Count > 0 && await ValidateLevelsAsync(r.FreeGoods.Select(f => (f.ItemId, f.PackagingLevelId, f.QuantityInLevel))) is { } freeError)
+            return (FinanceOperationResult.Fail(freeError), null);
+        var pending = await new RepAppService(_db).PendingCountAsync(repId);
+        if (pending > 0)
+            return (FinanceOperationResult.Fail($"للمندوب {pending} طلب من التطبيق بانتظار الاعتماد — اعتمدها أو ارفضها من «طلبات المندوبين» قبل التسوية"), null);
+        if (await _db.RepSettlements.AnyAsync(x => x.VanWarehouseId == r.VanWarehouseId && x.Status == RepSettlementStatus.PendingWarehouse))
+            return (FinanceOperationResult.Fail("لهذه السيارة تسوية سابقة بانتظار تأكيد المخازن — أكّدها أولًا"), null);
+        if (await _db.RepSettlements.AnyAsync(x => x.VanWarehouseId == r.VanWarehouseId && x.Status == RepSettlementStatus.PendingCash))
+            return (FinanceOperationResult.Fail("لهذه السيارة تسوية منتجات سابقة بانتظار النقد — تُكمل من «تسوية النقد» في المالية أولًا"), null);
+
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        var count = await _db.RepSettlements.CountAsync(s => s.SettlementDate.Year == r.Date.Year);
+        var settlement = new RepSettlement
+        {
+            SettlementNumber = $"RS-{r.Date.Year}-{count + 1:D5}", RepEmployeeId = repId, VanWarehouseId = van.Id, SettlementDate = r.Date.Date,
+            Notes = string.IsNullOrWhiteSpace(r.Notes) ? null : r.Notes.Trim(), CreatedByUserId = r.UserId,
+            Status = RepSettlementStatus.PendingCash, ConfirmedByUserId = r.UserId, ConfirmedAt = DateTime.UtcNow
+        };
+        _db.RepSettlements.Add(settlement);
+        await _db.SaveChangesAsync();
+        var part = new SettlementStockPart(r.Returns, r.FreeGoods, r.ReturnToWarehouseId, r.InvoiceRemainingToCustomerId, r.Date);
+        var stock = await PostStockPartAsync(settlement, van, repId, part, r.UserId);
+        if (!stock.Success) return (stock, null);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(r.UserId, "Post", "RepSettlements", settlement.Id,
+            $"{settlement.SettlementNumber} — تسوية منتجات: مرتجع {settlement.ReturnedPieces:N0} قطعة، مجاني {settlement.FreePieces:N0}، بانتظار النقد");
+        if (tx is not null) await tx.CommitAsync();
+        return (FinanceOperationResult.Ok(), settlement);
+    }
+
+    /// <summary>تسويات منتجات سوّاها أمين المخزن وتنتظر نقد المالية.</summary>
+    public async Task<List<RepSettlementRow>> PendingCashSettlementsAsync() =>
+        (await GetSettlementsAsync(DateTime.Today.AddYears(-1), DateTime.Today.AddDays(1))).Where(s => s.Status == RepSettlementStatus.PendingCash).ToList();
+
+    /// <summary>
+    /// تسوية النقد (المالية): المصاريف الميدانية ثم النقد المتوقع (رصيد المحفظة بعد فاتورة المتبقي إن وُجدت) والمستلم؛ والفرق يبقى في ذمة المندوب.
+    /// تُكمل تسوية المنتجات المنتظرة لهذه السيارة، وإلا تُنشئ تسوية نقد فقط (لم تُسوَّ منتجاتها اليوم).
+    /// </summary>
+    public async Task<(FinanceOperationResult result, RepSettlement? settlement)> SettleCashAsync(CashSettlementRequest r)
+    {
+        var (van, vanError) = await VanAsync(r.VanWarehouseId);
+        if (vanError is not null) return (FinanceOperationResult.Fail(vanError), null);
+        var repId = van!.OwnerEmployeeId!.Value;
+        if (r.ReceivedCash < 0) return (FinanceOperationResult.Fail("المبلغ المستلم لا يكون سالبًا"), null);
+        if (r.Expenses.Any(e => e.Amount <= 0 || string.IsNullOrWhiteSpace(e.Description)))
+            return (FinanceOperationResult.Fail("كل مصروف ميداني يحتاج مبلغًا أكبر من صفر ووصفًا"), null);
+        var pending = await new RepAppService(_db).PendingCountAsync(repId);
+        if (pending > 0)
+            return (FinanceOperationResult.Fail($"للمندوب {pending} طلب من التطبيق بانتظار الاعتماد — اعتمدها أو ارفضها من «طلبات المندوبين» قبل التسوية"), null);
+        if (await _db.RepSettlements.AnyAsync(x => x.VanWarehouseId == r.VanWarehouseId && x.Status == RepSettlementStatus.PendingWarehouse))
+            return (FinanceOperationResult.Fail("لهذه السيارة تسوية سابقة بانتظار تأكيد المخازن — يؤكدها أمين المخزن أولًا"), null);
+
+        var reps = new RepsService(_db);
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        var settlement = await _db.RepSettlements.FirstOrDefaultAsync(x => x.VanWarehouseId == r.VanWarehouseId && x.Status == RepSettlementStatus.PendingCash);
+        if (settlement is null)
+        {
+            var count = await _db.RepSettlements.CountAsync(s => s.SettlementDate.Year == r.Date.Year);
+            settlement = new RepSettlement
+            {
+                SettlementNumber = $"RS-{r.Date.Year}-{count + 1:D5}", RepEmployeeId = repId, VanWarehouseId = van.Id, SettlementDate = r.Date.Date,
+                CreatedByUserId = r.UserId, ConfirmedAt = DateTime.UtcNow, ConfirmedByUserId = r.UserId
+            };
+            _db.RepSettlements.Add(settlement);
+        }
+        if (!string.IsNullOrWhiteSpace(r.Notes))
+            settlement.Notes = string.IsNullOrEmpty(settlement.Notes) ? r.Notes.Trim() : $"{settlement.Notes} | {r.Notes.Trim()}";
+        settlement.Status = RepSettlementStatus.Confirmed;
+        await _db.SaveChangesAsync();
+
+        foreach (var e in r.Expenses)
+        {
+            var spent = await reps.RecordFieldExpenseAsync(repId, e.Amount, e.Description.Trim(), r.Date, r.UserId, e.VehicleId);
+            if (!spent.Success) return (FinanceOperationResult.Fail($"المصروف \"{e.Description}\": {spent.ErrorMessage}"), null);
+            settlement.FieldExpenses += e.Amount;
+        }
+        settlement.ExpectedCash = await reps.GetWalletBalanceAsync(repId);
+        if (r.ReceivedCash > settlement.ExpectedCash)
+            return (FinanceOperationResult.Fail($"المستلم ({r.ReceivedCash:N0}) أكبر من النقد المتوقع في المحفظة ({settlement.ExpectedCash:N0}) — راجع المبيعات والتحصيلات"), null);
+        if (r.ReceivedCash > 0)
+        {
+            var handed = await reps.RecordCashHandoverAsync(repId, r.ReceivedCash, r.Date, r.UserId);
+            if (!handed.Success) return (handed, null);
+        }
+        settlement.ReceivedCash = r.ReceivedCash;
+        settlement.Difference = settlement.ExpectedCash - r.ReceivedCash;
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(r.UserId, "Post", "RepSettlements", settlement.Id,
+            $"{settlement.SettlementNumber} — تسوية نقد: متوقع {settlement.ExpectedCash:N0}، مستلم {settlement.ReceivedCash:N0}، فرق {settlement.Difference:N0}");
+        if (tx is not null) await tx.CommitAsync();
+        return (FinanceOperationResult.Ok(), settlement);
+    }
+
     /// <summary>الجزء المخزني من التسوية (1 المرتجع، 2 المجاني، 3 فاتورة ما بقي في السيارة).</summary>
     private async Task<FinanceOperationResult> PostStockPartAsync(RepSettlement settlement, Warehouse van, int repId, SettlementStockPart part, int userId)
     {
@@ -381,7 +505,7 @@ public class RepOperationsService
             foreach (var f in part.FreeGoods)
             {
                 var pieces = f.QuantityInLevel * levels[f.PackagingLevelId];
-                var (alloc, error) = await LedgerHelper.AllocateAsync(_db, f.ItemId, van.Id, null, pieces, BatchScope.ForCustomer(f.CustomerId, null, canReserved));
+                var (alloc, error) = await LedgerHelper.AllocateAsync(_db, f.ItemId, van.Id, null, pieces, BatchScope.ForCustomer(f.CustomerId, f.CustomRecipeId, canReserved));
                 if (error is not null) return FinanceOperationResult.Fail($"المجاني: {error}");
                 var who = f.CustomerId is int cid && customers.TryGetValue(cid, out var name) ? $"{name} — {f.Reason.Trim()}" : f.Reason.Trim();
                 foreach (var (batchId, qty) in alloc)

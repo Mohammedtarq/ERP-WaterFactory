@@ -298,6 +298,8 @@
     <DataTemplate DataType="{x:Type vmReps:WarehouseRepVansSectionViewModel}"><vReps:RepVansSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:PrepareLoadOrdersSectionViewModel}"><vWarehouse:PrepareLoadOrdersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:SettlementConfirmSectionViewModel}"><vWarehouse:SettlementConfirmSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:RepProductSettlementSectionViewModel}"><vWarehouse:RepProductSettlementSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmReps:RepCashSettlementSectionViewModel}"><vFinance:RepCashSettlementSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmFinance:PaymentRequestsSectionViewModel}"><vFinance:PaymentRequestsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:LoadOrdersSectionViewModel}"><vReps:LoadOrdersSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmReps:RepSettlementSectionViewModel}"><vReps:RepSettlementSectionView/></DataTemplate>

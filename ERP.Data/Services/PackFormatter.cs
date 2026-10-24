@@ -87,6 +87,48 @@ public sealed class PackFormatter
         return parts.Count == 0 ? "0" : string.Join(" + ", parts);
     }
 
+    /// <summary>
+    /// كمية المنتج المصنَّع كرقم فقط (الاسم الموحد يحمل نوع العبوة): «10»، وما لا يكمل عبوة كاملة «10 + 5 قطعة»؛
+    /// صنف بلا عبوة كبرى يبقى بالقطعة.
+    /// </summary>
+    public string Count(int itemId, decimal pieces)
+    {
+        if (pieces < 0) return "-" + Count(itemId, -pieces);
+        var top = LevelsOf(itemId).FirstOrDefault(l => l.EquivalentBaseUnits > 1);
+        if (top is null) return Number(pieces);
+        var n = Math.Floor(pieces / top.EquivalentBaseUnits);
+        var rest = pieces - n * top.EquivalentBaseUnits;
+        return rest == 0 ? Number(n) : n == 0 ? $"{Number(rest)} قطعة" : $"{Number(n)} + {Number(rest)} قطعة";
+    }
+
+    /// <summary>
+    /// مجموع بالاسم الكامل لكل (منتج، متغير): «10 شرنك 20×330 الرحمة + 5 كارتون 40×330 مطعم الفرات» —
+    /// الخاص لا يختلط بالعام، والمتطابق يُجمع. الباقي دون عبوة كاملة يُذكر «قطعة».
+    /// </summary>
+    public string TotalNamed(IEnumerable<(int ItemId, int? RecipeId, decimal Pieces)> quantities, ProductNames names)
+    {
+        var packs = new Dictionary<string, decimal>();
+        var order = new List<string>();
+        decimal loose = 0;
+        foreach (var g in quantities.GroupBy(q => (q.ItemId, q.RecipeId)))
+        {
+            var pieces = g.Sum(x => x.Pieces);
+            var top = pieces <= 0 ? null : LevelsOf(g.Key.ItemId).FirstOrDefault(l => l.EquivalentBaseUnits > 1);
+            if (top is null) { loose += pieces; continue; }
+            var n = Math.Floor(pieces / top.EquivalentBaseUnits);
+            if (n > 0)
+            {
+                var key = names.Name(g.Key.ItemId, g.Key.RecipeId);
+                if (!packs.ContainsKey(key)) order.Add(key);
+                packs[key] = packs.GetValueOrDefault(key) + n;
+            }
+            loose += pieces - n * top.EquivalentBaseUnits;
+        }
+        var parts = order.Select(name => $"{Number(packs[name])} {name}").ToList();
+        if (loose != 0) parts.Add($"{Number(loose)} قطعة");
+        return parts.Count == 0 ? "0" : string.Join(" + ", parts);
+    }
+
     /// <summary>العبوة بشكلها: «كارتون 40×330»، أو «كارتون 40 — اسم الصنف» إن لم يُعرف الحجم، أو اسمها وحده بلا بيانات الصنف.</summary>
     private string PackLabel(int itemId, ItemPackagingLevel level)
     {

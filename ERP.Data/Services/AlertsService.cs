@@ -74,7 +74,7 @@ public class AlertsService
                 alerts.Add(new("van-returns", $"مرتجعات بانتظار الاستلام: {waiting.Count} سيارة",
                     $"{Names(waiting.OrderBy(w => w.since).Select(w => w.rep), waiting.Count)} — حُمّلت ولم تُسوَّ (تسوية اليوم تستلم المرتجع)",
                     waiting.Count, waiting.Any(w => (DateTime.Today - w.since.Date).Days > 1) ? AlertLevel.Danger : AlertLevel.Warning,
-                    reps ? ModuleCode.Reps : ModuleCode.Warehouse, reps ? "RepSettlementSectionViewModel" : "WarehouseRepVansSectionViewModel"));
+                    warehouse ? ModuleCode.Warehouse : ModuleCode.Reps, warehouse ? "RepProductSettlementSectionViewModel" : "RepVansSectionViewModel"));
         }
 
         // 2-ب) تسويات مندوبين بانتظار تأكيد المخازن (النقد رُحّل، والمرتجع ينتظر عدّ أمين المخزن)

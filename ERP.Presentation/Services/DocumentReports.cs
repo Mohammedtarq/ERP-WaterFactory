@@ -179,9 +179,11 @@ public static class DocumentReports
         foreach (var l in d.Lines.OrderBy(l => l.Id))
         {
             var batch = l.Batch?.BatchNumber ?? (d.DocumentType == StockDocumentType.Receipt ? "—" : "تلقائي");
+            // المنتج التام: الكمية رقم فقط (الاسم الموحد يحمل العبوة)؛ المادة الأولية بوحدتها
+            var qty = l.Item.SourcingMethod != SourcingMethod.Purchased ? packs.Count(l.ItemId, l.QuantityBaseUnits) : packs.Of(l.ItemId, l.QuantityBaseUnits);
             r.Rows.Add(isReturn
-                ? new[] { (++i).ToString(), Name(l), packs.Of(l.ItemId, l.QuantityBaseUnits), l.IsDamaged ? "تلف ميداني" : "سليم", batch }
-                : new[] { (++i).ToString(), Name(l), packs.Of(l.ItemId, l.QuantityBaseUnits), batch, l.Batch?.ExpiryDate?.ToString("yyyy/MM/dd") ?? "" });
+                ? new[] { (++i).ToString(), Name(l), qty, l.IsDamaged ? "تلف ميداني" : "سليم", batch }
+                : new[] { (++i).ToString(), Name(l), qty, batch, l.Batch?.ExpiryDate?.ToString("yyyy/MM/dd") ?? "" });
         }
         string Total(IEnumerable<StockDocumentLine> lines)
         {
@@ -189,7 +191,7 @@ public static class DocumentReports
             var finished = list.Where(l => l.Item.SourcingMethod != SourcingMethod.Purchased).ToList();
             var raw = list.Where(l => l.Item.SourcingMethod == SourcingMethod.Purchased).Select(l => l.ItemId).Distinct().Count();
             if (finished.Count == 0) return raw > 0 ? $"{raw} مادة أولية" : "0";
-            return packs.Total(finished.Select(l => (l.ItemId, l.QuantityBaseUnits))) + (raw > 0 ? $" + {raw} مادة أولية" : "");
+            return packs.TotalNamed(finished.Select(l => (l.ItemId, l.Batch?.CustomRecipeId, l.QuantityBaseUnits)), names) + (raw > 0 ? $" + {raw} مادة أولية" : "");
         }
         r.Total("عدد السطور", d.Lines.Count.ToString());
         if (isReturn)

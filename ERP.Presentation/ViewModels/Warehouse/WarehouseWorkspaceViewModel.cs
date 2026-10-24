@@ -72,6 +72,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     private List<Item> _allItems = new();
     /// <summary>عبوات الأصناف: كل الكميات تُعرض بالكارتون/الشرنك، والقطع للحساب فقط.</summary>
     private PackFormatter _packs = new(Array.Empty<ItemPackagingLevel>());
+    private ProductNames? _names;
 
     public WarehouseWorkspaceSectionViewModel(AppSession s, IDialogService d, WarehouseEntity warehouse)
         : base(s, d, ModuleCode.Warehouse, warehouse.Name, GlyphOf(warehouse.WarehouseType), ColorOf(warehouse.WarehouseType),
@@ -401,13 +402,14 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         ApplyBalanceFilter();
         ItemsCount = balances.Select(b => b.ItemId).Distinct().Count();
         _packs = await PackFormatter.LoadAsync(db);
+        _names = await ProductNames.LoadAsync(db);
         FillItems();   // المتوفر بجانب كل صنف في قائمة الاختيار
         TotalPieces = balances.Sum(b => b.Quantity);
         // لا يُجمع ما اختلفت وحدته: إجمالي العبوات للمنتج التام فقط، والمواد الأولية تُعدّ أصنافًا
         var finished = balances.Where(b => b.IsFinished).ToList();
         var rawCount = balances.Where(b => !b.IsFinished).Select(b => b.ItemId).Distinct().Count();
         TotalLabel = finished.Count > 0 ? "إجمالي المنتج التام" : "إجمالي الرصيد";
-        TotalText = finished.Count > 0 ? _packs.Total(finished.Select(b => (b.ItemId, b.Quantity))) + (rawCount > 0 ? $" + {rawCount} مادة أولية" : "")
+        TotalText = finished.Count > 0 ? NamedTotal(finished.Select(b => (b.ItemId, b.RecipeId, b.Quantity))) + (rawCount > 0 ? $" + {rawCount} مادة أولية" : "")
                   : rawCount > 0 ? $"{rawCount} مادة أولية" : "0";
         OnPropertyChanged(nameof(PartsLayout));
         OnPropertyChanged(nameof(NameLayout));
@@ -718,19 +720,24 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
 
     private Task<ReportDocument> BuildDocumentReportAsync(Data.ProjectDb.ProjectDbContext db, StockDocument d) => DocumentReportAsync(Session, db, d);
 
+    /// <summary>مجموع بالاسم الكامل لكل (منتج، متغير)؛ قبل تحميل الأسماء يرجع للمجموع العادي.</summary>
+    private string NamedTotal(IEnumerable<(int ItemId, int? RecipeId, decimal Pieces)> q) =>
+        _names is null ? _packs.Total(q.Select(x => (x.ItemId, x.Pieces))) : _packs.TotalNamed(q, _names);
+
     public ReportDocument BuildBalancesReport()
     {
         var r = NewReport($"أرصدة {Title}");
         r.Field("المخزن", Title).Field("النوع", WarehouseTypeLabel).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
         if (HasSearch) r.Field("تصفية البحث", SearchText.Trim());
-        r.Columns.AddRange(new[] { "#", "الكود", "الصنف", "التشغيلة", "الصلاحية", "الرصيد", "بالقطعة" });
+        // الاسم الموحد للمنتج التام (يحمل العبوة)، والكمية رقم؛ الكود عمود صغير للمرجع في آخر الجدول
+        r.Columns.AddRange(new[] { "#", "الصنف", "التشغيلة", "الصلاحية", "الرصيد", "بالقطعة", "الكود" });
         var i = 0;
         foreach (var b in VisibleBalances)
-            r.Rows.Add(new[] { (++i).ToString(), b.ItemCode, b.ItemName + (b.BelowAlert ? " ⚠" : ""), b.BatchNumber ?? "—",
-                               b.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", b.Breakdown, $"{b.Quantity:N0}" });
+            r.Rows.Add(new[] { (++i).ToString(), b.DisplayName + (b.BelowAlert ? " ⚠" : ""), b.BatchNumber ?? "—",
+                               b.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", b.QuantityText, $"{b.Quantity:N0}", b.ItemCode });
         if (HasSearch)
             r.Total("عدد الأصناف في النتائج", VisibleBalances.Select(b => b.ItemId).Distinct().Count().ToString())
-             .Total("إجمالي النتائج", _packs.Total(VisibleBalances.Select(b => (b.ItemId, b.Quantity))), true);
+             .Total("إجمالي النتائج", NamedTotal(VisibleBalances.Where(b => b.IsFinished).Select(b => (b.ItemId, b.RecipeId, b.Quantity))), true);
         else
         {
             r.Total("عدد الأصناف", ItemsCount.ToString()).Total(TotalLabel, TotalText, true);
@@ -744,10 +751,11 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
     {
         var r = NewReport($"تقرير حركة {Title}");
         r.Field("المخزن", Title).Field("الفترة", $"{ReportFrom:yyyy/MM/dd} — {ReportTo:yyyy/MM/dd}");
-        r.Columns.AddRange(new[] { "الكود", "الصنف", "أول المدة", "وارد", "صادر", "تالف", "مجاني", "المتبقي" });
+        r.Columns.AddRange(new[] { "الصنف", "أول المدة", "وارد", "صادر", "تالف", "مجاني", "المتبقي", "الكود" });
+        string Q(StockSummaryRow s, decimal pieces) => s.IsFinished ? _packs.Count(s.ItemId, pieces) : _packs.Of(s.ItemId, pieces);
         foreach (var s in Summary)
-            r.Rows.Add(new[] { s.ItemCode, s.ItemName, s.OpeningText, s.InText, s.OutText, s.DamagedText, s.FreeText, s.ClosingText });
-        string Sum(Func<StockSummaryRow, decimal> f) => _packs.Total(Summary.Select(s => (s.ItemId, f(s))));
+            r.Rows.Add(new[] { s.DisplayName, Q(s, s.Opening), Q(s, s.In), Q(s, s.Out), Q(s, s.Damaged), Q(s, s.Free), Q(s, s.Closing), s.ItemCode });
+        string Sum(Func<StockSummaryRow, decimal> f) => NamedTotal(Summary.Where(s => s.IsFinished).Select(s => (s.ItemId, s.RecipeId, f(s))));
         r.Total("إجمالي الوارد", Sum(s => s.In))
          .Total("إجمالي الصادر", Sum(s => s.Out))
          .Total("إجمالي التالف", Sum(s => s.Damaged))
@@ -766,10 +774,10 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
             : new[] { "التاريخ", "الحركة", "المستند", "التشغيلة", "الجهة", "وارد", "صادر", "الرصيد" });
         foreach (var x in Ledger)
             r.Rows.Add(LedgerItem is null
-                ? new[] { x.Date.ToString("yyyy/MM/dd"), x.ItemName, x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.InText, x.OutText }
+                ? new[] { x.Date.ToString("yyyy/MM/dd"), x.DisplayName.Length > 0 ? x.DisplayName : x.ItemName, x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.InText, x.OutText }
                 : new[] { x.Date.ToString("yyyy/MM/dd"), x.TypeLabel, x.Reference, x.BatchNumber ?? "", x.Party ?? "", x.InText, x.OutText, x.BalanceText });
-        r.Total("إجمالي الوارد", _packs.Total(Ledger.Where(x => x.ItemId is not null).Select(x => (x.ItemId!.Value, x.In))))
-         .Total("إجمالي الصادر", _packs.Total(Ledger.Where(x => x.ItemId is not null).Select(x => (x.ItemId!.Value, x.Out))));
+        r.Total("إجمالي الوارد", NamedTotal(Ledger.Where(x => x.ItemId is not null && x.IsFinished).Select(x => (x.ItemId!.Value, x.RecipeId, x.In))))
+         .Total("إجمالي الصادر", NamedTotal(Ledger.Where(x => x.ItemId is not null && x.IsFinished).Select(x => (x.ItemId!.Value, x.RecipeId, x.Out))));
         if (LedgerItem is not null) r.Total("الرصيد آخر المدة", Ledger.FirstOrDefault()?.BalanceText ?? "0", true);
         return r;
     }

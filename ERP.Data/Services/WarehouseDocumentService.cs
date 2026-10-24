@@ -18,8 +18,13 @@ public record StockDocumentRequest(
 public class StockSummaryRow
 {
     public int ItemId { get; init; }
+    /// <summary>المتغير (الطلب الخاص): كل (منتج، متغير) سطر مستقل في الملخص.</summary>
+    public int? RecipeId { get; init; }
     public string ItemCode { get; init; } = "";
     public string ItemName { get; init; } = "";
+    /// <summary>الاسم الموحد للمنتج المصنَّع («شرنك 20×330 الرحمة») أو اسم المادة الكامل.</summary>
+    public string DisplayName { get; set; } = "";
+    public bool IsFinished { get; set; }
     public decimal Opening { get; set; }
     public decimal In { get; set; }
     public decimal Out { get; set; }
@@ -40,6 +45,7 @@ public class StockLedgerRow
 {
     public DateTime Date { get; init; }
     public int? ItemId { get; init; }
+    public int? RecipeId { get; set; }
     public string ItemName { get; init; } = "";
     public string TypeLabel { get; init; } = "";
     public string Reference { get; init; } = "";
@@ -63,6 +69,9 @@ public class StockLedgerRow
 public class StockBalanceRow
 {
     public int ItemId { get; init; }
+    public int? RecipeId { get; init; }
+    /// <summary>للتقارير: المنتج التام رقم عبوات فقط («40»)، والمادة الأولية بوحدتها.</summary>
+    public string QuantityText { get; set; } = "";
     public string ItemCode { get; init; } = "";
     public string ItemName { get; init; } = "";
     public string? BatchNumber { get; init; }
@@ -381,32 +390,41 @@ public class WarehouseDocumentService
 
     // ============================ التقارير ============================
 
-    /// <summary>لكل صنف: رصيد أول المدة، الوارد، الصادر، التالف، المجاني، والمتبقي آخر المدة.</summary>
+    /// <summary>لكل (صنف، متغير): رصيد أول المدة، الوارد، الصادر، التالف، المجاني، والمتبقي آخر المدة.</summary>
     public async Task<List<StockSummaryRow>> GetSummaryAsync(int warehouseId, DateTime from, DateTime to)
     {
         var (f, t) = Range(from, to);
-        var opening = await _db.StockTransactions.Where(x => x.WarehouseId == warehouseId && x.TransactionDate < f)
-            .GroupBy(x => x.ItemId).Select(g => new { ItemId = g.Key, Qty = g.Sum(x => x.QuantityBaseUnits) })
-            .ToDictionaryAsync(x => x.ItemId, x => x.Qty);
+        var opening = (await _db.StockTransactions.Where(x => x.WarehouseId == warehouseId && x.TransactionDate < f)
+            .GroupBy(x => new { x.ItemId, RecipeId = x.Batch != null ? x.Batch.CustomRecipeId : null })
+            .Select(g => new { g.Key.ItemId, g.Key.RecipeId, Qty = g.Sum(x => x.QuantityBaseUnits) }).ToListAsync())
+            .ToDictionary(x => (x.ItemId, x.RecipeId), x => x.Qty);
         var period = await _db.StockTransactions.Where(x => x.WarehouseId == warehouseId && x.TransactionDate >= f && x.TransactionDate < t)
-            .GroupBy(x => new { x.ItemId, x.TransactionType })
+            .GroupBy(x => new { x.ItemId, RecipeId = x.Batch != null ? x.Batch.CustomRecipeId : null, x.TransactionType })
             .Select(g => new
             {
-                g.Key.ItemId, g.Key.TransactionType,
+                g.Key.ItemId, g.Key.RecipeId, g.Key.TransactionType,
                 In = g.Sum(x => x.QuantityBaseUnits > 0 ? x.QuantityBaseUnits : 0),
                 Out = g.Sum(x => x.QuantityBaseUnits < 0 ? -x.QuantityBaseUnits : 0)
             }).ToListAsync();
 
-        var ids = opening.Keys.Concat(period.Select(p => p.ItemId)).Distinct().ToList();
+        var keys = opening.Keys.Concat(period.Select(p => (p.ItemId, p.RecipeId))).Distinct().ToList();
+        var ids = keys.Select(k => k.ItemId).Distinct().ToList();
         var items = await _db.Items.AsNoTracking().Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id);
-        var rows = ids.Select(id => new StockSummaryRow
+        var names = await ProductNames.LoadAsync(_db, ids);
+        var rows = keys.Select(k =>
         {
-            ItemId = id, ItemCode = items[id].ItemCode, ItemName = items[id].ItemName, Opening = opening.GetValueOrDefault(id)
-        }).ToDictionary(r => r.ItemId);
+            var item = items[k.ItemId];
+            var finished = item.SourcingMethod != SourcingMethod.Purchased;
+            return new StockSummaryRow
+            {
+                ItemId = k.ItemId, RecipeId = k.RecipeId, ItemCode = item.ItemCode, ItemName = item.ItemName, IsFinished = finished,
+                DisplayName = finished ? names.Name(k.ItemId, k.RecipeId) : item.ItemName, Opening = opening.GetValueOrDefault(k)
+            };
+        }).ToDictionary(r => (r.ItemId, r.RecipeId));
 
         foreach (var p in period)
         {
-            var row = rows[p.ItemId];
+            var row = rows[(p.ItemId, p.RecipeId)];
             row.In += p.In;
             switch (p.TransactionType)
             {
@@ -417,7 +435,7 @@ public class WarehouseDocumentService
         }
         var packs = await PackFormatter.LoadAsync(_db, ids);
         var result = rows.Values.Where(r => r.Opening != 0 || r.In != 0 || r.Out != 0 || r.Damaged != 0 || r.Free != 0)
-                          .OrderBy(r => r.ItemName).ToList();
+                          .OrderBy(r => r.ItemName).ThenBy(r => r.RecipeId ?? 0).ToList();
         foreach (var r in result)
         {
             r.OpeningText = packs.Of(r.ItemId, r.Opening);
@@ -460,6 +478,7 @@ public class WarehouseDocumentService
         StockLedgerRow Named(StockLedgerRow r, int item, int? recipe, string itemName)
         {
             r.IsFinished = finished.GetValueOrDefault(item);
+            r.RecipeId = recipe;
             if (r.IsFinished)
             {
                 (r.Pack, r.Content, r.VariantName) = names.Parts(item, recipe);
@@ -517,6 +536,7 @@ public class WarehouseDocumentService
         var mins = await new StockAlertService(_db).TotalsAsync(new[] { warehouseId }, items.Values.ToList());
 
         var names = await ProductNames.LoadAsync(_db, itemIds);
+        var packCounts = await PackFormatter.LoadAsync(_db, itemIds);
         return raw.Select(r =>
         {
             var item = items[r.ItemId];
@@ -528,8 +548,9 @@ public class WarehouseDocumentService
                 Pack = pack, Content = content, VariantName = variant.Length > 0 ? variant : "أساسي",
                 IsFinished = isFinished, DisplayName = isFinished ? names.Name(r.ItemId, b?.CustomRecipeId) : item.ItemName,
                 GroupTitle = isFinished ? names.PackName(r.ItemId) : item.ItemName,
-                ItemId = r.ItemId, ItemCode = item.ItemCode, ItemName = item.ItemName, BatchNumber = b?.BatchNumber, ExpiryDate = b?.ExpiryDate,
+                ItemId = r.ItemId, RecipeId = b?.CustomRecipeId, ItemCode = item.ItemCode, ItemName = item.ItemName, BatchNumber = b?.BatchNumber, ExpiryDate = b?.ExpiryDate,
                 Variant = b?.CustomRecipe?.Name,
+                QuantityText = isFinished ? packCounts.Count(r.ItemId, r.Qty) : Breakdown(r.Qty, levels.GetValueOrDefault(r.ItemId)),
                 Quantity = r.Qty, Breakdown = Breakdown(r.Qty, levels.GetValueOrDefault(r.ItemId)),
                 BelowAlert = mins.TryGetValue(r.ItemId, out var min) && totals[r.ItemId] <= min
             };

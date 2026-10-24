@@ -40,7 +40,7 @@ public static class SectionGrouping
         [ModuleCode.Warehouse] = new[]
         {
             new GroupDef("مساحات المخازن", Blue, "WarehouseWorkspace", "WarehouseRepVans"),
-            new GroupDef("الحركة اليومية", Green, "PrepareLoadOrders", "SettlementConfirm", "Stocktake", "Losses", "DamagedSales", "StockAdjustment"),
+            new GroupDef("الحركة اليومية", Green, "PrepareLoadOrders", "RepProductSettlement", "SettlementConfirm", "Stocktake", "Losses", "DamagedSales", "StockAdjustment"),
             new GroupDef("الأرصدة والتنبيهات", Amber, "CurrentStock", "StockAlerts", "Beneficiaries"),
             new GroupDef("التصنيع", Teal, "ManufacturingRequirement", "Bom", "PackagingTemplates"),
             new GroupDef("التعريفات", Purple, "Items", "Warehouses", "Packaging", "Locations"),
@@ -79,7 +79,7 @@ public static class SectionGrouping
         },
         [ModuleCode.Finance] = new[]
         {
-            new GroupDef("النقد", Green, "CashBoxes", "PaymentRequests", "DailyCash", "Vouchers", "Expenses", "Reconciliation"),
+            new GroupDef("النقد", Green, "CashBoxes", "PaymentRequests", "RepCashSettlement", "DailyCash", "Vouchers", "Expenses", "Reconciliation"),
             new GroupDef("الحسابات", Blue, "ChartOfAccounts", "JournalEntries", "ExchangeRates", "MappingRules"),
             new GroupDef("التقارير والتحليل", Purple, "FinalAccounts", "WorkingCapital", "CostSimulation", "Partners"),
             new GroupDef("الإعداد", Slate, "FinanceCategories", "PeriodLock"),

@@ -36,6 +36,7 @@ public class RepDocumentsSectionViewModel : SectionViewModel
     private DateTime _from = DateTime.Today.AddDays(-30);
     private DateTime _to = DateTime.Today;
     private PackFormatter _packs = new(Array.Empty<ItemPackagingLevel>());
+    private ProductNames? _names;
 
     public RepDocumentsSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Reps, "مستندات المندوبين", Icons.Truck, "#F97316",
@@ -146,6 +147,7 @@ public class RepDocumentsSectionViewModel : SectionViewModel
                      .Where(w => w.IsActive && w.IsSellableStock && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.WorkInProcess).ToListAsync())
                      .OrderBy(w => w.WarehouseType != WarehouseType.FinishedGoods).ThenBy(w => w.Name)) Stores.Add(w);
         _packs = await PackFormatter.LoadAsync(db);
+        _names = await ProductNames.LoadAsync(db);
         if (ItemsLookup.Count == 0)
             foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync())
                 ItemsLookup.Add(i);
@@ -246,10 +248,13 @@ public class RepDocumentsSectionViewModel : SectionViewModel
         if (Van is null) { Dialogs.Error("اختر السيارة"); return; }
         var r = new ReportDocument { Key = "van-stock", CompanyName = Session.ProjectName, Title = $"جرد سيارة — {Van.Name}", PrintedBy = Session.Username };
         r.Field("السيارة", Van.Name).Field("المندوب", Van.OwnerEmployee?.FullName).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
-        r.Columns.AddRange(new[] { "الكود", "الصنف", "التشغيلة", "الصلاحية", "الكمية", "بالقطعة" });
+        // الاسم الموحد (يحمل العبوة) والكمية رقم؛ الكود عمود صغير للمرجع
+        r.Columns.AddRange(new[] { "الصنف", "التشغيلة", "الصلاحية", "الكمية", "بالقطعة", "الكود" });
         foreach (var x in VanStock)
-            r.Rows.Add(new[] { x.ItemCode, x.ItemName, x.BatchNumber ?? "", x.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", x.Breakdown, $"{x.QuantityBaseUnits:N0}" });
-        r.Total("رصيد السيارة", _packs.Total(VanStock.Select(x => (x.ItemId, x.QuantityBaseUnits))), true);
+            r.Rows.Add(new[] { x.DisplayName.Length > 0 ? x.DisplayName : x.ItemName, x.BatchNumber ?? "", x.ExpiryDate?.ToString("yyyy/MM/dd") ?? "",
+                               x.IsFinished ? _packs.Count(x.ItemId, x.QuantityBaseUnits) : x.Breakdown, $"{x.QuantityBaseUnits:N0}", x.ItemCode });
+        r.Total("رصيد السيارة", _names is null ? _packs.Total(VanStock.Select(x => (x.ItemId, x.QuantityBaseUnits)))
+                                                : _packs.TotalNamed(VanStock.Where(x => x.IsFinished).Select(x => (x.ItemId, x.RecipeId, x.QuantityBaseUnits)), _names), true);
         r.Signatures.AddRange(new[] { "المندوب", "أمين المخزن" });
         Dialogs.ShowReport(r);
     }

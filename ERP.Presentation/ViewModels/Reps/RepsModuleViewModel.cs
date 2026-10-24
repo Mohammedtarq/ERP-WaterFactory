@@ -19,7 +19,9 @@ public class RepsModuleViewModel : ModuleViewModel
         Vans = Add(new RepVansSectionViewModel(s, d));
         LoadOrders = Add(new LoadOrdersSectionViewModel(s, d));
         Documents = Add(new RepDocumentsSectionViewModel(s, d));
-        Settlement = Add(new RepSettlementSectionViewModel(s, d));
+        // التسوية المقسّمة: المنتجات في المخازن والنقد في المالية؛ الشاشة المجمّعة القديمة مخفية (لا تُحذف)
+        Settlement = new RepSettlementSectionViewModel(s, d);
+        if (ShowLegacySettlement) Add(Settlement);
         Incentives = Add(new RepIncentivesSectionViewModel(s, d));
         // تطبيق المندوبين: ما وصل من الهواتف، والأجهزة والإعدادات
         Requests = Add(new RepRequestsSectionViewModel(s, d));
@@ -36,6 +38,9 @@ public class RepsModuleViewModel : ModuleViewModel
 
     /// <summary>إظهار شاشة عمليات الكاش فان القديمة (true يعيدها كما كانت).</summary>
     public static bool ShowLegacyVanOperations { get; set; } = false;
+
+    /// <summary>إظهار شاشة «تسوية المندوب» المجمّعة القديمة (true يعيدها كما كانت).</summary>
+    public static bool ShowLegacySettlement { get; set; } = false;
 
     public LoadOrdersSectionViewModel LoadOrders { get; }
     public RepDocumentsSectionViewModel Documents { get; }
@@ -229,8 +234,9 @@ public class WalletSectionViewModel : SectionViewModel
         {
             if (Rep is null) { Dialogs.Error("اختر المندوب"); return; }
             var r = new ReportDocument { CompanyName = Session.ProjectName, Title = $"كشف محفظة المندوب — {Rep.FullName}", PrintedBy = Session.Username };
-            r.Field("المندوب", Rep.FullName).Field("حتى تاريخ", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
+            r.Field("المندوب", Rep.FullName).Field("الفترة", PeriodText).Field("طُبع في", DateTime.Now.ToString("yyyy/MM/dd HH:mm"));
             r.Columns.AddRange(new[] { "التاريخ", "البيان", "داخل", "خارج", "الرصيد", "القيد" });
+            if (OpeningBalance != 0) r.Rows.Add(new[] { "", "رصيد سابق (قبل الفترة)", "", "", $"{OpeningBalance:N0}", "" });
             foreach (var x in Rows)
                 r.Rows.Add(new[] { x.TransactionDate.ToString("yyyy/MM/dd"), x.Description, x.AmountIn == 0 ? "" : $"{x.AmountIn:N0}",
                                    x.AmountOut == 0 ? "" : $"{x.AmountOut:N0}", $"{x.RunningBalance:N0}", x.EntryNumber ?? "" });
@@ -261,6 +267,19 @@ public class WalletSectionViewModel : SectionViewModel
     public ObservableCollection<Employee> Reps { get; } = new();
     public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<WalletRow> Rows { get; } = new();
+
+    // الكشف يفتح على اليوم؛ لأيام أخرى تُحدَّد الفترة (من / إلى) ثم «عرض»
+    private DateTime _statementFrom = DateTime.Today;
+    private DateTime _statementTo = DateTime.Today;
+    private decimal _openingBalance;
+    public DateTime StatementFrom { get => _statementFrom; set => SetProperty(ref _statementFrom, value); }
+    public DateTime StatementTo { get => _statementTo; set => SetProperty(ref _statementTo, value); }
+    /// <summary>رصيد المحفظة قبل بداية الفترة المعروضة.</summary>
+    public decimal OpeningBalance { get => _openingBalance; private set { if (SetProperty(ref _openingBalance, value)) OnPropertyChanged(nameof(PeriodText)); } }
+    public string PeriodText => StatementFrom.Date == StatementTo.Date ? $"{StatementFrom:yyyy/MM/dd} (يوم واحد)" : $"{StatementFrom:yyyy/MM/dd} — {StatementTo:yyyy/MM/dd}";
+    public string PeriodHint => OpeningBalance == 0 ? PeriodText : $"{PeriodText} — الرصيد السابق {OpeningBalance:N0} د.ع";
+    public AsyncRelayCommand ShowStatementCommand => _showStatement ??= new AsyncRelayCommand(LoadStatementAsync);
+    private AsyncRelayCommand? _showStatement;
 
     public Employee? Rep { get => _rep; set { if (SetProperty(ref _rep, value)) Background(LoadStatementAsync()); } }
     public decimal Balance { get => _balance; private set => SetProperty(ref _balance, value); }
@@ -315,8 +334,13 @@ public class WalletSectionViewModel : SectionViewModel
         Balance = 0;
         if (Rep is null) return;
         await using var db = Session.NewDb();
-        foreach (var r in await new RepsService(db).GetWalletStatementAsync(Rep.Id)) Rows.Add(r);
-        Balance = Rows.LastOrDefault()?.RunningBalance ?? 0;
+        var all = await new RepsService(db).GetWalletStatementAsync(Rep.Id);
+        Balance = all.LastOrDefault()?.RunningBalance ?? 0;
+        var (from, to) = StatementFrom.Date <= StatementTo.Date ? (StatementFrom.Date, StatementTo.Date) : (StatementTo.Date, StatementFrom.Date);
+        OpeningBalance = all.LastOrDefault(r => r.TransactionDate.Date < from)?.RunningBalance ?? 0;
+        foreach (var r in all.Where(r => r.TransactionDate.Date >= from && r.TransactionDate.Date <= to)) Rows.Add(r);
+        OnPropertyChanged(nameof(PeriodText));
+        OnPropertyChanged(nameof(PeriodHint));
     }
 
     private async Task SubmitAsync()

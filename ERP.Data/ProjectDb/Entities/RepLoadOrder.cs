@@ -60,7 +60,11 @@ public class RepLoadOrderLine
 
 /// <summary>تسوية المندوب اليومية مع أمين الصندوق.</summary>
 /// <summary>حالة التسوية: مؤكَّدة (كل شيء رُحّل)، أو بانتظار تأكيد المخازن (النقد رُحّل، والمرتجع والمجاني وفاتورة المتبقي ينتظرون).</summary>
-public enum RepSettlementStatus { Confirmed, PendingWarehouse }
+/// <summary>
+/// Confirmed = مكتملة؛ PendingWarehouse = (المسار القديم) النقد رُحّل والمخزن لم يؤكد؛
+/// PendingCash = أمين المخزن سوّى المنتجات (رُحّلت) والمالية لم تسوِّ النقد بعد.
+/// </summary>
+public enum RepSettlementStatus { Confirmed, PendingWarehouse, PendingCash }
 
 public class RepSettlement
 {

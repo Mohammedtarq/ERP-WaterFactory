@@ -146,6 +146,8 @@ public class ProductionStockReports
     {
         /// <summary>رأس المجموعة «الصنف · الرمز».</summary>
         public string Group => $"{ItemName} · {ItemCode}";
+        /// <summary>الاسم الموحد: «شرنك 20×330 الرحمة» (العبوة + المحتوى + المتغير؛ الأساسي بلا اسم لا يُذكر).</summary>
+        public string ProductName => $"{PackLabel} {Content}".Trim() + (Variant is "" or "أساسي" ? "" : " " + Variant);
     }
 
     /// <summary>جرد الإنتاج الشهري: يومًا بيوم لكل منتج، بالعبوات والقطع وكلفة الإنتاج الفعلية.</summary>
