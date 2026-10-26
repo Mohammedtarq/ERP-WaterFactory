@@ -175,7 +175,7 @@ public static class DocumentReports
             : new[] { "#", "الصنف", "الكمية", "التشغيلة", "الصلاحية" });
         var i = 0;
         string Name(StockDocumentLine l) => l.Item.SourcingMethod != SourcingMethod.Purchased
-            ? names.Name(l.ItemId, l.Batch?.CustomRecipeId) : l.Item.ItemName;
+            ? names.Name(l.ItemId, l.CustomRecipeId ?? l.Batch?.CustomRecipeId) : l.Item.ItemName;
         foreach (var l in d.Lines.OrderBy(l => l.Id))
         {
             var batch = l.Batch?.BatchNumber ?? (d.DocumentType == StockDocumentType.Receipt ? "—" : "تلقائي");
@@ -191,7 +191,7 @@ public static class DocumentReports
             var finished = list.Where(l => l.Item.SourcingMethod != SourcingMethod.Purchased).ToList();
             var raw = list.Where(l => l.Item.SourcingMethod == SourcingMethod.Purchased).Select(l => l.ItemId).Distinct().Count();
             if (finished.Count == 0) return raw > 0 ? $"{raw} مادة أولية" : "0";
-            return packs.TotalNamed(finished.Select(l => (l.ItemId, l.Batch?.CustomRecipeId, l.QuantityBaseUnits)), names) + (raw > 0 ? $" + {raw} مادة أولية" : "");
+            return packs.TotalNamed(finished.Select(l => (l.ItemId, l.CustomRecipeId ?? l.Batch?.CustomRecipeId, l.QuantityBaseUnits)), names) + (raw > 0 ? $" + {raw} مادة أولية" : "");
         }
         r.Total("عدد السطور", d.Lines.Count.ToString());
         if (isReturn)

@@ -248,4 +248,96 @@ public class RepAppTests
         Assert.All(CloudSyncService.Chunk(Enumerable.Range(1, 40).Select(i => Snap(i, 700_000)).ToList(), CloudSyncService.MaxSnapshotBatchChars),
                    b => Assert.True(b.Sum(s => s.Json.Length) <= CloudSyncService.MaxSnapshotBatchChars));
     }
+
+    [Fact]
+    public async Task Snapshot_carries_debt_ages_the_month_page_and_notices_without_salary_or_leave_balance()
+    {
+        RepSnapshotExtrasService.MonthCacheSeconds = 0;
+        await using var db = _f.NewDb(_f.AdminId);
+        var fg = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var water = new Item { ItemCode = "APP-S22", ItemName = "ماء الشهر", SalePrice = 250 };
+        var rep = new Employee { FullName = "مندوب الشهر", IsSalesRep = true, BaseSalary = 500_000 };
+        var shop = new Customer { Name = "محل الشهر", CreditLimit = 1_000_000 };
+        db.AddRange(water, rep, shop);
+        await db.SaveChangesAsync();
+        var piece = new ItemPackagingLevel { ItemId = water.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 };
+        var shrink = new ItemPackagingLevel { ItemId = water.Id, LevelName = "شرنك", EquivalentBaseUnits = 20 };
+        db.ItemPackagingLevels.AddRange(piece, shrink);
+        db.StockTransactions.Add(new StockTransaction { ItemId = water.Id, WarehouseId = fg.Id, QuantityBaseUnits = 5_000, UnitCost = 100,
+                                                        TransactionType = StockTransactionType.Receipt, CreatedByUserId = _f.AdminId });
+        var van = new Warehouse { BranchId = fg.BranchId, Name = "سيارة الشهر", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id };
+        db.Warehouses.Add(van);
+        db.RepCustomerAssignments.Add(new RepCustomerAssignment { EmployeeId = rep.Id, CustomerId = shop.Id });
+        await db.SaveChangesAsync();
+        db.RepItemIncentiveRates.Add(new RepItemIncentiveRate { ItemId = water.Id, PackagingLevelId = shrink.Id, IncentiveRatePerUnit = 100 });
+        await db.SaveChangesAsync();
+
+        // دين عمره 12 يومًا ودفعة قبل 3 أيام
+        var sales = new SalesService(db);
+        var (ok, invoiceId) = await sales.CreateInvoiceAsync(new SalesInvoiceHeaderInput(shop.Id, fg.Id, DateTime.Today.AddDays(-12), InvoicePaymentMethod.Credit), _f.AdminId);
+        Assert.True(ok.Success, ok.ErrorMessage);
+        Assert.True((await sales.AddLineAsync(invoiceId!.Value, new SalesInvoiceLineInput(water.Id, piece.Id, 40), _f.AdminId)).Success);
+        Assert.True((await sales.PostInvoiceAsync(invoiceId.Value, _f.AdminId)).result.Success);
+        Assert.True((await new FinanceService(db).CreateVoucherAsync(VoucherType.Receipt, VoucherPartyType.Customer, shop.Id, 1_000, PaymentMethod.Cash,
+                                                                     DateTime.Today.AddDays(-3), "CashReceiptVoucher", _f.AdminId, "دفعة")).Success);
+
+        // تحميل 10 شرنك ثم إرجاع 2 (أيلول 2026): الحافز 8 × 100، وكلها في أسبوع واحد (يبدأ السبت 12)
+        var docs = new WarehouseDocumentService(db);
+        Assert.True((await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.RepLoad, fg.Id, new DateTime(2026, 9, 16),
+            new[] { new StockDocumentLineInput(water.Id, shrink.Id, 10) }, _f.AdminId, CounterWarehouseId: van.Id))).result.Success);
+        var (returned, _) = await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.RepReturn, van.Id, new DateTime(2026, 9, 18),
+            new[] { new StockDocumentLineInput(water.Id, shrink.Id, 2) }, _f.AdminId, CounterWarehouseId: fg.Id));
+        Assert.True(returned.Success, returned.ErrorMessage);
+
+        // حضور وغياب وتأخر وإجازة
+        var leaveType = await db.LeaveTypes.FirstOrDefaultAsync() ?? db.LeaveTypes.Add(new LeaveType { Name = "اعتيادية" }).Entity;
+        await db.SaveChangesAsync();
+        db.AttendanceRecords.AddRange(
+            new AttendanceRecord { EmployeeId = rep.Id, AttendanceDate = new DateTime(2026, 9, 14), CheckInTime = new TimeSpan(8, 25, 0), LateMinutes = 25, Status = AttendanceStatus.Late },
+            new AttendanceRecord { EmployeeId = rep.Id, AttendanceDate = new DateTime(2026, 9, 15), Status = AttendanceStatus.Absent },
+            new AttendanceRecord { EmployeeId = rep.Id, AttendanceDate = new DateTime(2026, 9, 16), CheckInTime = new TimeSpan(7, 55, 0), Status = AttendanceStatus.Present });
+        db.EmployeeLeaves.Add(new EmployeeLeave { LeaveNumber = "LV-APP-1", EmployeeId = rep.Id, LeaveTypeId = leaveType.Id, Kind = LeaveKind.Day,
+                                                  FromDate = new DateTime(2026, 9, 17), ToDate = new DateTime(2026, 9, 18), WorkDays = 2, PaidDays = 2, CreatedByUserId = _f.AdminId });
+        await db.SaveChangesAsync();
+        var month = await new RepSnapshotExtrasService(db).MonthAsync(rep.Id, new DateTime(2026, 9, 20));
+        Assert.Equal(new DateTime(2026, 9, 1), month.MonthStart);
+        Assert.Equal(800m, month.IncentiveTotal);
+        Assert.Contains(month.Incentive, l => l.Quantity == 8 && l.Rate == 100 && l.Amount == 800 && l.Label.StartsWith("شرنك"));
+        Assert.Equal(800m, month.Weeks.Single(w => w.From == new DateTime(2026, 9, 12)).Amount);
+        Assert.Equal(new DateTime(2026, 9, 19), month.Weeks.Last().From);
+        Assert.Equal(new DateTime(2026, 9, 20), month.Weeks.Last().To);                // آخر أسبوع يقف عند اليوم
+        Assert.Equal("L", month.Days.Single(d => d.Date.Day == 14).Status);
+        Assert.Equal((25, "08:25"), (month.Days.Single(d => d.Date.Day == 14).LateMinutes, month.Days.Single(d => d.Date.Day == 14).CheckIn));
+        Assert.Equal("A", month.Days.Single(d => d.Date.Day == 15).Status);
+        Assert.Equal("P", month.Days.Single(d => d.Date.Day == 16).Status);
+        Assert.Equal(new[] { "V", "V" }, month.Days.Where(d => d.Date.Day is 17 or 18).Select(d => d.Status).ToArray());
+
+        // تبليغات: تجهيز الحمولة ورفض مصروف
+        var ops = new RepOperationsService(db);
+        var (created, order) = await ops.CreateLoadOrderAsync(van.Id, fg.Id, DateTime.Today, new[] { new RepLoadLineInput(water.Id, shrink.Id, 5) }, null, _f.AdminId);
+        Assert.True(created.Success, created.ErrorMessage);
+        Assert.True((await ops.PrepareLoadOrderAsync(order!.Id, null, _f.AdminId)).result.Success);
+        var app = new RepAppService(db);
+        var (_, key) = await app.RegisterDeviceAsync(rep.Id, "هاتف الشهر", _f.AdminId);
+        var sent = await app.ReceiveAsync(key!, Env(RepRequestKind.Expense, new ExpensePayload(3_000, "وقود"), photo: new byte[] { 1 }));
+        Assert.Equal(RepRequestStatus.Pending, sent.Status);
+        Assert.True((await app.RejectAsync(sent.RequestId!.Value, "يلزم صورة الوصل", _f.AdminId)).Success);
+
+        var snap = (await new CloudSyncService(db).BuildSnapshotAsync(rep.Id))!;
+        var customer = snap.Customers.Single(c => c.Id == shop.Id);
+        Assert.Equal(DateTime.Today.AddDays(-12), customer.OldestDebtAt!.Value.Date);
+        Assert.Equal(DateTime.Today.AddDays(-3), customer.LastPaymentAt!.Value.Date);
+        Assert.Contains(snap.Notices!, n => n.Kind == "load" && n.Title.Contains(order.OrderNumber));
+        Assert.Contains(snap.Notices!, n => n.Kind == "reject" && n.Body!.Contains("يلزم صورة الوصل"));
+        Assert.NotNull(snap.Month);
+
+        // يصل الهاتف كما هو عبر JSON، ولا يحمل أي راتب أو رصيد إجازات
+        var json = JsonSerializer.Serialize(snap, CloudSyncService.Json);
+        foreach (var forbidden in new[] { "salary", "BaseSalary", "allowance", "leaveBalance" })
+            Assert.DoesNotContain(forbidden, json, StringComparison.OrdinalIgnoreCase);
+        var wire = JsonSerializer.Deserialize<RepSnapshot>(json, CloudSyncService.Json)!;
+        Assert.Equal(snap.Notices!.Count, wire.Notices!.Count);
+        Assert.Equal(snap.Month!.Days.Count, wire.Month!.Days.Count);
+        RepSnapshotExtrasService.MonthCacheSeconds = 300;
+    }
 }

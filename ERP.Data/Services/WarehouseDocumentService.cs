@@ -297,6 +297,7 @@ public class WarehouseDocumentService
         {
             var pieces = l.QuantityInLevel * levels[l.PackagingLevelId].EquivalentBaseUnits;
             int? batchId = l.BatchId;
+            int? firstBatch = null;   // أول تشغيلة صُرف منها السطر تلقائيًا: منها يُعرف المتغير حين لا يُحدَّد صراحةً
 
             if (r.Type == StockDocumentType.Receipt)
             {
@@ -332,6 +333,7 @@ public class WarehouseDocumentService
                 if (error is not null) return (FinanceOperationResult.Fail(error), null);
                 foreach (var (b, qty) in allocation)
                 {
+                    firstBatch ??= b;
                     switch (r.Type)
                     {
                         case StockDocumentType.Transfer:
@@ -364,10 +366,13 @@ public class WarehouseDocumentService
                     }
                 }
             }
+            var recipeSource = batchId ?? firstBatch;
+            var lineRecipe = l.CustomRecipeId
+                ?? (recipeSource is int rb ? await _db.ItemBatches.Where(b => b.Id == rb).Select(b => b.CustomRecipeId).FirstOrDefaultAsync() : null);
             doc.Lines.Add(new StockDocumentLine
             {
                 ItemId = l.ItemId, PackagingLevelId = l.PackagingLevelId, QuantityInLevel = l.QuantityInLevel,
-                QuantityBaseUnits = pieces, BatchId = batchId, Notes = Clean(l.Notes), IsDamaged = l.IsDamaged
+                QuantityBaseUnits = pieces, BatchId = batchId, CustomRecipeId = lineRecipe, Notes = Clean(l.Notes), IsDamaged = l.IsDamaged
             });
             await _db.SaveChangesAsync();
         }
@@ -582,7 +587,7 @@ public class WarehouseDocumentService
         if (docs.Count == 0) return docs;
         var ids = docs.Select(d => d.Id).ToList();
         var lines = await _db.StockDocumentLines.AsNoTracking().Where(l => ids.Contains(l.StockDocumentId))
-            .GroupBy(l => new { l.StockDocumentId, l.ItemId, l.IsDamaged, RecipeId = l.Batch != null ? l.Batch.CustomRecipeId : null })
+            .GroupBy(l => new { l.StockDocumentId, l.ItemId, l.IsDamaged, RecipeId = l.CustomRecipeId ?? (l.Batch != null ? l.Batch.CustomRecipeId : null) })
             .Select(g => new { g.Key.StockDocumentId, g.Key.ItemId, g.Key.IsDamaged, g.Key.RecipeId, Qty = g.Sum(l => l.QuantityBaseUnits) }).ToListAsync();
         var itemIds = lines.Select(l => l.ItemId).Distinct().ToList();
         var packs = await PackFormatter.LoadAsync(_db, itemIds);

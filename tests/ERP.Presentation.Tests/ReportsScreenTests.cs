@@ -27,7 +27,7 @@ public class ReportsScreenTests
         sales.SelectedTab = page;
         await sales.IdleAsync();
         await page.IdleAsync();
-        Assert.Equal(new[] { "sales-by-product", "cost-profit" }, page.Reports.Select(r => r.Key));
+        Assert.Equal(new[] { "sales-by-product", "free-log", "cost-profit" }, page.Reports.Select(r => r.Key));
         Assert.True(page.UsesItem && page.UsesRep && !page.UsesPeriod);
         Assert.Equal("كل المنتجات", page.Product!.Label);
         Assert.Equal("كل المندوبين", page.Rep!.Label);
@@ -79,7 +79,7 @@ public class ReportsScreenTests
 
         // موظف المبيعات بلا صلاحية الكلفة: لا يرى تقرير الربح، والإنتاج بلا كلفة
         var (clerkShell, _) = await _f.LoginAsync(AppFixture.ClerkUser, AppFixture.ClerkPassword);
-        Assert.Equal(new[] { "sales-by-product" }, new SalesReportsSectionViewModel(clerkShell.Session, dialogs).Reports.Select(r => r.Key));
+        Assert.Equal(new[] { "sales-by-product", "free-log" }, new SalesReportsSectionViewModel(clerkShell.Session, dialogs).Reports.Select(r => r.Key));
         Assert.False(new ProductionReportsSectionViewModel(clerkShell.Session, dialogs).Filter.WithCost);
 
         page.From = DateTime.Today.AddDays(1);

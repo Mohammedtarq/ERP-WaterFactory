@@ -12,6 +12,9 @@ public record Receipt(
 {
     public const string DefaultThanks = "شكرا لتعاملكم معنا";
 
+    /// <summary>اسم السطر على الوصل: الاسم الموحد وحده («كارتون 40×330 الرحمة»)؛ والوصولات الأقدم «الصنف — العبوة».</summary>
+    public static string LineName(ReceiptLine l) => l.Item.StartsWith(l.Pack) ? l.Item : $"{l.Item} — {l.Pack}";
+
     /// <summary>النص بلا صور (للمعاينة والاختبار، ولطابعة نصية عند الحاجة).</summary>
     public IEnumerable<string> TextLines()
     {
@@ -22,7 +25,7 @@ public record Receipt(
         foreach (var l in Lines)
         {
             // الاسم الموحد يبدأ بالعبوة («كارتون 40×330 الرحمة»)؛ الوصولات الأقدم: «الصنف — العبوة»
-            yield return l.Item.StartsWith(l.Pack) ? l.Item : $"{l.Item} — {l.Pack}";
+            yield return LineName(l);
             yield return l.Total > 0 ? $"{Formats.Qty(l.Quantity)} × {Formats.Money(l.UnitPrice)} = {Formats.Money(l.Total)}" : $"{Formats.Qty(l.Quantity)} (مجاني)";
         }
         yield return $"الإجمالي: {Formats.Money(Total)}";

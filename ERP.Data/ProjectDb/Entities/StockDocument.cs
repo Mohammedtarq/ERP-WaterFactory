@@ -58,6 +58,8 @@ public class StockDocumentLine
     public decimal QuantityBaseUnits { get; set; }
     public int? BatchId { get; set; }
     public ItemBatch? Batch { get; set; }
+    /// <summary>المتغير (الاسم الخاص بمطعم أو مناسبة) كما صُرف أو أُدخل؛ NULL = الأساسي (70_stock_line_variant.sql).</summary>
+    public int? CustomRecipeId { get; set; }
     /// <summary>سطر إرجاع تالف ميدانيًا (لا يعود رصيدًا سليمًا).</summary>
     public bool IsDamaged { get; set; }
     public string? Notes { get; set; }

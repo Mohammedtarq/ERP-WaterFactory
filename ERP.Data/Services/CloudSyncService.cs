@@ -461,8 +461,13 @@ public partial class CloudSyncService
         var customers = await customersQuery.OrderBy(c => c.Name).ToListAsync();
         var balances = (await _db.Database.SqlQueryRaw<BalanceRow>("SELECT CustomerId, Balance FROM vw_CustomerBalances").ToListAsync())
                        .ToDictionary(b => b.CustomerId, b => b.Balance);
+        var extras = new RepSnapshotExtrasService(_db);
+        var debtors = customers.Where(c => balances.GetValueOrDefault(c.Id) > 0).Select(c => c.Id).ToList();
+        var dates = await extras.DebtDatesAsync(debtors);
         var snapCustomers = customers.Select(c => new SnapshotCustomer(c.Id, c.Name, c.Phone, c.Address, c.CustomerType.ToString(), null,
-                                                                       c.CreditLimit, balances.GetValueOrDefault(c.Id))).ToList();
+                                                                       c.CreditLimit, balances.GetValueOrDefault(c.Id),
+                                                                       dates.TryGetValue(c.Id, out var d) ? d.LastPayment : null,
+                                                                       dates.TryGetValue(c.Id, out var d2) ? d2.OldestDebt : null)).ToList();
         // زبائن النظام غير المربوطين به (الكل إن لم يُربط له أحد): يختار منها زبائنه ويرسل طلب ربط للإدارة
         var others = await _db.Customers.AsNoTracking()
             .Where(c => c.IsActive && c.CustomerType == CustomerType.Direct && !assigned.Contains(c.Id))
@@ -519,7 +524,7 @@ public partial class CloudSyncService
                                products, snapCustomers, agentPrices, stock, posted,
                                string.IsNullOrWhiteSpace(company?.NameAr) ? null : company.NameAr.Trim(), logo, servers,
                                rep.RepLoginName is { } ln && rep.RepLoginSalt is { } ls && rep.RepLoginHash is { } lh ? new SnapshotLogin(ln, ls, lh) : null,
-                               others);
+                               others, await extras.MonthAsync(rep.Id), await extras.NoticesAsync(rep.Id, wallet, settings.CashAlertDays));
     }
 
     // ============================ الاتصال ============================

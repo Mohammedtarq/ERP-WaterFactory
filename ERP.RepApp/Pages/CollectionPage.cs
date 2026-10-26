@@ -10,11 +10,13 @@ public class CollectionPage : ContentPage
     private readonly Entry _amount = new() { Placeholder = "المبلغ بالدينار", Keyboard = Keyboard.Numeric, FontSize = 22 };
     private readonly Label _note = Ui.Text("", 15, Ui.Amber);
 
-    public CollectionPage()
+    /// <param name="customerId">زبون محدَّد مسبقًا (من صفحة الديون).</param>
+    public CollectionPage(int? customerId = null)
     {
         _customer = new CustomerPicker(_work);
         _customer.SelectionChanged += Check;
         _amount.TextChanged += (_, _) => Check();
+        if (customerId is int id) _customer.Select(id);
         Ui.Setup(this, "تحصيل دين", new VerticalStackLayout
         {
             Spacing = 8,

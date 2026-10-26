@@ -23,7 +23,9 @@ public record RepSnapshot(
     byte[]? CompanyLogo = null,
     SnapshotServers? Servers = null,
     SnapshotLogin? Login = null,
-    List<SnapshotCustomerChoice>? OtherCustomers = null)
+    List<SnapshotCustomerChoice>? OtherCustomers = null,
+    SnapshotMonth? Month = null,
+    List<SnapshotNotice>? Notices = null)
 {
     /// <summary>الشعار ينتقل مع كل نسخة عمل، فيبقى صغيرًا.</summary>
     public const int MaxLogoBytes = 200 * 1024;
@@ -65,8 +67,10 @@ public record SnapshotPackPrice(int LevelId, decimal Price);
 
 /// <summary>
 /// زبون المندوب. PriceAgentId: لم يعد مستعملًا — السعر موحّد لكل الزبائن، والوكلاء وعملاؤهم الفرعيون لا يصلون للهاتف (المكتب يبيع لهم).
+/// LastPaymentAt: تاريخ آخر سند قبض، وOldestDebtAt: تاريخ أقدم فاتورة غير مسددة (لعمر الدين في تطبيق المندوب) — اختياريان لنسخ أقدم.
 /// </summary>
-public record SnapshotCustomer(int Id, string Name, string? Phone, string? Address, string Type, int? PriceAgentId, decimal? CreditLimit, decimal Balance);
+public record SnapshotCustomer(int Id, string Name, string? Phone, string? Address, string Type, int? PriceAgentId, decimal? CreditLimit, decimal Balance,
+                               DateTime? LastPaymentAt = null, DateTime? OldestDebtAt = null);
 
 /// <summary>سعر قطعة خاص بوكيل لصنف.</summary>
 public record SnapshotAgentPrice(int AgentCustomerId, int ItemId, decimal PiecePrice, int? RecipeId = null);
@@ -76,3 +80,18 @@ public record SnapshotStock(int ItemId, decimal Pieces, int? RecipeId = null);
 
 /// <summary>زبون في النظام غير مربوط بالمندوب: يختاره من الهاتف ويُرسل طلب ربط للإدارة (بلا رصيد ولا حد دين).</summary>
 public record SnapshotCustomerChoice(int Id, string Name, string? Phone);
+
+/// <summary>سطر حافز: المنتج بعبوته واسمه الموحد، والعدد الصافي، والمبلغ للوحدة، والمبلغ (بلا أي راتب).</summary>
+public record SnapshotIncentiveLine(string Label, decimal Quantity, decimal Rate, decimal Amount);
+
+/// <summary>أسبوع من الشهر (يبدأ السبت) ومبلغ حافزه.</summary>
+public record SnapshotWeek(DateTime From, DateTime To, decimal Amount);
+
+/// <summary>يوم من الشهر بحالته: P حضور، L تأخر، A غياب، V إجازة؛ وتأخره بالدقائق ووقت وصوله.</summary>
+public record SnapshotDay(DateTime Date, string Status, int LateMinutes = 0, string? CheckIn = null);
+
+/// <summary>صفحة «شهري»: حافز الشهر وحضوره. لا رصيد إجازات ولا راتب ولا خصم.</summary>
+public record SnapshotMonth(DateTime MonthStart, List<SnapshotIncentiveLine> Incentive, List<SnapshotWeek> Weeks, decimal IncentiveTotal, List<SnapshotDay> Days);
+
+/// <summary>تبليغ للمندوب: Id ثابت (يحفظ الهاتف المقروء منه)، ونوعه (load، reject، approve، settle، cash)، وعنوانه وتفصيله ووقته.</summary>
+public record SnapshotNotice(string Id, string Kind, string Title, string? Body, DateTime At);

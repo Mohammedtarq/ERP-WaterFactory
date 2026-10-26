@@ -405,4 +405,64 @@ public class RepWork
     }
 
     private static DraftCheck Fail(string message) => new(message, null, 0, new());
+
+    // ============================ الديون والشهري والتبليغات (الصفحات الجديدة) ============================
+
+    /// <summary>مدين: الزبون بدينه الحي (بعد حركات الهاتف التي لم تصل المعمل)، وعمر الدين بالأيام من أقدم فاتورة غير مسددة، وآخر دفعة.</summary>
+    public record Debtor(LiveCustomer Customer, int? AgeDays, DateTime? LastPaymentAt)
+    {
+        public decimal Balance => Customer.Balance;
+        public decimal? Limit => Customer.Customer.CreditLimit is > 0 ? Customer.Customer.CreditLimit : null;
+        /// <summary>نسبة الدين من الحد (0..1+)، وnull إن لم يُحدَّد حد.</summary>
+        public double? UsedFraction => Limit is decimal cap ? (double)(Balance / cap) : null;
+        /// <summary>0 عادي (حتى 7 أيام)، 1 متأخر (8–30)، 2 متأخر جدًا (أكثر من 30).</summary>
+        public int Severity => AgeDays is int d ? (d > 30 ? 2 : d > 7 ? 1 : 0) : 0;
+    }
+
+    /// <summary>زبائن المندوب المدينون: الأكبر دينًا أولًا. العمر من تاريخ أقدم فاتورة غير مسددة في نسخة العمل (قد يكون مجهولًا في نسخة أقدم).</summary>
+    public List<Debtor> Debtors(DateTime? today = null)
+    {
+        var day = (today ?? DateTime.Today).Date;
+        return Customers().Where(c => c.Balance > 0 && !c.IsNew)
+            .Select(c => new Debtor(c, c.Customer.OldestDebtAt is DateTime d ? Math.Max(0, (int)(day - d.Date).TotalDays) : null, c.Customer.LastPaymentAt))
+            .OrderByDescending(d => d.Balance).ToList();
+    }
+
+    public decimal TotalDebt() => Debtors().Sum(d => d.Balance);
+
+    /// <summary>صفحة «شهري» من نسخة العمل (null قبل أول نسخة جديدة من المعمل).</summary>
+    public SnapshotMonth? Month() => Snapshot?.Month;
+
+    /// <summary>حضور وغياب وتأخر وإجازة الشهر: الأيام لكل حالة ودقائق التأخر.</summary>
+    public (int Present, int Absent, int Late, int Leave, int LateMinutes) AttendanceCounts()
+    {
+        var days = Month()?.Days ?? new();
+        return (days.Count(d => d.Status is "P" or "L"), days.Count(d => d.Status == "A"), days.Count(d => d.Status == "L"),
+                days.Count(d => d.Status == "V"), days.Sum(d => d.LateMinutes));
+    }
+
+    private const string ReadKey = "ReadNotices";
+
+    private HashSet<string> ReadIds()
+    {
+        try { return (_store.Get(ReadKey) is string s ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(s) : null)?.ToHashSet() ?? new(); }
+        catch (System.Text.Json.JsonException) { return new(); }
+    }
+
+    /// <summary>التبليغات الأحدث أولًا، وغير المقروء منها معلَّم.</summary>
+    public List<(SnapshotNotice Notice, bool Unread)> Notices()
+    {
+        var read = ReadIds();
+        return (Snapshot?.Notices ?? new()).OrderByDescending(n => n.At).Select(n => (n, !read.Contains(n.Id))).ToList();
+    }
+
+    public int UnreadCount() => Notices().Count(n => n.Unread);
+
+    /// <summary>تعليم كل التبليغات الحالية مقروءة (يحتفظ بآخر 300 معرّف).</summary>
+    public void MarkNoticesRead()
+    {
+        var ids = ReadIds();
+        foreach (var n in Snapshot?.Notices ?? new()) ids.Add(n.Id);
+        _store.Set(ReadKey, System.Text.Json.JsonSerializer.Serialize(ids.TakeLast(300).ToList()));
+    }
 }

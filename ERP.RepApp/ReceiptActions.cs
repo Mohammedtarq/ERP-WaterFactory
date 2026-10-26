@@ -44,6 +44,25 @@ public static class ReceiptActions
         }
     }
 
+    /// <summary>وصل تجريبي صغير للتأكد من الطابعة وعرض الورق قبل أول بيع.</summary>
+    public static async Task PrintSampleAsync(Page page)
+    {
+        if (Store.Get(PrinterKey) is null && !await ChoosePrinterAsync(page)) return;
+        if (Store.Get(PrinterKey) is not string address) return;
+        var snap = AppServices.Instance.Work.Snapshot;
+        var receipt = new Receipt(AppServices.Instance.Work.CompanyName, snap?.CompanyLogo, "تجريبي", DateTime.Now, "تجريبي", "زبون تجريبي", snap?.RepName ?? "",
+                                  new() { new ReceiptLine("كارتون 40×330 الرحمة", "كارتون", 2, 4_250, 8_500), new ReceiptLine("شرنك 20×330 الرحمة", "شرنك", 3, 2_250, 6_750) }, 15_250);
+        try
+        {
+            using var bmp = ReceiptPrinter.Render(receipt, EscPos.DotsFor(Paper));
+            await ReceiptPrinter.SendAsync(address, ReceiptPrinter.ToEscPos(bmp));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Java.Lang.SecurityException)
+        {
+            await page.DisplayAlert("لم يُطبع الوصل التجريبي", ex.Message, "حسنًا");
+        }
+    }
+
     public static async Task ShareAsync(Page page, OutboxItem item)
     {
         if (AppServices.Instance.Work.ReceiptFor(item) is not { } receipt) return;

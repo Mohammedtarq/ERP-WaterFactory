@@ -325,6 +325,7 @@
     <!-- صفحة التقارير الموحدة في كل قسم -->
     <DataTemplate DataType="{x:Type vmShell:SalesReportsSectionViewModel}"><vShell:ReportsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmShell:ProductionReportsSectionViewModel}"><vShell:ReportsSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmShell:WarehouseReportsSectionViewModel}"><vShell:ReportsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmShell:HrReportsSectionViewModel}"><vShell:ReportsSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmProduction:PendingProductionSectionViewModel}"><vProduction:PendingProductionSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmWarehouse:StocktakeSectionViewModel}"><vWarehouse:StocktakeSectionView/></DataTemplate>

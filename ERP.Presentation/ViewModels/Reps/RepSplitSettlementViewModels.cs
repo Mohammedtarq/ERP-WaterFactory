@@ -56,7 +56,7 @@ public static class RepSettlementPrint
         r.Columns.AddRange(new[] { "البند", "الصنف (الاسم الموحد)", "الكمية", "التفاصيل" });
         if (s.ReturnDocument is not null)
             foreach (var l in s.ReturnDocument.Lines)
-                r.Rows.Add(new[] { l.IsDamaged ? "مرتجع تالف" : "مرتجع سليم", names.Name(l.ItemId, l.Batch?.CustomRecipeId), packs.Count(l.ItemId, l.QuantityBaseUnits), "" });
+                r.Rows.Add(new[] { l.IsDamaged ? "مرتجع تالف" : "مرتجع سليم", names.Name(l.ItemId, l.CustomRecipeId ?? l.Batch?.CustomRecipeId), packs.Count(l.ItemId, l.QuantityBaseUnits), "" });
         foreach (var f in s.FreeGoods)
             r.Rows.Add(new[] { "مجاني المندوب", names.Name(f.ItemId), packs.Count(f.ItemId, f.QuantityBaseUnits), f.Customer is null ? f.Reason : $"{f.Customer.Name} — {f.Reason}" });
         if (s.Status == RepSettlementStatus.Confirmed)

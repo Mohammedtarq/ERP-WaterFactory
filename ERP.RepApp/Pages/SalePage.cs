@@ -1,134 +1,97 @@
-using ERP.Cloud.Contracts;
 using ERP.RepApp.Core;
 
 namespace ERP.RepApp.Pages;
 
 /// <summary>
-/// البيع: نقدي أو آجل أو مجاني ← الزبون ← اختيار صنف من المحمّل في السيارة (بعبوته، مثل «330 مل — كارتون 40») ← العدد ← إضافة
-/// ← الإجمالي والتنبيهات ← حفظ. السعر من نسخة العمل (للعرض)، والمعمل يسعّر بنفسه عند الترحيل — لا خصم من الهاتف.
+/// بيع في شاشة واحدة: النوع (نقدي/آجل/مجاني)، الزبون ودينه وحده، ثم منتجات السيارة بطاقات بأزرار + و−، وشريط سفلي ثابت بالإجمالي وحفظ الوصل.
+/// ما نفد من السيارة لا يظهر. الدين يظهر فور اختيار الزبون. تأكيد أخير قبل الحفظ.
 /// </summary>
 public class SalePage : ContentPage
 {
     private readonly RepWork _work = AppServices.Instance.Work;
     private readonly CustomerPicker _customer;
-    private readonly Picker _item = new() { Title = "اختر المادة من السيارة", FontSize = 17 };
-    private readonly Entry _qty = new() { Text = "1", Keyboard = Keyboard.Numeric, FontSize = 22, WidthRequest = 80, HorizontalTextAlignment = TextAlignment.Center };
-    private readonly Label _itemPrice = Ui.Text("", 14, Ui.Muted);
-    private readonly VerticalStackLayout _cart = new() { Spacing = 4 };
+    private readonly Button[] _kinds;
+    private readonly SearchBar _search = new() { Placeholder = "ابحث عن منتج", FontSize = 16 };
+    private readonly VerticalStackLayout _products = new() { Spacing = 8 };
+    private readonly Entry _freeReason = new() { Placeholder = "سبب المجاني (مثل: عينة، هدية للمحل)", FontSize = 16, IsVisible = false };
+    private readonly Label _summary = Ui.Text("", 13, Ui.Muted);
+    private readonly Label _total = new() { FontSize = 26, FontAttributes = FontAttributes.Bold, TextColor = Ui.Navy };
+    private readonly Label _warning = Ui.Text("", 13, Ui.Amber);
+    private readonly Border _debtBox = new() { IsVisible = false, Padding = new Thickness(12, 10), StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 14 }, StrokeThickness = 1.5 };
+    private readonly Label _debtTitle = new() { FontSize = 15, FontAttributes = FontAttributes.Bold };
+    private readonly Label _debtSub = new() { FontSize = 12.5, TextColor = Ui.Muted };
+    private readonly VerticalStackLayout _debtBar = new();
+    private readonly Button _save;
     private readonly List<SaleLine> _lines = new();
     private List<LoadedOption> _options = new();
-    private readonly Entry _freeReason = new() { Placeholder = "سبب المجاني (مثل: عينة، هدية للمحل)", FontSize = 16, IsVisible = false };
-    private readonly Label _total = Ui.Text("", 22);
-    private readonly Label _warning = Ui.Text("", 15, Ui.Amber);
-    private readonly Button[] _kinds;
     private string _kind = "CashSale";
 
-    public SalePage()
+    /// <param name="customerId">زبون محدَّد مسبقًا.</param>
+    public SalePage(int? customerId = null)
     {
         _customer = new CustomerPicker(_work);
-        _customer.SelectionChanged += Recalc;
-        _total.FontAttributes = FontAttributes.Bold;
+        _customer.SelectionChanged += () => { ShowDebt(); Recalc(); };
         _kinds = new[] { KindButton("نقدي", "CashSale"), KindButton("آجل", "CreditSale"), KindButton("مجاني", "Free") };
-        _item.SelectedIndexChanged += (_, _) => ShowItemPrice();
-        _qty.TextChanged += (_, _) => ShowItemPrice();           // الباقي في السيارة وسعر السطر يتحدّثان مع كل + و−
-        var snap = _work.Snapshot;
-        var minus = Ui.Small("−", Ui.Muted, () => _qty.Text = Math.Max(1, (Ui.Number(_qty.Text) ?? 1) - 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
-        var plus = Ui.Small("+", Ui.Primary, () => _qty.Text = ((Ui.Number(_qty.Text) ?? 0) + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
-        var picking = Ui.Card(new VerticalStackLayout
+        _search.TextChanged += (_, _) => Fill();
+        _freeReason.TextChanged += (_, _) => Recalc();
+        _debtBox.Content = new VerticalStackLayout { Spacing = 3, Children = { _debtTitle, _debtSub, _debtBar } };
+        _save = new Button
         {
-            Spacing = 6,
-            Children =
-            {
-                _item, _itemPrice,
-                new HorizontalStackLayout { Spacing = 6, Children = { Ui.Text("العدد", 17), minus, _qty, plus } },
-                Ui.Small("إضافة للفاتورة", Ui.Primary, Add)
-            }
-        });
-        FillOptions();
+            Text = "حفظ وطباعة الوصل", FontSize = 18, FontAttributes = FontAttributes.Bold, HeightRequest = 56, CornerRadius = 16,
+            BackgroundColor = Ui.Green, TextColor = Colors.White
+        };
+        _save.Clicked += async (_, _) => { _save.IsEnabled = false; try { await SaveAsync(); } finally { _save.IsEnabled = true; } };
 
-        Ui.Setup(this, "بيع", new VerticalStackLayout
+        var snap = _work.Snapshot;
+        var kinds = new Grid { ColumnSpacing = 8, ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Star) } };
+        for (var i = 0; i < 3; i++) { Grid.SetColumn(_kinds[i], i); kinds.Children.Add(_kinds[i]); }
+
+        var content = new VerticalStackLayout
         {
-            Spacing = 8,
+            Spacing = 8, Padding = new Thickness(14, 12),
             Children =
             {
-                new HorizontalStackLayout { Spacing = 8, Children = { _kinds[0], _kinds[1], _kinds[2] } },
+                kinds,
                 Ui.Card(_customer),
+                _debtBox,
                 _freeReason,
-                Ui.Text("المواد", 18),
-                snap is null ? Ui.Text("لم تصل نسخة العمل بعد — زامن أولًا", 16, Ui.Red)
-                    : _options.Count == 0 ? Ui.Text("لا توجد مواد محمّلة في السيارة", 16, Ui.Red) : picking,
-                _cart,
-                Ui.Card(new VerticalStackLayout { Children = { _total, _warning } }, Ui.Primary),
-                Ui.Big("حفظ البيع", Ui.Primary, SaveAsync)
+                snap is null ? Ui.Text("لم تصل نسخة العمل بعد — زامن أولًا", 16, Ui.Red) : _search,
+                _products
             }
-        });
+        };
+        var dock = new VerticalStackLayout
+        {
+            Spacing = 4, Padding = new Thickness(14, 10, 14, 14), BackgroundColor = Colors.White,
+            Children =
+            {
+                new BoxView { HeightRequest = Ui.BorderW, Color = Ui.Line, Margin = new Thickness(-14, -10, -14, 4) },
+                new Grid
+                {
+                    ColumnSpacing = 8,
+                    ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto) },
+                    Children = { _summary, Put(_total, 1) }
+                },
+                _warning,
+                _save
+            }
+        };
+        var scroll = new ScrollView { Content = content };
+        var root = new Grid { RowDefinitions = { new RowDefinition(GridLength.Star), new RowDefinition(GridLength.Auto) } };
+        Grid.SetRow(scroll, 0); Grid.SetRow(dock, 1);
+        root.Children.Add(scroll); root.Children.Add(dock);
+        Title = "بيع";
+        FlowDirection = FlowDirection.RightToLeft;
+        BackgroundColor = Ui.PageBg;
+        Content = root;
+        if (customerId is int id) _customer.Select(id);
         SetKind("CashSale");
     }
 
-    /// <summary>المحمّل في السيارة الآن بعد ما أُضيف للفاتورة.</summary>
-    private void FillOptions()
-    {
-        var keep = _item.SelectedItem as LoadedOption;
-        _options = _work.LoadedOptions();
-        _item.ItemsSource = _options;
-        _item.SelectedIndex = keep is null ? (_options.Count > 0 ? 0 : -1)
-            : _options.FindIndex(o => o.Product.ItemId == keep.Product.ItemId && o.Level.LevelId == keep.Level.LevelId && o.RecipeId == keep.RecipeId);
-        ShowItemPrice();
-    }
-
-    private void ShowItemPrice()
-    {
-        var snap = _work.Snapshot;
-        if (snap is null || _item.SelectedItem is not LoadedOption o) { _itemPrice.Text = ""; return; }
-        var inCart = _lines.Where(l => l.ItemId == o.Product.ItemId && l.RecipeId == o.RecipeId).Sum(l => l.Quantity * (o.Product.Levels.FirstOrDefault(x => x.LevelId == l.LevelId)?.Units ?? 0));
-        // العدد المكتوب الآن يُطرح فورًا من الباقي (قبل «إضافة للفاتورة») حتى يرى المندوب ما سيبقى
-        var typing = Math.Max(0, Ui.Number(_qty.Text) ?? 0);
-        var leftPieces = o.VanPieces - inCart - typing * o.Level.Units;
-        var left = Formats.Packs(Math.Max(0, leftPieces), o.Product.Levels);
-        var price = RepWork.PackPrice(o.Product, o.Level, o.RecipeId);
-        _itemPrice.Text = (_kind == "Free" ? "مجاني"
-            : $"سعر ال{o.Level.Name}: {Formats.Money(price)}" + (typing > 0 ? $" × {Formats.Qty(typing)} = {Formats.Money(price * typing)}" : ""))
-            + $"\nالباقي في السيارة بعد هذا: {left}" + (leftPieces < 0 ? " — العدد أكبر من الموجود" : "");
-        _itemPrice.TextColor = leftPieces < 0 ? Ui.Red : Ui.Muted;
-    }
-
-    private void Add()
-    {
-        if (_item.SelectedItem is not LoadedOption o) return;
-        var q = Ui.Number(_qty.Text) ?? 0;
-        if (q <= 0) { _warning.Text = "اكتب العدد"; _warning.TextColor = Ui.Red; return; }
-        var i = _lines.FindIndex(l => l.ItemId == o.Product.ItemId && l.LevelId == o.Level.LevelId && l.RecipeId == o.RecipeId);
-        if (i >= 0) _lines[i] = _lines[i] with { Quantity = _lines[i].Quantity + q };
-        else _lines.Add(new SaleLine(o.Product.ItemId, o.Level.LevelId, q, o.RecipeId));
-        _qty.Text = "1";
-        Recalc();
-    }
-
-    private void FillCart(DraftCheck? check)
-    {
-        _cart.Children.Clear();
-        var snap = _work.Snapshot;
-        if (snap is null) return;
-        foreach (var line in _lines.ToList())
-        {
-            var p = snap.Products.First(x => x.ItemId == line.ItemId);
-            var lvl = p.Levels.First(x => x.LevelId == line.LevelId);
-            var priced = check?.Lines.FirstOrDefault(x => x.Product.ItemId == line.ItemId && x.Level.LevelId == line.LevelId && x.RecipeId == line.RecipeId);
-            var text = $"{Formats.Qty(line.Quantity)} × {p.Label(lvl, line.RecipeId)}" + (priced is null ? "" : $" = {Formats.Money(priced.Total)}");
-            var remove = Ui.Small("حذف", Ui.Red, () => { _lines.Remove(line); Recalc(); });
-            _cart.Children.Add(Ui.Card(new Grid
-            {
-                ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto) },
-                Children = { Ui.Text(text, 17), WithColumn(remove, 1) }
-            }));
-        }
-    }
-
-    private static View WithColumn(View v, int column) { Grid.SetColumn(v, column); return v; }
+    private static View Put(View v, int col) { Grid.SetColumn(v, col); return v; }
 
     private Button KindButton(string text, string kind)
     {
-        var b = new Button { Text = text, FontSize = 17, HeightRequest = 50, WidthRequest = 100, CornerRadius = 10 };
+        var b = new Button { Text = text, FontSize = 16, FontAttributes = FontAttributes.Bold, HeightRequest = 48, CornerRadius = 14 };
         b.Clicked += (_, _) => SetKind(kind);
         return b;
     }
@@ -140,27 +103,138 @@ public class SalePage : ContentPage
         for (var i = 0; i < 3; i++)
         {
             var on = keys[i] == kind;
-            _kinds[i].BackgroundColor = on ? Ui.Primary : Colors.White;
+            _kinds[i].BackgroundColor = on ? Ui.Brand : Colors.White;
             _kinds[i].TextColor = on ? Colors.White : Ui.Ink;
+            _kinds[i].BorderColor = Ui.Line;
+            _kinds[i].BorderWidth = on ? 0 : Ui.BorderW;
         }
         _freeReason.IsVisible = kind == "Free";
+        Fill();
+        Recalc();
+    }
+
+    /// <summary>دين الزبون وحدّه فور اختياره: الأحمر عند التجاوز، والأصفر عند القرب من الحد.</summary>
+    private void ShowDebt()
+    {
+        var c = _customer.Selected;
+        if (c is null || c.Balance <= 0) { _debtBox.IsVisible = false; return; }
+        var limit = c.Customer.CreditLimit is > 0 ? c.Customer.CreditLimit : null;
+        var used = limit is decimal cap ? (double)(c.Balance / cap) : (double?)null;
+        var color = c.OverLimit ? Ui.Red : used is >= 0.8 ? Ui.Amber : Ui.Brand;
+        _debtBox.IsVisible = true;
+        _debtBox.Stroke = color;
+        _debtBox.BackgroundColor = color.WithAlpha(0.1f);
+        _debtTitle.Text = $"عليه دين {Formats.Money(c.Balance)}";
+        _debtTitle.TextColor = color;
+        _debtSub.Text = limit is decimal l ? $"الحد {Formats.Money(l)} — المتبقي للآجل {Formats.Money(Math.Max(0, l - c.Balance))}" : "بلا حد دين مُحدَّد";
+        _debtBar.Children.Clear();
+        if (used is double u) _debtBar.Children.Add(Ui.Bar(u, color, 7));
+    }
+
+    private decimal RemainingPieces(LoadedOption o)
+    {
+        var inCart = _lines.Where(l => l.ItemId == o.Product.ItemId && l.RecipeId == o.RecipeId)
+                           .Sum(l => l.Quantity * (o.Product.Levels.FirstOrDefault(x => x.LevelId == l.LevelId)?.Units ?? 0));
+        return o.VanPieces - inCart;
+    }
+
+    private SaleLine? LineOf(LoadedOption o) =>
+        _lines.FirstOrDefault(l => l.ItemId == o.Product.ItemId && l.LevelId == o.Level.LevelId && l.RecipeId == o.RecipeId);
+
+    /// <summary>بطاقة لكل منتج في السيارة (الأساسي ثم المتغيرات): الاسم الموحد وسعره وما تبقى، وزر + أو − 3 +. ما نفد يختفي.</summary>
+    private void Fill()
+    {
+        _products.Children.Clear();
+        if (_work.Snapshot is null) return;
+        _options = _work.LoadedOptions();
+        var q = (_search.Text ?? "").Trim();
+        var shown = 0;
+        foreach (var o in _options)
+        {
+            var line = LineOf(o);
+            var left = RemainingPieces(o);
+            if (line is null && left < o.Level.Units) continue;                      // نفد: لا يظهر
+            if (q.Length > 0 && !o.Text.Contains(q, StringComparison.OrdinalIgnoreCase)) continue;
+            _products.Children.Add(Card(o, line, left));
+            shown++;
+        }
+        if (shown == 0)
+            _products.Children.Add(Ui.Text(_options.Count == 0 ? "لا توجد مواد محمّلة في السيارة" : "لا نتائج", 16, _options.Count == 0 ? Ui.Red : Ui.Muted));
+    }
+
+    private View Card(LoadedOption o, SaleLine? line, decimal leftPieces)
+    {
+        var price = RepWork.PackPrice(o.Product, o.Level, o.RecipeId);
+        var left = Formats.Packs(Math.Max(0, leftPieces), o.Product.Levels);
+        var info = new VerticalStackLayout
+        {
+            Spacing = 2, VerticalOptions = LayoutOptions.Center,
+            Children =
+            {
+                new Label { Text = o.Text, FontSize = 15, FontAttributes = FontAttributes.Bold, TextColor = Ui.Ink, LineBreakMode = LineBreakMode.WordWrap },
+                Ui.Text((_kind == "Free" ? "مجاني" : Formats.Money(price)) + $" · متبقي {left}", 12.5, Ui.Muted)
+            }
+        };
+        View control;
+        if (line is null)
+        {
+            var add = new Button { Text = "+", FontSize = 22, FontAttributes = FontAttributes.Bold, WidthRequest = 48, HeightRequest = 48, CornerRadius = 14, BackgroundColor = Ui.Brand, TextColor = Colors.White, Padding = 0 };
+            add.Clicked += (_, _) => Change(o, +1);
+            control = add;
+        }
+        else
+        {
+            var minus = new Button { Text = "−", FontSize = 22, WidthRequest = 42, HeightRequest = 42, CornerRadius = 12, BackgroundColor = Ui.Chip, TextColor = Ui.Ink, Padding = 0 };
+            var plus = new Button { Text = "+", FontSize = 22, WidthRequest = 42, HeightRequest = 42, CornerRadius = 12, BackgroundColor = Ui.Brand, TextColor = Colors.White, Padding = 0, IsEnabled = leftPieces >= o.Level.Units };
+            minus.Clicked += (_, _) => Change(o, -1);
+            plus.Clicked += (_, _) => Change(o, +1);
+            control = new HorizontalStackLayout
+            {
+                Spacing = 6, VerticalOptions = LayoutOptions.Center,
+                Children = { minus, new Label { Text = Formats.Qty(line.Quantity), FontSize = 19, FontAttributes = FontAttributes.Bold, TextColor = Ui.Ink, WidthRequest = 34, HorizontalTextAlignment = TextAlignment.Center, VerticalOptions = LayoutOptions.Center }, plus }
+            };
+        }
+        var grid = new Grid
+        {
+            ColumnSpacing = 10,
+            ColumnDefinitions = { new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto) },
+            Children = { info, Put(control, 1) }
+        };
+        return Ui.Card(grid, line is null ? null : Ui.Brand);
+    }
+
+    private void Change(LoadedOption o, int delta)
+    {
+        var i = _lines.FindIndex(l => l.ItemId == o.Product.ItemId && l.LevelId == o.Level.LevelId && l.RecipeId == o.RecipeId);
+        if (delta > 0)
+        {
+            if (RemainingPieces(o) < o.Level.Units) return;
+            if (i >= 0) _lines[i] = _lines[i] with { Quantity = _lines[i].Quantity + 1 };
+            else _lines.Add(new SaleLine(o.Product.ItemId, o.Level.LevelId, 1, o.RecipeId));
+        }
+        else if (i >= 0)
+        {
+            if (_lines[i].Quantity <= 1) _lines.RemoveAt(i);
+            else _lines[i] = _lines[i] with { Quantity = _lines[i].Quantity - 1 };
+        }
+        Fill();
         Recalc();
     }
 
     private void Recalc()
     {
-        ShowItemPrice();
+        var count = _lines.Sum(l => l.Quantity);
         if (_work.Snapshot is null) return;
         if (_customer.Selected is null)
         {
-            FillCart(null);
-            _total.Text = "الإجمالي: —";
+            _total.Text = Formats.Money(0);
+            _summary.Text = count == 0 ? "لم تُضف منتجات" : $"{Formats.Qty(count)} عبوة";
             (_warning.Text, _warning.TextColor) = (_lines.Count > 0 ? "اختر الزبون" : "", Ui.Amber);
             return;
         }
         var check = _work.CheckSale(_kind, _customer.Selected.Id, _lines, _freeReason.Text);
-        FillCart(check);
-        _total.Text = $"الإجمالي: {Formats.Money(check.Total)}";
+        _total.Text = Formats.Money(check.Total);
+        _summary.Text = _lines.Count == 0 ? "لم تُضف منتجات" : string.Join(" + ", check.Lines.Select(l => $"{Formats.Qty(l.Quantity)} {l.Level.Name}"));
         _warning.Text = _lines.Count == 0 ? "" : check.Error ?? check.Warning ?? "";
         _warning.TextColor = check.Error is null ? Ui.Amber : Ui.Red;
     }
@@ -173,7 +247,8 @@ public class SalePage : ContentPage
         if (!check.Ok) { await DisplayAlert("لا يمكن الحفظ", check.Error, "حسنًا"); return; }
         var label = _kind switch { "CashSale" => "بيع نقدي", "CreditSale" => "بيع آجل", _ => "مجاني" };
         var details = string.Join("\n", check.Lines.Select(l => l.Text));
-        var message = $"{label} — {customer.Name}\n{details}\nالإجمالي: {Formats.Money(check.Total)}" + (check.Warning is null ? "" : $"\n\n⚠ {check.Warning}");
+        var debt = _kind == "CreditSale" ? $"\nالدين بعد الحفظ: {Formats.Money(customer.Balance + check.Total)}" : "";
+        var message = $"{label} — {customer.Name}\n{details}\nالإجمالي: {Formats.Money(check.Total)}{debt}" + (check.Warning is null ? "" : $"\n\n⚠ {check.Warning}");
         if (!await DisplayAlert("تأكيد البيع", message, "حفظ", "رجوع")) return;
         var saved = _work.SaveSale(_kind, customer.Id, lines, _freeReason.Text);
         AppServices.Instance.SyncSoon();

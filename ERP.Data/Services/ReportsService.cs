@@ -178,6 +178,85 @@ public class ReportsService
     }
 
     /// <summary>
+    /// سجل المجاني: كل ما خرج مجانًا في الفترة (مسحوب مجاني من المخزن، وبيع مجاني من المندوب أو الكاشير، وتسوية المندوب)،
+    /// بالاسم الموحد للمنتج والعدد والجهة والسبب والمندوب، مع إجمالي لكل جهة ولكل شهر. المستندات الملغاة لا تدخل.
+    /// </summary>
+    public async Task<ReportTable> FreeIssueLogAsync(ReportRequest r)
+    {
+        var fromUtc = r.From.Date.ToUniversalTime();
+        var toUtc = r.To.Date.AddDays(1).ToUniversalTime();
+        var q = _db.StockTransactions.AsNoTracking()
+            .Where(t => (t.TransactionType == StockTransactionType.FreeIssue || t.TransactionType == StockTransactionType.RepFreeSale)
+                        && t.TransactionDate >= fromUtc && t.TransactionDate < toUtc);
+        if (r.ItemId is int item) q = q.Where(t => t.ItemId == item);
+        if (r.RepEmployeeId is int rep) q = q.Where(t => t.Warehouse.OwnerEmployeeId == rep);
+        var raw = await q.Select(t => new
+        {
+            t.ItemId, Recipe = t.Batch != null ? t.Batch.CustomRecipeId : null, t.TransactionDate, t.QuantityBaseUnits, t.FreeIssueRecipient,
+            t.ReferenceTable, t.ReferenceId, Rep = t.Warehouse.OwnerEmployee != null ? t.Warehouse.OwnerEmployee.FullName : null
+        }).ToListAsync();
+
+        var invoiceIds = raw.Where(x => x.ReferenceTable == "SalesInvoices").Select(x => x.ReferenceId).Distinct().ToList();
+        var okInvoices = (await _db.SalesInvoices.AsNoTracking().Where(i => invoiceIds.Contains(i.Id) && i.Status == DocumentStatus.Posted && i.VoidedAt == null)
+            .Select(i => new { i.Id, i.InvoiceNumber }).ToListAsync()).ToDictionary(i => i.Id, i => i.InvoiceNumber);
+        var docIds = raw.Where(x => x.ReferenceTable == "StockDocuments").Select(x => x.ReferenceId).Distinct().ToList();
+        var okDocs = (await _db.StockDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id) && !d.IsVoided)
+            .Select(d => new { d.Id, d.DocumentNumber }).ToListAsync()).ToDictionary(d => d.Id, d => d.DocumentNumber);
+        var settleIds = raw.Where(x => x.ReferenceTable == "RepSettlements").Select(x => x.ReferenceId).Distinct().ToList();
+        var settlements = (await _db.RepSettlements.AsNoTracking().Where(x => settleIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.SettlementNumber }).ToListAsync()).ToDictionary(x => x.Id, x => x.SettlementNumber);
+
+        string? Number(string? table, int? id) => table switch
+        {
+            "SalesInvoices" => id is int a && okInvoices.TryGetValue(a, out var n1) ? n1 : null,
+            "StockDocuments" => id is int b && okDocs.TryGetValue(b, out var n2) ? n2 : null,
+            "RepSettlements" => id is int c && settlements.TryGetValue(c, out var n3) ? n3 : null,
+            _ => "—"
+        };
+        static (string Party, string Reason) Split(string? recipient)
+        {
+            var text = (recipient ?? "").Trim();
+            var i = text.IndexOf(" — ", StringComparison.Ordinal);
+            return i < 0 ? (text.Length == 0 ? "غير محدد" : text, "") : (text[..i].Trim(), text[(i + 3)..].Trim());
+        }
+
+        var rows = raw.Select(x => new { x, No = Number(x.ReferenceTable, x.ReferenceId) }).Where(x => x.No is not null)
+            .GroupBy(x => (Date: x.x.TransactionDate.ToLocalTime().Date, x.x.ReferenceTable, x.x.ReferenceId, x.x.ItemId, x.x.Recipe, x.x.FreeIssueRecipient, x.No, x.x.Rep))
+            .Select(g => (g.Key, Pieces: -g.Sum(x => x.x.QuantityBaseUnits)))
+            .Where(g => g.Pieces > 0)
+            .OrderBy(g => g.Key.Date).ThenBy(g => g.Key.No).ToList();
+
+        var names = await ProductNames.LoadAsync(_db, rows.Select(x => x.Key.ItemId));
+        var packs = await PackFormatter.LoadAsync(_db, rows.Select(x => x.Key.ItemId).Distinct().ToList());
+        var t = new ReportTable
+        {
+            Title = "سجل المجاني",
+            Subtitle = RangeText(r) + (r.ItemId is null ? " — كل المنتجات" : ""),
+            Notes = "مسحوب مجاني من المخزن، وبيع مجاني من المندوب أو الكاشير، ومجاني تسوية المندوب. الكمية بعبوة المنتج كما في اسمه، والمستندات الملغاة لا تدخل."
+        };
+        t.Columns.AddRange(new[] { "التاريخ", "المستند", "الجهة", "السبب", "المنتج", "العدد", "المصدر", "المندوب" });
+        t.NumericColumns.Add(5);
+        foreach (var x in rows)
+        {
+            var (party, reason) = Split(x.Key.FreeIssueRecipient);
+            t.Rows.Add(new[]
+            {
+                x.Key.Date.ToString("yyyy/MM/dd", En), x.Key.No!, party, reason, names.Name(x.Key.ItemId, x.Key.Recipe),
+                packs.Count(x.Key.ItemId, x.Pieces), x.Key.Rep is null ? "مخزن" : "مندوب", x.Key.Rep ?? ""
+            });
+        }
+        string Named(IEnumerable<(int ItemId, int? Recipe, decimal Pieces)> q2) => packs.TotalNamed(q2, names);
+        var all = rows.Select(x => (x.Key.ItemId, x.Key.Recipe, x.Pieces)).ToList();
+        t.Totals.Add(("عدد السطور", t.Rows.Count.ToString()));
+        if (all.Count > 0) t.Totals.Add(("إجمالي المجاني", Named(all)));
+        foreach (var g in rows.GroupBy(x => Split(x.Key.FreeIssueRecipient).Party).OrderBy(g => g.Key))
+            t.Totals.Add(($"جهة: {g.Key}", Named(g.Select(x => (x.Key.ItemId, x.Key.Recipe, x.Pieces)))));
+        foreach (var g in rows.GroupBy(x => new DateTime(x.Key.Date.Year, x.Key.Date.Month, 1)).OrderBy(g => g.Key))
+            t.Totals.Add(($"شهر {g.Key:yyyy/MM}", Named(g.Select(x => (x.Key.ItemId, x.Key.Recipe, x.Pieces)))));
+        return t;
+    }
+
+    /// <summary>
     /// الإنتاج اليومي/الأسبوعي/الشهري لمنتج أو للكل: الكمية المنتجة لكل منتج ومتغير، وبالكلفة (الإجمالية وكلفة العبوة) لمن يحق له.
     /// </summary>
     public async Task<ReportTable> ProductionAsync(ReportRequest r)

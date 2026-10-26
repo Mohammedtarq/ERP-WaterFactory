@@ -42,6 +42,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
         Stocktake = Add(new StocktakeSectionViewModel(s, d));
         Add(new LossesSectionViewModel(s, d));
         Add(new BeneficiariesSectionViewModel(s, d));
+        Add(new Shell.WarehouseReportsSectionViewModel(s, d));
         // شاشة "تسوية المخزون" القديمة مخفية مؤقتًا (حلّت محلها واجهات المخازن). لا تُحذف قبل التأكد من الشاشات الجديدة.
         LegacyAdjustment = new StockAdjustmentSectionViewModel(s, d);
         if (ShowLegacyAdjustment) Add(LegacyAdjustment);

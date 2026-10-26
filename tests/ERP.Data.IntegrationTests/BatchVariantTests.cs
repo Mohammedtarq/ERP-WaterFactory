@@ -562,4 +562,62 @@ public class BatchVariantTests
         Assert.Equal(moves, await check.StockTransactions.CountAsync(t => t.ItemId == water.Id));          // بلا حركات مخزنية
         Assert.Single((await new VariantStockService(check).ImportedBatchesAsync()).Where(r => r.ItemId == water.Id));   // الغامض فقط بقي
     }
+
+    [Fact]
+    public async Task Document_lines_keep_the_variant_and_the_free_log_names_it_by_party()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "S9");
+        var (produced, _, _) = await new DailyProductionService(db).RecordAsync(DateTime.Today, new[]
+        {
+            new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 4),
+            new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 3, s.HassounRecipe.Id),
+        }, _f.AdminId);
+        Assert.True(produced.Success, produced.ErrorMessage);
+        var names = await ProductNames.LoadAsync(db, new[] { s.Water.Id });
+
+        // مسحوب مجاني من المخزن باسم المطعم بلا تشغيلة محددة: السطر يحفظ المتغير نفسه
+        var docs = new WarehouseDocumentService(db);
+        var (r1, free) = await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.FreeIssue, s.Fg.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(s.Water.Id, s.Carton.Id, 1, CustomRecipeId: s.HassounRecipe.Id), new StockDocumentLineInput(s.Water.Id, s.Carton.Id, 2) },
+            _f.AdminId, PartyName: "جهة مجاني S9"));
+        Assert.True(r1.Success, r1.ErrorMessage);
+        var lines = await db.StockDocumentLines.AsNoTracking().Where(l => l.StockDocumentId == free!.Id).OrderBy(l => l.Id).ToListAsync();
+        Assert.Equal(new int?[] { s.HassounRecipe.Id, null }, lines.Select(l => l.CustomRecipeId).ToArray());
+
+        // إسناد حمولة «تلقائي» لمتغير: يظهر اسمه الخاص في المستند
+        var rep = new Employee { FullName = "مندوب مجاني S9", IsSalesRep = true, BaseSalary = 500_000 };
+        db.Employees.Add(rep);
+        await db.SaveChangesAsync();
+        var van = new Warehouse { BranchId = s.Fg.BranchId, Name = "سيارة مجاني S9", WarehouseType = WarehouseType.RepVan, OwnerEmployeeId = rep.Id };
+        db.Warehouses.Add(van);
+        await db.SaveChangesAsync();
+        var (r2, load) = await docs.CreateAsync(new StockDocumentRequest(StockDocumentType.RepLoad, s.Fg.Id, DateTime.Today,
+            new[] { new StockDocumentLineInput(s.Water.Id, s.Carton.Id, 1, CustomRecipeId: s.HassounRecipe.Id) }, _f.AdminId, CounterWarehouseId: van.Id));
+        Assert.True(r2.Success, r2.ErrorMessage);
+        Assert.Equal(s.HassounRecipe.Id, (await db.StockDocumentLines.AsNoTracking().SingleAsync(l => l.StockDocumentId == load!.Id)).CustomRecipeId);
+
+        // بيع مجاني من السيارة: لجهة وسبب
+        var sales = new SalesService(db);
+        var (ok, invId) = await sales.CreateInvoiceAsync(new SalesInvoiceHeaderInput(s.General.Id, van.Id, DateTime.Today, InvoicePaymentMethod.Cash,
+            IsFreeSale: true, FreeSaleRecipient: $"{s.General.Name} — عينة", SalesRepEmployeeId: rep.Id), _f.AdminId);
+        Assert.True(ok.Success, ok.ErrorMessage);
+        Assert.True((await sales.AddLineAsync(invId!.Value, new SalesInvoiceLineInput(s.Water.Id, s.Piece.Id, 12), _f.AdminId)).Success);
+        Assert.True((await sales.PostInvoiceAsync(invId.Value, _f.AdminId)).result.Success);
+
+        var report = await new ReportsService(db).FreeIssueLogAsync(new ReportRequest(DateTime.Today, DateTime.Today, s.Water.Id));
+        Assert.Equal("سجل المجاني", report.Title);
+        var party = report.Columns.IndexOf("الجهة"); var product = report.Columns.IndexOf("المنتج"); var src = report.Columns.IndexOf("المصدر");
+        Assert.Contains(report.Rows, r => r[party] == "جهة مجاني S9" && r[product] == names.Name(s.Water.Id, s.HassounRecipe.Id) && r[src] == "مخزن");
+        Assert.Contains(report.Rows, r => r[party] == "جهة مجاني S9" && r[product] == names.Name(s.Water.Id, null));
+        Assert.Contains(report.Rows, r => r[party] == s.General.Name && r[report.Columns.IndexOf("السبب")] == "عينة" && r[src] == "مندوب" && r[report.Columns.IndexOf("المندوب")] == rep.FullName);
+        Assert.Contains(report.Totals, t => t.Label == "جهة: جهة مجاني S9");
+        Assert.Contains(report.Totals, t => t.Label == $"شهر {DateTime.Today:yyyy/MM}");
+
+        // الملغى لا يدخل السجل
+        Assert.True((await docs.VoidAsync(free!.Id, "خطأ", _f.AdminId)).Success);
+        var after = await new ReportsService(db).FreeIssueLogAsync(new ReportRequest(DateTime.Today, DateTime.Today, s.Water.Id));
+        Assert.DoesNotContain(after.Rows, r => r[after.Columns.IndexOf("الجهة")] == "جهة مجاني S9");
+        Assert.Contains(after.Rows, r => r[after.Columns.IndexOf("الجهة")] == s.General.Name);
+    }
 }

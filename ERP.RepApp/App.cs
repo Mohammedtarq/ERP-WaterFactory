@@ -5,7 +5,12 @@ namespace ERP.RepApp;
 /// <summary>يبدأ بشاشة الربط إن لم يُربط الهاتف بعد، وإلا بالرئيسية.</summary>
 public class App : Application
 {
-    public App() => UserAppTheme = AppTheme.Light;
+    public App()
+    {
+        UserAppTheme = AppTheme.Light;
+        // المظهر المحفوظ (فاتح، أو «شمس») قبل بناء أي صفحة
+        Ui.ApplyTheme(AppServices.Instance.Store.Get(Ui.ThemeKey) == "sun");
+    }
 
     protected override Window CreateWindow(IActivationState? activationState) =>
         new(Root(Start()));

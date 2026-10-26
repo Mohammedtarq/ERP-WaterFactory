@@ -41,7 +41,7 @@ public static class SectionGrouping
         {
             new GroupDef("مساحات المخازن", Blue, "WarehouseWorkspace", "WarehouseRepVans"),
             new GroupDef("الحركة اليومية", Green, "PrepareLoadOrders", "RepProductSettlement", "SettlementConfirm", "Stocktake", "Losses", "DamagedSales", "StockAdjustment"),
-            new GroupDef("الأرصدة والتنبيهات", Amber, "CurrentStock", "StockAlerts", "Beneficiaries"),
+            new GroupDef("الأرصدة والتنبيهات", Amber, "CurrentStock", "StockAlerts", "Beneficiaries", "WarehouseReports"),
             new GroupDef("التصنيع", Teal, "ManufacturingRequirement", "Bom", "PackagingTemplates"),
             new GroupDef("التعريفات", Purple, "Items", "Warehouses", "Packaging", "Locations"),
         },

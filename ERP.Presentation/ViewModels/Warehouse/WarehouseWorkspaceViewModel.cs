@@ -669,7 +669,7 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         var names = await ProductNames.LoadAsync(db, d.Lines.Select(l => l.ItemId));
         foreach (var l in d.Lines)
         {
-            var recipe = l.Batch?.CustomRecipeId;
+            var recipe = l.CustomRecipeId ?? l.Batch?.CustomRecipeId;
             Lines.Add(new DocumentLineDraft
             {
                 ItemId = l.ItemId, ItemCode = l.Item.ItemCode,

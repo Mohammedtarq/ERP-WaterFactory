@@ -87,7 +87,7 @@ public static class ReceiptPrinter
         Rule(1);
         foreach (var l in r.Lines)
         {
-            Text($"{l.Item} — {l.Pack}", 22, true);
+            Text(Receipt.LineName(l), 22, true);
             Row(Formats.Qty(l.Quantity), l.Total > 0 ? Formats.Qty(l.UnitPrice) : "—", l.Total > 0 ? Formats.Qty(l.Total) : "مجاني");
         }
         Rule();
