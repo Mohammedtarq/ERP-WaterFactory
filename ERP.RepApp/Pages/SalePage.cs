@@ -166,13 +166,13 @@ public class SalePage : ContentPage
     private void ApplySearch()
     {
         for (var i = 0; i < _options.Count; i++)
-            _products.Children[i].IsVisible = Matches(_options[i]) && (LineOf(_options[i]) is not null || RemainingPieces(_options[i]) >= _options[i].Level.Units);
+            ((View)_products.Children[i]).IsVisible = Matches(_options[i]) && (LineOf(_options[i]) is not null || RemainingPieces(_options[i]) >= _options[i].Level.Units);
         UpdateEmpty();
     }
 
     private void UpdateEmpty()
     {
-        var any = Enumerable.Range(0, _options.Count).Any(i => _products.Children[i].IsVisible);
+        var any = Enumerable.Range(0, _options.Count).Any(i => ((View)_products.Children[i]).IsVisible);
         _empty.IsVisible = !any;
         _empty.Text = _options.Count == 0 ? "لا توجد مواد محمّلة في السيارة" : "لا نتائج";
         _empty.TextColor = _options.Count == 0 ? Ui.Red : Ui.Muted;
