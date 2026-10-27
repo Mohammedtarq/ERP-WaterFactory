@@ -32,7 +32,7 @@ public class SalePage : ContentPage
         _customer = new CustomerPicker(_work);
         _customer.SelectionChanged += () => { ShowDebt(); Recalc(); };
         _kinds = new[] { KindButton("نقدي", "CashSale"), KindButton("آجل", "CreditSale"), KindButton("مجاني", "Free") };
-        _search.TextChanged += (_, _) => Fill();
+        _search.TextChanged += (_, _) => ApplySearch();
         _freeReason.TextChanged += (_, _) => Recalc();
         _debtBox.Content = new VerticalStackLayout { Spacing = 3, Children = { _debtTitle, _debtSub, _debtBar } };
         _save = new Button
@@ -141,28 +141,65 @@ public class SalePage : ContentPage
     private SaleLine? LineOf(LoadedOption o) =>
         _lines.FirstOrDefault(l => l.ItemId == o.Product.ItemId && l.LevelId == o.Level.LevelId && l.RecipeId == o.RecipeId);
 
-    /// <summary>بطاقة لكل منتج في السيارة (الأساسي ثم المتغيرات): الاسم الموحد وسعره وما تبقى، وزر + أو − 3 +. ما نفد يختفي.</summary>
+    private readonly Label _empty = Ui.Text("", 16, Ui.Muted);
+
+    /// <summary>
+    /// بطاقة لكل منتج في السيارة (الأساسي ثم المتغيرات) تُبنى مرة واحدة؛ البحث يخفيها ويُظهرها فقط، والضغط على + أو − أو كتابة الرقم
+    /// يعيد بناء بطاقات المنتج نفسه وحدها (لا القائمة كلها) فيبقى التطبيق سريعًا.
+    /// </summary>
     private void Fill()
     {
         _products.Children.Clear();
         if (_work.Snapshot is null) return;
         _options = _work.LoadedOptions();
-        var q = (_search.Text ?? "").Trim();
-        var shown = 0;
-        foreach (var o in _options)
-        {
-            var line = LineOf(o);
-            var left = RemainingPieces(o);
-            if (line is null && left < o.Level.Units) continue;                      // نفد: لا يظهر
-            if (q.Length > 0 && !o.Text.Contains(q, StringComparison.OrdinalIgnoreCase)) continue;
-            _products.Children.Add(Card(o, line, left));
-            shown++;
-        }
-        if (shown == 0)
-            _products.Children.Add(Ui.Text(_options.Count == 0 ? "لا توجد مواد محمّلة في السيارة" : "لا نتائج", 16, _options.Count == 0 ? Ui.Red : Ui.Muted));
+        for (var i = 0; i < _options.Count; i++) _products.Children.Add(BuildCard(i));
+        _products.Children.Add(_empty);
+        UpdateEmpty();
     }
 
-    private View Card(LoadedOption o, SaleLine? line, decimal leftPieces)
+    private bool Matches(LoadedOption o)
+    {
+        var q = (_search.Text ?? "").Trim();
+        return q.Length == 0 || o.Text.Contains(q, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplySearch()
+    {
+        for (var i = 0; i < _options.Count; i++)
+            _products.Children[i].IsVisible = Matches(_options[i]) && (LineOf(_options[i]) is not null || RemainingPieces(_options[i]) >= _options[i].Level.Units);
+        UpdateEmpty();
+    }
+
+    private void UpdateEmpty()
+    {
+        var any = Enumerable.Range(0, _options.Count).Any(i => _products.Children[i].IsVisible);
+        _empty.IsVisible = !any;
+        _empty.Text = _options.Count == 0 ? "لا توجد مواد محمّلة في السيارة" : "لا نتائج";
+        _empty.TextColor = _options.Count == 0 ? Ui.Red : Ui.Muted;
+    }
+
+    private View BuildCard(int index)
+    {
+        var o = _options[index];
+        var line = LineOf(o);
+        var leftPieces = RemainingPieces(o);
+        var card = Card(o, line, leftPieces);
+        card.IsVisible = Matches(o) && (line is not null || leftPieces >= o.Level.Units);   // نفد: لا يظهر
+        return card;
+    }
+
+    /// <summary>بعد تغيير كمية منتج: تُعاد بطاقات مستوياته (كرتون/شرنك) لأن رصيدها واحد.</summary>
+    private void RefreshRelated(LoadedOption changed)
+    {
+        for (var i = 0; i < _options.Count; i++)
+        {
+            if (_options[i].Product.ItemId != changed.Product.ItemId || _options[i].RecipeId != changed.RecipeId) continue;
+            _products.Children[i] = BuildCard(i);
+        }
+        UpdateEmpty();
+    }
+
+    private Border Card(LoadedOption o, SaleLine? line, decimal leftPieces)
     {
         var price = RepWork.PackPrice(o.Product, o.Level, o.RecipeId);
         var left = Formats.Packs(Math.Max(0, leftPieces), o.Product.Levels);
@@ -179,20 +216,34 @@ public class SalePage : ContentPage
         if (line is null)
         {
             var add = new Button { Text = "+", FontSize = 22, FontAttributes = FontAttributes.Bold, WidthRequest = 48, HeightRequest = 48, CornerRadius = 14, BackgroundColor = Ui.Brand, TextColor = Colors.White, Padding = 0 };
-            add.Clicked += (_, _) => Change(o, +1);
+            add.Clicked += (_, _) => SetQty(o, 1);
             control = add;
         }
         else
         {
             var minus = new Button { Text = "−", FontSize = 22, WidthRequest = 42, HeightRequest = 42, CornerRadius = 12, BackgroundColor = Ui.Chip, TextColor = Ui.Ink, Padding = 0 };
             var plus = new Button { Text = "+", FontSize = 22, WidthRequest = 42, HeightRequest = 42, CornerRadius = 12, BackgroundColor = Ui.Brand, TextColor = Colors.White, Padding = 0, IsEnabled = leftPieces >= o.Level.Units };
-            minus.Clicked += (_, _) => Change(o, -1);
-            plus.Clicked += (_, _) => Change(o, +1);
-            control = new HorizontalStackLayout
+            minus.Clicked += (_, _) => SetQty(o, line.Quantity - 1);
+            plus.Clicked += (_, _) => SetQty(o, line.Quantity + 1);
+            // الرقم يُكتب مباشرة: لبيع عدد كبير بلا ضغط متكرر
+            var qty = new Entry
             {
-                Spacing = 6, VerticalOptions = LayoutOptions.Center,
-                Children = { minus, new Label { Text = Formats.Qty(line.Quantity), FontSize = 19, FontAttributes = FontAttributes.Bold, TextColor = Ui.Ink, WidthRequest = 34, HorizontalTextAlignment = TextAlignment.Center, VerticalOptions = LayoutOptions.Center }, plus }
+                Text = Formats.Qty(line.Quantity), Keyboard = Keyboard.Numeric, FontSize = 19, FontAttributes = FontAttributes.Bold, TextColor = Ui.Ink,
+                WidthRequest = 64, HorizontalTextAlignment = TextAlignment.Center, VerticalOptions = LayoutOptions.Center
             };
+            var done = false;
+            void Commit()
+            {
+                if (done) return;
+                done = true;
+                if (decimal.TryParse(qty.Text?.Trim(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0 && v != line.Quantity)
+                    SetQty(o, v);
+                else qty.Text = Formats.Qty(line.Quantity);
+            }
+            qty.Focused += (_, _) => Dispatcher.Dispatch(() => { qty.CursorPosition = 0; qty.SelectionLength = qty.Text?.Length ?? 0; });
+            qty.Completed += (_, _) => Commit();
+            qty.Unfocused += (_, _) => Commit();
+            control = new HorizontalStackLayout { Spacing = 6, VerticalOptions = LayoutOptions.Center, Children = { minus, qty, plus } };
         }
         var grid = new Grid
         {
@@ -203,21 +254,18 @@ public class SalePage : ContentPage
         return Ui.Card(grid, line is null ? null : Ui.Brand);
     }
 
-    private void Change(LoadedOption o, int delta)
+    /// <summary>يضبط كمية سطر المنتج (٠ يحذفه) بما لا يتجاوز ما في السيارة، ثم يحدّث بطاقات المنتج والإجمالي فقط.</summary>
+    private void SetQty(LoadedOption o, decimal qty)
     {
+        qty = Math.Floor(qty);
         var i = _lines.FindIndex(l => l.ItemId == o.Product.ItemId && l.LevelId == o.Level.LevelId && l.RecipeId == o.RecipeId);
-        if (delta > 0)
-        {
-            if (RemainingPieces(o) < o.Level.Units) return;
-            if (i >= 0) _lines[i] = _lines[i] with { Quantity = _lines[i].Quantity + 1 };
-            else _lines.Add(new SaleLine(o.Product.ItemId, o.Level.LevelId, 1, o.RecipeId));
-        }
-        else if (i >= 0)
-        {
-            if (_lines[i].Quantity <= 1) _lines.RemoveAt(i);
-            else _lines[i] = _lines[i] with { Quantity = _lines[i].Quantity - 1 };
-        }
-        Fill();
+        var current = i >= 0 ? _lines[i].Quantity : 0;
+        var max = current + Math.Floor(RemainingPieces(o) / o.Level.Units);
+        qty = Math.Min(qty, max);
+        if (qty <= 0) { if (i >= 0) _lines.RemoveAt(i); }
+        else if (i >= 0) _lines[i] = _lines[i] with { Quantity = qty };
+        else _lines.Add(new SaleLine(o.Product.ItemId, o.Level.LevelId, qty, o.RecipeId));
+        RefreshRelated(o);
         Recalc();
     }
 

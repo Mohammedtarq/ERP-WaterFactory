@@ -102,9 +102,12 @@ public class LocalStore
 
     public void Set(string key, string? value)
     {
-        using var c = Open();
-        if (value is null) Exec(c, "DELETE FROM Settings WHERE Key = $k", ("$k", key));
-        else Exec(c, "INSERT INTO Settings (Key, Value) VALUES ($k, $v) ON CONFLICT(Key) DO UPDATE SET Value = $v", ("$k", key), ("$v", value));
+        using (var c = Open())
+        {
+            if (value is null) Exec(c, "DELETE FROM Settings WHERE Key = $k", ("$k", key));
+            else Exec(c, "INSERT INTO Settings (Key, Value) VALUES ($k, $v) ON CONFLICT(Key) DO UPDATE SET Value = $v", ("$k", key), ("$v", value));
+        }
+        if (key == "Snapshot") lock (_snapshotLock) { _snapshotCached = false; _snapshot = null; }
     }
 
     public LinkCode? Link => Get("ServerUrl") is string u && Get("DeviceKey") is string k ? new LinkCode(u, k, Get("LocalUrl"), Get("FactoryId")) : null;
@@ -170,7 +173,26 @@ public class LocalStore
         return null;
     }
 
-    public RepSnapshot? Snapshot => Get("Snapshot") is string s ? JsonSerializer.Deserialize<RepSnapshot>(s, Json) : null;
+    // نسخة العمل كبيرة وتُقرأ عشرات المرات في كل شاشة: تُحلَّل مرة واحدة وتُحفظ في الذاكرة حتى تتغير (Set).
+    private readonly object _snapshotLock = new();
+    private bool _snapshotCached;
+    private RepSnapshot? _snapshot;
+
+    public RepSnapshot? Snapshot
+    {
+        get
+        {
+            lock (_snapshotLock)
+            {
+                if (!_snapshotCached)
+                {
+                    _snapshot = Get("Snapshot") is string s ? JsonSerializer.Deserialize<RepSnapshot>(s, Json) : null;
+                    _snapshotCached = true;
+                }
+                return _snapshot;
+            }
+        }
+    }
     public string? SnapshotEtag => Get("SnapshotEtag");
 
     public void SaveSnapshot(string json, string? etag)
