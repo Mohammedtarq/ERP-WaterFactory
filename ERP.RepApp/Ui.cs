@@ -9,22 +9,22 @@ public static class Ui
     /// هوية التطبيق: أزرق بحري. الفاتح هو الأصل، و«شمس» خيار من الإعدادات (حدود وألوان أقوى لوضوح أفضل تحت الضوء المباشر).
     /// الألوان حقول تُبدَّل بـ ApplyTheme قبل بناء الصفحات.
     /// </summary>
-    public static Color Primary = Color.FromArgb("#0B6E8F");
-    public static Color Blue = Color.FromArgb("#0E8FA8");
+    public static Color Primary = Color.FromArgb("#2563EB");
+    public static Color Blue = Color.FromArgb("#2563EB");
     public static Color Amber = Color.FromArgb("#B45309");
     public static Color Red = Color.FromArgb("#C23B3B");
     public static Color Green = Color.FromArgb("#1E8E5A");
     public static Color Muted = Color.FromArgb("#587380");
     public static Color Ink = Color.FromArgb("#0E2A36");
-    public static Color PageBg = Color.FromArgb("#EDF3F5");
+    public static Color PageBg = Color.FromArgb("#EFF4FF");
     public static Color Navy = Color.FromArgb("#0E2A36");
-    public static Color Brand = Color.FromArgb("#0B6E8F");
-    public static Color Deep = Color.FromArgb("#0A4F66");
-    public static Color Line = Color.FromArgb("#D5E1E6");
-    public static Color Chip = Color.FromArgb("#E1EFF3");
+    public static Color Brand = Color.FromArgb("#2563EB");
+    public static Color Deep = Color.FromArgb("#2563EB");
+    public static Color Line = Color.FromArgb("#C9D8F5");
+    public static Color Chip = Color.FromArgb("#DBE7FE");
     /// <summary>ألوان الأزرار الستة بمعانيها: تحصيل، زبون جديد، رصيد السيارة، مصروف، مزامنة، حركاتي.</summary>
-    public static Color Collect = Color.FromArgb("#1E8E5A"), NewCustomer = Color.FromArgb("#0E8FA8"), Stock = Color.FromArgb("#6B4FD1"),
-                        Expense = Color.FromArgb("#E07A12"), SyncColor = Color.FromArgb("#1565C0"), Moves = Color.FromArgb("#546E7A");
+    public static Color Collect = Color.FromArgb("#17874F"), NewCustomer = Color.FromArgb("#0A8AA6"), Stock = Color.FromArgb("#5B3FD0"),
+                        Expense = Color.FromArgb("#E06E00"), SyncColor = Color.FromArgb("#2563EB"), Moves = Color.FromArgb("#A8692E");
     /// <summary>سماكة الحدود: 1 عادي، 2.5 في وضع الشمس.</summary>
     public static double BorderW = 1;
     public static bool Sun { get; private set; }
@@ -38,14 +38,14 @@ public static class Ui
         {
             (Primary, Blue, Amber, Red, Green, Muted, Ink, PageBg) = (C("#00546F"), C("#00546F"), C("#7A4B00"), C("#B00020"), C("#07703A"), C("#1B1B1B"), C("#000000"), C("#FFFFFF"));
             (Navy, Brand, Deep, Line, Chip) = (C("#000000"), C("#00546F"), C("#00546F"), C("#000000"), C("#CDEEF8"));
-            (Collect, NewCustomer, Stock, Expense, SyncColor, Moves) = (C("#07703A"), C("#00697F"), C("#4B2FB0"), C("#A04A00"), C("#0B4DA0"), C("#37474F"));
+            (Collect, NewCustomer, Stock, Expense, SyncColor, Moves) = (C("#07703A"), C("#00697F"), C("#4B2FB0"), C("#A04A00"), C("#0B4DA0"), C("#7A4A1A"));
             BorderW = 2.5;
         }
         else
         {
-            (Primary, Blue, Amber, Red, Green, Muted, Ink, PageBg) = (C("#0B6E8F"), C("#0E8FA8"), C("#B45309"), C("#C23B3B"), C("#1E8E5A"), C("#587380"), C("#0E2A36"), C("#EDF3F5"));
-            (Navy, Brand, Deep, Line, Chip) = (C("#0E2A36"), C("#0B6E8F"), C("#0A4F66"), C("#D5E1E6"), C("#E1EFF3"));
-            (Collect, NewCustomer, Stock, Expense, SyncColor, Moves) = (C("#1E8E5A"), C("#0E8FA8"), C("#6B4FD1"), C("#E07A12"), C("#1565C0"), C("#546E7A"));
+            (Primary, Blue, Amber, Red, Green, Muted, Ink, PageBg) = (C("#2563EB"), C("#2563EB"), C("#B45309"), C("#C23B3B"), C("#1E8E5A"), C("#587380"), C("#0E2A36"), C("#EFF4FF"));
+            (Navy, Brand, Deep, Line, Chip) = (C("#0E2A36"), C("#2563EB"), C("#2563EB"), C("#C9D8F5"), C("#DBE7FE"));
+            (Collect, NewCustomer, Stock, Expense, SyncColor, Moves) = (C("#17874F"), C("#0A8AA6"), C("#5B3FD0"), C("#E06E00"), C("#2563EB"), C("#A8692E"));
             BorderW = 1;
         }
         static Color C(string hex) => Color.FromArgb(hex);
@@ -154,7 +154,7 @@ public static class Ui
             StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 24 },
             Background = new LinearGradientBrush(new GradientStopCollection
             {
-                new GradientStop(Deep, 0f), new GradientStop(Brand, 0.7f), new GradientStop(Sun ? Brand : Color.FromArgb("#1E88A8"), 1f)
+                new GradientStop(Brand, 0f), new GradientStop(Sun ? Brand : Color.FromArgb("#1D4ED8"), 1f)
             }, new Point(0, 0), new Point(1, 1)),
             Shadow = new Shadow { Brush = new SolidColorBrush(Brand), Opacity = 0.35f, Radius = 14, Offset = new Point(0, 6) },
             Content = new VerticalStackLayout
@@ -201,7 +201,7 @@ public static class Ui
     {
         var tile = new Border
         {
-            BackgroundColor = color, StrokeThickness = 0, Padding = new Thickness(6, 14), MinimumHeightRequest = 104,
+            BackgroundColor = color, StrokeThickness = 0, Padding = new Thickness(6, 10), HeightRequest = 108,
             StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 20 },
             Shadow = new Shadow { Brush = new SolidColorBrush(color), Opacity = 0.3f, Radius = 8, Offset = new Point(0, 4) },
             Content = new VerticalStackLayout
@@ -215,7 +215,7 @@ public static class Ui
                         BackgroundColor = Colors.White.WithAlpha(0.22f), StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 14 },
                         Content = Icon(icon, Colors.White, 24)
                     },
-                    new Label { Text = title, FontSize = 14, FontAttributes = FontAttributes.Bold, TextColor = Colors.White, HorizontalTextAlignment = TextAlignment.Center }
+                    new Label { Text = title, FontSize = 14, FontAttributes = FontAttributes.Bold, TextColor = Colors.White, HorizontalTextAlignment = TextAlignment.Center, VerticalTextAlignment = TextAlignment.Start, HeightRequest = 38 }
                 }
             }
         };
@@ -251,7 +251,7 @@ public static class Ui
         grid.Children.Add(text);
         void Put(View v, int col) { Grid.SetColumn(v, col); grid.Children.Add(v); }
         if (onSettings is not null) Put(HeaderButton("sliders", null, onSettings, "الإعدادات"), 1);
-        if (onLogout is not null) Put(HeaderButton("power", "خروج", onLogout, "خروج"), 2);
+        if (onLogout is not null) Put(HeaderButton("power", null, onLogout, "خروج"), 2);
         return grid;
     }
 

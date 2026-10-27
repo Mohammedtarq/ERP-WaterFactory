@@ -70,7 +70,22 @@ public class HomePage : ContentPage
         Place(Ui.ColorTile("wrench", "مصروف السيارة", Ui.Expense, () => Navigation.PushAsync(new ExpensePage())), 1, 0);
         Place(Ui.ColorTile("sync", "مزامنة الآن", Ui.SyncColor, SyncAsync), 1, 1);
         Place(Ui.ColorTile("list", "حركاتي", Ui.Moves, () => Navigation.PushAsync(new OutboxPage())), 1, 2);
-        var mine = Ui.Small("زبائني من النظام — اختيار زبائنك بموافقة الإدارة", Ui.Brand, async () => await Navigation.PushAsync(new MyCustomersPage()));
+        var mine = new Border
+        {
+            BackgroundColor = Ui.Brand, StrokeThickness = 0, Padding = new Thickness(12, 14),
+            StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 16 },
+            Shadow = new Shadow { Brush = new SolidColorBrush(Ui.Brand), Opacity = 0.3f, Radius = 8, Offset = new Point(0, 4) },
+            Content = new VerticalStackLayout
+            {
+                Spacing = 2,
+                Children =
+                {
+                    new Label { Text = "زبائني من النظام", FontSize = 16, FontAttributes = FontAttributes.Bold, TextColor = Colors.White, HorizontalTextAlignment = TextAlignment.Center },
+                    new Label { Text = "اختيار زبائنك بموافقة الإدارة", FontSize = 12, TextColor = Colors.White.WithAlpha(0.9f), HorizontalTextAlignment = TextAlignment.Center }
+                }
+            }
+        };
+        mine.GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(async () => await Navigation.PushAsync(new MyCustomersPage())) });
 
         var body = new VerticalStackLayout
         {
