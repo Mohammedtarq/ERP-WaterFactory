@@ -28,7 +28,10 @@ public class DiscountReportSectionViewModel : SectionViewModel
     public int Year { get => _year; set { if (SetProperty(ref _year, value)) Background(LoadAsync()); } }
     public int Month { get => _month; set { if (SetProperty(ref _month, value)) Background(LoadAsync()); } }
     public ObservableCollection<DiscountReportRow> Rows { get; } = new();
+    /// <summary>خصم عملاء الوكلاء: كل عميل فرعي مع وكيله.</summary>
+    public ObservableCollection<AgentCustomerDiscountRow> AgentCustomerRows { get; } = new();
     public decimal TotalDiscount => Rows.Sum(r => r.Discount);
+    public decimal AgentCustomersDiscount => AgentCustomerRows.Sum(r => r.Discount);
     public RelayCommand PrintCommand { get; }
 
     public override async Task LoadAsync()
@@ -37,10 +40,14 @@ public class DiscountReportSectionViewModel : SectionViewModel
         var rows = await new DiscountReportService(db).MonthAsync(Year, Month);
         Rows.Clear();
         foreach (var r in rows) Rows.Add(r);
+        AgentCustomerRows.Clear();
+        foreach (var r in await new DiscountReportService(db).AgentCustomersMonthAsync(Year, Month)) AgentCustomerRows.Add(r);
         OnPropertyChanged(nameof(TotalDiscount));
-        StatusMessage = Rows.Count == 0
+        OnPropertyChanged(nameof(AgentCustomersDiscount));
+        StatusMessage = Rows.Count == 0 && AgentCustomerRows.Count == 0
             ? "لا يوجد زبون بعلامة «وكيل» أو «صاحب خصم تشجيعي» — ضعها من بطاقة الزبون"
-            : $"إجمالي خصم الشهر {TotalDiscount:N0} د.ع لـ {Rows.Count(r => r.InvoicesCount > 0)} زبون";
+            : $"إجمالي خصم الشهر {TotalDiscount:N0} د.ع لـ {Rows.Count(r => r.InvoicesCount > 0)} زبون" +
+              (AgentCustomerRows.Count > 0 ? $" — وخصم عملاء الوكلاء {AgentCustomersDiscount:N0} د.ع" : "");
     }
 
     private void Print()
@@ -52,6 +59,14 @@ public class DiscountReportSectionViewModel : SectionViewModel
         foreach (var g in Rows.GroupBy(x => x.Kind))
             r.Total($"خصم {ArabicLabels.Of(g.Key)}", $"{g.Sum(x => x.Discount):N0} د.ع");
         r.Total("إجمالي الخصم", $"{TotalDiscount:N0} د.ع", true);
+        // خصم عملاء الوكلاء: أسطر مستقلة تحت كل وكيل (لا تدخل في خصم الوكيل نفسه)
+        foreach (var g in AgentCustomerRows.GroupBy(x => x.AgentName))
+        {
+            r.Rows.Add(new[] { $"عملاء الوكيل {g.Key}", "", "", "", "", "", "" });
+            foreach (var x in g)
+                r.Rows.Add(new[] { "   " + x.CustomerName, "عميل وكيل", $"{x.InvoicesCount:N0}", $"{x.GrossBeforeDiscount:N0}", $"{x.Discount:N0}", $"{x.DiscountPercent:N1}", $"{x.Net:N0}" });
+        }
+        if (AgentCustomerRows.Count > 0) r.Total("خصم عملاء الوكلاء", $"{AgentCustomersDiscount:N0} د.ع", true);
         Dialogs.ShowReport(r);
     }
 }

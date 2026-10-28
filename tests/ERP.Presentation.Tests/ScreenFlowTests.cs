@@ -90,7 +90,18 @@ public class ScreenFlowTests
         await inv.IdleAsync();
         Assert.Single(inv.Lines);
 
-        inv.LoadingEnabled = true;
+        // العميل الفرعي: الوكيل يظهر في الفلتر والخانة مفعّلة (اسم العميل وحده على الفاتورة)، وتفاصيله بجانبها
+        Assert.Equal(_f.AgentId, inv.Agent!.Id);
+        Assert.True(inv.ForAgentCustomer);
+        Assert.Contains("محل أبو حيدر", inv.CustomerDetails);
+        Assert.Contains(inv.AgentCustomersView, c => c.Id == _f.SubCustomerId);
+        // رسوم التحميل بالاسم والسعر والعدد (للوكيل وعملائه): 6 × 100 = 600 كالحساب القديم (60 قطعة × 10)
+        Assert.True(inv.FeesAllowed);
+        inv.NewFeeName = "مستلزمات تحميل";
+        inv.NewFeePrice = 100;
+        inv.NewFeeQuantity = 6;
+        inv.AddFeeCommand.Execute(null);
+        Assert.Single(inv.Fees);
         inv.TaxEnabled = true;
         inv.PaymentMethod = inv.PaymentOptions.Single(o => o.Value == InvoicePaymentMethod.Credit);
         Assert.Equal(15000m, inv.SubTotal);
@@ -115,7 +126,9 @@ public class ScreenFlowTests
         Assert.Contains(printed.HeaderFields, f => f.Label == "رقم الفاتورة" && f.Value == number);
         Assert.Contains(printed.HeaderFields, f => f.Label == "العميل" && f.Value == "محل أبو حيدر");
         Assert.Equal(new[] { "#", "الصنف", "الكمية", "السعر", "الخصم", "المبلغ" }, printed.Columns);
-        var printedRow = printed.Rows.Single();
+        Assert.Equal(2, printed.Rows.Count);                       // الصنف + سطر رسم التحميل
+        Assert.Equal(new[] { "2", "رسوم: مستلزمات تحميل", "6", "100", "", "600" }, printed.Rows[1]);
+        var printedRow = printed.Rows[0];
         Assert.Contains("12×500", printedRow[1]);                  // الاسم الموحد بالعبوة
         Assert.Equal(new[] { "1", "5 كارتون", "3,000", "", "15,000" }, printedRow.Where((_, i) => i != 1));
         Assert.DoesNotContain(printed.Totals, t => t.Label == "إجمالي الخصم");   // بلا خصم لا يظهر

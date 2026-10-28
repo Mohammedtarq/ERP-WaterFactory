@@ -118,6 +118,29 @@ public class SalesServiceTests
         return id!.Value;
     }
 
+    /// <summary>وكيل وعميله وعميل مباشر وصنف وتشغيلة خاصة بالاختبار: لا يمسّ أرصدة الاختبارات الأخرى ولا مخزونها.</summary>
+    private async Task<(int agent, int sub, int direct, int item, int carton)> IsolatedAgentScenarioAsync(string tag)
+    {
+        using var db = _f.NewDb();
+        var item = new Item { ItemCode = "FEE-" + tag, ItemName = "ماء رسوم " + tag, SalePrice = 250 };
+        var agent = new Customer { Name = "وكيل " + tag, CustomerType = CustomerType.Agent };
+        var direct = new Customer { Name = "مباشر " + tag };
+        db.AddRange(item, agent, direct);
+        await db.SaveChangesAsync();
+        var sub = new Customer { Name = "عميل وكيل " + tag, CustomerType = CustomerType.SubCustomer, ParentAgentId = agent.Id };
+        var piece = new ItemPackagingLevel { ItemId = item.Id, LevelName = "قطعة", ContainsQuantity = 1, EquivalentBaseUnits = 1 };
+        db.AddRange(sub, piece);
+        await db.SaveChangesAsync();
+        var carton = new ItemPackagingLevel { ItemId = item.Id, LevelName = "كارتون", ParentLevelId = piece.Id, ContainsQuantity = 12, EquivalentBaseUnits = 12 };
+        var batch = new ItemBatch { ItemId = item.Id, BatchNumber = "FEE-" + tag, ExpiryDate = new DateTime(2027, 12, 1) };
+        db.AddRange(carton, batch);
+        await db.SaveChangesAsync();
+        db.StockTransactions.Add(new StockTransaction { ItemId = item.Id, WarehouseId = _f.MainWarehouseId, BatchId = batch.Id, QuantityBaseUnits = 600,
+                                                        TransactionType = StockTransactionType.Receipt, CreatedByUserId = _f.AdminUserId });
+        await db.SaveChangesAsync();
+        return (agent.Id, sub.Id, direct.Id, item.Id, carton.Id);
+    }
+
     [Fact]
     public async Task Unified_pack_price_for_every_customer()
     {
@@ -159,6 +182,102 @@ public class SalesServiceTests
                      (row.Kind, row.InvoicesCount, row.GrossBeforeDiscount, row.Discount, row.Net, row.DiscountPercent));
         // زبون بلا علامة لا يظهر
         Assert.DoesNotContain(await new DiscountReportService(db).MonthAsync(month.Year, month.Month), r => r.CustomerId == _f.DirectId);
+    }
+
+    /// <summary>
+    /// رسوم التحميل بالاسم والسعر والعدد: لفواتير الوكلاء وعملائهم فقط؛ مجموعها يصير مستلزمات التحميل (4102) في الفاتورة والقيد،
+    /// والدين على الجهة المختارة (العميل الفرعي لا الوكيل). العميل المباشر والبيع المجاني والفاتورة المرحّلة ترفضها.
+    /// </summary>
+    [Fact]
+    public async Task Loading_fees_by_name_price_and_count_belong_to_agents_and_their_customers_only()
+    {
+        var (agentId, subId, directId, itemId, cartonId) = await IsolatedAgentScenarioAsync("A");
+        using var db = _f.NewDb();
+        var svc = new SalesService(db);
+        var day = Today.AddDays(40);
+        var agentBefore = (await svc.GetCustomerBalancesAsync()).Single(b => b.CustomerId == agentId).Balance;
+        var subBefore = (await svc.GetCustomerBalancesAsync()).Single(b => b.CustomerId == subId).Balance;
+
+        var id = await NewInvoiceAsync(svc, new(subId, _f.MainWarehouseId, day, InvoicePaymentMethod.Credit));
+        Assert.True((await svc.AddLineAsync(id, new(itemId, cartonId, 2), _f.AdminUserId)).Success);   // 6,000
+
+        Assert.False((await svc.SetFeesAsync(id, new[] { new SalesService.FeeInput(" ", 1, 1) }, _f.AdminUserId)).Success);
+        Assert.False((await svc.SetFeesAsync(id, new[] { new SalesService.FeeInput("رسم", -1, 1) }, _f.AdminUserId)).Success);
+        Assert.False((await svc.SetFeesAsync(id, new[] { new SalesService.FeeInput("رسم", 100, 0) }, _f.AdminUserId)).Success);
+        var fees = new[] { new SalesService.FeeInput("مستلزمات تحميل — كراتين", 5_000, 3), new SalesService.FeeInput("ربط وتغليف", 2_500, 2) };
+        var set = await svc.SetFeesAsync(id, fees, _f.AdminUserId);
+        Assert.True(set.Success, set.ErrorMessage);
+
+        // معاينة المسودة قبل الترحيل تقرأ الرسوم، والرسوم تُقرأ مع الفاتورة
+        Assert.Equal(20_000m, (await svc.GetInvoiceListAsync(customerId: subId)).Single(x => x.Id == id).LoadingSuppliesAmount);
+        var loaded = await svc.GetInvoiceAsync(id);
+        Assert.Equal(new[] { 15_000m, 5_000m }, loaded!.Fees.OrderBy(f => f.SortOrder).Select(f => f.Amount));
+        Assert.True(loaded.LoadingSuppliesEnabled);
+
+        var (r, s) = await svc.PostInvoiceAsync(id, _f.AdminUserId);
+        Assert.True(r.Success, r.ErrorMessage);
+        Assert.Equal((6_000m, 20_000m, 26_000m, 26_000m), (s!.SubTotal, s.LoadingSuppliesAmount, s.TotalAmount, s.AmountDue));
+        var loadingCredit = await db.JournalEntryLines.Where(l => l.JournalEntryId == s.JournalEntryId && l.Account.AccountCode == "4102").SumAsync(l => l.Credit);
+        Assert.Equal(20_000m, loadingCredit);
+        Assert.True((await db.JournalEntries.Include(j => j.Lines).SingleAsync(j => j.Id == s.JournalEntryId)).IsBalanced);
+
+        // الدين على العميل الفرعي، ورصيد الوكيل لا يتغيّر
+        var balances = await svc.GetCustomerBalancesAsync();
+        Assert.Equal(subBefore + 26_000m, balances.Single(b => b.CustomerId == subId).Balance);
+        Assert.Equal(agentBefore, balances.Single(b => b.CustomerId == agentId).Balance);
+
+        // مرحّلة: لا تعديل للرسوم
+        Assert.False((await svc.SetFeesAsync(id, new List<SalesService.FeeInput>(), _f.AdminUserId)).Success);
+
+        // وكيل نفسه: مقبول؛ مباشر ومجاني: مرفوضان؛ قائمة فارغة تحذف
+        var agentInvoice = await NewInvoiceAsync(svc, new(agentId, _f.MainWarehouseId, day, InvoicePaymentMethod.Credit));
+        Assert.True((await svc.AddLineAsync(agentInvoice, new(itemId, cartonId, 1), _f.AdminUserId)).Success);
+        Assert.True((await svc.SetFeesAsync(agentInvoice, fees.Take(1).ToList(), _f.AdminUserId)).Success);
+        Assert.True((await svc.SetFeesAsync(agentInvoice, new List<SalesService.FeeInput>(), _f.AdminUserId)).Success);
+        Assert.False((await svc.GetInvoiceAsync(agentInvoice))!.LoadingSuppliesEnabled);
+        var direct = await NewInvoiceAsync(svc, new(directId, _f.MainWarehouseId, day, InvoicePaymentMethod.Credit));
+        var denied = await svc.SetFeesAsync(direct, fees, _f.AdminUserId);
+        Assert.False(denied.Success);
+        Assert.Contains("الوكلاء وعملائهم", denied.ErrorMessage);
+        var free = await NewInvoiceAsync(svc, new(subId, _f.MainWarehouseId, day, InvoicePaymentMethod.Cash, IsFreeSale: true, FreeSaleRecipient: "عينة"));
+        Assert.False((await svc.SetFeesAsync(free, fees, _f.AdminUserId)).Success);
+
+        // فاتورة بلا سطور رسوم تبقى بالحساب القديم (سعر القطعة × القطع)
+        var legacy = await NewInvoiceAsync(svc, new(subId, _f.MainWarehouseId, day, InvoicePaymentMethod.Credit, LoadingSuppliesEnabled: true));
+        Assert.True((await svc.AddLineAsync(legacy, new(itemId, cartonId, 1), _f.AdminUserId)).Success);
+        var (lr, ls) = await svc.PostInvoiceAsync(legacy, _f.AdminUserId);
+        Assert.True(lr.Success, lr.ErrorMessage);
+        Assert.Equal(120m, ls!.LoadingSuppliesAmount);   // 12 قطعة × 10
+    }
+
+    /// <summary>خصم عملاء الوكلاء: لكل عميل فرعي خصم فواتيره عن السعر العام تحت وكيله، ولا يدخل صف الوكيل نفسه.</summary>
+    [Fact]
+    public async Task Agent_customers_discount_is_reported_per_customer_under_the_agent()
+    {
+        var (agentId, subId, _, itemId, cartonId) = await IsolatedAgentScenarioAsync("B");
+        using var db = _f.NewDb();
+        var svc = new SalesService(db);
+        var month = new DateTime(Today.Year, Today.Month, 1).AddMonths(6);
+        var agent = await db.Customers.SingleAsync(c => c.Id == agentId);
+        agent.DiscountKind = DiscountKind.Agent;
+        await db.SaveChangesAsync();
+
+        var sub = await NewInvoiceAsync(svc, new(subId, _f.MainWarehouseId, month, InvoicePaymentMethod.Credit));
+        Assert.True((await svc.AddLineAsync(sub, new(itemId, cartonId, 2, UnitPrice: 2_500), _f.AdminUserId)).Success);   // قائمة 3,000 ← خصم 1,000
+        Assert.True((await svc.PostInvoiceAsync(sub, _f.AdminUserId)).result.Success);
+        var own = await NewInvoiceAsync(svc, new(agentId, _f.MainWarehouseId, month, InvoicePaymentMethod.Credit));
+        Assert.True((await svc.AddLineAsync(own, new(itemId, cartonId, 1, UnitPrice: 2_000), _f.AdminUserId)).Success);    // خصم الوكيل نفسه 1,000
+        Assert.True((await svc.PostInvoiceAsync(own, _f.AdminUserId)).result.Success);
+
+        var report = new DiscountReportService(db);
+        var rows = await report.AgentCustomersMonthAsync(month.Year, month.Month);
+        var row = Assert.Single(rows);
+        Assert.Equal((agentId, subId, 1, 6_000m, 1_000m), (row.AgentId, row.CustomerId, row.InvoicesCount, row.GrossBeforeDiscount, row.Discount));
+        // صف الوكيل نفسه: فاتورته وحدها (خصم 1,000 من 3,000)
+        var agentRow = (await report.MonthAsync(month.Year, month.Month)).Single(r => r.CustomerId == agentId);
+        Assert.Equal((1, 3_000m, 1_000m), (agentRow.InvoicesCount, agentRow.GrossBeforeDiscount, agentRow.Discount));
+        // شهر آخر بلا فواتير
+        Assert.Empty(await report.AgentCustomersMonthAsync(month.Year, month.Month == 1 ? 12 : month.Month - 1));
     }
 
     [Fact]

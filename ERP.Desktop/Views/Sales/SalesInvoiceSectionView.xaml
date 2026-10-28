@@ -74,6 +74,35 @@
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="العميل" Style="{StaticResource FieldLabel}"/>
                         <ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding Customer}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
+
+                        <!-- فلتر الوكيل وعميل الوكيل: اختيار الوكيل = الفاتورة عليه؛ وبالخانة = على أحد عملائه (يظهر اسمه وحده) -->
+                        <TextBlock Text="الوكيل (فلتر)" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="إلغاء الوكيل" Style="{StaticResource RowIconButton}" Tag="#64748B"
+                                    Command="{Binding ClearAgentCommand}" Margin="4,0,0,0"/>
+                            <ComboBox ItemsSource="{Binding Agents}" SelectedItem="{Binding Agent}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
+                        </DockPanel>
+                        <Border Background="#F5F3FF" CornerRadius="6" Padding="8,5" Margin="0,4,0,0"
+                                Visibility="{Binding AgentDetails, Converter={StaticResource NullToCollapsed}}">
+                            <TextBlock Text="{Binding AgentDetails}" TextWrapping="Wrap" Foreground="#6D28D9" FontSize="12"/>
+                        </Border>
+                        <CheckBox Content="البيع لعميل من عملاء الوكيل" IsChecked="{Binding ForAgentCustomer}" Margin="0,6,0,0"
+                                  Visibility="{Binding HasAgent, Converter={StaticResource BoolToVisibility}}"/>
+                        <StackPanel Visibility="{Binding ForAgentCustomer, Converter={StaticResource BoolToVisibility}}">
+                            <TextBox Text="{Binding AgentCustomerSearch, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" ToolTip="ابحث باسم العميل أو هاتفه"/>
+                            <ListBox ItemsSource="{Binding AgentCustomersView}" SelectedItem="{Binding AgentCustomer}" MaxHeight="130" Margin="0,4,0,0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Phone}" Style="{StaticResource Muted}" FontSize="11" Margin="8,0,0,0"/>
+                                            <TextBlock Text="{Binding Name}"/>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="{Binding CustomerDetails}" Foreground="#047857" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Visibility="{Binding CustomerDetails, Converter={StaticResource NullToCollapsed}}"/>
+                        </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="نوع البيع" Style="{StaticResource FieldLabel}"/>
@@ -115,10 +144,6 @@
                                  Visibility="{Binding TaxEnabled, Converter={StaticResource BoolToVisibility}}"/>
                         <TextBlock Text="%" VerticalAlignment="Center" Margin="0,6,24,0" Visibility="{Binding TaxEnabled, Converter={StaticResource BoolToVisibility}}"/>
 
-                        <CheckBox Content="رسوم مستلزمات التحميل" IsChecked="{Binding LoadingEnabled}" Margin="0,0,6,0" IsEnabled="{Binding IsFreeSale, Converter={StaticResource InverseBool}}"/>
-                        <TextBlock VerticalAlignment="Center" Margin="0,6,24,0" Style="{StaticResource Muted}"
-                                   Text="{Binding LoadingRate, StringFormat='({0:N2} د.ع للقطعة)'}"/>
-
                         <CheckBox IsChecked="{Binding IsFreeSale}" Margin="0,0,8,0">
                             <TextBlock Text="بيع مجاني" FontWeight="SemiBold" Foreground="#B45309"/>
                         </CheckBox>
@@ -128,6 +153,43 @@
                         </StackPanel>
                     </WrapPanel>
                 </Grid>
+            </Border>
+
+            <!-- ================= رسوم مستلزمات التحميل (للوكيل وعملائه فقط) ================= -->
+            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,10"
+                    Visibility="{Binding ShowFees, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="رسوم مستلزمات التحميل" Style="{StaticResource SectionTitle}"/>
+                    <Grid Margin="0,4,0,0" IsEnabled="{Binding IsEditable}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="80"/><ColumnDefinition Width="10"/><ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0"><TextBlock Text="الاسم" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding NewFeeName, UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+                        <StackPanel Grid.Column="2"><TextBlock Text="السعر" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding NewFeePrice, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/></StackPanel>
+                        <StackPanel Grid.Column="4"><TextBlock Text="العدد" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding NewFeeQuantity, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/></StackPanel>
+                        <Button Grid.Column="6" Content="+ إضافة رسم" Style="{StaticResource SecondaryButton}" VerticalAlignment="Bottom" Command="{Binding AddFeeCommand}"/>
+                    </Grid>
+                    <DataGrid ItemsSource="{Binding Fees}" CanUserAddRows="False" Margin="0,8,0,0" MaxHeight="150" IsReadOnly="{Binding IsReadOnly}"
+                              Visibility="{Binding LoadingEnabled, Converter={StaticResource BoolToVisibility}}">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="الاسم ✎" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                            <DataGridTextColumn Header="السعر ✎" Binding="{Binding UnitPrice, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
+                            <DataGridTextColumn Header="العدد ✎" Binding="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="80"/>
+                            <DataGridTextColumn Header="الإجمالي" Binding="{Binding Amount, StringFormat=N0, Mode=OneWay}" Width="110" IsReadOnly="True"/>
+                            <DataGridTemplateColumn Header="" Width="46">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="&#xE74D;" ToolTip="حذف الرسم" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                Command="{Binding DataContext.RemoveFeeCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
             </Border>
 
             <!-- ================= إضافة سطر ================= -->

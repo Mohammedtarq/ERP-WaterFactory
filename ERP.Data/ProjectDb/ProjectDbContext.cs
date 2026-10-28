@@ -71,6 +71,7 @@ public partial class ProjectDbContext : DbContext
     // ---- المندوبون ----
     public DbSet<RepWalletTransaction> RepWalletTransactions => Set<RepWalletTransaction>();
     public DbSet<Custody> Custodies => Set<Custody>();
+    public DbSet<SalesInvoiceFee> SalesInvoiceFees => Set<SalesInvoiceFee>();
     public DbSet<CustodyTransaction> CustodyTransactions => Set<CustodyTransaction>();
     public DbSet<RepTerritory> RepTerritories => Set<RepTerritory>();
     public DbSet<RepCustomerAssignment> RepCustomerAssignments => Set<RepCustomerAssignment>();
@@ -522,6 +523,14 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<SalesManagerIncentiveTier>().HasOne(t => t.Employee).WithMany().HasForeignKey(t => t.EmployeeId).OnDelete(DeleteBehavior.Restrict);
 
         // ================= المندوبون =================
+        modelBuilder.Entity<SalesInvoiceFee>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.UnitPrice).HasPrecision(18, 2);
+            e.Property(x => x.Quantity).HasPrecision(18, 3);
+            e.Property(x => x.Amount).HasPrecision(18, 2).HasComputedColumnSql("CAST(ROUND([UnitPrice] * [Quantity], 2) AS DECIMAL(18,2))", stored: true);
+            e.HasOne(x => x.SalesInvoice).WithMany(i => i.Fees).HasForeignKey(x => x.SalesInvoiceId).OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<Custody>(e =>
         {
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(10);

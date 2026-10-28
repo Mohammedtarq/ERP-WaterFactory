@@ -18,6 +18,20 @@ public class DiscountReportRow
     public decimal DiscountPercent => GrossBeforeDiscount == 0 ? 0 : Math.Round(Discount / GrossBeforeDiscount * 100, 1);
 }
 
+/// <summary>سطر «خصم عملاء الوكلاء»: عميل فرعي ووكيله، وخصم فواتيره (عن السعر العام) في الشهر.</summary>
+public class AgentCustomerDiscountRow
+{
+    public int AgentId { get; init; }
+    public string AgentName { get; init; } = "";
+    public int CustomerId { get; init; }
+    public string CustomerName { get; init; } = "";
+    public int InvoicesCount { get; init; }
+    public decimal GrossBeforeDiscount { get; init; }
+    public decimal Discount { get; init; }
+    public decimal Net => GrossBeforeDiscount - Discount;
+    public decimal DiscountPercent => GrossBeforeDiscount == 0 ? 0 : Math.Round(Discount / GrossBeforeDiscount * 100, 1);
+}
+
 /// <summary>
 /// تقرير الخصم الشهري (docs/agreed-pricing-and-names.md قسم «ج»): لكل زبون عليه علامة «وكيل» أو «صاحب خصم تشجيعي»:
 /// إجمالي الخصم، عدد فواتيره، مجموع ما اشتراه قبل الخصم، ونسبة الخصم — من الفواتير المرحّلة غير المجانية دون الملغاة.
@@ -50,5 +64,32 @@ public class DiscountReportService
                 Discount = Math.Round(mine.Sum(l => Math.Max(0, l.List - l.UnitPrice) * l.QuantityInLevel), 2)
             };
         }).OrderBy(r => r.Kind).ThenByDescending(r => r.Discount).ThenBy(r => r.CustomerName).ToList();
+    }
+
+    /// <summary>
+    /// خصم عملاء الوكلاء: لكل عميل فرعي (تابع لوكيل) ما اشتراه في الشهر من الفواتير المرحّلة غير المجانية، وخصمه عن السعر العام؛
+    /// مجمّعًا حسب الوكيل. لا يدخل خصمهم في صف الوكيل نفسه في تقرير الخصم الشهري.
+    /// </summary>
+    public async Task<List<AgentCustomerDiscountRow>> AgentCustomersMonthAsync(int year, int month)
+    {
+        var from = new DateTime(year, month, 1);
+        var to = from.AddMonths(1);
+        var lines = await _db.SalesInvoiceLines.AsNoTracking()
+            .Where(l => l.SalesInvoice.Customer.CustomerType == CustomerType.SubCustomer && l.SalesInvoice.Customer.ParentAgentId != null
+                        && l.SalesInvoice.Status == DocumentStatus.Posted && !l.SalesInvoice.IsFreeSale
+                        && l.SalesInvoice.InvoiceDate >= from && l.SalesInvoice.InvoiceDate < to)
+            .Select(l => new
+            {
+                Customer = l.SalesInvoice.Customer.Id, CustomerName = l.SalesInvoice.Customer.Name,
+                Agent = l.SalesInvoice.Customer.ParentAgent!.Id, AgentName = l.SalesInvoice.Customer.ParentAgent.Name,
+                l.SalesInvoiceId, l.QuantityInLevel, l.UnitPrice, List = l.ListUnitPrice ?? l.UnitPrice
+            }).ToListAsync();
+        return lines.GroupBy(l => (l.Agent, l.AgentName, l.Customer, l.CustomerName)).Select(g => new AgentCustomerDiscountRow
+        {
+            AgentId = g.Key.Agent, AgentName = g.Key.AgentName, CustomerId = g.Key.Customer, CustomerName = g.Key.CustomerName,
+            InvoicesCount = g.Select(l => l.SalesInvoiceId).Distinct().Count(),
+            GrossBeforeDiscount = Math.Round(g.Sum(l => Math.Max(l.List, l.UnitPrice) * l.QuantityInLevel), 2),
+            Discount = Math.Round(g.Sum(l => Math.Max(0, l.List - l.UnitPrice) * l.QuantityInLevel), 2)
+        }).OrderBy(r => r.AgentName).ThenByDescending(r => r.Discount).ThenBy(r => r.CustomerName).ToList();
     }
 }

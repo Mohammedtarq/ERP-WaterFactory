@@ -114,6 +114,23 @@ public class InvoiceLineDraft : ObservableObject
     public decimal LineTotal => Math.Round(QuantityInLevel * UnitPrice, 2);
 }
 
+/// <summary>رصيد زبون من vw_CustomerBalances (للتفاصيل المعروضة بجانب الوكيل وعميله).</summary>
+public class InvoiceBalanceRow { public int CustomerId { get; set; } public decimal Balance { get; set; } }
+
+/// <summary>سطر رسم تحميل في الفاتورة: اسم وسعر وعدد (للوكيل وعملائه).</summary>
+public class InvoiceFeeDraft : ObservableObject
+{
+    private string _name = "";
+    private decimal _unitPrice;
+    private decimal _quantity = 1;
+    private readonly Action _changed;
+    public InvoiceFeeDraft(Action changed) => _changed = changed;
+    public string Name { get => _name; set { if (SetProperty(ref _name, value)) _changed(); } }
+    public decimal UnitPrice { get => _unitPrice; set { if (SetProperty(ref _unitPrice, value)) { OnPropertyChanged(nameof(Amount)); _changed(); } } }
+    public decimal Quantity { get => _quantity; set { if (SetProperty(ref _quantity, value)) { OnPropertyChanged(nameof(Amount)); _changed(); } } }
+    public decimal Amount => Math.Round(UnitPrice * Quantity, 2);
+}
+
 public class BatchOption
 {
     public int? BatchId { get; init; }
@@ -149,7 +166,6 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     private decimal _amountPaidNow;
     private bool _taxEnabled;
     private decimal _taxRate = 14;
-    private bool _loadingEnabled;
     private decimal _loadingRate;
     private bool _useAgentPricing = true;
     private bool _isFreeSale;
@@ -162,6 +178,17 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     private decimal _linePrice;
     private decimal? _lineAvailable;
     private bool _suppressReprice;
+    // الوكيل وعميل الوكيل
+    private Customer? _agent;
+    private Customer? _agentCustomer;
+    private bool _forAgentCustomer;
+    private string _agentCustomerSearch = "";
+    private bool _syncing;
+    private Dictionary<int, decimal> _balances = new();
+    // رسوم التحميل
+    private string _newFeeName = "مستلزمات تحميل";
+    private decimal _newFeePrice;
+    private decimal _newFeeQuantity = 1;
 
     public SalesInvoiceSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Sales, "فاتورة مبيعات", Icons.Invoice, "#10B981",
@@ -169,6 +196,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     {
         _paymentMethod = PaymentOptions[0];
         NewInvoiceCommand = new RelayCommand(() => { if (ConfirmDiscard()) ResetForm(); });
+        AddFeeCommand = new RelayCommand(AddFee);
+        RemoveFeeCommand = new RelayCommand(p => { if (p is InvoiceFeeDraft f && !IsReadOnly) { Fees.Remove(f); RaiseTotals(); } });
+        ClearAgentCommand = new RelayCommand(() => Agent = null);
         AddLineCommand = new AsyncRelayCommand(AddLineAsync);
         RemoveLineCommand = new RelayCommand(p => { if (p is InvoiceLineDraft l && !IsReadOnly) { Lines.Remove(l); RaiseTotals(); } });
         SaveDraftCommand = new AsyncRelayCommand(async () => { if (await SaveDraftAsync()) StatusMessage = $"تم حفظ المسودة {InvoiceNumber}"; });
@@ -188,6 +218,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     public ObservableCollection<ItemPackagingLevel> LevelOptions { get; } = new();
     public ObservableCollection<BatchOption> BatchOptions { get; } = new();
     public ObservableCollection<InvoiceLineDraft> Lines { get; } = new();
+    public ObservableCollection<InvoiceFeeDraft> Fees { get; } = new();
+    public ObservableCollection<Customer> Agents { get; } = new();
+    public ObservableCollection<Customer> AgentCustomersView { get; } = new();
 
     // ---------------- الرأس ----------------
     public int? InvoiceId { get => _invoiceId; private set => SetProperty(ref _invoiceId, value); }
@@ -197,7 +230,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     public bool IsReadOnly
     {
         get => _isReadOnly;
-        private set { if (SetProperty(ref _isReadOnly, value)) { OnPropertyChanged(nameof(IsEditable)); OnPropertyChanged(nameof(IsWarehouseSelectable)); } }
+        private set { if (SetProperty(ref _isReadOnly, value)) { OnPropertyChanged(nameof(IsEditable)); OnPropertyChanged(nameof(IsWarehouseSelectable)); OnPropertyChanged(nameof(FeesAllowed)); } }
     }
     public bool IsEditable => !IsReadOnly;
 
@@ -210,9 +243,148 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             OnPropertyChanged(nameof(PricingTypeLabel));
             OnPropertyChanged(nameof(PricingTypeColor));
             OnPropertyChanged(nameof(IsAgentOrSub));
+            OnPropertyChanged(nameof(FeesAllowed));
+            OnPropertyChanged(nameof(ShowFees));
+            OnPropertyChanged(nameof(CustomerDetails));
+            if (!_syncing) SyncAgentFromCustomer();
+            // رسوم التحميل للوكيل وعملائه فقط: العميل المباشر تسقط رسومه
+            if (!IsAgentOrSub && Fees.Count > 0 && !_suppressReprice) { Fees.Clear(); RaiseTotals(); }
             if (!_suppressReprice) Background(RepriceAsync());
             if (LineItem is not null) Background(RefreshLineStockAsync());   // المتاح يتبع محجوز العميل
         }
+    }
+
+    // ---------------- الوكيل وعميل الوكيل ----------------
+    /// <summary>فلتر الوكيل: اختياره يجعل الفاتورة على الوكيل نفسه، وبتفعيل «عميل الوكيل» تُسجَّل على أحد عملائه (واسمه وحده يظهر عليها).</summary>
+    public Customer? Agent
+    {
+        get => _agent;
+        set
+        {
+            if (!SetProperty(ref _agent, value)) return;
+            OnPropertyChanged(nameof(HasAgent));
+            OnPropertyChanged(nameof(AgentDetails));
+            RefreshAgentCustomers();
+            if (_syncing) return;
+            _syncing = true;
+            try
+            {
+                if (value is null) { if (IsAgentOrSub) Customer = null; ForAgentCustomer = false; }
+                else if (!ForAgentCustomer) Customer = value;
+                else if (Customer?.ParentAgentId != value.Id) Customer = null;
+            }
+            finally { _syncing = false; }
+        }
+    }
+    public bool HasAgent => Agent is not null;
+
+    /// <summary>الفاتورة لأحد عملاء الوكيل (لا للوكيل نفسه).</summary>
+    public bool ForAgentCustomer
+    {
+        get => _forAgentCustomer;
+        set
+        {
+            if (!SetProperty(ref _forAgentCustomer, value)) return;
+            RefreshAgentCustomers();
+            if (_syncing) return;
+            _syncing = true;
+            try
+            {
+                if (value) { if (Customer?.CustomerType == CustomerType.Agent) Customer = null; }
+                else if (Agent is not null) Customer = Agent;
+            }
+            finally { _syncing = false; }
+        }
+    }
+
+    public string AgentCustomerSearch { get => _agentCustomerSearch; set { if (SetProperty(ref _agentCustomerSearch, value ?? "")) RefreshAgentCustomers(); } }
+
+    public Customer? AgentCustomer
+    {
+        get => _agentCustomer;
+        set
+        {
+            if (!SetProperty(ref _agentCustomer, value)) return;
+            if (_syncing || value is null) return;
+            _syncing = true;
+            try { Customer = value; }
+            finally { _syncing = false; }
+        }
+    }
+
+    private string Money(int customerId) => _balances.GetValueOrDefault(customerId).ToString("N0");
+
+    public string? AgentDetails => Agent is null ? null
+        : $"{Agent.Name}" + (string.IsNullOrWhiteSpace(Agent.Phone) ? "" : $" · هاتف {Agent.Phone}") + $" · دينه {Money(Agent.Id)} د.ع"
+          + (Agent.CreditLimit is decimal cap ? $" · حد الدين {cap:N0}" : "") + $" · عملاؤه {Customers.Count(c => c.ParentAgentId == Agent.Id)}";
+
+    /// <summary>تفاصيل العميل المختار (عميل الوكيل) — اسمه وحده بلا اسم الوكيل.</summary>
+    public string? CustomerDetails => Customer is { CustomerType: CustomerType.SubCustomer } c
+        ? $"{c.Name}" + (string.IsNullOrWhiteSpace(c.Phone) ? "" : $" · هاتف {c.Phone}") + $" · دينه {Money(c.Id)} د.ع" : null;
+
+    private void RefreshAgentCustomers()
+    {
+        AgentCustomersView.Clear();
+        if (Agent is null || !ForAgentCustomer) return;
+        var q = (AgentCustomerSearch ?? "").Trim();
+        foreach (var c in Customers.Where(c => c.CustomerType == CustomerType.SubCustomer && c.ParentAgentId == Agent.Id
+                                               && (q.Length == 0 || c.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (c.Phone ?? "").Contains(q))))
+            AgentCustomersView.Add(c);
+        if (_agentCustomer is not null && !AgentCustomersView.Contains(_agentCustomer)) { /* العميل المختار خارج نتيجة البحث: يبقى مختارًا */ }
+    }
+
+    /// <summary>العميل الظاهر في الشاشة يحدّد الوكيل والخانة (فتح فاتورة، أو اختيار من قائمة العملاء الكاملة).</summary>
+    private void SyncAgentFromCustomer()
+    {
+        _syncing = true;
+        try
+        {
+            var c = Customer;
+            if (c?.CustomerType == CustomerType.Agent)
+            {
+                Agent = Agents.FirstOrDefault(a => a.Id == c.Id) ?? c;
+                ForAgentCustomer = false;
+                AgentCustomer = null;
+            }
+            else if (c?.CustomerType == CustomerType.SubCustomer && c.ParentAgentId is int pid)
+            {
+                Agent = Agents.FirstOrDefault(a => a.Id == pid) ?? c.ParentAgent;
+                ForAgentCustomer = true;
+                RefreshAgentCustomers();
+                AgentCustomer = c;
+            }
+            else
+            {
+                Agent = null;
+                ForAgentCustomer = false;
+                AgentCustomer = null;
+            }
+        }
+        finally { _syncing = false; }
+    }
+
+    // ---------------- رسوم التحميل (للوكيل وعملائه) ----------------
+    public bool FeesAllowed => IsEditable && IsAgentOrSub && !IsFreeSale;
+    /// <summary>قسم الرسوم يظهر للإدخال، أو للعرض إن كانت في الفاتورة (مرحّلة أو مفتوحة للقراءة).</summary>
+    public bool ShowFees => FeesAllowed || Fees.Count > 0;
+    public string NewFeeName { get => _newFeeName; set => SetProperty(ref _newFeeName, value); }
+    public decimal NewFeePrice { get => _newFeePrice; set => SetProperty(ref _newFeePrice, value); }
+    public decimal NewFeeQuantity { get => _newFeeQuantity; set => SetProperty(ref _newFeeQuantity, value); }
+    public RelayCommand AddFeeCommand { get; }
+    public RelayCommand RemoveFeeCommand { get; }
+    public RelayCommand ClearAgentCommand { get; }
+
+    private void AddFee()
+    {
+        if (!FeesAllowed) { Dialogs.Error("رسوم التحميل لفواتير الوكلاء وعملائهم فقط"); return; }
+        if (string.IsNullOrWhiteSpace(NewFeeName)) { Dialogs.Error("اكتب اسم الرسم"); return; }
+        if (NewFeePrice < 0) { Dialogs.Error("سعر الرسم لا يكون سالبًا"); return; }
+        if (NewFeeQuantity <= 0) { Dialogs.Error("عدد الرسم يجب أن يكون أكبر من صفر"); return; }
+        Fees.Add(new InvoiceFeeDraft(RaiseTotals) { Name = NewFeeName.Trim(), UnitPrice = NewFeePrice, Quantity = NewFeeQuantity });
+        NewFeeName = "مستلزمات تحميل";
+        NewFeePrice = LoadingRate;
+        NewFeeQuantity = 1;
+        RaiseTotals();
     }
 
     public Data.ProjectDb.Entities.Warehouse? Warehouse
@@ -320,8 +492,10 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
     public bool TaxEnabled { get => _taxEnabled; set { if (SetProperty(ref _taxEnabled, value)) RaiseTotals(); } }
     public decimal TaxRate { get => _taxRate; set { if (SetProperty(ref _taxRate, value)) RaiseTotals(); } }
-    public bool LoadingEnabled { get => _loadingEnabled; set { if (SetProperty(ref _loadingEnabled, value)) RaiseTotals(); } }
-    public decimal LoadingRate { get => _loadingRate; private set { if (SetProperty(ref _loadingRate, value)) RaiseTotals(); } }
+    /// <summary>الفاتورة فيها رسوم تحميل مكتوبة.</summary>
+    public bool LoadingEnabled => Fees.Count > 0;
+    /// <summary>السعر المعتاد (إعدادات مستلزمات التحميل): يُملأ به سعر الرسم الجديد.</summary>
+    public decimal LoadingRate { get => _loadingRate; private set { if (SetProperty(ref _loadingRate, value)) { if (NewFeePrice == 0) NewFeePrice = value; RaiseTotals(); } } }
 
     public bool UseAgentPricing
     {
@@ -337,7 +511,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     public bool IsFreeSale
     {
         get => _isFreeSale;
-        set { if (SetProperty(ref _isFreeSale, value)) { OnPropertyChanged(nameof(FreeSaleNotice)); RaiseTotals(); } }
+        set { if (SetProperty(ref _isFreeSale, value)) { OnPropertyChanged(nameof(FreeSaleNotice)); OnPropertyChanged(nameof(FeesAllowed)); RaiseTotals(); } }
     }
     public string? FreeSaleRecipient { get => _freeSaleRecipient; set => SetProperty(ref _freeSaleRecipient, value); }
     public string FreeSaleNotice => IsFreeSale ? "بيع مجاني: يُخصم من المخزون باسم الجهة المستفيدة، بلا قيد مالي وبلا أثر على رصيد العميل" : "";
@@ -394,7 +568,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     public bool HasDiscount => TotalDiscount > 0;
     public decimal SubTotal => IsFreeSale ? 0 : Lines.Sum(l => l.LineTotal);
     public decimal TaxAmount => IsFreeSale || !TaxEnabled ? 0 : Math.Round(SubTotal * TaxRate / 100m, 2);
-    public decimal LoadingAmount => IsFreeSale || !LoadingEnabled ? 0 : Math.Round(TotalPieces * LoadingRate, 2);
+    public decimal LoadingAmount => IsFreeSale ? 0 : Fees.Sum(f => f.Amount);
     public decimal Total => SubTotal + TaxAmount + LoadingAmount;
     public decimal PaidNow => IsFreeSale ? 0 : PaymentMethod.Value switch
     {
@@ -416,7 +590,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
     private void RaiseTotals()
     {
-        foreach (var n in new[] { nameof(TotalPieces), nameof(PacksTotalText), nameof(TotalDiscount), nameof(HasDiscount), nameof(SubTotal), nameof(TaxAmount), nameof(LoadingAmount),
+        foreach (var n in new[] { nameof(TotalPieces), nameof(PacksTotalText), nameof(TotalDiscount), nameof(HasDiscount), nameof(SubTotal), nameof(TaxAmount), nameof(LoadingAmount), nameof(LoadingEnabled), nameof(ShowFees),
                                   nameof(Total), nameof(PaidNow), nameof(AmountDue) })
             OnPropertyChanged(n);
     }
@@ -429,6 +603,11 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         var selectedWarehouseId = Warehouse?.Id;
 
         Customers.ReplaceAll(await db.Customers.AsNoTracking().Include(c => c.ParentAgent).Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
+        var selectedAgentId = Agent?.Id;
+        Agents.Clear();
+        foreach (var a in Customers.Where(c => c.CustomerType == CustomerType.Agent)) Agents.Add(a);
+        _balances = (await db.Database.SqlQueryRaw<InvoiceBalanceRow>("SELECT CustomerId, Balance FROM vw_CustomerBalances").ToListAsync())
+                    .ToDictionary(b => b.CustomerId, b => b.Balance);
 
         _allWarehouses.Clear();
         _allWarehouses.AddRange(await db.Warehouses.AsNoTracking()
@@ -468,6 +647,11 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
         _suppressReprice = true;
         Customer = Customers.FirstOrDefault(c => c.Id == selectedCustomerId);
+        if (Customer is null && selectedAgentId is int aid && Agents.FirstOrDefault(a => a.Id == aid) is { } keepAgent)
+        {
+            _syncing = true;
+            try { Agent = keepAgent; } finally { _syncing = false; }
+        }
         _suppressReprice = false;
         ApplyModeWarehouses();
         if (selectedWh is not null) Warehouse = Warehouses.FirstOrDefault(w => w.Id == selectedWh.Id) ?? Warehouse;
@@ -612,6 +796,8 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         if (Lines.Any(l => l.QuantityInLevel <= 0)) return "كل السطور يجب أن تكون بكمية أكبر من صفر";
         if (Lines.Any(l => l.UnitPrice < 0)) return "لا يُسمح بسعر سالب";
         if (IsFreeSale && string.IsNullOrWhiteSpace(FreeSaleRecipient)) return "البيع المجاني يتطلب تحديد الجهة المستفيدة";
+        if (Fees.Count > 0 && !IsFreeSale && !IsAgentOrSub) return "رسوم التحميل لفواتير الوكلاء وعملائهم فقط";
+        if (Fees.Any(f => string.IsNullOrWhiteSpace(f.Name) || f.UnitPrice < 0 || f.Quantity <= 0)) return "كل رسم يحتاج اسمًا وسعرًا غير سالب وعددًا أكبر من صفر";
         if (IsPartial && !IsFreeSale && (AmountPaidNow <= 0 || AmountPaidNow >= Total))
             return "في الدفع الجزئي يجب أن يكون المدفوع أكبر من صفر وأقل من إجمالي الفاتورة";
         return null;
@@ -659,6 +845,8 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
                     new SalesInvoiceLineInput(l.ItemId, l.PackagingLevelId, l.QuantityInLevel, l.UnitPrice, l.BatchId, l.CustomRecipeId), Session.UserId);
                 if (!r.Success) { Dialogs.Error($"{l.ItemName}: {r.ErrorMessage}"); return false; }
             }
+            var fr = await svc.SetFeesAsync(InvoiceId!.Value, IsFreeSale ? new List<SalesService.FeeInput>() : Fees.Select(f => new SalesService.FeeInput(f.Name, f.UnitPrice, f.Quantity)).ToList(), Session.UserId);
+            if (!fr.Success) { Dialogs.Error(fr.ErrorMessage!); return false; }
             return true;
         }
         finally
@@ -733,11 +921,22 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             AmountPaidNow = inv.AmountPaidNow;
             TaxEnabled = inv.TaxEnabled;
             TaxRate = inv.TaxRate;
-            LoadingEnabled = inv.LoadingSuppliesEnabled;
             UseAgentPricing = inv.IsAgentPricing || !IsAgentOrSub;
             IsFreeSale = inv.IsFreeSale;
             FreeSaleRecipient = inv.FreeSaleRecipient;
             Notes = inv.Notes;
+
+            Fees.Clear();
+            foreach (var f in inv.Fees.OrderBy(f => f.SortOrder).ThenBy(f => f.Id))
+                Fees.Add(new InvoiceFeeDraft(RaiseTotals) { Name = f.Name, UnitPrice = f.UnitPrice, Quantity = f.Quantity });
+            // فاتورة قديمة برسم القطعة (بلا سطور رسوم): تُعرض برسم واحد بمبلغها ليبقى إجماليها كما رُحّل
+            if (Fees.Count == 0 && inv.LoadingSuppliesEnabled)
+            {
+                var legacy = inv.Status == DocumentStatus.Posted
+                    ? inv.LoadingSuppliesAmount
+                    : Math.Round(inv.Lines.Sum(l => l.QuantityBaseUnits) * await new SalesService(db).GetLoadingRateAsync(inv.InvoiceDate), 2);
+                if (legacy > 0) Fees.Add(new InvoiceFeeDraft(RaiseTotals) { Name = "رسوم مستلزمات التحميل", UnitPrice = legacy, Quantity = 1 });
+            }
 
             Lines.Clear();
             ProductNames names;
@@ -803,6 +1002,10 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             if (!IsFreeSale) row.AddRange(new[] { $"{l.UnitPrice:N0}", l.Discount > 0 ? $"{l.Discount:N0}" : "", $"{l.LineTotal:N0}" });
             r.Rows.Add(row);
         }
+        // رسوم التحميل المكتوبة: سطر لكل رسم باسمه وعدده وسعره
+        if (!IsFreeSale)
+            foreach (var f in Fees)
+                r.Rows.Add(new[] { (++i).ToString(), $"رسوم: {f.Name}", $"{f.Quantity:#,0.###}", $"{f.UnitPrice:N0}", "", $"{f.Amount:N0}" });
 
         r.Total("الكمية", PacksTotalText);
         if (!IsFreeSale)
@@ -829,12 +1032,14 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         InvoiceNumber = "فاتورة جديدة";
         IsReadOnly = false;
         Customer = null;
+        _syncing = true;
+        try { Agent = null; ForAgentCustomer = false; AgentCustomer = null; AgentCustomerSearch = ""; } finally { _syncing = false; }
         InvoiceDate = DateTime.Today;
         PaymentMethod = PaymentOptions[0];
         AmountPaidNow = 0;
         TaxEnabled = false;
         TaxRate = 14;
-        LoadingEnabled = false;
+        Fees.Clear();
         UseAgentPricing = true;
         IsFreeSale = false;
         FreeSaleRecipient = null;

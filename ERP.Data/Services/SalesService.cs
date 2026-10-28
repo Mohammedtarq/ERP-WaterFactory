@@ -157,6 +157,47 @@ public class SalesService
             P("@QuantityInLevel", l.QuantityInLevel), P("@UnitPrice", l.UnitPrice), P("@BatchId", l.BatchId),
             P("@UserId", userId), P("@CustomRecipeId", l.CustomRecipeId));
 
+    /// <summary>سطر رسم تحميل: الاسم والسعر والعدد.</summary>
+    public record FeeInput(string Name, decimal UnitPrice, decimal Quantity);
+
+    /// <summary>
+    /// يستبدل رسوم التحميل في مسودة فاتورة وكيل أو عميل وكيل (لا لغيرهما ولا للبيع المجاني). قائمة فارغة تحذفها كلها.
+    /// مجموع الرسوم يصير مستلزمات التحميل في الفاتورة عند الترحيل.
+    /// </summary>
+    public async Task<FinanceOperationResult> SetFeesAsync(int invoiceId, IReadOnlyList<FeeInput> fees, int userId)
+    {
+        if (await ScalarAsync<int?>("SELECT CAST(dbo.fn_UserCan(@u, N'Sales', N'Edit') AS INT)", P("@u", userId)) != 1)
+            return FinanceOperationResult.Fail("لا تملك صلاحية تعديل فواتير المبيعات.");
+        // قراءة طازجة بلا تتبع (الترحيل يجري بإجراء مخزَّن فلا يصح الاعتماد على كيان قديم في السياق)
+        var inv = await _db.SalesInvoices.AsNoTracking().Where(i => i.Id == invoiceId)
+            .Select(i => new { i.Status, i.IsFreeSale, Type = i.Customer.CustomerType }).FirstOrDefaultAsync();
+        if (inv is null) return FinanceOperationResult.Fail("الفاتورة غير موجودة.");
+        if (inv.Status != DocumentStatus.Draft) return FinanceOperationResult.Fail("الفاتورة مرحّلة: لا تُعدَّل رسومها.");
+        if (fees.Count > 0)
+        {
+            if (inv.IsFreeSale) return FinanceOperationResult.Fail("لا رسوم على البيع المجاني.");
+            if (inv.Type == CustomerType.Direct) return FinanceOperationResult.Fail("رسوم التحميل لفواتير الوكلاء وعملائهم فقط.");
+            foreach (var f in fees)
+            {
+                if (string.IsNullOrWhiteSpace(f.Name)) return FinanceOperationResult.Fail("اكتب اسم الرسم.");
+                if (f.Name.Trim().Length > 100) return FinanceOperationResult.Fail("اسم الرسم أطول من 100 حرف.");
+                if (f.UnitPrice < 0) return FinanceOperationResult.Fail("سعر الرسم لا يكون سالبًا.");
+                if (f.Quantity <= 0) return FinanceOperationResult.Fail("عدد الرسم يجب أن يكون أكبر من صفر.");
+            }
+        }
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        await _db.SalesInvoiceFees.Where(f => f.SalesInvoiceId == invoiceId).ExecuteDeleteAsync();
+        var order = 0;
+        var added = fees.Select(f => new SalesInvoiceFee { SalesInvoiceId = invoiceId, Name = f.Name.Trim(), UnitPrice = f.UnitPrice, Quantity = f.Quantity, SortOrder = ++order }).ToList();
+        _db.SalesInvoiceFees.AddRange(added);
+        await _db.SaveChangesAsync();
+        foreach (var e in added) _db.Entry(e).State = EntityState.Detached;
+        var enabled = fees.Count > 0;
+        await _db.SalesInvoices.Where(i => i.Id == invoiceId).ExecuteUpdateAsync(u => u.SetProperty(i => i.LoadingSuppliesEnabled, enabled));
+        if (tx is not null) await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
+
     public async Task<FinanceOperationResult> DeleteLineAsync(int lineId, int userId)
         => await ExecAsync("sp_Sales_DeleteInvoiceLine", P("@LineId", lineId), P("@UserId", userId));
 
@@ -257,6 +298,7 @@ public class SalesService
             .Include(i => i.Lines).ThenInclude(l => l.PackagingLevel)
             .Include(i => i.Lines).ThenInclude(l => l.Batch).ThenInclude(b => b!.CustomRecipe)
             .Include(i => i.Lines).ThenInclude(l => l.CustomRecipe)
+            .Include(i => i.Fees)
             .FirstOrDefaultAsync(i => i.Id == invoiceId);
 
     public Task<List<SalesInvoiceListRow>> GetInvoiceListAsync(DateTime? from = null, DateTime? to = null, int? customerId = null)

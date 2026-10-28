@@ -61,6 +61,8 @@ public class SalesInvoice
     public User CreatedByUser { get; set; } = null!;
 
     public ICollection<SalesInvoiceLine> Lines { get; set; } = new List<SalesInvoiceLine>();
+    /// <summary>رسوم التحميل المكتوبة (للوكلاء وعملائهم).</summary>
+    public ICollection<SalesInvoiceFee> Fees { get; set; } = new List<SalesInvoiceFee>();
 }
 
 public class SalesInvoiceLine
@@ -89,4 +91,20 @@ public class SalesInvoiceLine
     public decimal LineTotal { get; set; }
     /// <summary>سعر القائمة لحظة البيع (لإظهار خصم الوكلاء في الحسابات الختامية): (القائمة − السعر) × الكمية.</summary>
     public decimal? ListUnitPrice { get; set; }
+}
+
+/// <summary>
+/// سطر رسم تحميل في الفاتورة (72_invoice_fees.sql): اسم وسعر وعدد، لفواتير الوكلاء وعملائهم. مجموع الرسوم = LoadingSuppliesAmount.
+/// </summary>
+public class SalesInvoiceFee
+{
+    public int Id { get; set; }
+    public int SalesInvoiceId { get; set; }
+    public SalesInvoice SalesInvoice { get; set; } = null!;
+    public string Name { get; set; } = "";
+    public decimal UnitPrice { get; set; }
+    public decimal Quantity { get; set; } = 1;
+    /// <summary>عمود محسوب في القاعدة: السعر × العدد.</summary>
+    public decimal Amount { get; private set; }
+    public int SortOrder { get; set; }
 }
