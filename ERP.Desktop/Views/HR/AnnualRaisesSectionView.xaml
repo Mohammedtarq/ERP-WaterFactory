@@ -1,0 +1,95 @@
+<UserControl x:Class="ERP.Desktop.Views.HR.AnnualRaisesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:AnnualRaisesSectionViewModel}"
+             x:Name="Root">
+    <!-- سنة من آخر علاوة/ترقية ← مستحق؛ وقبل 30 يومًا للتخطيط. «منح» يضيفها للراتب، و«تأجيل» بسبب -->
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                <TextBlock Text="{Binding DueCount, StringFormat='مستحقون: {0}'}" FontWeight="Bold" Foreground="#B91C1C" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                <TextBlock Text="{Binding SoonCount, StringFormat='خلال 30 يومًا: {0}'}" FontWeight="SemiBold" Foreground="#92400E" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                <TextBlock Text="سبب التأجيل:" VerticalAlignment="Center" Margin="28,0,6,0"/>
+                <TextBox Text="{Binding SnoozeReason, UpdateSourceTrigger=PropertyChanged}" Width="220"/>
+                <TextBlock Text="لمدة (يوم):" VerticalAlignment="Center" Margin="10,0,6,0"/>
+                <TextBox Text="{Binding SnoozeDays}" Width="60" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                <Button Content="طباعة كتاب آخر علاوة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintLastLetterCommand}" Margin="16,0,0,0"
+                        ToolTip="كتب العلاوات السابقة تُطبع من «الترقيات والعلاوات»"/>
+            </WrapPanel>
+            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,6" TextWrapping="Wrap"
+                       Text="آخر علاوة = آخر علاوة أو ترقية مسجّلة، وإلا التاريخ المكتوب في بطاقة الموظف، وإلا تاريخ التعيين. المبلغ المقترح: «مبلغ علاوة استثنائي» في بطاقة الموظف، وإلا مبلغ درجته (✎ قابل للتعديل قبل المنح)."/>
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+            <!-- العلاوات الممنوحة مؤخرًا: إلغاء الممنوحة بالخطأ بسبب، قبل دخولها رواتب معتمدة -->
+            <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,8,0,0">
+                <DockPanel>
+                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <TextBlock Text="العلاوات الممنوحة مؤخرًا" Style="{StaticResource SectionTitle}" Margin="0,0,16,0"/>
+                        <TextBlock Text="سبب الإلغاء:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding UndoReason, UpdateSourceTrigger=PropertyChanged}" Width="240"/>
+                    </WrapPanel>
+                    <DataGrid ItemsSource="{Binding Granted}" IsReadOnly="True" MaxHeight="200">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*"/>
+                            <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="100"/>
+                            <DataGridTextColumn Header="من تاريخ" Binding="{Binding EffectiveDate, StringFormat=yyyy/MM/dd}" Width="100"/>
+                            <DataGridTextColumn Header="ملاحظة" Binding="{Binding Notes}" Width="*"/>
+                            <DataGridTextColumn Header="الحالة" Binding="{Binding UndoText}" Width="120"/>
+                            <DataGridTemplateColumn Header="" Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="إلغاء المنح" Style="{StaticResource DangerButton}" Padding="8,2" IsEnabled="{Binding CanUndo}"
+                                                Command="{Binding DataContext.UndoCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+            <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="False" CanUserAddRows="False" CanUserDeleteRows="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الموظف" Binding="{Binding Row.EmployeeName}" Width="*" IsReadOnly="True" FontWeight="SemiBold"/>
+                    <DataGridTextColumn Header="القسم" Binding="{Binding Row.DepartmentName}" Width="120" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الدرجة" Binding="{Binding Row.GradeName, TargetNullValue='—'}" Width="70" IsReadOnly="True" FontWeight="SemiBold"/>
+                    <DataGridTextColumn Header="آخر علاوة" Binding="{Binding Row.LastRaiseText}" Width="210" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="تاريخ الاستحقاق" Binding="{Binding Row.DueDate, StringFormat=yyyy/MM/dd}" Width="120" IsReadOnly="True"/>
+                    <DataGridTemplateColumn Header="الحالة" Width="140" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border CornerRadius="8" Padding="8,1" HorizontalAlignment="Left">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#FEF3C7"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Row.IsDue}" Value="True"><Setter Property="Background" Value="#FEE2E2"/></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding Row.StatusText}" FontWeight="SemiBold"/>
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="المبلغ ✎" Binding="{Binding Amount, StringFormat=N0, TargetNullValue='', UpdateSourceTrigger=LostFocus}" Width="110"/>
+                    <DataGridTextColumn Header="" Binding="{Binding Row.AmountNote}" Width="100" IsReadOnly="True" Foreground="#A21CAF" FontWeight="SemiBold"/>
+                    <DataGridTemplateColumn Header="" Width="150">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="منح" Style="{StaticResource SuccessButton}" Padding="12,2" Margin="0,0,6,0"
+                                            Command="{Binding DataContext.GrantCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    <Button Content="تأجيل" Style="{StaticResource SecondaryButton}" Padding="10,2"
+                                            Command="{Binding DataContext.SnoozeCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

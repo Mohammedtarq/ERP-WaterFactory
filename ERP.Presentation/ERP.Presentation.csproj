@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    منطق الشاشات (ViewModels) بلا أي اعتماد على WPF — يُختبر آليًا على أي نظام
+    تشغيل، بينما ERP.Desktop يحوي الشكل فقط (XAML) ويربطه بهذه الطبقة.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ERP.Presentation</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ERP.Data\ERP.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- رمز QR لربط هاتف المندوب (PNG بلا مكتبات رسم النظام) -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+
+</Project>

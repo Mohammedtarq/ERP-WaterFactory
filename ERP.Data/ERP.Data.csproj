@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ERP.Cloud.Contracts\ERP.Cloud.Contracts.csproj" />
+  </ItemGroup>
+
+  <!-- سكربتات قاعدة البيانات مضمَّنة في البرنامج: يثبّت ويرقّي القواعد بنفسه دون SSMS -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\Database\*.sql" LogicalName="ERP.Database.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

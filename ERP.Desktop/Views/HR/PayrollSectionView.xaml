@@ -1,0 +1,146 @@
+<UserControl x:Class="ERP.Desktop.Views.HR.PayrollSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:PayrollSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource PrimaryButton}" Command="{Binding GenerateCommand}"
+                            IsEnabled="{Binding IsApproved, Converter={StaticResource InverseBool}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8EF;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="توليد / إعادة توليد"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding ApproveCommand}" IsEnabled="{Binding CanPost}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="اعتماد الرواتب"/>
+                        </StackPanel>
+                    </Button>
+                    <ComboBox ItemsSource="{Binding PayoutBoxes}" SelectedItem="{Binding PayoutBox}" DisplayMemberPath="Name" Width="140" Margin="0,0,6,0"
+                              ToolTip="الصندوق الذي تُصرف منه الرواتب"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding RequestPayoutCommand}" IsEnabled="{Binding CanRequestPayout}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8C7;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="طلب صرف الرواتب"/>
+                        </StackPanel>
+                    </Button>
+                    <TextBox Text="{Binding ReopenReason, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="0,0,4,0" IsEnabled="{Binding CanReopen}"
+                             ToolTip="سبب إعادة فتح الرواتب المعتمدة (قبل صرفها)"/>
+                    <Button Style="{StaticResource DangerButton}" Command="{Binding ReopenCommand}" IsEnabled="{Binding CanReopen}"
+                            ToolTip="يُعكس قيد الاستحقاق وتعود مسودة — بصلاحية «إلغاء المستندات المرحّلة»، وقبل الصرف فقط">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE777;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="إعادة فتح"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE749;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="طباعة كشف الرواتب"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="الشهر:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Months}" SelectedItem="{Binding Month}" Width="70" Margin="0,0,12,0"/>
+                    <TextBlock Text="السنة:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Years}" SelectedItem="{Binding Year}" Width="90" Margin="0,0,16,0"/>
+                    <TextBlock Text="القسم:" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Departments}" SelectedItem="{Binding Department}" DisplayMemberPath="Name" Width="160" Margin="0,0,16,0"/>
+                    <Border Background="#F1F5F9" CornerRadius="6" Padding="10,5">
+                        <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold"/>
+                    </Border>
+                </StackPanel>
+            </DockPanel>
+            <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="14,10" Margin="0,10,0,0"
+                    Visibility="{Binding Summary, Converter={StaticResource NullToCollapsed}}">
+                <WrapPanel>
+                    <TextBlock Text="{Binding Summary.EmployeeCount, StringFormat='الموظفون: {0}'}" Margin="0,0,24,0"/>
+                    <TextBlock Text="{Binding Summary.TotalNetIqd, StringFormat='صافي الدينار: {0:N0} د.ع'}" FontWeight="SemiBold" Margin="0,0,24,0"/>
+                    <TextBlock Text="{Binding Summary.TotalNetUsd, StringFormat='صافي الدولار: {0:N2} $'}" FontWeight="SemiBold" Margin="0,0,24,0"/>
+                    <TextBlock Text="{Binding Summary.UsdRate, StringFormat='سعر الصرف: {0:N0}'}" Style="{StaticResource Muted}" Margin="0,0,24,0"/>
+                    <TextBlock Text="{Binding Summary.TotalInIqd, StringFormat='إجمالي القيد: {0:N0} د.ع'}" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"/>
+                </WrapPanel>
+            </Border>
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding DepartmentTotalText}" FontWeight="SemiBold" Margin="0,6,0,0"/>
+            <!-- تجميع الأعمدة تحت عنوانين: المستحقات (أخضر) والاستقطاعات (أحمر)، مع مجموع لكل مجموعة؛
+                 عرض الشريط يتبع أعمدة الجدول (PayrollSectionView.xaml.cs) -->
+            <Grid DockPanel.Dock="Top" x:Name="GroupBand" Height="30">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="BandLead" Width="0"/>
+                    <ColumnDefinition x:Name="BandIdentity" Width="0"/>
+                    <ColumnDefinition x:Name="BandEarnings" Width="0"/>
+                    <ColumnDefinition x:Name="BandDeductions" Width="0"/>
+                    <ColumnDefinition x:Name="BandNet" Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="2" Background="#0E7A55" CornerRadius="6,6,0,0" Margin="1,0">
+                    <TextBlock Text="المستحقات" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border Grid.Column="3" Background="#B42318" CornerRadius="6,6,0,0" Margin="1,0">
+                    <TextBlock Text="الاستقطاعات" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+            </Grid>
+            <DataGrid x:Name="PayrollGrid" ItemsSource="{Binding VisibleRows}" IsReadOnly="True">
+                <DataGrid.Resources>
+                    <Style x:Key="EarnHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                        <Setter Property="Background" Value="#0E7A55"/>
+                        <Setter Property="Foreground" Value="White"/>
+                    </Style>
+                    <Style x:Key="DeductHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                        <Setter Property="Background" Value="#B42318"/>
+                        <Setter Property="Foreground" Value="White"/>
+                    </Style>
+                    <Style x:Key="EarnTotal" TargetType="TextBlock">
+                        <Setter Property="FontWeight" Value="Bold"/>
+                        <Setter Property="Foreground" Value="#0E7A55"/>
+                    </Style>
+                    <Style x:Key="DeductTotal" TargetType="TextBlock">
+                        <Setter Property="FontWeight" Value="Bold"/>
+                        <Setter Property="Foreground" Value="#B42318"/>
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*" MinWidth="140"/>
+                    <DataGridTextColumn Header="القسم" Binding="{Binding DepartmentName}" Width="100"/>
+                    <DataGridTextColumn Header="العملة" Binding="{Binding Currency}" Width="55"/>
+                    <!-- المستحقات -->
+                    <DataGridTextColumn Header="الأساسي" Binding="{Binding BaseSalary, StringFormat=N0}" Width="90" HeaderStyle="{StaticResource EarnHeader}"/>
+                    <DataGridTextColumn Header="البدلات" Binding="{Binding Allowances, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource EarnHeader}"/>
+                    <DataGridTextColumn Header="الإضافي" Binding="{Binding OvertimeAmount, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource EarnHeader}">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding OvertimeHint}"/></Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="الحوافز" Binding="{Binding Incentives, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource EarnHeader}">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding IncentivesHint}"/></Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="المجموع" Binding="{Binding TotalEarnings, StringFormat=N0}" Width="95" HeaderStyle="{StaticResource EarnHeader}" ElementStyle="{StaticResource EarnTotal}"/>
+                    <!-- الاستقطاعات -->
+                    <DataGridTextColumn Header="الغياب" Binding="{Binding AbsenceDeduction, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="بدون راتب" Binding="{Binding UnpaidLeaveDeduction, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource DeductHeader}">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding UnpaidLeaveHint}"/></Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="السلف" Binding="{Binding LoanDeduction, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="المسحوبات" Binding="{Binding WithdrawalDeduction, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="العقوبات" Binding="{Binding PenaltyDeduction, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="الضمان" Binding="{Binding SocialSecurity, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="التكافل" Binding="{Binding SocialSolidarity, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
+                    <DataGridTextColumn Header="المجموع" Binding="{Binding TotalDeductions, StringFormat=N0}" Width="90" HeaderStyle="{StaticResource DeductHeader}" ElementStyle="{StaticResource DeductTotal}"/>
+                    <DataGridTextColumn Header="الصافي" Binding="{Binding NetSalary, StringFormat=N2}" Width="110" FontWeight="Bold"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

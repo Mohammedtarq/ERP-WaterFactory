@@ -1,0 +1,37 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- لوحة الألوان الموحّدة للنظام. ألوان المظهر (الأساسي، القائمة، الخلفية) يستبدلها المظهر المختار لكل مستخدم
+         وقت التشغيل (ThemeApplier)، وتُستعمل بـ DynamicResource حتى تتغير فورًا. القيم هنا: مظهر «الرحمة» الافتراضي. -->
+    <Color x:Key="PrimaryColor">#2B8FD6</Color>
+    <Color x:Key="SidebarColor">#1B4F7A</Color>
+    <Color x:Key="SidebarHoverColor">#24618F</Color>
+    <Color x:Key="BackgroundColor">#F2F8FC</Color>
+    <Color x:Key="SurfaceColor">#FFFFFF</Color>
+    <Color x:Key="BorderColor">#CBD5E1</Color>
+    <Color x:Key="TextColor">#000000</Color>
+    <Color x:Key="MutedTextColor">#1F2937</Color>
+    <Color x:Key="DangerColor">#DC2626</Color>
+    <Color x:Key="SuccessColor">#059669</Color>
+    <Color x:Key="WarningColor">#D97706</Color>
+
+    <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource PrimaryColor}"/>
+    <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}"/>
+    <SolidColorBrush x:Key="SidebarHoverBrush" Color="{StaticResource SidebarHoverColor}"/>
+    <!-- أشرطة أسفل القائمة (المستخدم والجرس والمزامنة)، والعنصر المختار، وشارة العدد -->
+    <SolidColorBrush x:Key="SidebarDeepBrush" Color="#153F62"/>
+    <SolidColorBrush x:Key="SidebarSelectedBrush" Color="#2C70A3"/>
+    <SolidColorBrush x:Key="SidebarChipBrush" Color="#24618F"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#6FCCF5"/>
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="MutedTextBrush" Color="{StaticResource MutedTextColor}"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+
+    <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    <FontFamily x:Key="UiFont">Segoe UI</FontFamily>
+</ResourceDictionary>

@@ -1,0 +1,54 @@
+<UserControl x:Class="ERP.Desktop.Views.Sales.DiscountReportSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Sales;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:DiscountReportSectionViewModel}">
+    <!-- خصم الوكلاء وأصحاب الخصم التشجيعي (علامة بطاقة الزبون) من الفواتير المرحّلة -->
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <TextBlock Text="الشهر" VerticalAlignment="Center" Margin="0,0,6,0" FontWeight="SemiBold"/>
+                <ComboBox ItemsSource="{Binding Months}" SelectedItem="{Binding Month}" Width="60"/>
+                <ComboBox ItemsSource="{Binding Years}" SelectedItem="{Binding Year}" Width="80" Margin="6,0,0,0"/>
+                <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="8,0,0,0"/>
+                <TextBlock Text="{Binding TotalDiscount, StringFormat='إجمالي الخصم: {0:N0} د.ع'}" FontWeight="Bold" Foreground="#B45309"
+                           VerticalAlignment="Center" Margin="16,0,0,0"/>
+            </WrapPanel>
+            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,6" TextWrapping="Wrap"
+                       Text="الخصم لكل سطر = (سعر القائمة − سعر البيع) × الكمية. العلامة من بطاقة الزبون ولا تؤثر في الأسعار."/>
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+            <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="3*"/><RowDefinition Height="2*"/></Grid.RowDefinitions>
+            <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الزبون" Binding="{Binding CustomerName}" Width="*"/>
+                    <DataGridTextColumn Header="العلامة" Binding="{Binding Kind, Converter={StaticResource EnumArabicConverter}}" Width="150"/>
+                    <DataGridTextColumn Header="الفواتير" Binding="{Binding InvoicesCount}" Width="70"/>
+                    <DataGridTextColumn Header="قبل الخصم" Binding="{Binding GrossBeforeDiscount, StringFormat=N0}" Width="120"/>
+                    <DataGridTextColumn Header="الخصم" Binding="{Binding Discount, StringFormat=N0}" Width="110" FontWeight="SemiBold"/>
+                    <DataGridTextColumn Header="%" Binding="{Binding DiscountPercent, StringFormat=N1}" Width="60"/>
+                    <DataGridTextColumn Header="الصافي" Binding="{Binding Net, StringFormat=N0}" Width="120"/>
+                </DataGrid.Columns>
+            </DataGrid>
+            <DockPanel Grid.Row="1" Margin="0,12,0,0">
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}" Margin="0,0,0,6">
+                    <Run Text="خصم عملاء الوكلاء — الإجمالي"/> <Run Text="{Binding AgentCustomersDiscount, Mode=OneWay, StringFormat=N0}" Foreground="#B45309"/> <Run Text="د.ع"/>
+                </TextBlock>
+                <DataGrid ItemsSource="{Binding AgentCustomerRows}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الوكيل" Binding="{Binding AgentName}" Width="*"/>
+                        <DataGridTextColumn Header="عميل الوكيل" Binding="{Binding CustomerName}" Width="*"/>
+                        <DataGridTextColumn Header="الفواتير" Binding="{Binding InvoicesCount}" Width="70"/>
+                        <DataGridTextColumn Header="قبل الخصم" Binding="{Binding GrossBeforeDiscount, StringFormat=N0}" Width="120"/>
+                        <DataGridTextColumn Header="الخصم" Binding="{Binding Discount, StringFormat=N0}" Width="110" FontWeight="SemiBold"/>
+                        <DataGridTextColumn Header="%" Binding="{Binding DiscountPercent, StringFormat=N1}" Width="60"/>
+                        <DataGridTextColumn Header="الصافي" Binding="{Binding Net, StringFormat=N0}" Width="120"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+            </Grid>
+        </DockPanel>
+    </Border>
+</UserControl>
