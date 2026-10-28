@@ -448,6 +448,8 @@ public class CashBoxService
         CashBoxTxType.CustomerDepositOut => "إرجاع تأمين عميل",
         CashBoxTxType.EmployeeAdvance => "سلفة / مسحوب موظف",
         CashBoxTxType.PartnerWithdrawal => "سحب أرباح شريك",
+        CashBoxTxType.CustodyIssue => "صرف عهدة موظف",
+        CashBoxTxType.CustodyReturn => "إعادة عهدة موظف",
         _ => "تسليم نقد مندوب"
     };
 

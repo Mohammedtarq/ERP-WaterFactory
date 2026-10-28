@@ -315,6 +315,71 @@ public class RepWork
                               new Effect(new(), Wallet: -amount), photo);
     }
 
+    // ============================ العهدة ============================
+
+    /// <summary>عهدة فعّالة كما يراها صاحبها الآن: رصيدها بعد مصاريف الهاتف التي لم تدخل نسخة العمل بعد.</summary>
+    public record LiveCustody(SnapshotCustody Custody, decimal Balance)
+    {
+        public int Id => Custody.Id;
+        public string Title => $"{Custody.Number} — {Custody.Purpose}";
+        public bool IsLow => Custody.Issued > 0 && Balance * 5 < Custody.Issued;
+    }
+
+    /// <summary>مصروف عهدة للعرض: من نسخة العمل (مرحَّل) أو من الهاتف ينتظر الوصول (Pending).</summary>
+    public record CustodyExpenseRow(DateTime Date, decimal Amount, string Category, string? Description, string State, bool Pending);
+
+    /// <summary>صاحب الهاتف ليس مندوبًا: تفتح له واجهة العهدة فقط.</summary>
+    public bool CustodyOnly => Snapshot?.CustodyOnly == true;
+
+    public List<LiveCustody> OpenCustodies()
+    {
+        var snap = Snapshot;
+        if (snap?.Custody is not { } info) return new();
+        var pending = Unreflected(snap).Where(i => i.Effect.CustodyId is not null).ToList();
+        return info.Custodies.Select(c => new LiveCustody(c, c.Balance + pending.Where(i => i.Effect.CustodyId == c.Id).Sum(i => i.Effect.Custody))).ToList();
+    }
+
+    public decimal CustodyBalance() => OpenCustodies().Sum(c => c.Balance);
+
+    public List<SnapshotCategory> CustodyCategories() => Snapshot?.Custody?.Categories ?? new();
+
+    public DraftCheck CheckCustodyExpense(int? custodyId, int? categoryId, decimal amount)
+    {
+        if (Snapshot is null) return Fail("لم تصل نسخة العمل من المعمل بعد — اتصل بالشبكة وزامن");
+        var custody = OpenCustodies().FirstOrDefault(c => c.Id == custodyId);
+        if (custody is null) return Fail("اختر العهدة");
+        if (CustodyCategories().All(c => c.Id != categoryId)) return Fail("اختر باب المصروف");
+        if (amount <= 0) return Fail("مبلغ المصروف يجب أن يكون أكبر من صفر");
+        if (amount > custody.Balance) return Fail($"المبلغ أكبر من رصيد العهدة ({Formats.Money(custody.Balance)})");
+        var above = Snapshot.Custody?.ReceiptAbove ?? 0;
+        return new(null, above > 0 && amount > above ? $"مصروف كبير: اكتب رقم الوصل ({Formats.Money(above)} فأكثر)" : null, amount, new());
+    }
+
+    /// <summary>مصروف من العهدة: يُحفظ في الهاتف ويُرسل للمعمل ويُرحَّل تلقائيًا إن صحّ، ويخصم من رصيد العهدة المعروض فورًا.</summary>
+    public OutboxItem SaveCustodyExpense(int custodyId, int categoryId, decimal amount, string? description = null, string? receipt = null)
+    {
+        var check = CheckCustodyExpense(custodyId, categoryId, amount);
+        if (!check.Ok) throw new InvalidOperationException(check.Error);
+        var category = CustodyCategories().First(c => c.Id == categoryId).Name;
+        var custody = OpenCustodies().First(c => c.Id == custodyId);
+        var note = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        return _store.Enqueue("CustodyExpense", new CustodyExpensePayload(custodyId, categoryId, amount, note, string.IsNullOrWhiteSpace(receipt) ? null : receipt.Trim()),
+                              $"مصروف عهدة — {category}" + (note is null ? "" : $": {note}"), amount, new Effect(new(), CustodyId: custodyId, Custody: -amount));
+    }
+
+    /// <summary>مصاريف العهدة: ما رُحّل (آخر 30 يومًا) وما أرسله الهاتف ولم يصل بعد، الأحدث أولًا.</summary>
+    public List<CustodyExpenseRow> CustodyExpenses()
+    {
+        var snap = Snapshot;
+        var rows = new List<CustodyExpenseRow>();
+        if (snap is null) return rows;
+        rows.AddRange(Unreflected(snap).Where(i => i.Kind == "CustodyExpense")
+            .Select(i => new CustodyExpenseRow(i.OccurredAt, i.Amount, i.Summary.Replace("مصروف عهدة — ", ""), null, i.StateText, true)));
+        rows.AddRange((snap.Custody?.Recent ?? new()).Where(t => t.Kind == "Expense")
+            .Select(t => new CustodyExpenseRow(t.Date, t.Amount, t.Category ?? "", t.Description, "رُحّل ✔", false)));
+        return rows.OrderByDescending(r => r.Date).ThenByDescending(r => r.Pending).ToList();
+    }
+
     // ============================ وصل البيع ============================
 
     /// <summary>وصل حركة بيع (null لغير البيع). الرقم: رقم المندوب ثم تسلسل الوصل في الهاتف (مثل 7-15).</summary>

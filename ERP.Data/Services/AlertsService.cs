@@ -105,6 +105,31 @@ public class AlertsService
             }
         }
 
+        // 2-د) العهد: بلا تسوية منذ أيام، رصيدها شارف على النفاد، ومصاريف كبيرة بلا وصل
+        if (p.Has(SpecialPermission.Custody))
+        {
+            var custody = new CustodyService(_db);
+            var open = await custody.ListAsync(CustodyStatus.Active);
+            var late = open.Where(c => c.IsLate).OrderByDescending(c => c.AgeDays).ToList();
+            if (late.Count > 0)
+                alerts.Add(new("custody-late", $"عهد بلا تسوية: {late.Count}",
+                    $"{Names(late.Select(c => $"{c.Employee} ({c.AgeDays} يوم)"), late.Count)} — الرصيد {late.Sum(c => c.Balance):N0} د.ع",
+                    late.Count, AlertLevel.Danger, ModuleCode.Finance, "CustodySectionViewModel"));
+            var low = open.Where(c => c.IsLow && !c.IsLate).ToList();
+            if (low.Count > 0)
+                alerts.Add(new("custody-low", $"عهد قارب رصيدها على النفاد: {low.Count}",
+                    $"{Names(low.Select(c => $"{c.Employee} ({c.Balance:N0})"), low.Count)}", low.Count, AlertLevel.Warning, ModuleCode.Finance, "CustodySectionViewModel"));
+            var above = (await custody.SettingsAsync()).CustodyReceiptAbove;
+            var since = DateTime.Today.AddDays(-7);
+            var noReceipt = await _db.CustodyTransactions.AsNoTracking()
+                .Where(t => t.Kind == CustodyTxKind.Expense && !t.IsVoided && t.Amount > above && t.ReceiptNumber == null && !t.HasReceiptPhoto && t.TxDate >= since)
+                .Select(t => new { t.Amount, Employee = t.Custody.Employee.FullName }).ToListAsync();
+            if (noReceipt.Count > 0)
+                alerts.Add(new("custody-receipt", $"مصاريف عهد كبيرة بلا وصل: {noReceipt.Count}",
+                    $"{Names(noReceipt.Select(t => t.Employee).Distinct(), noReceipt.Select(t => t.Employee).Distinct().Count())} — المجموع {noReceipt.Sum(t => t.Amount):N0} د.ع (آخر 7 أيام)",
+                    noReceipt.Count, AlertLevel.Warning, ModuleCode.Finance, "CustodySectionViewModel"));
+        }
+
         // 3) طلبات المندوبين بانتظار الاعتماد (المرتجع والمصروف)
         if (p.Has(SpecialPermission.RepApproval))
         {

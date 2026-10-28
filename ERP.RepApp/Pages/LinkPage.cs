@@ -50,6 +50,6 @@ public class LinkPage : ContentPage
         var r = await app.SyncNowAsync();
         if (r.Error is not null)
             await DisplayAlert("تم الربط", $"{r.Error}\nإن كان الجهاز سُجّل للتو فانتظر دقيقة حتى تصل بياناته للخادم، ثم «مزامنة الآن».", "حسنًا");
-        App.ShowRoot(new HomePage());
+        App.ShowRoot(MainPages.Create("home"));
     }
 }

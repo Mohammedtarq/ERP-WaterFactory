@@ -11,7 +11,7 @@ public enum CashBoxTxType
     Opening, Deposit, Withdrawal, TransferIn, TransferOut,
     SalesReceipt, VoucherReceipt, VoucherPayment, RepHandover,
     CustomerDepositIn, CustomerDepositOut, EmployeeAdvance, PartnerWithdrawal,
-    Expense, OtherIncome, TempWages, PayrollPayout
+    Expense, OtherIncome, TempWages, PayrollPayout, CustodyIssue, CustodyReturn
 }
 
 /// <summary>صندوق مالي: رئيسي أو خاص بمستخدم. الرصيد = مجموع حركاته غير الملغاة.</summary>

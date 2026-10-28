@@ -37,7 +37,7 @@ public class LoginPage : ContentPage
     private Task TryAsync()
     {
         var result = new LoginGuard(AppServices.Instance.Store).TryLogin(_login, _user.Text, _pass.Text);
-        if (result.Ok) { App.ShowRoot(new HomePage()); return Task.CompletedTask; }
+        if (result.Ok) { App.ShowRoot(MainPages.Create("home")); return Task.CompletedTask; }
         _pass.Text = "";
         _status.Text = result.Message;
         return Task.CompletedTask;

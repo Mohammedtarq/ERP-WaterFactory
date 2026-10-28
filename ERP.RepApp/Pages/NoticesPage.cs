@@ -30,7 +30,7 @@ public class NoticesPage : ContentPage
         var (icon, color) = n.Kind switch
         {
             "load" => ("box", Ui.Collect), "reject" => ("power", Ui.Red), "approve" => ("coin", Ui.Collect),
-            "settle" => ("list", Ui.SyncColor), "cash" => ("cash", Ui.Expense), _ => ("bell", Ui.Brand)
+            "settle" => ("list", Ui.SyncColor), "cash" => ("cash", Ui.Expense), "custody" => ("coin", Ui.Brand), _ => ("bell", Ui.Brand)
         };
         var tile = new Border
         {

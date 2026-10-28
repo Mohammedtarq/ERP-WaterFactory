@@ -276,7 +276,9 @@ public static class Ui
     /// <summary>الشريط السفلي: الرئيسية، الديون، شهري، التبليغات (وعليها عدد غير المقروء). الضغط يبدّل الصفحة الجذرية.</summary>
     public static View NavBar(string active, int unread)
     {
-        var items = new (string Key, string Icon, string Text)[] { ("home", "home", "الرئيسية"), ("debts", "users", "الديون"), ("month", "cal", "شهري"), ("notices", "bell", "التبليغات") };
+        var items = AppServices.Instance.Work.CustodyOnly
+            ? new (string Key, string Icon, string Text)[] { ("home", "home", "الرئيسية"), ("expenses", "list", "مصاريفي"), ("notices", "bell", "التبليغات") }
+            : new (string Key, string Icon, string Text)[] { ("home", "home", "الرئيسية"), ("debts", "users", "الديون"), ("month", "cal", "شهري"), ("notices", "bell", "التبليغات") };
         var grid = new Grid { BackgroundColor = Colors.White, Padding = new Thickness(6, 8, 6, 10) };
         for (var i = 0; i < items.Length; i++) grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
         for (var i = 0; i < items.Length; i++)

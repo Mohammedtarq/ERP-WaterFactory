@@ -71,7 +71,7 @@ public class RepRequestsSectionViewModel : SectionViewModel
         if (RepOptions.Count == 0)
         {
             RepOptions.Add(new Option<int?>(null, "كل المندوبين"));
-            foreach (var e in await db.Employees.AsNoTracking().Where(e => e.IsSalesRep).OrderBy(e => e.FullName).ToListAsync())
+            foreach (var e in await db.Employees.AsNoTracking().Where(e => e.IsSalesRep || db.RepDevices.Any(d => d.RepEmployeeId == e.Id)).OrderBy(e => e.FullName).ToListAsync())
                 RepOptions.Add(new Option<int?>(e.Id, e.FullName));
             _rep = RepOptions[0];
             OnPropertyChanged(nameof(Rep));
@@ -239,7 +239,7 @@ public class RepDevicesSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var svc = new RepAppService(db);
         if (Reps.Count == 0)
-            foreach (var e in await db.Employees.AsNoTracking().Where(e => e.IsSalesRep).OrderBy(e => e.FullName).ToListAsync())
+            foreach (var e in await db.Employees.AsNoTracking().Where(e => e.IsActive).OrderBy(e => e.FullName).ToListAsync())
                 Reps.Add(new Option<int?>(e.Id, e.FullName));
         Devices.Clear();
         foreach (var dvc in await svc.DevicesAsync()) Devices.Add(dvc);

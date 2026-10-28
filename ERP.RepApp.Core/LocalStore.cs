@@ -8,7 +8,7 @@ namespace ERP.RepApp.Core;
 public enum OutboxState { Queued, Sent, Done }
 
 /// <summary>أثر الحركة على الأرصدة المعروضة قبل أن تصل نسخة عمل جديدة من المعمل.</summary>
-public record Effect(List<SnapshotStock> Stock, decimal Wallet = 0, int? CustomerId = null, decimal Balance = 0)
+public record Effect(List<SnapshotStock> Stock, decimal Wallet = 0, int? CustomerId = null, decimal Balance = 0, int? CustodyId = null, decimal Custody = 0)
 {
     public static readonly Effect None = new(new List<SnapshotStock>());
 }

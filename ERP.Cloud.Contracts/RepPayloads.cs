@@ -29,3 +29,6 @@ public record ReturnPayload(CustomerRef Customer, List<ReturnLinePayload> Lines,
 
 /// <summary>طلب المندوب ربط زبائن من النظام به: لا يتغير شيء حتى توافق الإدارة من «طلبات المندوبين».</summary>
 public record CustomerLinkPayload(List<int> CustomerIds);
+
+/// <summary>مصروف من عهدة الموظف: رقم عهدته وبابه ومبلغه. يُرحَّل تلقائيًا إن كانت عهدته فعّالة وفي رصيدها.</summary>
+public record CustodyExpensePayload(int CustodyId, int CategoryId, decimal Amount, string? Description = null, string? ReceiptNumber = null);

@@ -25,7 +25,9 @@ public record RepSnapshot(
     SnapshotLogin? Login = null,
     List<SnapshotCustomerChoice>? OtherCustomers = null,
     SnapshotMonth? Month = null,
-    List<SnapshotNotice>? Notices = null)
+    List<SnapshotNotice>? Notices = null,
+    SnapshotCustodyInfo? Custody = null,
+    bool CustodyOnly = false)
 {
     /// <summary>الشعار ينتقل مع كل نسخة عمل، فيبقى صغيرًا.</summary>
     public const int MaxLogoBytes = 200 * 1024;
@@ -95,3 +97,20 @@ public record SnapshotMonth(DateTime MonthStart, List<SnapshotIncentiveLine> Inc
 
 /// <summary>تبليغ للمندوب: Id ثابت (يحفظ الهاتف المقروء منه)، ونوعه (load، reject، approve، settle، cash)، وعنوانه وتفصيله ووقته.</summary>
 public record SnapshotNotice(string Id, string Kind, string Title, string? Body, DateTime At);
+
+/// <summary>عهدة فعّالة لصاحب الهاتف: ما صُرف له وما صرفه وما أعاده، والمبلغ المعتاد للتجديد.</summary>
+public record SnapshotCustody(int Id, string Number, string Purpose, DateTime IssuedAt, decimal Issued, decimal Spent, decimal Returned, decimal Target)
+{
+    public decimal Balance => Issued - Spent - Returned;
+}
+
+public record SnapshotCategory(int Id, string Name);
+
+/// <summary>حركة حديثة في عهدته: Issue / Expense / Return.</summary>
+public record SnapshotCustodyTx(int Id, int CustodyId, DateTime Date, string Kind, decimal Amount, string? Category, string? Description);
+
+/// <summary>
+/// عهد الموظف (مسؤول المشتريات أو مندوب في حالة طارئة): عهده الفعّالة وأبواب المصاريف الممكنة وآخر حركاته.
+/// CustodyOnly في النسخة: صاحب الهاتف ليس مندوبًا، فيفتح التطبيق واجهة العهدة فقط.
+/// </summary>
+public record SnapshotCustodyInfo(List<SnapshotCustody> Custodies, List<SnapshotCategory> Categories, List<SnapshotCustodyTx> Recent, decimal ReceiptAbove);

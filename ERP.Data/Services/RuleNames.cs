@@ -45,6 +45,10 @@ public static class RuleNames
         ["CustomerOpeningBalance"] = "رصيد افتتاحي مدين لعميل",
         ["CustomerOpeningCredit"] = "رصيد افتتاحي دائن لعميل",
         ["SupplierOpeningBalance"] = "رصيد افتتاحي لمورد (ذمة)",
+        ["CustodyIssue"] = "صرف عهدة نقدية لموظف",
+        ["CustodyReturn"] = "إعادة متبقي عهدة للصندوق",
+        ["CustodyExpense"] = "مصروف تشغيلي من عهدة موظف",
+        ["CustodyExpenseNonOp"] = "مصروف غير تشغيلي من عهدة موظف",
         ["SupplierOpeningAdvance"] = "رصيد افتتاحي لدفعة مقدمة لمورد",
     };
 

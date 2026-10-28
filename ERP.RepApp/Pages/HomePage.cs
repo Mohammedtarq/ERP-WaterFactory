@@ -17,6 +17,9 @@ public class HomePage : ContentPage
     private readonly Label _debtTitle = new() { FontSize = 15, FontAttributes = FontAttributes.Bold };
     private readonly Label _debtSub = new() { FontSize = 12 };
     private readonly Label _debtAmount = new() { FontSize = 18, FontAttributes = FontAttributes.Bold, VerticalOptions = LayoutOptions.Center };
+    private readonly Label _custodyTitle = new() { FontSize = 15, FontAttributes = FontAttributes.Bold, TextColor = Ui.Ink };
+    private readonly Label _custodySub = new() { FontSize = 12.5, TextColor = Ui.Muted };
+    private Border _custodyBox = null!;
     private View _header = null!;
     private bool _visible;
     private int _timerGeneration;
@@ -70,6 +73,10 @@ public class HomePage : ContentPage
         Place(Ui.ColorTile("wrench", "مصروف السيارة", Ui.Expense, () => Navigation.PushAsync(new ExpensePage())), 1, 0);
         Place(Ui.ColorTile("sync", "مزامنة الآن", Ui.SyncColor, SyncAsync), 1, 1);
         Place(Ui.ColorTile("list", "حركاتي", Ui.Moves, () => Navigation.PushAsync(new OutboxPage())), 1, 2);
+        var custodyCard = Ui.Card(new VerticalStackLayout { Spacing = 2, Children = { _custodyTitle, _custodySub } }, Ui.Brand);
+        custodyCard.GestureRecognizers.Add(new TapGestureRecognizer { Command = new Command(() => Navigation.PushAsync(new CustodyExpensesPage(asRoot: false))) });
+        _custodyBox = custodyCard;
+        _custodyBox.IsVisible = false;
         var mine = new Border
         {
             BackgroundColor = Ui.Brand, StrokeThickness = 0, Padding = new Thickness(12, 14),
@@ -90,7 +97,7 @@ public class HomePage : ContentPage
         var body = new VerticalStackLayout
         {
             Spacing = 10,
-            Children = { _connectionBox, sales, Ui.Hero("cash", "بيع", "فاتورة نقدية أو آجلة", () => Navigation.PushAsync(new SalePage())), debts, grid, mine }
+            Children = { _connectionBox, sales, Ui.Hero("cash", "بيع", "فاتورة نقدية أو آجلة", () => Navigation.PushAsync(new SalePage())), debts, _custodyBox, grid, mine }
         };
         Ui.SetupMain(this, _header, body, "home", _app.Work.UnreadCount());
     }
@@ -138,6 +145,15 @@ public class HomePage : ContentPage
 
     private void Refresh()
     {
+        // نسخة العمل لصاحب عهدة ليس مندوبًا (وصلت بعد فتح الرئيسية): تُستبدل بواجهة العهدة
+        if (_app.Work.CustodyOnly) { App.ShowRoot(MainPages.Create("home")); return; }
+        var custodies = _app.Work.OpenCustodies();
+        _custodyBox.IsVisible = custodies.Count > 0;
+        if (custodies.Count > 0)
+        {
+            _custodyTitle.Text = $"عهدتي: {Formats.Money(custodies.Sum(c => c.Balance))}";
+            _custodySub.Text = "اضغط لتسجيل مصروف طارئ (وقود أو تصليح) أو مراجعة مصاريف العهدة";
+        }
         _wallet.Text = Formats.Money(_app.Work.Wallet());
         _today.Text = Formats.Money(_app.Work.TodaySales());
         var waiting = _app.Work.WaitingCount();

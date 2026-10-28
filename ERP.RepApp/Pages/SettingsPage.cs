@@ -97,7 +97,7 @@ public class SettingsPage : ContentPage
             if (Ui.Sun == sun) return;
             _app.Store.Set(Ui.ThemeKey, sun ? "sun" : "light");
             Ui.ApplyTheme(sun);
-            App.ShowRoot(new HomePage());          // الصفحات تُبنى بألوان المظهر الجديد
+            App.ShowRoot(MainPages.Create("home"));          // الصفحات تُبنى بألوان المظهر الجديد
         };
         return b;
     }

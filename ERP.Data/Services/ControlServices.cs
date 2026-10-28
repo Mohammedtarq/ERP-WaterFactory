@@ -25,6 +25,7 @@ public static class SpecialPermission
     public const string RepApproval = "Special:RepApproval";
     public const string SettlementConfirm = "Special:SettlementConfirm";
     public const string PaymentApproval = "Special:PaymentApproval";
+    public const string Custody = "Special:Custody";
 
     public static readonly (string Code, string Name, string Hint)[] All =
     {
@@ -41,6 +42,7 @@ public static class SpecialPermission
         (ReservedStock, "البيع من رصيد محجوز لعميل آخر", "صرف تشغيلات متغير مطعم (ليبله الخاص) لعميل غيره عند نفاد الأساسي، وتصحيح متغير تشغيلة"),
         (RepApproval, "اعتماد طلبات المندوبين", "الموافقة على مصروف المندوب ومرتجع الزبون أو رفضهما، ومراجعة الآجل والمجاني"),
         (PaymentApproval, "اعتماد الصرف (المالية)", "الموافقة على سلف الموظفين ومسحوباتهم وصرف الرواتب وسحب أرباح الشركاء قبل خروج النقد من الصندوق، أو رفضها"),
+        (Custody, "إدارة العهد", "صرف عهدة نقدية لموظف من الصندوق وتجديدها وتعديل حركاتها وإلغائها وتسويتها وطباعتها"),
         (SettlementConfirm, "تأكيد تسوية المندوب (المخازن)", "عدّ مرتجع المندوب وتأكيد الجانب المخزني من تسويته: المرتجع والتالف والمجاني وفاتورة المتبقي"),
     };
 

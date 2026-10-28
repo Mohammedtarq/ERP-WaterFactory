@@ -70,6 +70,8 @@ public partial class ProjectDbContext : DbContext
 
     // ---- المندوبون ----
     public DbSet<RepWalletTransaction> RepWalletTransactions => Set<RepWalletTransaction>();
+    public DbSet<Custody> Custodies => Set<Custody>();
+    public DbSet<CustodyTransaction> CustodyTransactions => Set<CustodyTransaction>();
     public DbSet<RepTerritory> RepTerritories => Set<RepTerritory>();
     public DbSet<RepCustomerAssignment> RepCustomerAssignments => Set<RepCustomerAssignment>();
     public DbSet<SyncConflict> SyncConflicts => Set<SyncConflict>();
@@ -520,6 +522,33 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<SalesManagerIncentiveTier>().HasOne(t => t.Employee).WithMany().HasForeignKey(t => t.EmployeeId).OnDelete(DeleteBehavior.Restrict);
 
         // ================= المندوبون =================
+        modelBuilder.Entity<Custody>(e =>
+        {
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.CustodyNumber).HasMaxLength(30);
+            e.Property(x => x.Purpose).HasMaxLength(200);
+            e.Property(x => x.TargetAmount).HasPrecision(18, 2);
+            e.Property(x => x.IssuedAt).HasColumnType("date");
+            e.HasIndex(x => x.CustodyNumber).IsUnique();
+            e.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CashBox).WithMany().HasForeignKey(x => x.CashBoxId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<CustodyTransaction>(e =>
+        {
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.OriginalAmount).HasPrecision(18, 2);
+            e.Property(x => x.TxDate).HasColumnType("date");
+            e.Property(x => x.Description).HasMaxLength(300);
+            e.Property(x => x.ReceiptNumber).HasMaxLength(60);
+            e.HasOne(x => x.Custody).WithMany(c => c.Transactions).HasForeignKey(x => x.CustodyId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.JournalEntry).WithMany().HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.FinanceEntry).WithMany().HasForeignKey(x => x.FinanceEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CashBoxTx).WithMany().HasForeignKey(x => x.CashBoxTxId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<RepWalletTransaction>().HasOne(w => w.Employee).WithMany().HasForeignKey(w => w.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<RepWalletTransaction>().HasOne(w => w.Vehicle).WithMany().HasForeignKey(w => w.VehicleId).OnDelete(DeleteBehavior.Restrict);
 

@@ -8,6 +8,7 @@ public static class MainPages
         "debts" => new DebtsPage(),
         "month" => new MonthPage(),
         "notices" => new NoticesPage(),
-        _ => new HomePage()
+        "expenses" => new CustodyExpensesPage(),
+        _ => AppServices.Instance.Work.CustodyOnly ? new CustodyHomePage() : new HomePage()
     };
 }

@@ -121,6 +121,38 @@ public class RepSnapshotExtrasService
         return notices.OrderByDescending(n => n.At).Take(40).ToList();
     }
 
+    /// <summary>عهد الموظف الفعّالة وأبواب المصاريف وآخر حركاته (30 يومًا)؛ null إن لم تكن له عهدة حديثة.</summary>
+    public async Task<SnapshotCustodyInfo?> CustodyAsync(int employeeId)
+    {
+        var svc = new CustodyService(_db);
+        var active = await svc.ActiveOfAsync(employeeId);
+        var since = DateTime.Today.AddDays(-30);
+        var recent = (await _db.CustodyTransactions.AsNoTracking().Where(t => t.Custody.EmployeeId == employeeId && !t.IsVoided && t.TxDate >= since)
+                .OrderByDescending(t => t.Id).Take(40)
+                .Select(t => new { t.Id, t.CustodyId, t.TxDate, t.Kind, t.Amount, Category = t.Category != null ? t.Category.Name : null, t.Description }).ToListAsync())
+            .Select(t => new SnapshotCustodyTx(t.Id, t.CustodyId, t.TxDate, t.Kind.ToString(), t.Amount, t.Category, t.Description)).ToList();
+        if (active.Count == 0 && recent.Count == 0) return null;
+        var categories = active.Count == 0 ? new List<SnapshotCategory>()
+            : (await new FinanceEntryService(_db).GetCategoriesAsync()).Where(c => c.Kind != FinanceCategoryKind.OtherIncome).Select(c => new SnapshotCategory(c.Id, c.Name)).ToList();
+        return new SnapshotCustodyInfo(active.Select(c => new SnapshotCustody(c.Id, c.Number, c.Purpose, c.IssuedAt, c.Issued, c.Spent, c.Returned, c.TargetAmount)).ToList(),
+                                       categories, recent, (await svc.SettingsAsync()).CustodyReceiptAbove);
+    }
+
+    /// <summary>تبليغات العهدة: وصلتك عهدة (آخر 14 يومًا)، ومصروف رُفض من الهاتف.</summary>
+    public async Task<List<SnapshotNotice>> CustodyNoticesAsync(int employeeId, DateTime? now = null)
+    {
+        var since = (now ?? DateTime.UtcNow).AddDays(-14);
+        var notices = new List<SnapshotNotice>();
+        foreach (var t in await _db.CustodyTransactions.AsNoTracking()
+                     .Where(t => t.Custody.EmployeeId == employeeId && t.Kind == CustodyTxKind.Issue && !t.IsVoided && t.CreatedAt >= since)
+                     .Select(t => new { t.Id, t.Amount, t.CreatedAt, t.Custody.Purpose, t.Custody.CustodyNumber }).ToListAsync())
+            notices.Add(new SnapshotNotice($"custody:{t.Id}", "custody", $"وصلتك عهدة {t.Amount:N0} د.ع", $"{t.CustodyNumber} — {t.Purpose}", t.CreatedAt));
+        foreach (var r in await _db.RepRequests.AsNoTracking()
+                     .Where(r => r.RepEmployeeId == employeeId && r.Kind == RepRequestKind.CustodyExpense && r.Status == RepRequestStatus.Failed && r.ReceivedAt >= since).ToListAsync())
+            notices.Add(new SnapshotNotice($"custfail:{r.Id}", "reject", "تعذّر تسجيل مصروف من العهدة", r.ErrorMessage, r.ReceivedAt));
+        return notices;
+    }
+
     private static string KindText(RepRequestKind k) => k switch
     {
         RepRequestKind.Expense => "مصروف", RepRequestKind.Return => "مرتجع", RepRequestKind.Free => "مجاني", RepRequestKind.NewCustomer => "زبون جديد",

@@ -75,6 +75,36 @@ public class PhonePagesDataTests : IDisposable
     }
 
     [Fact]
+    public void Custody_balance_drops_with_queued_expenses_and_is_checked_against_the_live_balance()
+    {
+        var custody = new SnapshotCustodyInfo(
+            new() { new(7, "H-0007", "مشتريات", new DateTime(2026, 10, 25), 300_000, 80_000, 0, 300_000) },
+            new() { new(3, "نقل"), new(4, "صيانة") },
+            new() { new(1, 7, new DateTime(2026, 10, 26), "Expense", 80_000, "صيانة", "قطع غيار") }, 25_000);
+        var work = Work(new RepSnapshot(11, "علي حسن", DateTime.UtcNow, false, 2, 0, new(), new(), new(), new(), CustodyOnly: true, Custody: custody));
+        Assert.True(work.CustodyOnly);
+        Assert.Equal(220_000, work.CustodyBalance());
+
+        Assert.False(work.CheckCustodyExpense(7, 3, 0).Ok);                       // مبلغ صفر
+        Assert.False(work.CheckCustodyExpense(7, 99, 10_000).Ok);                 // باب غير معتمد
+        Assert.False(work.CheckCustodyExpense(8, 3, 10_000).Ok);                  // عهدة غير موجودة
+        Assert.False(work.CheckCustodyExpense(7, 3, 220_001).Ok);                 // أكبر من الرصيد
+        Assert.Contains("رقم الوصل", work.CheckCustodyExpense(7, 3, 30_000).Warning);   // فوق حد الوصل: تنبيه لا منع
+        Assert.Null(work.CheckCustodyExpense(7, 3, 20_000).Warning);
+
+        var item = work.SaveCustodyExpense(7, 3, 45_000, "أجرة نقل", "R-1");
+        Assert.Equal("CustodyExpense", item.Kind);
+        var payload = JsonSerializer.Deserialize<CustodyExpensePayload>(item.Payload, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Equal((7, 3, 45_000m, "أجرة نقل", "R-1"), (payload.CustodyId, payload.CategoryId, payload.Amount, payload.Description, payload.ReceiptNumber));
+        Assert.Equal(175_000, work.CustodyBalance());                             // يخصم فورًا قبل وصول المعمل
+        Assert.False(work.CheckCustodyExpense(7, 3, 175_001).Ok);
+
+        var rows = work.CustodyExpenses();
+        Assert.Equal(new[] { true, false }, rows.Select(r => r.Pending));         // المنتظر أولًا ثم المرحَّل
+        Assert.Equal(new[] { 45_000m, 80_000m }, rows.Select(r => r.Amount));
+    }
+
+    [Fact]
     public void Old_snapshots_without_the_new_fields_still_load()
     {
         var work = Work(new RepSnapshot(9, "علي", DateTime.UtcNow, true, 2, 0, new(), new() { new(1, "زبون", null, null, "Direct", null, null, 5_000) }, new(), new()));

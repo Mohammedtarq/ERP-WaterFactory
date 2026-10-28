@@ -56,6 +56,7 @@ public class RepAppService
         RepRequestKind.NewCustomer => "زبون جديد",
         RepRequestKind.Expense => "مصروف",
         RepRequestKind.CustomerLink => "ربط زبائن",
+        RepRequestKind.CustodyExpense => "مصروف من العهدة",
         _ => "مرتجع زبون"
     };
 
@@ -65,7 +66,7 @@ public class RepAppService
     public async Task<(FinanceOperationResult result, string? deviceKey)> RegisterDeviceAsync(int repEmployeeId, string deviceName, int userId)
     {
         var rep = await _db.Employees.FirstOrDefaultAsync(e => e.Id == repEmployeeId);
-        if (rep is null || !rep.IsSalesRep) return (FinanceOperationResult.Fail("اختر مندوبًا"), null);
+        if (rep is null || !rep.IsActive) return (FinanceOperationResult.Fail("اختر موظفًا"), null);
         if (string.IsNullOrWhiteSpace(deviceName)) return (FinanceOperationResult.Fail("اكتب اسم الجهاز (مثل: هاتف علي سامسونج)"), null);
         var key = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var device = new RepDevice { RepEmployeeId = rep.Id, DeviceName = deviceName.Trim(), DeviceKey = key, RegisteredByUserId = userId };
@@ -81,8 +82,8 @@ public class RepAppService
     /// </summary>
     public async Task<FinanceOperationResult> SetLoginAsync(int repEmployeeId, string username, string password, int userId)
     {
-        var rep = await _db.Employees.FirstOrDefaultAsync(e => e.Id == repEmployeeId && e.IsSalesRep);
-        if (rep is null) return FinanceOperationResult.Fail("المندوب غير موجود");
+        var rep = await _db.Employees.FirstOrDefaultAsync(e => e.Id == repEmployeeId && e.IsActive);
+        if (rep is null) return FinanceOperationResult.Fail("الموظف غير موجود");
         if (!RepLogin.IsValid(username)) return FinanceOperationResult.Fail("اسم الدخول من حرف إلى 4 حروف أو أرقام بلا فراغات");
         if (!RepLogin.IsValid(password)) return FinanceOperationResult.Fail("كلمة المرور من حرف إلى 4 حروف أو أرقام بلا فراغات");
         var name = RepLogin.Normalize(username);
@@ -97,8 +98,8 @@ public class RepAppService
 
     public async Task<FinanceOperationResult> ClearLoginAsync(int repEmployeeId, int userId)
     {
-        var rep = await _db.Employees.FirstOrDefaultAsync(e => e.Id == repEmployeeId && e.IsSalesRep);
-        if (rep is null) return FinanceOperationResult.Fail("المندوب غير موجود");
+        var rep = await _db.Employees.FirstOrDefaultAsync(e => e.Id == repEmployeeId && e.IsActive);
+        if (rep is null) return FinanceOperationResult.Fail("الموظف غير موجود");
         (rep.RepLoginName, rep.RepLoginSalt, rep.RepLoginHash) = (null, null, null);
         await _db.SaveChangesAsync();
         await new AuditService(_db).LogAsync(userId, "Edit", "Employees", rep.Id, $"إلغاء دخول تطبيق المندوب {rep.FullName}");
@@ -258,10 +259,25 @@ public class RepAppService
             case RepRequestKind.CustomerLink:
                 await CustomerLinkIntakeAsync(r, Parse<CustomerLinkPayload>(r));
                 break;
+            case RepRequestKind.CustodyExpense:
+                await CustodyExpenseAsync(device, r, Parse<CustodyExpensePayload>(r));
+                break;
             default:
                 await ReturnIntakeAsync(r, Parse<ReturnPayload>(r));
                 break;
         }
+    }
+
+    /// <summary>مصروف من العهدة: يُرحَّل فورًا على عهدة صاحب الهاتف وضمن رصيدها، ويُرفض بسبب مفهوم إن لم يصحّ.</summary>
+    private async Task CustodyExpenseAsync(RepDevice device, RepRequest r, CustodyExpensePayload p)
+    {
+        var input = new CustodyExpenseInput(p.CustodyId, p.Amount, p.CategoryId, p.Description, p.ReceiptNumber, r.OccurredAt.Date, ClientId: r.ClientId);
+        var (result, _) = await new CustodyService(_db).AddExpenseAsync(input, device.RegisteredByUserId, ownerEmployeeId: r.RepEmployeeId);
+        if (!result.Success) { Fail(r, result.ErrorMessage ?? "تعذّر تسجيل المصروف"); return; }
+        var tx = await _db.CustodyTransactions.AsNoTracking().Where(t => t.ClientId == r.ClientId).Select(t => new { t.Id, Category = t.Category!.Name, t.Custody.CustodyNumber }).FirstAsync();
+        r.Amount = p.Amount;
+        r.Summary = $"{tx.Category} — عهدة {tx.CustodyNumber}{(string.IsNullOrWhiteSpace(p.Description) ? "" : " — " + p.Description.Trim())}";
+        (r.ResultTable, r.ResultId, r.Status) = ("CustodyTransactions", tx.Id, RepRequestStatus.Posted);
     }
 
     private static void Fail(RepRequest r, string message) { r.Status = RepRequestStatus.Failed; r.ErrorMessage = message; }

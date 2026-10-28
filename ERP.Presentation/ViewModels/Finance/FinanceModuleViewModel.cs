@@ -17,6 +17,7 @@ public class FinanceModuleViewModel : ModuleViewModel
         UseDashboard(s, d, ModuleCode.Finance, ModuleDashboardViewModel.Finance);
         Boxes = Add(new CashBoxesSectionViewModel(s, d));
         Add(new PaymentRequestsSectionViewModel(s, d));
+        Add(new CustodySectionViewModel(s, d));
         CashSettlement = Add(new Reps.RepCashSettlementSectionViewModel(s, d));
         Expenses = Add(new ExpensesSectionViewModel(s, d));
         DailyCash = Add(new DailyCashSectionViewModel(s, d));

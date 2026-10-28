@@ -20,7 +20,7 @@ public class App : Application
     {
         var store = AppServices.Instance.Store;
         if (store.Link is null) return new LinkPage();
-        return store.Snapshot?.Login is { } login ? new LoginPage(login) : new HomePage();
+        return store.Snapshot?.Login is { } login ? new LoginPage(login) : MainPages.Create("home");
     }
 
     public static NavigationPage Root(Page page) =>

@@ -71,7 +71,7 @@ public record AgentPing(DateTime ServerTimeUtc, int Waiting, string Version, Gui
 public static class RepKinds
 {
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
-        { "CashSale", "CreditSale", "Free", "Collection", "NewCustomer", "Expense", "Return", "CustomerLink" };
+        { "CashSale", "CreditSale", "Free", "Collection", "NewCustomer", "Expense", "Return", "CustomerLink", "CustodyExpense" };
 }
 
 /// <summary>حدود الحجم: المحتوى نص قصير، وصورة الوصل مضغوطة من الهاتف.</summary>

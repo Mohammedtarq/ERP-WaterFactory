@@ -19,7 +19,7 @@ public class RepDevice
     public DateTime? RemovedAt { get; set; }
 }
 
-public enum RepRequestKind { CashSale, CreditSale, Free, Collection, NewCustomer, Expense, Return, CustomerLink }
+public enum RepRequestKind { CashSale, CreditSale, Free, Collection, NewCustomer, Expense, Return, CustomerLink, CustodyExpense }
 
 /// <summary>Posted = رُحّل، Pending = بانتظار الاعتماد، Rejected = مرفوض، Failed = تعذّر ترحيله (السبب في ErrorMessage).</summary>
 public enum RepRequestStatus { Posted, Pending, Rejected, Failed }
@@ -59,4 +59,10 @@ public class RepAppSetting
     public int Id { get; set; } = 1;
     public bool AllowCreditOverLimit { get; set; } = true;
     public int CashAlertDays { get; set; } = 2;
+    /// <summary>العهدة بلا تسوية أكثر من هذه الأيام تنبّه المدير المالي (71_custody.sql).</summary>
+    public int CustodyAlertDays { get; set; } = 7;
+    /// <summary>تنبيه حين يهبط رصيد العهدة دون هذه النسبة من المصروف لها.</summary>
+    public int CustodyLowPercent { get; set; } = 20;
+    /// <summary>مصروف العهدة فوق هذا المبلغ بلا رقم وصل ولا صورة يُنبَّه عليه.</summary>
+    public decimal CustodyReceiptAbove { get; set; } = 25000;
 }

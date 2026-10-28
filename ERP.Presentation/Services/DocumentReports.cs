@@ -503,6 +503,49 @@ public static class DocumentReports
         return r;
     }
 
+    // ============================ العهد ============================
+
+    /// <summary>كشف عهدة واحدة بتفاصيلها: كل حركة بتاريخها وبابها، والمصروف والرصيد، وملخص حسب الباب، وتوقيع المستلم والمدير المالي.</summary>
+    public static async Task<ReportDocument?> CustodyAsync(AppSession s, ProjectDbContext db, int custodyId)
+    {
+        var d = await new CustodyService(db).DetailAsync(custodyId);
+        if (d is null) return null;
+        var h = d.Header;
+        var r = new ReportDocument
+        {
+            CompanyName = s.ProjectName, Title = "كشف عهدة", PrintedBy = s.Username, Key = "Custody", Stamp = h.Status == CustodyStatus.Voided ? "ملغاة" : h.Status == CustodyStatus.Settled ? "مسوّاة" : null
+        };
+        r.Field("رقم العهدة", h.Number).Field("الموظف", h.Employee).Field("المسمى", h.JobTitle).Field("الغرض", h.Purpose)
+         .Field("تاريخ الصرف", h.IssuedAt.ToString("yyyy/MM/dd")).Field("الصندوق", d.CashBox).Field("صرفها", d.IssuedBy);
+        r.Columns.AddRange(new[] { "التاريخ", "البيان", "الباب", "الوصل", "صرف", "مصروف", "أُعيد", "الرصيد", "الحالة" });
+        foreach (var t in d.Rows)
+            r.Rows.Add(new[]
+            {
+                t.Date.ToString("yyyy/MM/dd"), string.IsNullOrWhiteSpace(t.Description) ? t.KindText : $"{t.KindText}: {t.Description}", t.Category ?? "", t.ReceiptNumber ?? "",
+                t.Kind == CustodyTxKind.Issue ? N(t.Amount) : "", t.Kind == CustodyTxKind.Expense ? N(t.Amount) : "", t.Kind == CustodyTxKind.Return ? N(t.Amount) : "",
+                t.IsVoided ? "" : N(t.Balance), t.IsVoided ? $"ملغاة — {t.VoidReason}" : t.IsModified ? "معدّلة" : ""
+            });
+        r.Total("المصروف لها", $"{N(h.Issued)} د.ع").Total("المصروف منها", $"{N(h.Spent)} د.ع").Total("المُعاد للخزينة", $"{N(h.Returned)} د.ع")
+         .Total("الرصيد", $"{N(h.Balance)} د.ع", true);
+        if (d.ByCategory.Count > 0) r.Total("ملخص حسب الباب", string.Join(" · ", d.ByCategory.Select(c => $"{c.Category} {N(c.Amount)}")));
+        r.Signatures.AddRange(new[] { "المستلم (صاحب العهدة)", "المدير المالي" });
+        return r;
+    }
+
+    /// <summary>جدول العهد المعروض (فعّالة أو مسوّاة أو الكل) بفلاتره.</summary>
+    public static ReportDocument CustodyList(AppSession s, IReadOnlyList<CustodyRow> rows, string filterText)
+    {
+        var r = new ReportDocument { CompanyName = s.ProjectName, Title = "جدول العهد", PrintedBy = s.Username, Key = "CustodyList" };
+        r.Field("العرض", filterText);
+        r.Columns.AddRange(new[] { "الرقم", "الموظف", "الغرض", "تاريخ الصرف", "المصروف لها", "المصروف منها", "المُعاد", "الرصيد", "العمر (يوم)", "الحالة" });
+        foreach (var c in rows)
+            r.Rows.Add(new[] { c.Number, c.Employee, c.Purpose, c.IssuedAt.ToString("yyyy/MM/dd"), N(c.Issued), N(c.Spent), N(c.Returned), N(c.Balance), $"{c.AgeDays}", c.StatusText });
+        r.Total("عدد العهد", $"{rows.Count}").Total("المصروف لها", $"{N(rows.Sum(c => c.Issued))} د.ع").Total("المصروف منها", $"{N(rows.Sum(c => c.Spent))} د.ع")
+         .Total("الرصيد المفتوح", $"{N(rows.Where(c => c.Status == CustodyStatus.Active).Sum(c => c.Balance))} د.ع", true);
+        r.Signatures.AddRange(new[] { "المحاسب", "المدير المالي" });
+        return r;
+    }
+
     // ============================ المطابقة والشركاء ============================
 
     private static ReportDocument BuildReconciliation(AppSession s, string title, string? stamp, string? number, DateTime date, FinishedGoodsValuation valuation,
