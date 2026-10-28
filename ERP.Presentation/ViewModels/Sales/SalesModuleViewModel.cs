@@ -125,10 +125,12 @@ public class InvoiceFeeDraft : ObservableObject
     private decimal _quantity = 1;
     private readonly Action _changed;
     public InvoiceFeeDraft(Action changed) => _changed = changed;
-    public string Name { get => _name; set { if (SetProperty(ref _name, value)) _changed(); } }
-    public decimal UnitPrice { get => _unitPrice; set { if (SetProperty(ref _unitPrice, value)) { OnPropertyChanged(nameof(Amount)); _changed(); } } }
-    public decimal Quantity { get => _quantity; set { if (SetProperty(ref _quantity, value)) { OnPropertyChanged(nameof(Amount)); _changed(); } } }
+    public string Name { get => _name; set { if (SetProperty(ref _name, value)) { OnPropertyChanged(nameof(SummaryText)); _changed(); } } }
+    public decimal UnitPrice { get => _unitPrice; set { if (SetProperty(ref _unitPrice, value)) { OnPropertyChanged(nameof(Amount)); OnPropertyChanged(nameof(SummaryText)); _changed(); } } }
+    public decimal Quantity { get => _quantity; set { if (SetProperty(ref _quantity, value)) { OnPropertyChanged(nameof(Amount)); OnPropertyChanged(nameof(SummaryText)); _changed(); } } }
     public decimal Amount => Math.Round(UnitPrice * Quantity, 2);
+    /// <summary>سطر الملخص: «سكيب خشب (15 × 5,000)».</summary>
+    public string SummaryText => $"{Name} ({Quantity:#,0.###} × {UnitPrice:N0})";
 }
 
 public class BatchOption

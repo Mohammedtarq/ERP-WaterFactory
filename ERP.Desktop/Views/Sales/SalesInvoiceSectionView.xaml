@@ -6,6 +6,19 @@
              xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Sales;assembly=ERP.Presentation"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:SalesInvoiceSectionViewModel}"
              x:Name="Root">
+    <UserControl.Resources>
+        <!-- خانة تعديل: حدّ أحمر وتلميح بسبب الخطأ عند إدخال غير صالح (زر الحذف يبقى دائمًا) -->
+        <Style x:Key="ErrBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Style.Triggers>
+                <Trigger Property="Validation.HasError" Value="True">
+                    <Setter Property="BorderBrush" Value="#DC2626"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="Background" Value="#FEF2F2"/>
+                    <Setter Property="ToolTip" Value="{Binding RelativeSource={RelativeSource Self}, Path=(Validation.Errors)[0].ErrorContent}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
@@ -52,8 +65,13 @@
                 </StackPanel>
             </DockPanel>
 
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+
+            <!-- كل ما تحت الشريط يتمرر عموديًا: جدول المنتجات لا يُدفع خارج الشاشة بحجم بطاقة الرسوم -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
             <!-- ================= رأس الفاتورة ================= -->
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,10" IsEnabled="{Binding IsEditable}">
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10" IsEnabled="{Binding IsEditable}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="2*"/>
@@ -156,7 +174,7 @@
             </Border>
 
             <!-- ================= رسوم مستلزمات التحميل (للوكيل وعملائه فقط) ================= -->
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,10"
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10"
                     Visibility="{Binding ShowFees, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel>
                     <TextBlock Text="رسوم مستلزمات التحميل" Style="{StaticResource SectionTitle}"/>
@@ -172,28 +190,32 @@
                             <TextBox Text="{Binding NewFeeQuantity, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/></StackPanel>
                         <Button Grid.Column="6" Content="+ إضافة رسم" Style="{StaticResource SecondaryButton}" VerticalAlignment="Bottom" Command="{Binding AddFeeCommand}"/>
                     </Grid>
-                    <DataGrid ItemsSource="{Binding Fees}" CanUserAddRows="False" Margin="0,8,0,0" MaxHeight="150" IsReadOnly="{Binding IsReadOnly}"
-                              Visibility="{Binding LoadingEnabled, Converter={StaticResource BoolToVisibility}}">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="الاسم ✎" Binding="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
-                            <DataGridTextColumn Header="السعر ✎" Binding="{Binding UnitPrice, UpdateSourceTrigger=PropertyChanged}" Width="100"/>
-                            <DataGridTextColumn Header="العدد ✎" Binding="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="80"/>
-                            <DataGridTextColumn Header="الإجمالي" Binding="{Binding Amount, StringFormat=N0, Mode=OneWay}" Width="110" IsReadOnly="True"/>
-                            <DataGridTemplateColumn Header="" Width="46">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Content="&#xE74D;" ToolTip="حذف الرسم" Style="{StaticResource RowIconButton}" Tag="#DC2626"
-                                                Command="{Binding DataContext.RemoveFeeCommand, ElementName=Root}" CommandParameter="{Binding}"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <!-- الرسوم المضافة: اسم + سعر + عدد فقط (قابلة للتعديل عند الخطأ) و ✕ للحذف؛ بلا عمود إجمالي -->
+                    <ItemsControl ItemsSource="{Binding Fees}" Margin="0,8,0,0" IsEnabled="{Binding IsEditable}"
+                                  Visibility="{Binding LoadingEnabled, Converter={StaticResource BoolToVisibility}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="80"/><ColumnDefinition Width="10"/><ColumnDefinition Width="40"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Style="{StaticResource ErrBox}" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <TextBox Grid.Column="2" Style="{StaticResource ErrBox}" Text="{Binding UnitPrice, UpdateSourceTrigger=PropertyChanged}"
+                                             FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                                    <TextBox Grid.Column="4" Style="{StaticResource ErrBox}" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}"
+                                             FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                                    <Button Grid.Column="6" Content="&#xE711;" ToolTip="حذف الرسم" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.RemoveFeeCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Border>
 
             <!-- ================= إضافة سطر ================= -->
-            <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Margin="0,0,0,10" IsEnabled="{Binding IsEditable}">
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10" IsEnabled="{Binding IsEditable}">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -250,11 +272,9 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
-
             <!-- ================= سطور الفاتورة (الكمية والسعر قابلان للتعديل) ================= -->
             <Border Style="{StaticResource Card}" Padding="0">
-                <DataGrid ItemsSource="{Binding Lines}" IsReadOnly="{Binding IsReadOnly}" BorderThickness="0">
+                <DataGrid ItemsSource="{Binding Lines}" IsReadOnly="{Binding IsReadOnly}" BorderThickness="0" MinHeight="240" MaxHeight="520">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="80" IsReadOnly="True"/>
                         <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*" IsReadOnly="True"/>
@@ -278,6 +298,8 @@
                     </DataGrid.Columns>
                 </DataGrid>
             </Border>
+            </StackPanel>
+            </ScrollViewer>
         </DockPanel>
 
         <!-- ================= الملخص ================= -->
@@ -303,8 +325,18 @@
                     </DockPanel>
                     <DockPanel Margin="0,4">
                         <TextBlock DockPanel.Dock="Right" Text="{Binding LoadingAmount, StringFormat=N0}"/>
-                        <TextBlock Text="مستلزمات التحميل" Style="{StaticResource Muted}"/>
+                        <TextBlock Text="رسوم التحميل" Style="{StaticResource Muted}"/>
                     </DockPanel>
+                    <ItemsControl ItemsSource="{Binding Fees}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel Margin="10,1,0,1">
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Amount, StringFormat=N0}" FontSize="12"/>
+                                    <TextBlock Text="{Binding SummaryText}" Style="{StaticResource Muted}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <Separator Margin="0,8"/>
                     <DockPanel Margin="0,4">
                         <TextBlock DockPanel.Dock="Right" Text="{Binding Total, StringFormat='{}{0:N0} د.ع'}" FontSize="20" FontWeight="Bold"/>
