@@ -252,6 +252,7 @@ public class MainShellViewModel : ViewModelBase
         foreach (var k in keys)
             if (Entries.FirstOrDefault(e => e.Key == k) is { } e) Favorites.Add(e);
         OnPropertyChanged(nameof(HasFavorites));
+        OnPropertyChanged(nameof(ShowFavoritesPanel));
         foreach (var m in _modules.Values.OfType<ModuleViewModel>())
             foreach (var t in m.TabsSnapshot().OfType<SectionViewModel>()) t.IsFavorite = _favoriteKeys.Contains(SectionCatalog.KeyOf(t));
     }
@@ -269,6 +270,59 @@ public class MainShellViewModel : ViewModelBase
         if (key is null) return;
         await using var db = Session.NewDb();
         SetFavorites(await new UserPreferencesService(db).ToggleFavoriteAsync(Session.UserId, key));
+    }
+
+    // ---- السحب والإفلات: تثبيت قسم من اللوحة المنبثقة في «مفضلتي» بموضع محدد، وإعادة الترتيب، والإزالة ----
+
+    private bool _isDraggingSection;
+    private string? _favoriteNotice;
+    private string? _lastPinnedKey;
+
+    /// <summary>أثناء سحب بطاقة قسم: تظهر منطقة الإفلات في القائمة الجانبية حتى لو كانت «مفضلتي» فارغة.</summary>
+    public bool IsDraggingSection
+    {
+        get => _isDraggingSection;
+        set { if (SetProperty(ref _isDraggingSection, value)) OnPropertyChanged(nameof(ShowFavoritesPanel)); }
+    }
+
+    public bool ShowFavoritesPanel => HasFavorites || IsDraggingSection;
+    /// <summary>رسالة قصيرة بجانب «مفضلتي» بعد الإضافة أو الإزالة (تختفي وحدها).</summary>
+    public string? FavoriteNotice { get => _favoriteNotice; private set => SetProperty(ref _favoriteNotice, value); }
+    /// <summary>آخر قسم أُفلت في المفضلة: تومض بطاقته لحظة.</summary>
+    public string? LastPinnedKey { get => _lastPinnedKey; private set => SetProperty(ref _lastPinnedKey, value); }
+
+    /// <summary>مفتاح القسم الذي تمثله البطاقة المسحوبة (الأقسام فقط؛ «نظرة عامة» لا تُثبَّت).</summary>
+    public static string? FavoriteKeyOf(object? tile) => tile is SectionViewModel s ? SectionCatalog.KeyOf(s) : null;
+
+    /// <summary>أفلت قسم على «مفضلتي» عند الموضع index (من 0). يعيد false إن لم يكن القسم معروفًا.</summary>
+    public async Task<bool> PinFavoriteAtAsync(string key, int index)
+    {
+        if (Entries.All(e => e.Key != key)) return false;
+        var wasPinned = _favoriteKeys.Contains(key);
+        await using (var db = Session.NewDb())
+            SetFavorites(await new UserPreferencesService(db).PinFavoriteAsync(Session.UserId, key, index));
+        var title = Entries.First(e => e.Key == key).Title;
+        LastPinnedKey = key;
+        Notify(wasPinned ? $"نُقلت «{title}»" : $"أُضيفت «{title}» إلى مفضلتي");
+        return true;
+    }
+
+    /// <summary>إزالة قسم من «مفضلتي» (الزر ✕ أو سحبه خارج القائمة).</summary>
+    public async Task UnpinFavoriteAsync(string key)
+    {
+        if (!_favoriteKeys.Contains(key)) return;
+        await using (var db = Session.NewDb())
+            SetFavorites(await new UserPreferencesService(db).RemoveFavoriteAsync(Session.UserId, key));
+        Notify("أُزيلت من مفضلتي");
+    }
+
+    private CancellationTokenSource? _noticeCts;
+    private void Notify(string text)
+    {
+        FavoriteNotice = text;
+        _noticeCts?.Cancel();
+        var cts = _noticeCts = new CancellationTokenSource();
+        Background(Task.Delay(2500, cts.Token).ContinueWith(t => { if (!t.IsCanceled) FavoriteNotice = null; }, TaskScheduler.Default));
     }
 
     /// <summary>فتح شاشة بمفتاحها: في وحدتها الأصلية، وإلا حيث نقلتها الإدارة.</summary>

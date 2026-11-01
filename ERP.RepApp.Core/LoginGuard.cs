@@ -5,8 +5,11 @@ namespace ERP.RepApp.Core;
 /// <summary>نتيجة محاولة دخول: Ok، أو خطأ مع المحاولات المتبقية قبل الإيقاف، أو إيقاف مؤقت بثوانٍ.</summary>
 public record LoginResult(bool Ok, int AttemptsLeft = 0, int LockedSeconds = 0)
 {
-    public string Message => Ok ? "" : LockedSeconds > 0 ? $"محاولات كثيرة — انتظر {LockedSeconds} ثانية" :
-        AttemptsLeft > 0 ? $"الاسم أو كلمة المرور غير صحيحة (متبقي {AttemptsLeft} محاولات)" : "الاسم أو كلمة المرور غير صحيحة";
+    public string Message => Ok ? "" : LockedSeconds > 0 ? $"محاولات كثيرة — أعد المحاولة بعد {Clock(LockedSeconds)}" :
+        AttemptsLeft > 0 ? $"الاسم أو كلمة المرور غير صحيحة — متبقي {AttemptsLeft} من {LoginGuard.FreeAttempts} محاولات" : "الاسم أو كلمة المرور غير صحيحة";
+
+    /// <summary>الثواني بصيغة دقائق:ثوانٍ (4:32).</summary>
+    public static string Clock(int seconds) => $"{seconds / 60}:{seconds % 60:00}";
 }
 
 /// <summary>
@@ -24,6 +27,11 @@ public sealed class LoginGuard
         _store = store;
         _now = now ?? (() => DateTime.UtcNow);
     }
+
+    /// <summary>المحاولات المتبقية قبل الإيقاف (بعد انتهاء إيقاف سابق تبقى محاولة واحدة قبل إيقاف جديد).</summary>
+    public int AttemptsLeft => Fails >= FreeAttempts ? 1 : FreeAttempts - Fails;
+    /// <summary>الثواني المتبقية من الإيقاف المؤقت (0 = غير موقوف).</summary>
+    public int LockedSeconds => LockedFor();
 
     private int Fails => int.TryParse(_store.Get("LoginFails"), out var n) ? n : 0;
 

@@ -18,11 +18,28 @@
     const token = store.get();
     const r = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, cache: 'no-store' });
     const body = await r.json().catch(() => ({}));
-    if (!r.ok) { const e = new Error(body.error || 'تعذّر الاتصال'); e.status = r.status; throw e; }
+    if (!r.ok) { const e = new Error(body.error || 'تعذّر الاتصال'); e.status = r.status; e.body = body; throw e; }
     return body;
   }
 
   function stop() { [slideTimer, dataTimer, clockTimer].forEach(t => t && clearInterval(t)); slideTimer = dataTimer = clockTimer = null; }
+
+
+  // دخول بعد خطأ: تُعرض المحاولات المتبقية؛ وعند القفل عدّاد تنازلي يُعطّل الزر ثم يعيده وحده
+  let lockTimer = null;
+  function showLoginError(x, errEl, btn) {
+    clearInterval(lockTimer);
+    const wait = x.status === 429 ? Number(x.body?.retryAfterSeconds) || 300 : 0;
+    if (!wait) { errEl.textContent = x.message; btn.disabled = false; return; }
+    const until = Date.now() + wait * 1000;
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      if (left <= 0) { clearInterval(lockTimer); errEl.textContent = 'يمكنك المحاولة الآن'; btn.disabled = false; btn.textContent = 'دخول'; return; }
+      errEl.textContent = 'محاولات خاطئة كثيرة — أعد المحاولة بعد ' + String(Math.floor(left / 60)) + ':' + String(left % 60).padStart(2, '0');
+      btn.disabled = true; btn.textContent = 'مقفل مؤقتًا';
+    };
+    tick(); lockTimer = setInterval(tick, 1000);
+  }
 
   function loginView(msg) {
     stop();
@@ -32,10 +49,11 @@
     document.body.classList.add('show-cursor');
     document.getElementById('f').onsubmit = async ev => {
       ev.preventDefault();
+      const btn = document.querySelector('#f button'); btn.disabled = true;
       try {
         const r = await api('/api/manager/login', { method: 'POST', body: JSON.stringify({ username: u.value, password: p.value }) });
-        store.set(r.token); document.body.classList.remove('show-cursor'); start();
-      } catch (x) { document.getElementById('e').textContent = x.message; }
+        clearInterval(lockTimer); store.set(r.token); document.body.classList.remove('show-cursor'); start();
+      } catch (x) { showLoginError(x, document.getElementById('e'), btn); p.value = ''; p.focus(); }
     };
   }
 

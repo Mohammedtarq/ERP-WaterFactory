@@ -138,6 +138,29 @@ public class RepSnapshotExtrasService
                                        categories, recent, (await svc.SettingsAsync()).CustodyReceiptAbove);
     }
 
+    /// <summary>
+    /// واجهة المدير المالي: كل الصناديق الفعّالة بأرصدتها، وحركاتها في آخر 30 يومًا، وأبواب المصروف؛ null إن لم يكن هو المدير المالي المضبوط.
+    /// الصرف من صندوقه (OwnBoxId) وحده؛ الباقي للاطلاع.
+    /// </summary>
+    public async Task<SnapshotFinance?> FinanceAsync(int employeeId)
+    {
+        var settings = await new RepAppService(_db).SettingsAsync();
+        if (settings.FinanceEmployeeId != employeeId || settings.FinanceCashBoxId is not int own) return null;
+        var boxes = await _db.CashBoxes.AsNoTracking().Where(b => b.IsActive).Select(b => new { b.Id, b.Name, b.BoxType }).ToListAsync();
+        var balances = await _db.CashBoxTransactions.AsNoTracking().Where(t => !t.IsVoided && t.CashBox.IsActive)
+            .GroupBy(t => t.CashBoxId).Select(g => new { g.Key, Sum = g.Sum(t => t.Amount) }).ToDictionaryAsync(x => x.Key, x => x.Sum);
+        var list = boxes.OrderBy(b => b.Id == own ? 0 : b.BoxType switch { CashBoxType.Main => 1, CashBoxType.User => 2, CashBoxType.Cards => 4, _ => 3 }).ThenBy(b => b.Name)
+            .Select(b => new SnapshotBox(b.Id, b.Name, b.BoxType.ToString(), balances.GetValueOrDefault(b.Id), b.Id == own)).ToList();
+        var since = DateTime.Today.AddDays(-30);
+        var recent = (await _db.CashBoxTransactions.AsNoTracking().Where(t => !t.IsVoided && t.TxDate >= since && t.CashBox.IsActive)
+                .OrderByDescending(t => t.Id).Take(200)
+                .Select(t => new { t.Id, t.CashBoxId, t.TxDate, t.TxType, t.Amount, t.PartyName, t.Description }).ToListAsync())
+            .Select(t => new SnapshotBoxTx(t.Id, t.CashBoxId, t.TxDate, CashBoxService.TypeLabel(t.TxType), t.Amount, t.PartyName, t.Description)).ToList();
+        var categories = (await new FinanceEntryService(_db).GetCategoriesAsync()).Where(c => c.Kind != FinanceCategoryKind.OtherIncome)
+            .Select(c => new SnapshotCategory(c.Id, c.Name)).ToList();
+        return new SnapshotFinance(own, list, recent, categories, (await new CustodyService(_db).SettingsAsync()).CustodyReceiptAbove);
+    }
+
     /// <summary>تبليغات العهدة: وصلتك عهدة (آخر 14 يومًا)، ومصروف رُفض من الهاتف.</summary>
     public async Task<List<SnapshotNotice>> CustodyNoticesAsync(int employeeId, DateTime? now = null)
     {
@@ -150,6 +173,9 @@ public class RepSnapshotExtrasService
         foreach (var r in await _db.RepRequests.AsNoTracking()
                      .Where(r => r.RepEmployeeId == employeeId && r.Kind == RepRequestKind.CustodyExpense && r.Status == RepRequestStatus.Failed && r.ReceivedAt >= since).ToListAsync())
             notices.Add(new SnapshotNotice($"custfail:{r.Id}", "reject", "تعذّر تسجيل مصروف من العهدة", r.ErrorMessage, r.ReceivedAt));
+        foreach (var r in await _db.RepRequests.AsNoTracking()
+                     .Where(r => r.RepEmployeeId == employeeId && r.Kind == RepRequestKind.BoxExpense && r.Status == RepRequestStatus.Failed && r.ReceivedAt >= since).ToListAsync())
+            notices.Add(new SnapshotNotice($"boxfail:{r.Id}", "reject", "تعذّر تسجيل مصروف من الصندوق", r.ErrorMessage, r.ReceivedAt));
         return notices;
     }
 

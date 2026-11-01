@@ -71,6 +71,32 @@ public class NewUiTests
             Assert.False(reports.IsFavorite);
             Assert.False(shell.HasFavorites);
 
+            // ---- السحب والإفلات: منطقة الإفلات تظهر أثناء السحب فقط، والإدراج بموضع محدد، وإعادة الترتيب، والإزالة ----
+            Assert.False(shell.ShowFavoritesPanel);
+            shell.IsDraggingSection = true;
+            Assert.True(shell.ShowFavoritesPanel);                              // حتى لو كانت المفضلة فارغة
+            shell.IsDraggingSection = false;
+            Assert.False(shell.ShowFavoritesPanel);
+            Assert.True(await shell.PinFavoriteAtAsync("HrReports", 0));
+            Assert.True(await shell.PinFavoriteAtAsync("Payroll", 0));          // يُدرج قبلها
+            Assert.True(await shell.PinFavoriteAtAsync("SalesReports", 99));    // موضع أكبر من العدد = الأخير
+            Assert.Equal(new[] { "Payroll", "HrReports", "SalesReports" }, shell.Favorites.Select(f => f.Key));
+            Assert.Contains("أُضيفت", shell.FavoriteNotice);
+            Assert.Equal("SalesReports", shell.LastPinnedKey);
+            Assert.True(await shell.PinFavoriteAtAsync("SalesReports", 0));     // إعادة الترتيب: ينتقل ولا يتكرر
+            Assert.Equal(new[] { "SalesReports", "Payroll", "HrReports" }, shell.Favorites.Select(f => f.Key));
+            Assert.Contains("نُقلت", shell.FavoriteNotice);
+            Assert.True(await shell.PinFavoriteAtAsync("SalesReports", 3));     // سحبه تحت الأخير
+            Assert.Equal(new[] { "Payroll", "HrReports", "SalesReports" }, shell.Favorites.Select(f => f.Key));
+            Assert.False(await shell.PinFavoriteAtAsync("NoSuchScreen", 0));    // قسم غير معروف لا يُثبَّت
+            await using (var db = shell.Session.NewDb())                        // محفوظ بالترتيب نفسه على حساب المستخدم
+                Assert.Equal(new[] { "Payroll", "HrReports", "SalesReports" }, (await new UserPreferencesService(db).GetAsync(shell.Session.UserId)).Favorites);
+            await shell.UnpinFavoriteAsync("HrReports");
+            Assert.Equal(new[] { "Payroll", "SalesReports" }, shell.Favorites.Select(f => f.Key));
+            await shell.UnpinFavoriteAsync("Payroll");
+            await shell.UnpinFavoriteAsync("SalesReports");
+            Assert.False(shell.HasFavorites);
+
             // ---- البحث السريع: بالاسم ولو بهمزة أو تاء مربوطة مختلفة، ثم Enter يفتح الأول ----
             shell.OpenSearchCommand.Execute(null);
             Assert.True(shell.IsSearchOpen);

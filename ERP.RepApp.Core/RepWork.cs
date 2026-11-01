@@ -380,6 +380,84 @@ public class RepWork
         return rows.OrderByDescending(r => r.Date).ThenByDescending(r => r.Pending).ToList();
     }
 
+    // ============================ صندوق المدير المالي ============================
+
+    /// <summary>صندوق كما يراه صاحب الهاتف الآن: رصيده بعد مصاريف الهاتف التي لم تدخل نسخة العمل بعد (صندوقه فقط يتأثر).</summary>
+    public record LiveBox(SnapshotBox Box, decimal Balance)
+    {
+        public int Id => Box.Id;
+        public string Name => Box.Name;
+        public bool Own => Box.Own;
+        public bool IsCards => Box.Type == "Cards";
+    }
+
+    /// <summary>حركة صندوق للعرض: من نسخة العمل (مرحَّلة) أو مصروف من الهاتف ينتظر الوصول (Pending).</summary>
+    public record BoxMoveRow(DateTime Date, string Title, decimal Amount, string? Detail, string State, bool Pending);
+
+    /// <summary>صاحب الهاتف هو المدير المالي: تفتح له واجهة الصندوق (عرض كل الصناديق، والصرف من صندوقه).</summary>
+    public bool FinanceMode => Snapshot?.Finance is not null;
+
+    public List<LiveBox> Boxes()
+    {
+        var snap = Snapshot;
+        if (snap?.Finance is not { } finance) return new();
+        var pending = Unreflected(snap).Where(i => i.Effect.BoxId is not null).ToList();
+        return finance.Boxes.Select(b => new LiveBox(b, b.Balance + pending.Where(i => i.Effect.BoxId == b.Id).Sum(i => i.Effect.Box))).ToList();
+    }
+
+    public LiveBox? OwnBox() => Boxes().FirstOrDefault(b => b.Own);
+
+    /// <summary>مجموع الصناديق عدا صندوق البطاقات الإلكترونية (مثل «الصندوق العام» في المعمل).</summary>
+    public decimal BoxesTotal() => Boxes().Where(b => !b.IsCards).Sum(b => b.Balance);
+
+    public List<SnapshotCategory> FinanceCategories() => Snapshot?.Finance?.Categories ?? new();
+
+    public DraftCheck CheckBoxExpense(int? categoryId, decimal amount)
+    {
+        if (Snapshot is null) return Fail("لم تصل نسخة العمل من المعمل بعد — اتصل بالشبكة وزامن");
+        if (OwnBox() is not { } box) return Fail("لم يُضبط صندوقك في المعمل");
+        if (FinanceCategories().All(c => c.Id != categoryId)) return Fail("اختر باب المصروف");
+        if (amount <= 0) return Fail("مبلغ المصروف يجب أن يكون أكبر من صفر");
+        if (amount > box.Balance) return Fail($"المبلغ أكبر من رصيد صندوقك ({Formats.Money(box.Balance)})");
+        var above = Snapshot.Finance?.ReceiptAbove ?? 0;
+        return new(null, above > 0 && amount > above ? $"مصروف كبير: يُفضّل كتابة رقم الوصل ({Formats.Money(above)} فأكثر)" : null, amount, new());
+    }
+
+    /// <summary>مصروف من صندوق المدير المالي: يُحفظ في الهاتف ويُرسل للمعمل ويُرحَّل فورًا إن صحّ، ويخصم من رصيد الصندوق المعروض في الحال.</summary>
+    public OutboxItem SaveBoxExpense(int categoryId, decimal amount, string? description = null, string? receipt = null)
+    {
+        var check = CheckBoxExpense(categoryId, amount);
+        if (!check.Ok) throw new InvalidOperationException(check.Error);
+        var box = OwnBox()!;
+        var category = FinanceCategories().First(c => c.Id == categoryId).Name;
+        var note = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        return _store.Enqueue("BoxExpense", new BoxExpensePayload(box.Id, categoryId, amount, note, string.IsNullOrWhiteSpace(receipt) ? null : receipt.Trim()),
+                              $"مصروف من الصندوق — {category}" + (note is null ? "" : $": {note}"), amount, new Effect(new(), BoxId: box.Id, Box: -amount));
+    }
+
+    /// <summary>حركات صندوق (آخر 30 يومًا من نسخة العمل) وما أرسله الهاتف لصندوقه ولم يصل بعد؛ الأحدث أولًا.</summary>
+    public List<BoxMoveRow> BoxMoves(int boxId)
+    {
+        var snap = Snapshot;
+        var rows = new List<BoxMoveRow>();
+        if (snap?.Finance is not { } finance) return rows;
+        var ownId = finance.OwnBoxId;
+        if (boxId == ownId)
+            rows.AddRange(Unreflected(snap).Where(i => i.Kind == "BoxExpense")
+                .Select(i => new BoxMoveRow(i.OccurredAt, i.Summary.Replace("مصروف من الصندوق — ", ""), -i.Amount, null, i.StateText, true)));
+        rows.AddRange(finance.Recent.Where(t => t.BoxId == boxId)
+            .Select(t => new BoxMoveRow(t.Date, t.TypeText, t.Amount, string.Join(" — ", new[] { t.Party, t.Description }.Where(x => !string.IsNullOrWhiteSpace(x))), "", false)));
+        return rows.OrderByDescending(r => r.Date).ThenByDescending(r => r.Pending).ToList();
+    }
+
+    /// <summary>داخل اليوم وخارجه في صندوق (من نسخة العمل وما ينتظر الوصول).</summary>
+    public (decimal In, decimal Out) BoxToday(int boxId)
+    {
+        var today = DateTime.Today;
+        var moves = BoxMoves(boxId).Where(m => m.Date.Date == today).ToList();
+        return (moves.Where(m => m.Amount > 0).Sum(m => m.Amount), -moves.Where(m => m.Amount < 0).Sum(m => m.Amount));
+    }
+
     // ============================ وصل البيع ============================
 
     /// <summary>وصل حركة بيع (null لغير البيع). الرقم: رقم المندوب ثم تسلسل الوصل في الهاتف (مثل 7-15).</summary>

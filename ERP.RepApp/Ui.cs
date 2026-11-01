@@ -90,6 +90,9 @@ public static class Ui
         ["bell"] = "M 6 8 a 6 6 0 0 1 12 0 c 0 7 3 9 3 9 H 3 s 3 -2 3 -9 M 10.3 21 a 1.94 1.94 0 0 0 3.4 0",
         ["power"] = "M 12 2 v 10 M 18.4 6.6 a 9 9 0 1 1 -12.77 0.04",
         ["sliders"] = "M 21 4 h -7 M 10 4 H 3 M 21 12 h -9 M 8 12 H 3 M 21 20 h -5 M 12 20 H 3 M 14 2 v 4 M 8 10 v 4 M 16 18 v 4",
+        ["person"] = "M 20 21 v -2 a 4 4 0 0 0 -4 -4 H 8 a 4 4 0 0 0 -4 4 v 2 M 12 3 a 4 4 0 1 0 0 8 a 4 4 0 0 0 0 -8 z",
+        ["lock"] = "M 5 11 h 14 a 2 2 0 0 1 2 2 v 7 a 2 2 0 0 1 -2 2 H 5 a 2 2 0 0 1 -2 -2 v -7 a 2 2 0 0 1 2 -2 z M 7 11 V 7 a 5 5 0 0 1 10 0 v 4",
+        ["eye"] = "M 1 12 s 4 -8 11 -8 s 11 8 11 8 s -4 8 -11 8 s -11 -8 -11 -8 z M 12 9 a 3 3 0 1 0 0 6 a 3 3 0 0 0 0 -6 z",
         ["cash"] = "M 4 6 h 16 a 2 2 0 0 1 2 2 v 8 a 2 2 0 0 1 -2 2 H 4 a 2 2 0 0 1 -2 -2 V 8 a 2 2 0 0 1 2 -2 z M 12 9 a 3 3 0 1 0 0 6 a 3 3 0 0 0 0 -6 z"
     };
 
@@ -276,7 +279,9 @@ public static class Ui
     /// <summary>الشريط السفلي: الرئيسية، الديون، شهري، التبليغات (وعليها عدد غير المقروء). الضغط يبدّل الصفحة الجذرية.</summary>
     public static View NavBar(string active, int unread)
     {
-        var items = AppServices.Instance.Work.CustodyOnly
+        var items = AppServices.Instance.Work.FinanceMode
+            ? new (string Key, string Icon, string Text)[] { ("home", "home", "الرئيسية"), ("moves", "list", "الحركات"), ("notices", "bell", "التبليغات") }
+            : AppServices.Instance.Work.CustodyOnly
             ? new (string Key, string Icon, string Text)[] { ("home", "home", "الرئيسية"), ("expenses", "list", "مصاريفي"), ("notices", "bell", "التبليغات") }
             : new (string Key, string Icon, string Text)[] { ("home", "home", "الرئيسية"), ("debts", "users", "الديون"), ("month", "cal", "شهري"), ("notices", "bell", "التبليغات") };
         var grid = new Grid { BackgroundColor = Colors.White, Padding = new Thickness(6, 8, 6, 10) };

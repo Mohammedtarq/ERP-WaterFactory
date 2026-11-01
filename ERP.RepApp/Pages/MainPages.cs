@@ -9,6 +9,8 @@ public static class MainPages
         "month" => new MonthPage(),
         "notices" => new NoticesPage(),
         "expenses" => new CustodyExpensesPage(),
-        _ => AppServices.Instance.Work.CustodyOnly ? new CustodyHomePage() : new HomePage()
+        "moves" => new BoxMovesPage(),
+        _ => AppServices.Instance.Work.FinanceMode ? new FinanceHomePage()
+           : AppServices.Instance.Work.CustodyOnly ? new CustodyHomePage() : new HomePage()
     };
 }

@@ -89,11 +89,20 @@ public class ManagerDashboardTests : CloudTestBase
 
         // ---- دخول خاطئ: رسالة واحدة لا تكشف الاسم، ثم قفل مؤقت ----
         using var attacker = cloud.CreateClient();
-        for (var i = 0; i < ManagerEndpoints_MaxFailures; i++)
-            Assert.Equal(HttpStatusCode.Unauthorized, (await attacker.PostAsJsonAsync("/" + ManagerRoutes.Login, new ManagerLoginRequest("boss.cloud", "wrong-pass-" + i))).StatusCode);
+        // الأخطاء الأربعة الأولى تعيد 401 مع المحاولات المتبقية؛ الخامسة تقفل 5 دقائق (429 مع الثواني المتبقية)
+        for (var i = 0; i < ManagerEndpoints_MaxFailures - 1; i++)
+        {
+            var bad = await attacker.PostAsJsonAsync("/" + ManagerRoutes.Login, new ManagerLoginRequest("boss.cloud", "wrong-pass-" + i));
+            Assert.Equal(HttpStatusCode.Unauthorized, bad.StatusCode);
+            Assert.Contains($"متبقي {ManagerEndpoints_MaxFailures - 1 - i}", await bad.Content.ReadAsStringAsync());
+        }
+        var fifth = await attacker.PostAsJsonAsync("/" + ManagerRoutes.Login, new ManagerLoginRequest("boss.cloud", "wrong-pass-5"));
+        Assert.Equal((HttpStatusCode)429, fifth.StatusCode);
+        Assert.Contains("\"retryAfterSeconds\":300", await fifth.Content.ReadAsStringAsync());
+        // حتى كلمة المرور الصحيحة مرفوضة أثناء القفل
         Assert.Equal((HttpStatusCode)429, (await attacker.PostAsJsonAsync("/" + ManagerRoutes.Login, new ManagerLoginRequest("boss.cloud", "Strong#2026"))).StatusCode);
 
-        // صاحب الحساب الحقيقي يعود بعد انتهاء القفل (هنا نمسحه بدل انتظار 15 دقيقة)
+        // صاحب الحساب الحقيقي يعود بعد انتهاء القفل (هنا نمسحه بدل انتظار 5 دقائق)
         ERP.Cloud.Api.ManagerEndpoints.ResetLocks();
 
         // ---- إيقاف الحساب في المعمل يُبطل جلسته في الدورة التالية، والحذف كذلك ----
@@ -112,6 +121,27 @@ public class ManagerDashboardTests : CloudTestBase
             Assert.True((await new CloudSyncService(db).RunOnceAsync(agent, "SERVER-PC", state)).Ok);
             Assert.Equal(HttpStatusCode.Unauthorized, (await http.SendAsync(Get(again))).StatusCode);
         }
+    }
+
+    [Fact]
+    public void Login_lock_is_five_minutes_from_the_fifth_failure_then_counting_restarts()
+    {
+        ERP.Cloud.Api.ManagerEndpoints.ResetLocks();
+        var t0 = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
+        for (var i = 1; i <= ManagerEndpoints_MaxFailures; i++)
+            Assert.Equal(ManagerEndpoints_MaxFailures - i, ERP.Cloud.Api.ManagerEndpoints.Fail("k", t0.AddSeconds(i)));
+        var lockedAt = t0.AddSeconds(ManagerEndpoints_MaxFailures);
+        Assert.Equal(300, ERP.Cloud.Api.ManagerEndpoints.LockedSeconds("k", lockedAt));
+        Assert.True(ERP.Cloud.Api.ManagerEndpoints.IsLocked("k", lockedAt.AddMinutes(4)));
+        Assert.False(ERP.Cloud.Api.ManagerEndpoints.IsLocked("k", lockedAt.AddMinutes(5).AddSeconds(1)));
+        // بعد القفل يبدأ العدّ من جديد: أربع محاولات متبقية بعد أول خطأ
+        Assert.Equal(ManagerEndpoints_MaxFailures - 1, ERP.Cloud.Api.ManagerEndpoints.Fail("k", lockedAt.AddMinutes(6)));
+        // الأخطاء المتفرقة (لا تبلغ 5) تُنسى بعد 15 دقيقة
+        ERP.Cloud.Api.ManagerEndpoints.ResetLocks();
+        ERP.Cloud.Api.ManagerEndpoints.Fail("m", t0);
+        ERP.Cloud.Api.ManagerEndpoints.Fail("m", t0.AddMinutes(1));
+        Assert.Equal(ManagerEndpoints_MaxFailures - 1, ERP.Cloud.Api.ManagerEndpoints.Fail("m", t0.AddMinutes(20)));
+        ERP.Cloud.Api.ManagerEndpoints.ResetLocks();
     }
 
     [Fact]

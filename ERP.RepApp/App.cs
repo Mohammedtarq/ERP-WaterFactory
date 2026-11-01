@@ -15,12 +15,15 @@ public class App : Application
     protected override Window CreateWindow(IActivationState? activationState) =>
         new(Root(Start()));
 
-    /// <summary>غير مربوط ← الربط؛ ومربوط وللمندوب دخول في المعمل ← شاشة الدخول؛ وإلا الرئيسية.</summary>
+    /// <summary>
+    /// غير مربوط ← حركة الفتح ثم الربط؛ ومربوط وللمندوب دخول في المعمل ← حركة الفتح ثم شاشة الدخول؛ وإلا حركة الفتح ثم الرئيسية.
+    /// (الحركة عند فتح التطبيق من جديد فقط؛ الخروج من الحساب يعرض شاشة الدخول مباشرة.)
+    /// </summary>
     private static Page Start()
     {
         var store = AppServices.Instance.Store;
-        if (store.Link is null) return new LinkPage();
-        return store.Snapshot?.Login is { } login ? new LoginPage(login) : MainPages.Create("home");
+        if (store.Link is null) return new IntroPage(new LinkPage());
+        return store.Snapshot?.Login is { } login ? new LoginPage(login, intro: true) : new IntroPage(MainPages.Create("home"));
     }
 
     public static NavigationPage Root(Page page) =>

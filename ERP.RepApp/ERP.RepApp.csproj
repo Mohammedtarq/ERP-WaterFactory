@@ -13,8 +13,8 @@
 
     <ApplicationTitle>مندوب الرحمة</ApplicationTitle>
     <ApplicationId>com.alrahma.repapp</ApplicationId>
-    <ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
-    <ApplicationVersion>3</ApplicationVersion>
+    <ApplicationDisplayVersion>1.3</ApplicationDisplayVersion>
+    <ApplicationVersion>4</ApplicationVersion>
     <SupportedOSPlatformVersion>26.0</SupportedOSPlatformVersion>
     <!-- DisplayAlert: البديل غير المتزامن في MAUI 10 يكفي لاحقًا؛ التحذير لا يمنع البناء -->
     <NoWarn>$(NoWarn);CS0618</NoWarn>
@@ -36,7 +36,7 @@
 
   <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.png" Color="#FFFFFF" />
-    <MauiSplashScreen Include="Resources\Splash\splash.png" Color="#FFFFFF" BaseSize="180,180" />
+    <MauiSplashScreen Include="Resources\Splash\splash.png" Color="#0D3F78" BaseSize="180,180" />
   </ItemGroup>
 
   <ItemGroup>

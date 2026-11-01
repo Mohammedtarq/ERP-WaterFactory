@@ -87,6 +87,19 @@
                     <Button Content="حفظ الإعدادات" Style="{StaticResource SuccessButton}" Command="{Binding SaveSettingsCommand}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
                 </StackPanel>
             </Border>
+            <!-- هاتف المدير المالي: يرى كل الصناديق وأرصدتها، ويصرف من صندوقه وحده بلا حد؛ سجّل له جهازًا من الأعلى كأي موظف -->
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="هاتف المدير المالي (واجهة الصندوق)" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="الموظف" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding FinanceEmployees}" SelectedItem="{Binding FinanceEmployee}" DisplayMemberPath="Label" IsTextSearchEnabled="True"/>
+                    <TextBlock Text="صندوقه (الصرف منه وحده)" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding FinanceBoxes}" SelectedItem="{Binding FinanceBox}" DisplayMemberPath="Label" IsTextSearchEnabled="True"/>
+                    <TextBlock Text="يرى في هاتفه كل الصناديق وأرصدتها وحركاتها للاطلاع، ويصرف من صندوقه فقط ولا حدّ لمبلغ الصرف. ملاحظة: إن كان الموظف مندوبًا أيضًا فتحلّ واجهة الصندوق محل واجهة المندوب في هاتفه."
+                               Style="{StaticResource Muted}" FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    <Button Content="حفظ" Style="{StaticResource SuccessButton}" Command="{Binding SaveFinancePhoneCommand}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                </StackPanel>
+            </Border>
         </StackPanel>
         </ScrollViewer>
     </Grid>

@@ -146,7 +146,7 @@ public class HomePage : ContentPage
     private void Refresh()
     {
         // نسخة العمل لصاحب عهدة ليس مندوبًا (وصلت بعد فتح الرئيسية): تُستبدل بواجهة العهدة
-        if (_app.Work.CustodyOnly) { App.ShowRoot(MainPages.Create("home")); return; }
+        if (_app.Work.CustodyOnly || _app.Work.FinanceMode) { App.ShowRoot(MainPages.Create("home")); return; }
         var custodies = _app.Work.OpenCustodies();
         _custodyBox.IsVisible = custodies.Count > 0;
         if (custodies.Count > 0)

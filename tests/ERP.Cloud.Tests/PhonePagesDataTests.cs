@@ -105,6 +105,48 @@ public class PhonePagesDataTests : IDisposable
     }
 
     [Fact]
+    public void Finance_manager_sees_all_boxes_spends_only_from_his_own_and_the_balance_drops_at_once()
+    {
+        var finance = new SnapshotFinance(2,
+            new() { new(2, "صندوق المدير المالي", "Bank", 500_000, true), new(1, "الصندوق الرئيسي", "Main", 4_000_000, false), new(5, "البطاقات", "Cards", 700_000, false) },
+            new()
+            {
+                new(11, 2, DateTime.Today, "إيداع", 200_000, null, "تمويل"),
+                new(12, 2, DateTime.Today, "مصروف", -50_000, null, "نقل"),
+                new(13, 1, DateTime.Today.AddDays(-1), "مبيعات", 1_000_000, "زبون", null)
+            },
+            new() { new(3, "نقل"), new(4, "صيانة") }, 25_000);
+        var work = Work(new RepSnapshot(11, "المدير المالي", DateTime.UtcNow, false, 2, 0, new(), new(), new(), new(), Finance: finance));
+        Assert.True(work.FinanceMode);
+        Assert.False(work.CustodyOnly);
+        Assert.Equal(3, work.Boxes().Count);
+        Assert.Equal(500_000, work.OwnBox()!.Balance);
+        Assert.Equal(4_500_000, work.BoxesTotal());                               // بدون صندوق البطاقات
+
+        Assert.False(work.CheckBoxExpense(3, 0).Ok);                              // مبلغ صفر
+        Assert.False(work.CheckBoxExpense(99, 10_000).Ok);                        // باب غير معتمد
+        Assert.False(work.CheckBoxExpense(3, 500_001).Ok);                        // أكبر من رصيد صندوقه
+        Assert.Contains("رقم الوصل", work.CheckBoxExpense(3, 30_000).Warning);    // فوق حد الوصل: تنبيه لا منع
+        Assert.Null(work.CheckBoxExpense(3, 20_000).Warning);
+
+        var item = work.SaveBoxExpense(3, 120_000, "مكافأة عمال", "R-1");
+        Assert.Equal("BoxExpense", item.Kind);
+        var payload = JsonSerializer.Deserialize<BoxExpensePayload>(item.Payload, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Equal((2, 3, 120_000m, "مكافأة عمال", "R-1"), (payload.CashBoxId, payload.CategoryId, payload.Amount, payload.Description, payload.ReceiptNumber));
+        Assert.Equal(380_000, work.OwnBox()!.Balance);                            // يخصم فورًا قبل وصول المعمل
+        Assert.Equal(4_000_000, work.Boxes().Single(b => b.Id == 1).Balance);     // صناديق غيره لا تتأثر
+        Assert.False(work.CheckBoxExpense(3, 380_001).Ok);
+
+        var moves = work.BoxMoves(2);
+        Assert.Equal(new[] { true, false, false }, moves.Select(r => r.Pending).OrderByDescending(x => x));   // المنتظر موجود
+        Assert.Contains(moves, r => r.Pending && r.Amount == -120_000);
+        Assert.Equal(2, work.BoxMoves(2).Count(r => !r.Pending));
+        Assert.Single(work.BoxMoves(1));                                          // حركات غير صندوقه للاطلاع
+        var (inToday, outToday) = work.BoxToday(2);
+        Assert.Equal((200_000m, 170_000m), (inToday, outToday));                  // الإيداع، والمصروف المرحَّل + المنتظر
+    }
+
+    [Fact]
     public void Old_snapshots_without_the_new_fields_still_load()
     {
         var work = Work(new RepSnapshot(9, "علي", DateTime.UtcNow, true, 2, 0, new(), new() { new(1, "زبون", null, null, "Direct", null, null, 5_000) }, new(), new()));

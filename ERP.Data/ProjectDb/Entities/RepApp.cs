@@ -19,7 +19,7 @@ public class RepDevice
     public DateTime? RemovedAt { get; set; }
 }
 
-public enum RepRequestKind { CashSale, CreditSale, Free, Collection, NewCustomer, Expense, Return, CustomerLink, CustodyExpense }
+public enum RepRequestKind { CashSale, CreditSale, Free, Collection, NewCustomer, Expense, Return, CustomerLink, CustodyExpense, BoxExpense }
 
 /// <summary>Posted = رُحّل، Pending = بانتظار الاعتماد، Rejected = مرفوض، Failed = تعذّر ترحيله (السبب في ErrorMessage).</summary>
 public enum RepRequestStatus { Posted, Pending, Rejected, Failed }
@@ -65,4 +65,7 @@ public class RepAppSetting
     public int CustodyLowPercent { get; set; } = 20;
     /// <summary>مصروف العهدة فوق هذا المبلغ بلا رقم وصل ولا صورة يُنبَّه عليه.</summary>
     public decimal CustodyReceiptAbove { get; set; } = 25000;
+    /// <summary>موظف المدير المالي: يفتح هاتفه واجهة الصندوق (عرض كل الصناديق)، وصندوقه الذي يصرف منه وحده (73_finance_phone.sql).</summary>
+    public int? FinanceEmployeeId { get; set; }
+    public int? FinanceCashBoxId { get; set; }
 }

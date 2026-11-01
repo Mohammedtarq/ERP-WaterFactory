@@ -194,6 +194,8 @@ public class ControlsTests
         Assert.True((await new SalesService(db2).VoidInvoiceAsync(oldInvoice, "تصحيح", _f.AdminId)).Success);
         var history = await locks2.HistoryAsync();
         Assert.Equal(new[] { "فتح", "إغلاق" }, history.Take(2).Select(h => h.Action));
+        // لا نترك قفلًا حتى نهاية الشهر السابق: الفتح يضعه عند آخر يوم قبل الشهر المفتوح، فتتعطل اختبارات تاريخها قبله (قنبلة زمنية تنفجر مع بداية كل شهر)
+        Assert.True((await locks2.ReopenFromMonthAsync(2020, 1, "تنظيف الاختبار: إعادة القفل إلى ما قبل كل بيانات الاختبارات", _f.AdminId)).Success);
     }
 
     [Fact]

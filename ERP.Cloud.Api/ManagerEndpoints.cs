@@ -16,23 +16,45 @@ public static class ManagerEndpoints
 {
     public static readonly TimeSpan SessionLife = TimeSpan.FromDays(30);
     public const int MaxFailures = 5;
-    public static readonly TimeSpan LockFor = TimeSpan.FromMinutes(15);
+    /// <summary>مدة القفل بعد المحاولة الخاطئة الخامسة.</summary>
+    public static readonly TimeSpan LockFor = TimeSpan.FromMinutes(5);
+    /// <summary>الأخطاء المتفرقة تُنسى بعد هذه المدة من أولها (إن لم يحدث قفل).</summary>
+    private static readonly TimeSpan CountWindow = TimeSpan.FromMinutes(15);
     private const int MaxSummaryChars = 512 * 1024;
 
-    private static readonly ConcurrentDictionary<string, (int Fails, DateTime FirstUtc)> Failures = new();
+    private sealed record FailState(int Fails, DateTime FirstUtc, DateTime? LockedUntilUtc);
+    private static readonly ConcurrentDictionary<string, FailState> Failures = new();
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <summary>للاختبارات: مسح أقفال الدخول (الذاكرة مشتركة بين اختبارات العملية الواحدة).</summary>
     internal static void ResetLocks() => Failures.Clear();
 
-    public static bool IsLocked(string key, DateTime now) =>
-        Failures.TryGetValue(key, out var f) && f.Fails >= MaxFailures && now - f.FirstUtc < LockFor;
+    /// <summary>الثواني المتبقية من القفل (0 = غير مقفول). القفل يبدأ من المحاولة الخاطئة الخامسة.</summary>
+    public static int LockedSeconds(string key, DateTime now) =>
+        Failures.TryGetValue(key, out var f) && f.LockedUntilUtc is { } until && until > now ? (int)Math.Ceiling((until - now).TotalSeconds) : 0;
 
-    private static void Fail(string key, DateTime now)
+    public static bool IsLocked(string key, DateTime now) => LockedSeconds(key, now) > 0;
+
+    /// <summary>يسجّل محاولة خاطئة ويعيد المحاولات المتبقية قبل القفل (0 = أُقفل الآن).</summary>
+    internal static int Fail(string key, DateTime now)
     {
-        Failures.AddOrUpdate(key, (1, now), (_, f) => now - f.FirstUtc >= LockFor ? (1, now) : (f.Fails + 1, f.FirstUtc));
-        if (Failures.Count > 5000) foreach (var k in Failures.Where(x => now - x.Value.FirstUtc >= LockFor).Select(x => x.Key).ToList()) Failures.TryRemove(k, out _);
+        var state = Failures.AddOrUpdate(key, _ => Step(null, now), (_, f) => Step(f, now));
+        if (Failures.Count > 5000)
+            foreach (var k in Failures.Where(x => Expired(x.Value, now)).Select(x => x.Key).ToList()) Failures.TryRemove(k, out _);
+        return Math.Max(0, MaxFailures - state.Fails);
     }
+
+    private static bool Expired(FailState f, DateTime now) => f.LockedUntilUtc is { } u ? u <= now : now - f.FirstUtc >= CountWindow;
+
+    private static FailState Step(FailState? f, DateTime now)
+    {
+        // بعد انتهاء القفل أو نافذة العدّ نبدأ من جديد
+        if (f is null || Expired(f, now)) f = new FailState(0, now, null);
+        var fails = f.Fails + 1;
+        return new FailState(fails, f.FirstUtc, fails >= MaxFailures ? now + LockFor : null);
+    }
+
+    internal static string LockMessage(int seconds) => $"محاولات خاطئة كثيرة — أعد المحاولة بعد {(seconds + 59) / 60} دقيقة";
 
     private static IResult Problem(int status, string message) => Results.Json(new { error = message }, statusCode: status);
 
@@ -84,11 +106,21 @@ public static class ManagerEndpoints
             var name = ManagerLogin.NormalizeName(req.Username);
             var ip = http.Connection.RemoteIpAddress?.ToString() ?? "?";
             var key = $"{ip}|{name}";
-            if (IsLocked(key, now)) return Problem(429, "محاولات خاطئة كثيرة — انتظر 15 دقيقة ثم أعد المحاولة");
+            if (LockedSeconds(key, now) is > 0 and var wait)
+            {
+                http.Response.Headers.RetryAfter = wait.ToString();
+                return Results.Json(new { error = LockMessage(wait), retryAfterSeconds = wait, attemptsLeft = 0 }, statusCode: 429);
+            }
             var account = name.Length is >= 3 and <= 30 ? await db.ManagerAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Username == name) : null;
             // نفس العمل في حالة الاسم المجهول: لا يُعرف من الزمن هل الاسم موجود
             var ok = ManagerLogin.Verify(req.Password, account?.Salt ?? DummySalt, account?.Hash ?? DummyHash) && account is { IsActive: true };
-            if (!ok) { Fail(key, now); return Problem(401, "اسم المستخدم أو كلمة المرور غير صحيحة"); }
+            if (!ok)
+            {
+                var left = Fail(key, now);
+                return left > 0
+                    ? Results.Json(new { error = $"اسم المستخدم أو كلمة المرور غير صحيحة — متبقي {left} من {MaxFailures} محاولات", attemptsLeft = left }, statusCode: 401)
+                    : Results.Json(new { error = LockMessage((int)LockFor.TotalSeconds), retryAfterSeconds = (int)LockFor.TotalSeconds, attemptsLeft = 0 }, statusCode: 429);
+            }
             Failures.TryRemove(key, out _);
 
             var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).Replace('+', '-').Replace('/', '_').TrimEnd('=');

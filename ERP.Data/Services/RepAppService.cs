@@ -57,6 +57,7 @@ public class RepAppService
         RepRequestKind.Expense => "مصروف",
         RepRequestKind.CustomerLink => "ربط زبائن",
         RepRequestKind.CustodyExpense => "مصروف من العهدة",
+        RepRequestKind.BoxExpense => "مصروف من الصندوق",
         _ => "مرتجع زبون"
     };
 
@@ -262,6 +263,9 @@ public class RepAppService
             case RepRequestKind.CustodyExpense:
                 await CustodyExpenseAsync(device, r, Parse<CustodyExpensePayload>(r));
                 break;
+            case RepRequestKind.BoxExpense:
+                await BoxExpenseAsync(device, r, Parse<BoxExpensePayload>(r));
+                break;
             default:
                 await ReturnIntakeAsync(r, Parse<ReturnPayload>(r));
                 break;
@@ -278,6 +282,58 @@ public class RepAppService
         r.Amount = p.Amount;
         r.Summary = $"{tx.Category} — عهدة {tx.CustodyNumber}{(string.IsNullOrWhiteSpace(p.Description) ? "" : " — " + p.Description.Trim())}";
         (r.ResultTable, r.ResultId, r.Status) = ("CustodyTransactions", tx.Id, RepRequestStatus.Posted);
+    }
+
+    /// <summary>
+    /// مصروف من صندوق المدير المالي (هاتفه): يُقبل فقط من هاتف الموظف المضبوط في الإعدادات ومن صندوقه المضبوط وحده، بلا حد موافقة،
+    /// ولا يتجاوز رصيد الصندوق. يُرحَّل فورًا كمصروف عادي بقيده ويُخصم من الصندوق، ويُرفض بسبب مفهوم إن لم يصحّ.
+    /// </summary>
+    private async Task BoxExpenseAsync(RepDevice device, RepRequest r, BoxExpensePayload p)
+    {
+        var settings = await SettingsAsync();
+        if (settings.FinanceEmployeeId is not int financeEmployee || settings.FinanceCashBoxId is not int ownBox)
+        { Fail(r, "صندوق المدير المالي غير مضبوط في المعمل"); return; }
+        if (r.RepEmployeeId != financeEmployee) { Fail(r, "هذا الهاتف ليس هاتف المدير المالي"); return; }
+        if (p.CashBoxId != ownBox) { Fail(r, "الصرف من صندوق المدير المالي فقط"); return; }
+        if (p.Amount <= 0) { Fail(r, "المبلغ يجب أن يكون أكبر من صفر"); return; }
+        var box = await _db.CashBoxes.AsNoTracking().FirstOrDefaultAsync(b => b.Id == ownBox && b.IsActive);
+        if (box is null) { Fail(r, "الصندوق غير موجود أو غير فعّال"); return; }
+        var balance = await new CashBoxService(_db).GetBalanceAsync(ownBox);
+        if (p.Amount > balance) { Fail(r, $"المبلغ أكبر من رصيد الصندوق ({balance:N0} د.ع)"); return; }
+        var category = await _db.FinanceCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == p.CategoryId);
+        if (category is null || !category.IsActive || category.Kind == FinanceCategoryKind.OtherIncome) { Fail(r, "اختر بابًا للمصروف"); return; }
+
+        var note = string.IsNullOrWhiteSpace(p.Description) ? null : p.Description.Trim();
+        var (result, entry) = await new FinanceEntryService(_db).CreateAsync(
+            new FinanceEntryInput(category.Id, p.Amount, r.OccurredAt.Date, PartyName: null, ReceiptNumber: p.ReceiptNumber, Notes: note, CashBoxId: ownBox, BypassLimits: true),
+            device.RegisteredByUserId);
+        if (!result.Success) { Fail(r, result.ErrorMessage ?? "تعذّر تسجيل المصروف"); return; }
+        r.Amount = p.Amount;
+        r.Summary = $"{category.Name} — صندوق {box.Name}{(note is null ? "" : " — " + note)}";
+        (r.ResultTable, r.ResultId, r.Status) = ("FinanceEntries", entry!.Id, RepRequestStatus.Posted);
+    }
+
+    /// <summary>
+    /// تعيين المدير المالي لهاتف الصندوق: موظفه وصندوقه (الاثنان معًا أو لا شيء). الموظف فعّال والصندوق فعّال.
+    /// </summary>
+    public async Task<FinanceOperationResult> SaveFinancePhoneAsync(int? employeeId, int? cashBoxId, int userId)
+    {
+        if ((employeeId is null) != (cashBoxId is null)) return FinanceOperationResult.Fail("اختر الموظف والصندوق معًا، أو اتركهما فارغين لإلغاء الواجهة");
+        string? employeeName = null, boxName = null;
+        if (employeeId is int e)
+        {
+            employeeName = await _db.Employees.AsNoTracking().Where(x => x.Id == e && x.IsActive).Select(x => x.FullName).FirstOrDefaultAsync();
+            if (employeeName is null) return FinanceOperationResult.Fail("الموظف غير موجود أو غير فعّال");
+            boxName = await _db.CashBoxes.AsNoTracking().Where(x => x.Id == cashBoxId && x.IsActive).Select(x => x.Name).FirstOrDefaultAsync();
+            if (boxName is null) return FinanceOperationResult.Fail("الصندوق غير موجود أو غير فعّال");
+        }
+        var s = await _db.RepAppSettings.FirstOrDefaultAsync();
+        if (s is null) _db.RepAppSettings.Add(s = new RepAppSetting());
+        (s.FinanceEmployeeId, s.FinanceCashBoxId) = (employeeId, cashBoxId);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Edit", "RepAppSettings", 1,
+            employeeId is null ? "تطبيق المندوبين: إلغاء واجهة صندوق المدير المالي" : $"تطبيق المندوبين: المدير المالي {employeeName} وصندوقه «{boxName}»");
+        return FinanceOperationResult.Ok();
     }
 
     private static void Fail(RepRequest r, string message) { r.Status = RepRequestStatus.Failed; r.ErrorMessage = message; }

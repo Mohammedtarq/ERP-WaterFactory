@@ -166,34 +166,46 @@
                         <TextBlock Text="بحث سريع عن شاشة" Foreground="#CBD5E1" FontSize="13.5" Margin="8,0,0,0" VerticalAlignment="Center"/>
                     </DockPanel>
                 </Button>
-                <StackPanel Margin="0,10,0,0" Visibility="{Binding HasFavorites, Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock Text="★ مفضلتي" Foreground="#FBBF24" FontSize="13" FontWeight="SemiBold" Margin="4,0,0,4"/>
-                    <ItemsControl ItemsSource="{Binding Favorites}">
+                <!-- «مفضلتي»: بطاقات بظل وشريط لون وسطرين؛ تقبل الإفلات من اللوحة المنبثقة وإعادة الترتيب بالسحب والإزالة -->
+                <StackPanel x:Name="FavPanel" Margin="0,10,0,0" AllowDrop="True" Background="Transparent"
+                            Visibility="{Binding ShowFavoritesPanel, Converter={StaticResource BoolToVisibility}}"
+                            DragEnter="OnFavDragOver" DragOver="OnFavDragOver" DragLeave="OnFavDragLeave" Drop="OnFavDrop">
+                    <DockPanel Margin="4,0,0,5">
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding FavoriteNotice}" Foreground="#86EFAC" FontSize="11.5" VerticalAlignment="Center"/>
+                        <TextBlock Text="★ مفضلتي" Foreground="#FBBF24" FontSize="13" FontWeight="SemiBold"/>
+                    </DockPanel>
+                    <ItemsControl x:Name="FavItems" ItemsSource="{Binding Favorites}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Button Command="{Binding DataContext.OpenEntryCommand, ElementName=Root}" CommandParameter="{Binding}" Cursor="Hand"
-                                        HorizontalContentAlignment="Stretch" ToolTip="{Binding Text}">
-                                    <Button.Template>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border x:Name="Bd" CornerRadius="6" Padding="8,5" Background="Transparent"><ContentPresenter/></Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Button.Template>
-                                    <StackPanel Orientation="Horizontal">
-                                        <Border Width="22" Height="22" CornerRadius="6" Background="{Binding Color, Converter={StaticResource HexBrush}}">
-                                            <TextBlock Text="{Binding Glyph}" Style="{StaticResource Icon}" FontSize="11" Foreground="White"/>
-                                        </Border>
-                                        <TextBlock Text="{Binding Title}" Foreground="#E2E8F0" FontSize="13.5" Margin="8,0,0,0" VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" MaxWidth="180"/>
-                                    </StackPanel>
-                                </Button>
+                                <Border x:Name="Card" Margin="0,0,0,6" CornerRadius="10" Padding="10,7,8,7" Cursor="Hand" Background="#22FFFFFF"
+                                        BorderThickness="0,0,5,0" BorderBrush="{Binding Color, Converter={StaticResource HexBrush}}" ToolTip="{Binding Description}"
+                                        Tag="{Binding Key}"
+                                        PreviewMouseLeftButtonDown="OnFavDown" PreviewMouseMove="OnFavMove" MouseLeftButtonUp="OnFavUp">
+                                    <Border.Effect><DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.35" Color="#000000"/></Border.Effect>
+                                    <DockPanel>
+                                        <Button x:Name="Remove" DockPanel.Dock="Left" Content="&#xE711;" Click="OnFavRemove" ToolTip="إزالة من مفضلتي"
+                                                Style="{StaticResource RowIconButton}" Tag="#FCA5A5" Opacity="0" VerticalAlignment="Top" Margin="0,-2,0,0"/>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Title}" Foreground="White" FontSize="13.5" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding ModuleTitle}" Foreground="#B8CDEA" FontSize="11.5" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <Trigger SourceName="Card" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Remove" Property="Opacity" Value="1"/>
+                                        <Setter TargetName="Card" Property="Background" Value="#33FFFFFF"/>
+                                    </Trigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    <!-- منطقة الإفلات: تظهر أثناء السحب فقط (حتى لو كانت «مفضلتي» فارغة) -->
+                    <Border x:Name="FavZone" CornerRadius="10" BorderThickness="2.5" BorderBrush="#FBBF24" Padding="10" Margin="0,0,0,4" Background="#22FBBF24"
+                            Visibility="{Binding IsDraggingSection, Converter={StaticResource BoolToVisibility}}">
+                        <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.55" Color="#FBBF24"/></Border.Effect>
+                        <TextBlock Text="أفلت هنا لتثبيتها في مفضلتي" Foreground="#FDE68A" FontWeight="Bold" FontSize="13.5" TextAlignment="Center"/>
+                    </Border>
                 </StackPanel>
             </StackPanel>
 
@@ -367,7 +379,8 @@
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
                                                                 <Button Command="{Binding DataContext.OpenTileCommand, ElementName=Root}" CommandParameter="{Binding}" Cursor="Hand"
-                                                                        HorizontalContentAlignment="Stretch" Margin="0,0,0,7" ToolTip="{Binding Description}">
+                                                                        PreviewMouseLeftButtonDown="OnTileDown" PreviewMouseMove="OnTileMove"
+                                                                        HorizontalContentAlignment="Stretch" Margin="0,0,0,7" ToolTip="اضغط للفتح — أو اسحبها إلى «مفضلتي» في القائمة الجانبية">
                                                                     <Button.Template>
                                                                         <ControlTemplate TargetType="Button">
                                                                             <Border x:Name="Bd" CornerRadius="11" Padding="10,8" Background="White" BorderBrush="#E2E8F0" BorderThickness="1" MinHeight="58">

@@ -151,6 +151,7 @@ public class RepDevicesSectionViewModel : SectionViewModel
         ToggleCommand = new AsyncRelayCommand(ToggleAsync);
         DeleteCommand = new AsyncRelayCommand(DeleteAsync);
         SaveSettingsCommand = new AsyncRelayCommand(SaveSettingsAsync);
+        SaveFinancePhoneCommand = new AsyncRelayCommand(SaveFinancePhoneAsync);
         SaveLoginCommand = new AsyncRelayCommand(SaveLoginAsync);
         ClearLoginCommand = new AsyncRelayCommand(ClearLoginAsync);
         GenerateLoginCommand = new RelayCommand(GenerateLogin);
@@ -229,6 +230,15 @@ public class RepDevicesSectionViewModel : SectionViewModel
     }
     public bool AllowOverLimit { get => _allowOverLimit; set => SetProperty(ref _allowOverLimit, value); }
     public int CashAlertDays { get => _cashAlertDays; set => SetProperty(ref _cashAlertDays, value); }
+
+    // ---- هاتف المدير المالي: واجهة الصندوق (يرى كل الصناديق ويصرف من صندوقه وحده) ----
+    private Option<int?>? _financeEmployee, _financeBox;
+    /// <summary>موظفون وصناديق للاختيار؛ الخيار الأول «بدون» يلغي الواجهة.</summary>
+    public ObservableCollection<Option<int?>> FinanceEmployees { get; } = new();
+    public ObservableCollection<Option<int?>> FinanceBoxes { get; } = new();
+    public Option<int?>? FinanceEmployee { get => _financeEmployee; set => SetProperty(ref _financeEmployee, value); }
+    public Option<int?>? FinanceBox { get => _financeBox; set => SetProperty(ref _financeBox, value); }
+    public AsyncRelayCommand SaveFinancePhoneCommand { get; }
     public AsyncRelayCommand RegisterCommand { get; }
     public AsyncRelayCommand ToggleCommand { get; }
     public AsyncRelayCommand DeleteCommand { get; }
@@ -245,6 +255,15 @@ public class RepDevicesSectionViewModel : SectionViewModel
         foreach (var dvc in await svc.DevicesAsync()) Devices.Add(dvc);
         var settings = await svc.SettingsAsync();
         (AllowOverLimit, CashAlertDays) = (settings.AllowCreditOverLimit, settings.CashAlertDays);
+        FinanceEmployees.Clear();
+        FinanceEmployees.Add(new Option<int?>(null, "— بدون —"));
+        foreach (var r in Reps) FinanceEmployees.Add(r);
+        FinanceBoxes.Clear();
+        FinanceBoxes.Add(new Option<int?>(null, "— بدون —"));
+        foreach (var b in await db.CashBoxes.AsNoTracking().Where(b => b.IsActive).OrderBy(b => b.Name).Select(b => new { b.Id, b.Name }).ToListAsync())
+            FinanceBoxes.Add(new Option<int?>(b.Id, b.Name));
+        FinanceEmployee = FinanceEmployees.First(o => o.Value == settings.FinanceEmployeeId);
+        FinanceBox = FinanceBoxes.FirstOrDefault(o => o.Value == settings.FinanceCashBoxId) ?? FinanceBoxes[0];
         StatusMessage = $"{Devices.Count(x => x.IsActive)} جهاز مفعّل من {Devices.Count}";
     }
 
@@ -316,6 +335,14 @@ public class RepDevicesSectionViewModel : SectionViewModel
             Selected = null;
             await LoadAsync();
         }
+    }
+
+    private async Task SaveFinancePhoneAsync()
+    {
+        if (!Require(CanEdit, "ضبط هاتف المدير المالي")) return;
+        await using var db = Session.NewDb();
+        await RunOperationAsync(() => new RepAppService(db).SaveFinancePhoneAsync(FinanceEmployee?.Value, FinanceBox?.Value, Session.UserId),
+                                FinanceEmployee?.Value is null ? "أُلغيت واجهة الصندوق على الهاتف" : "ضُبط هاتف المدير المالي: تصله واجهة الصندوق مع المزامنة التالية");
     }
 
     private async Task SaveSettingsAsync()

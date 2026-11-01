@@ -5,7 +5,8 @@ using Microsoft.EntityFrameworkCore;
 namespace ERP.Data.Services;
 
 public record FinanceEntryInput(int CategoryId, decimal Amount, DateTime Date, int? VehicleId = null, int? DepartmentId = null,
-                                string? PartyName = null, string? ReceiptNumber = null, string? Notes = null);
+                                string? PartyName = null, string? ReceiptNumber = null, string? Notes = null,
+                                int? CashBoxId = null, bool BypassLimits = false);
 
 public class FinanceEntryRow
 {
@@ -61,7 +62,7 @@ public class FinanceEntryService
         var category = await _db.FinanceCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == input.CategoryId);
         if (category is null || !category.IsActive) return (FinanceOperationResult.Fail("اختر نوع المصروف"), null);
         var income = category.Kind == FinanceCategoryKind.OtherIncome;
-        if (!income && await ApprovalLimits.CheckPaymentAsync(_db, userId, input.Amount) is string limitError)
+        if (!income && !input.BypassLimits && await ApprovalLimits.CheckPaymentAsync(_db, userId, input.Amount) is string limitError)
             return (FinanceOperationResult.Fail(limitError), null);
 
         var ownTx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
@@ -97,7 +98,7 @@ public class FinanceEntryService
             await _db.SaveChangesAsync();
 
             await new CashBoxService(_db).RecordAutoAsync(userId, income ? CashBoxTxType.OtherIncome : CashBoxTxType.Expense,
-                income ? input.Amount : -input.Amount, input.Date, "FinanceEntries", entry.Id, entry.PartyName, text, je.Id);
+                income ? input.Amount : -input.Amount, input.Date, "FinanceEntries", entry.Id, entry.PartyName, text, je.Id, input.CashBoxId);
             if (ownTx is not null) await ownTx.CommitAsync();
             return (FinanceOperationResult.Ok(), entry);
         }

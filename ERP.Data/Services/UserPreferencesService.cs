@@ -59,6 +59,36 @@ public class UserPreferencesService
         return list;
     }
 
+    /// <summary>
+    /// تثبيت قسم في «مفضلتي» في موضع محدد (السحب والإفلات): إن كان مثبّتًا فيُنقل إلى الموضع، وإلا يُدرج؛ ويُقصّ الفائض من أقدم العناصر.
+    /// </summary>
+    /// <returns>المفضلة بعد التعديل.</returns>
+    public async Task<List<string>> PinFavoriteAsync(int userId, string sectionKey, int index)
+    {
+        var u = await _db.Users.FirstAsync(x => x.Id == userId);
+        var list = Split(u.Favorites);
+        var oldIndex = list.IndexOf(sectionKey);
+        if (oldIndex >= 0) { list.RemoveAt(oldIndex); if (index > oldIndex) index--; }
+        list.Insert(Math.Clamp(index, 0, list.Count), sectionKey);
+        while (list.Count > MaxFavorites) list.RemoveAt(list[0] == sectionKey ? 1 : 0);
+        u.Favorites = string.Join(",", list);
+        await _db.SaveChangesAsync();
+        return list;
+    }
+
+    /// <summary>إزالة قسم من «مفضلتي» (لا تغيّر القسم نفسه).</summary>
+    public async Task<List<string>> RemoveFavoriteAsync(int userId, string sectionKey)
+    {
+        var u = await _db.Users.FirstAsync(x => x.Id == userId);
+        var list = Split(u.Favorites);
+        if (list.Remove(sectionKey))
+        {
+            u.Favorites = list.Count == 0 ? null : string.Join(",", list);
+            await _db.SaveChangesAsync();
+        }
+        return list;
+    }
+
     private static List<string> Split(string? s) =>
         (s ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().ToList();
 }

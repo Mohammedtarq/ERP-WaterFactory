@@ -27,7 +27,8 @@ public record RepSnapshot(
     SnapshotMonth? Month = null,
     List<SnapshotNotice>? Notices = null,
     SnapshotCustodyInfo? Custody = null,
-    bool CustodyOnly = false)
+    bool CustodyOnly = false,
+    SnapshotFinance? Finance = null)
 {
     /// <summary>الشعار ينتقل مع كل نسخة عمل، فيبقى صغيرًا.</summary>
     public const int MaxLogoBytes = 200 * 1024;
@@ -114,3 +115,15 @@ public record SnapshotCustodyTx(int Id, int CustodyId, DateTime Date, string Kin
 /// CustodyOnly في النسخة: صاحب الهاتف ليس مندوبًا، فيفتح التطبيق واجهة العهدة فقط.
 /// </summary>
 public record SnapshotCustodyInfo(List<SnapshotCustody> Custodies, List<SnapshotCategory> Categories, List<SnapshotCustodyTx> Recent, decimal ReceiptAbove);
+
+/// <summary>صندوق كما هو في النظام: اسمه ونوعه ورصيده، وOwn = صندوق صاحب الهاتف (الوحيد الذي يصرف منه).</summary>
+public record SnapshotBox(int Id, string Name, string Type, decimal Balance, bool Own);
+
+/// <summary>حركة صندوق حديثة (30 يومًا): نوعها بالعربية ومبلغها (موجب = داخل، سالب = خارج) والجهة والبيان.</summary>
+public record SnapshotBoxTx(int Id, int BoxId, DateTime Date, string TypeText, decimal Amount, string? Party, string? Description);
+
+/// <summary>
+/// واجهة المدير المالي على الهاتف: كل الصناديق وأرصدتها وحركاتها للاطلاع، وصندوقه (OwnBoxId) وحده للصرف مع أبواب المصروف.
+/// وجودها في النسخة يعني أن صاحب الهاتف هو المدير المالي المضبوط في إعدادات تطبيق المندوبين.
+/// </summary>
+public record SnapshotFinance(int OwnBoxId, List<SnapshotBox> Boxes, List<SnapshotBoxTx> Recent, List<SnapshotCategory> Categories, decimal ReceiptAbove);

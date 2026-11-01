@@ -31,4 +31,6 @@ public record ReturnPayload(CustomerRef Customer, List<ReturnLinePayload> Lines,
 public record CustomerLinkPayload(List<int> CustomerIds);
 
 /// <summary>مصروف من عهدة الموظف: رقم عهدته وبابه ومبلغه. يُرحَّل تلقائيًا إن كانت عهدته فعّالة وفي رصيدها.</summary>
+/// <summary>مصروف من صندوق المدير المالي (هاتفه): الصندوق وبابه ومبلغه ووصفه ورقم الوصل (اختياري).</summary>
+public record BoxExpensePayload(int CashBoxId, int CategoryId, decimal Amount, string? Description = null, string? ReceiptNumber = null);
 public record CustodyExpensePayload(int CustodyId, int CategoryId, decimal Amount, string? Description = null, string? ReceiptNumber = null);

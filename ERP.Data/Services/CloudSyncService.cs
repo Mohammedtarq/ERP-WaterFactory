@@ -448,6 +448,12 @@ public partial class CloudSyncService
     /// <summary>نسخة عمل المندوب (null إن لم يكن مندوبًا فعّالًا).</summary>
     public async Task<RepSnapshot?> BuildSnapshotAsync(int repEmployeeId)
     {
+        // المدير المالي المضبوط في الإعدادات: واجهة الصندوق (ولو كان مندوبًا أيضًا)
+        var financeEmployee = (await new RepAppService(_db).SettingsAsync()).FinanceEmployeeId;
+        if (financeEmployee == repEmployeeId
+            && await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == repEmployeeId && e.IsActive) is { } finance
+            && await BuildFinanceSnapshotAsync(finance) is { } financeSnapshot)
+            return financeSnapshot;
         var rep = await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == repEmployeeId && e.IsSalesRep);
         if (rep is null)
         {
@@ -532,6 +538,28 @@ public partial class CloudSyncService
                                others, await extras.MonthAsync(rep.Id),
                                (await extras.NoticesAsync(rep.Id, wallet, settings.CashAlertDays)).Concat(await extras.CustodyNoticesAsync(rep.Id)).OrderByDescending(n => n.At).Take(40).ToList(),
                                await extras.CustodyAsync(rep.Id));
+    }
+
+    /// <summary>نسخة المدير المالي: كل الصناديق وأرصدتها وحركاتها وأبواب المصروف، بلا منتجات ولا زبائن ولا سيارة (واجهة الصندوق فقط).</summary>
+    private async Task<RepSnapshot?> BuildFinanceSnapshotAsync(Employee holder)
+    {
+        var extras = new RepSnapshotExtrasService(_db);
+        if (await extras.FinanceAsync(holder.Id) is not { } finance) return null;
+        var settings = await new RepAppService(_db).SettingsAsync();
+        var since = DateTime.UtcNow.AddDays(-7);
+        var posted = await _db.RepRequests.AsNoTracking()
+            .Where(r => r.RepEmployeeId == holder.Id && r.Status == RepRequestStatus.Posted && r.ReceivedAt >= since).OrderBy(r => r.Id).Select(r => r.ClientId).ToListAsync();
+        var sync = await SettingsAsync();
+        var servers = sync.IsEnabled
+            ? new SnapshotServers(sync.LocalEnabled ? sync.LocalUrl : null, sync.ServerUrl, string.IsNullOrEmpty(sync.AgentKey) ? null : FactoryIdentity.Of(sync.AgentKey))
+            : null;
+        var company = await new CompanyProfileService(_db).GetAsync();
+        var logo = company?.Logo is { Length: > 0 and <= RepSnapshot.MaxLogoBytes } l ? l : null;
+        return new RepSnapshot(holder.Id, holder.FullName, DateTime.UtcNow, false, settings.CashAlertDays, 0,
+                               new(), new(), new(), new(), posted,
+                               string.IsNullOrWhiteSpace(company?.NameAr) ? null : company.NameAr.Trim(), logo, servers,
+                               holder.RepLoginName is { } ln && holder.RepLoginSalt is { } ls && holder.RepLoginHash is { } lh ? new SnapshotLogin(ln, ls, lh) : null,
+                               null, null, (await extras.CustodyNoticesAsync(holder.Id)).OrderByDescending(n => n.At).ToList(), null, false, finance);
     }
 
     /// <summary>نسخة موظف بعهدة فقط (ليس مندوبًا): بلا منتجات ولا زبائن ولا سيارة، ويفتح التطبيق له واجهة العهدة.</summary>
