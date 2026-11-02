@@ -45,6 +45,8 @@ public sealed class RahmaIntro : AbsoluteLayout
 
     public RahmaIntro()
     {
+        // التطبيق كله من اليمين لليسار؛ والمسرح إحداثياته من اليسار (في RTL يبدأ AbsoluteLayout من اليمين فتخرج العناصر من الشاشة)
+        FlowDirection = FlowDirection.LeftToRight;
         BackgroundColor = Color.FromArgb("#071F42");
         _bg = new Grid
         {
@@ -128,7 +130,7 @@ public sealed class RahmaIntro : AbsoluteLayout
 
     private static Label Caption(string text, double size, Color color, FontAttributes attrs) => new()
     {
-        Text = text, FontSize = size, TextColor = color, FontAttributes = attrs, HorizontalTextAlignment = TextAlignment.Center, InputTransparent = true, Opacity = 0
+        Text = text, FontSize = size, TextColor = color, FontAttributes = attrs, HorizontalTextAlignment = TextAlignment.Center, InputTransparent = true, Opacity = 0, FlowDirection = FlowDirection.RightToLeft
     };
 
     protected override void OnSizeAllocated(double width, double height)
