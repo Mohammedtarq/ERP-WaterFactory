@@ -116,6 +116,23 @@ public class TrialFixesBatchATests
         Assert.DoesNotContain(production.Tabs, t => t is QcSectionViewModel or QualityTestsSectionViewModel);
         Assert.Equal($"1. {production.Orders.Title}", production.Orders.DisplayTitle);
 
+        // (16) مخزن مواد أولية أُنشئ بعد فتح شاشة الأوامر يظهر في «مخزن المواد الأولية المفضّل» عند العودة للشاشة بلا إعادة تشغيل البرنامج،
+        //      ويبقى المخزن المختار كما هو
+        production.SelectedTab = production.Orders;
+        await production.LastActivation;
+        await production.Orders.IdleAsync();
+        var orders = production.Orders;
+        var chosen = orders.RawWarehouse;
+        Assert.NotNull(chosen);
+        await using (var db = _f.NewDb())
+        {
+            db.Warehouses.Add(new Warehouse { BranchId = await db.Branches.Select(b => b.Id).FirstAsync(), Name = "مخزن إنتاج جديد — اختبار القائمة", WarehouseType = WarehouseType.RawMaterial });
+            await db.SaveChangesAsync();
+        }
+        await orders.LoadAsync();
+        Assert.Contains(orders.RawWarehouses, w => w.Name == "مخزن إنتاج جديد — اختبار القائمة");
+        Assert.Equal(chosen!.Id, orders.RawWarehouse!.Id);
+
         await shell.IdleAllAsync();
         Assert.Empty(_f.Unhandled);
     }

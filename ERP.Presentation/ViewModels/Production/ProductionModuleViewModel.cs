@@ -331,14 +331,19 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
             _finishedItem = FinishedItems.FirstOrDefault(i => i.Id == selectedId);
             OnPropertyChanged(nameof(FinishedItem));
         }
-        if (RawWarehouses.Count == 0)
+        // المخازن تُحدَّث في كل تحميل: مخزن أُنشئ بعد فتح الشاشة لأول مرة (مخزن إنتاج جديد) يظهر في القائمة بلا إعادة تشغيل البرنامج
+        // الترتيب في الذاكرة: نوع المخزن مخزّن نصًا، ومقارنته داخل ORDER BY لا تُترجم لـ SQL
+        var candidates = (await db.Warehouses.AsNoTracking()
+            .Where(w => w.IsActive && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.Damaged
+                     && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.FinishedGoods).ToListAsync())
+            .OrderBy(w => w.WarehouseType != WarehouseType.RawMaterial).ThenBy(w => w.Name).ToList();
+        if (!candidates.Select(w => w.Id).SequenceEqual(RawWarehouses.Select(w => w.Id)))
         {
-            // الترتيب في الذاكرة: نوع المخزن مخزّن نصًا، ومقارنته داخل ORDER BY لا تُترجم لـ SQL
-            var candidates = await db.Warehouses.AsNoTracking()
-                .Where(w => w.IsActive && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.Damaged
-                         && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.FinishedGoods).ToListAsync();
-            foreach (var w in candidates.OrderBy(w => w.WarehouseType != WarehouseType.RawMaterial).ThenBy(w => w.Name)) RawWarehouses.Add(w);
-            RawWarehouse ??= RawWarehouses.FirstOrDefault();
+            var selectedId = RawWarehouse?.Id;
+            RawWarehouses.Clear();
+            foreach (var w in candidates) RawWarehouses.Add(w);
+            _rawWarehouse = RawWarehouses.FirstOrDefault(w => w.Id == selectedId) ?? RawWarehouses.FirstOrDefault();
+            OnPropertyChanged(nameof(RawWarehouse));
         }
         // الماكينات تُحدَّث في كل تحميل (قد تُضاف ماكينة من تبويب الماكينات)
         var machineId = Machine?.Id;

@@ -169,10 +169,14 @@ public class MachineWipSectionViewModel : SectionViewModel
         _actionMachine = Machines.FirstOrDefault(m => m.Id == actionId) ?? Machines.FirstOrDefault(m => m.IsActive);
         OnPropertyChanged(nameof(ActionMachine));
 
-        if (RawWarehouses.Count == 0)
+        // تُحدَّث في كل تحميل: مخزن مواد أولية جديد يظهر بلا إعادة تشغيل البرنامج
+        var sources = await new MaterialAvailabilityService(db).SourceWarehousesAsync();
+        if (!sources.Select(w => w.Id).SequenceEqual(RawWarehouses.Select(w => w.Id)))
         {
-            foreach (var w in await new MaterialAvailabilityService(db).SourceWarehousesAsync()) RawWarehouses.Add(w);
-            ReturnWarehouse = RawWarehouses.FirstOrDefault();
+            var returnId = ReturnWarehouse?.Id;
+            RawWarehouses.Clear();
+            foreach (var w in sources) RawWarehouses.Add(w);
+            ReturnWarehouse = RawWarehouses.FirstOrDefault(w => w.Id == returnId) ?? RawWarehouses.FirstOrDefault();
         }
         var orderId = ActionOrder?.Id;
         ActiveOrders.Clear();
