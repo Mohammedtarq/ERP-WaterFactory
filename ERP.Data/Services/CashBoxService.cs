@@ -70,8 +70,23 @@ public class CashBoxService
     public const string OpeningRule = "CashBoxOpening";        // مدين الصندوق / دائن رأس المال
     public const string AdjustGainRule = "CashBoxAdjustGain";  // مدين الصندوق / دائن فروقات جرد الصناديق (زيادة)
     public const string AdjustLossRule = "CashBoxAdjustLoss";  // مدين فروقات جرد الصناديق / دائن الصندوق (عجز)
-    /// <summary>فرق التسوية الذي لا يتجاوزه صاحب «تسوية أرصدة الصناديق» منفردًا؛ فوقه يُرفع طلب لاعتماد المالية.</summary>
-    public const decimal AdjustApprovalLimit = 100_000m;
+    /// <summary>سقف فرق التسوية بلا موافقة ثانية (الإعداد المحفوظ، وافتراضيه 5,000,000). 0 = بلا موافقة ثانية.</summary>
+    public async Task<decimal> AdjustApprovalLimitAsync() =>
+        await _db.FinanceSettings.AsNoTracking().Select(f => (decimal?)f.CashAdjustLimit).FirstOrDefaultAsync() ?? FinanceSetting.DefaultCashAdjustLimit;
+
+    /// <summary>تغيير السقف (للأدمن). 0 يلغي الموافقة الثانية: أي فرق يُسوّى مباشرة وتبقى التسوية مسجلة بسببها.</summary>
+    public async Task<FinanceOperationResult> SetAdjustApprovalLimitAsync(decimal limit, int userId)
+    {
+        if (!await IsAdminAsync(userId)) return FinanceOperationResult.Fail("تغيير سقف التسوية للأدمن فقط");
+        if (limit < 0) return FinanceOperationResult.Fail("السقف لا يكون سالبًا (0 = بلا موافقة ثانية)");
+        var row = await _db.FinanceSettings.FirstOrDefaultAsync();
+        var old = row?.CashAdjustLimit ?? FinanceSetting.DefaultCashAdjustLimit;
+        if (row is null) _db.FinanceSettings.Add(row = new FinanceSetting());
+        (row.CashAdjustLimit, row.UpdatedByUserId, row.UpdatedAt) = (limit, userId, DateTime.UtcNow);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Update", "FinanceSettings", 1, $"سقف تسوية الجرد بلا موافقة ثانية: {old:N0} ← {limit:N0} د.ع");
+        return FinanceOperationResult.Ok();
+    }
 
     private readonly ProjectDbContext _db;
     public CashBoxService(ProjectDbContext db) => _db = db;
@@ -435,7 +450,7 @@ public class CashBoxService
 
     /// <summary>
     /// تسوية صندوق بالجرد: يُدخل المبلغ الموجود فعلًا فيحسب النظام الفرق ويقيّده مستقلًا (زيادة/عجز) بسبب إلزامي.
-    /// لا يُعدَّل رصيد قديم بصمت. فرق أكبر من <see cref="AdjustApprovalLimit"/> لغير الأدمن يُرفع طلبًا لاعتماد المالية.
+    /// لا يُعدَّل رصيد قديم بصمت. فرق أكبر من سقف التسوية (الإعداد) لغير الأدمن يُرفع طلبًا لاعتماد المالية.
     /// </summary>
     public async Task<(FinanceOperationResult result, CashBoxTransaction? tx, PaymentRequest? request)> AdjustToCountAsync(
         int boxId, decimal actualAmount, DateTime date, string? reason, int userId)
@@ -449,7 +464,8 @@ public class CashBoxService
         var diff = actualAmount - await GetBalanceAsync(boxId);
         if (diff == 0) return (FinanceOperationResult.Fail("الرصيد الدفتري يساوي الجرد الفعلي — لا فرق للتسوية"), null, null);
 
-        if (Math.Abs(diff) > AdjustApprovalLimit && !await IsAdminAsync(userId))
+        var limit = await AdjustApprovalLimitAsync();
+        if (limit > 0 && Math.Abs(diff) > limit && !await IsAdminAsync(userId))
         {
             var (res, req) = await new PaymentApprovalService(_db).RequestCashAdjustmentAsync(boxId, actualAmount, diff, date, reason, userId);
             return (res, null, req);

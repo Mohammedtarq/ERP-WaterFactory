@@ -304,6 +304,15 @@ public class HomeBoxTests
         Assert.True(small.result.Success, small.result.ErrorMessage);
         Assert.Null(small.request);
         var balance = await cash.GetBalanceAsync(box.Id);
+        // السقف إعداد (افتراضيه 5,000,000) يغيّره الأدمن فقط
+        Assert.Equal(5_000_000, await cash.AdjustApprovalLimitAsync());
+        Assert.False((await cash.SetAdjustApprovalLimitAsync(1_000_000, clerk.Id)).Success);
+        Assert.False((await cash.SetAdjustApprovalLimitAsync(-1, admin)).Success);
+        var direct = await cash.AdjustToCountAsync(box.Id, balance - 300_000, Day, "فرق أقل من السقف الافتراضي", clerk.Id);
+        Assert.True(direct.result.Success, direct.result.ErrorMessage);
+        Assert.Null(direct.request);
+        balance = await cash.GetBalanceAsync(box.Id);
+        Assert.True((await cash.SetAdjustApprovalLimitAsync(100_000, admin)).Success);
         var big = await cash.AdjustToCountAsync(box.Id, balance - 300_000, Day, "عجز كبير", clerk.Id);
         Assert.True(big.result.Success, big.result.ErrorMessage);
         Assert.Null(big.tx);
@@ -313,6 +322,13 @@ public class HomeBoxTests
         var approved = await new PaymentApprovalService(db).ApproveAsync(big.request.Id, admin);
         Assert.True(approved.Success, approved.ErrorMessage);
         Assert.Equal(balance - 300_000, await cash.GetBalanceAsync(box.Id));
+
+        // 0 = بلا موافقة ثانية: أي فرق يُسوّى مباشرة
+        Assert.True((await cash.SetAdjustApprovalLimitAsync(0, admin)).Success);
+        var now = await cash.GetBalanceAsync(box.Id);
+        var free = await cash.AdjustToCountAsync(box.Id, now - 100_000, Day, "بلا موافقة ثانية", clerk.Id);
+        Assert.True(free.result.Success && free.request is null && free.tx is not null);
+        Assert.True((await cash.SetAdjustApprovalLimitAsync(FinanceSetting.DefaultCashAdjustLimit, admin)).Success);   // تنظيف: الافتراضي
 
         // من لا صلاحية له لا يسوّي
         var plain = new User { Username = "adj_plain", PasswordHash = PasswordHasher.Hash("x"), RoleId = (await db.Roles.FirstAsync(r => r.Name == "موظف مبيعات")).Id };

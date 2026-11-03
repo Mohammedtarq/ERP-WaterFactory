@@ -68,3 +68,14 @@ public class HomeLoanRepayment
     public User CreatedByUser { get; set; } = null!;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>إعدادات مالية عامة (سجل واحد Id = 1) — 75_cash_adjust_limit.sql.</summary>
+public class FinanceSetting
+{
+    public int Id { get; set; } = 1;
+    /// <summary>فرق تسوية الجرد الذي يسوّيه صاحب الصلاحية منفردًا؛ ما فوقه يحتاج اعتماد المالية. 0 = بلا موافقة ثانية.</summary>
+    public decimal CashAdjustLimit { get; set; } = DefaultCashAdjustLimit;
+    public const decimal DefaultCashAdjustLimit = 5_000_000m;
+    public int? UpdatedByUserId { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}

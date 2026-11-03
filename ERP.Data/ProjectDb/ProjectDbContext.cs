@@ -73,6 +73,7 @@ public partial class ProjectDbContext : DbContext
     public DbSet<Custody> Custodies => Set<Custody>();
     public DbSet<HomeBoxEntry> HomeBoxEntries => Set<HomeBoxEntry>();
     public DbSet<HomeLoan> HomeLoans => Set<HomeLoan>();
+    public DbSet<FinanceSetting> FinanceSettings => Set<FinanceSetting>();
     public DbSet<HomeLoanRepayment> HomeLoanRepayments => Set<HomeLoanRepayment>();
     public DbSet<SalesInvoiceFee> SalesInvoiceFees => Set<SalesInvoiceFee>();
     public DbSet<CustodyTransaction> CustodyTransactions => Set<CustodyTransaction>();
@@ -560,6 +561,11 @@ public partial class ProjectDbContext : DbContext
             e.HasOne(x => x.FinanceEntry).WithMany().HasForeignKey(x => x.FinanceEntryId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.CashBoxTx).WithMany().HasForeignKey(x => x.CashBoxTxId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<FinanceSetting>(e =>
+        {
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.CashAdjustLimit).HasPrecision(18, 2);
         });
         modelBuilder.Entity<HomeBoxEntry>(e =>
         {

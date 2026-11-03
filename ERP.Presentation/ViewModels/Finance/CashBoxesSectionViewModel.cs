@@ -75,7 +75,21 @@ public class CashBoxesSectionViewModel : SectionViewModel
     public string? AdjustReason { get => _adjustReason; set => SetProperty(ref _adjustReason, value); }
     public string AdjustDiffText => SelectedBox is null ? "" : AdjustActual - SelectedBox.Balance is var d && d == 0 ? "لا فرق عن الرصيد الدفتري"
         : $"الرصيد الدفتري {SelectedBox.Balance:N0} — الفرق {(d > 0 ? "زيادة" : "عجز")} {Math.Abs(d):N0} د.ع"
-          + (Math.Abs(d) > CashBoxService.AdjustApprovalLimit ? $" (فوق {CashBoxService.AdjustApprovalLimit:N0}: يحتاج اعتماد المالية لغير الأدمن)" : "");
+          + (AdjustLimit > 0 && Math.Abs(d) > AdjustLimit ? $" (فوق {AdjustLimit:N0}: يحتاج اعتماد المالية لغير الأدمن)" : "");
+    private decimal _adjustLimit, _newAdjustLimit;
+    /// <summary>سقف الفرق الذي يُسوّى بلا موافقة ثانية (0 = بلا موافقة ثانية).</summary>
+    public decimal AdjustLimit { get => _adjustLimit; private set { if (SetProperty(ref _adjustLimit, value)) OnPropertyChanged(nameof(AdjustDiffText)); } }
+    public decimal NewAdjustLimit { get => _newAdjustLimit; set => SetProperty(ref _newAdjustLimit, value); }
+    public AsyncRelayCommand SaveAdjustLimitCommand => _saveLimit ??= new AsyncRelayCommand(SaveAdjustLimitAsync);
+    private AsyncRelayCommand? _saveLimit;
+    private async Task SaveAdjustLimitAsync()
+    {
+        await using var db = Session.NewDb();
+        var r = await new CashBoxService(db).SetAdjustApprovalLimitAsync(NewAdjustLimit, Session.UserId);
+        if (!r.Success) { Dialogs.Error(r.ErrorMessage!); return; }
+        AdjustLimit = NewAdjustLimit;
+        StatusMessage = AdjustLimit == 0 ? "أُلغيت الموافقة الثانية: أي فرق جرد يُسوّى مباشرة" : $"سقف التسوية بلا موافقة ثانية: {AdjustLimit:N0} د.ع";
+    }
     public AsyncRelayCommand AdjustCommand { get; }
     public AsyncRelayCommand ChangesReportCommand { get; }
     public string? EditReason { get => _editReason; set => SetProperty(ref _editReason, value); }
@@ -231,6 +245,8 @@ public class CashBoxesSectionViewModel : SectionViewModel
         var svc = new CashBoxService(db);
         IsAdmin = await svc.IsAdminAsync(Session.UserId);
         CanCorrect = IsAdmin || await svc.CanCorrectAsync(Session.UserId);
+        AdjustLimit = await svc.AdjustApprovalLimitAsync();
+        NewAdjustLimit = AdjustLimit;
         var selectedId = SelectedBox?.Id;
         Boxes.Clear();
         foreach (var b in await svc.GetBoxesAsync(Session.UserId, ShowInactive)) Boxes.Add(b);

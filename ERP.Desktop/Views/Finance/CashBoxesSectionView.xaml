@@ -265,6 +265,12 @@
                             <Button Style="{StaticResource PrimaryButton}" Command="{Binding AdjustCommand}" Content="تسوية بقيد مستقل"/>
                             <Button Style="{StaticResource SecondaryButton}" Command="{Binding ChangesReportCommand}" Content="تقرير التعديلات" Margin="8,0,0,0"/>
                         </StackPanel>
+                        <StackPanel Visibility="{Binding IsAdmin, Converter={StaticResource BoolToVisibility}}">
+                            <Separator Margin="0,14,0,8"/>
+                            <TextBlock Text="سقف التسوية بلا موافقة ثانية (د.ع) — 0 = بلا موافقة" Style="{StaticResource FieldLabel}" Margin="0"/>
+                            <TextBox Text="{Binding NewAdjustLimit, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                            <Button Style="{StaticResource SecondaryButton}" Command="{Binding SaveAdjustLimitCommand}" Content="حفظ السقف" Margin="0,8,0,0" HorizontalAlignment="Left"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
