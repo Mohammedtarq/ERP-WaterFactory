@@ -1,7 +1,7 @@
 namespace ERP.Data.ProjectDb.Entities;
 
 /// <summary>ما يحتاج موافقة القسم المالي قبل خروج النقد من الصندوق.</summary>
-public enum PaymentRequestKind { EmployeeAdvance, EmployeeWithdrawal, PayrollPayout, PartnerWithdrawal }
+public enum PaymentRequestKind { EmployeeAdvance, EmployeeWithdrawal, PayrollPayout, PartnerWithdrawal, CashAdjustment }
 
 public enum PaymentRequestStatus { Pending, Approved, Rejected }
 

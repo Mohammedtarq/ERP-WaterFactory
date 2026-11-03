@@ -62,6 +62,8 @@ public class FinanceEntryService
         var category = await _db.FinanceCategories.AsNoTracking().FirstOrDefaultAsync(c => c.Id == input.CategoryId);
         if (category is null || !category.IsActive) return (FinanceOperationResult.Fail("اختر نوع المصروف"), null);
         var income = category.Kind == FinanceCategoryKind.OtherIncome;
+        if (!income && input.CashBoxId is int homeCheck && await new CashBoxService(_db).IsHomeBoxAsync(homeCheck))
+            return (FinanceOperationResult.Fail(CashBoxService.HomeSpendError), null);
         if (!income && !input.BypassLimits && await ApprovalLimits.CheckPaymentAsync(_db, userId, input.Amount) is string limitError)
             return (FinanceOperationResult.Fail(limitError), null);
 

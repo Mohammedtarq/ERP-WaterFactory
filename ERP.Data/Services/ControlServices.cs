@@ -26,6 +26,8 @@ public static class SpecialPermission
     public const string SettlementConfirm = "Special:SettlementConfirm";
     public const string PaymentApproval = "Special:PaymentApproval";
     public const string Custody = "Special:Custody";
+    public const string HomeBox = "Special:HomeBox";
+    public const string CashAdjust = "Special:CashAdjust";
 
     public static readonly (string Code, string Name, string Hint)[] All =
     {
@@ -43,6 +45,8 @@ public static class SpecialPermission
         (RepApproval, "اعتماد طلبات المندوبين", "الموافقة على مصروف المندوب ومرتجع الزبون أو رفضهما، ومراجعة الآجل والمجاني"),
         (PaymentApproval, "اعتماد الصرف (المالية)", "الموافقة على سلف الموظفين ومسحوباتهم وصرف الرواتب وسحب أرباح الشركاء قبل خروج النقد من الصندوق، أو رفضها"),
         (Custody, "إدارة العهد", "صرف عهدة نقدية لموظف من الصندوق وتجديدها وتعديل حركاتها وإلغائها وتسويتها وطباعتها"),
+        (HomeBox, "صندوق المنزل وقروضه", "الصرف من صندوق المنزل (الخمس، مساعدات، أصول)، وإقراض صناديق العمل منه وتسجيل السداد، وعرض سجله وطباعته"),
+        (CashAdjust, "تسوية أرصدة الصناديق", "تسوية رصيد صندوق بالجرد الفعلي بقيد مستقل، وتعديل حركاته اليدوية وإلغاؤها بقيد تصحيحي بسبب مكتوب"),
         (SettlementConfirm, "تأكيد تسوية المندوب (المخازن)", "عدّ مرتجع المندوب وتأكيد الجانب المخزني من تسويته: المرتجع والتالف والمجاني وفاتورة المتبقي"),
     };
 

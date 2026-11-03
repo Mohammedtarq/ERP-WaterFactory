@@ -291,6 +291,10 @@ public class WarehouseCashBoxTests
         Assert.True(boxes.IsEditing);
         boxes.EditAmount = 30_000;
         await boxes.SaveEditCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("اكتب سبب التعديل"));   // السبب إلزامي
+        dialogs.Errors.Clear();
+        boxes.EditReason = "تصحيح مبلغ المناقلة";
+        await boxes.SaveEditCommand.ExecuteAsync();
         Assert.Empty(dialogs.Errors);
         Assert.Equal(15_000m, boxes.Boxes.Single(b => b.Name == "صندوق سارة").Balance);
         Assert.True(boxes.Rows.Single(r => r.TxNumber == transferRow.TxNumber).IsModified);

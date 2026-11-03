@@ -42,11 +42,13 @@ public class PaymentApprovalService
         PaymentRequestKind.EmployeeAdvance => "سلفة موظف",
         PaymentRequestKind.EmployeeWithdrawal => "مسحوب موظف",
         PaymentRequestKind.PayrollPayout => "صرف رواتب",
+        PaymentRequestKind.CashAdjustment => "تسوية رصيد صندوق",
         _ => "سحب أرباح شريك"
     };
 
     private record PartnerPayload(int PartnerId, decimal Amount, DateTime Date, string? Notes);
     private record PayrollPayload(int RunId);
+    private record AdjustPayload(int BoxId, decimal Actual, DateTime Date, string Reason);
 
     // ============================ تقديم الطلب ============================
 
@@ -99,9 +101,25 @@ public class PaymentApprovalService
         if (partner is null) return (FinanceOperationResult.Fail("اختر الشريك"), null);
         var balance = await new ReconciliationService(_db).GetPartnerBalanceAsync(partnerId);
         if (amount > balance) return (FinanceOperationResult.Fail($"رصيد أرباح {partner.Name} {balance:N0} د.ع فقط"), null);
-        if (cashBoxId is int box && await cash.GetBalanceAsync(box) < amount) return (FinanceOperationResult.Fail("رصيد الصندوق المختار غير كافٍ"), null);
+        if (cashBoxId is int box)
+        {
+            var type = await _db.CashBoxes.AsNoTracking().Where(b => b.Id == box && b.IsActive).Select(b => (CashBoxType?)b.BoxType).FirstOrDefaultAsync();
+            if (type is null) return (FinanceOperationResult.Fail("الصندوق المختار غير موجود أو موقوف"), null);
+            if (type is CashBoxType.Bank or CashBoxType.Cards) return (FinanceOperationResult.Fail("سحب الأرباح من صندوق نقدي فقط (المنزل، الرئيسي، صندوق مستخدم) — لا من البنك ولا البطاقات"), null);
+            if (await cash.GetBalanceAsync(box) < amount) return (FinanceOperationResult.Fail("رصيد الصندوق المختار غير كافٍ"), null);
+        }
         var summary = $"سحب أرباح {partner.Name} — {amount:N0} د.ع" + (string.IsNullOrWhiteSpace(notes) ? "" : $" ({notes.Trim()})");
         return await SaveAsync(PaymentRequestKind.PartnerWithdrawal, amount, summary, JsonSerializer.Serialize(new PartnerPayload(partnerId, amount, date, notes), Json), cashBoxId, userId);
+    }
+
+    /// <summary>تسوية صندوق بالجرد تتجاوز السقف: تُحفظ طلبًا وتُنفَّذ عند اعتماد المالية (الفرق يُعاد حسابه وقت الاعتماد).</summary>
+    public async Task<(FinanceOperationResult result, PaymentRequest? request)> RequestCashAdjustmentAsync(int boxId, decimal actual, decimal diff, DateTime date, string reason, int userId)
+    {
+        var name = await _db.CashBoxes.AsNoTracking().Where(b => b.Id == boxId).Select(b => b.Name).FirstOrDefaultAsync();
+        if (name is null) return (FinanceOperationResult.Fail("الصندوق غير موجود"), null);
+        var summary = $"تسوية {name} بالجرد الفعلي {actual:N0} د.ع ({(diff > 0 ? "زيادة" : "عجز")} {Math.Abs(diff):N0}) — {reason.Trim()}";
+        return await SaveAsync(PaymentRequestKind.CashAdjustment, Math.Abs(diff), summary,
+                               JsonSerializer.Serialize(new AdjustPayload(boxId, actual, date, reason.Trim()), Json), boxId, userId);
     }
 
     private async Task<(FinanceOperationResult, PaymentRequest?)> SaveAsync(PaymentRequestKind kind, decimal amount, string summary, string payload, int? boxId, int userId)
@@ -153,6 +171,16 @@ public class PaymentApprovalService
                 var p = JsonSerializer.Deserialize<PayrollPayload>(r.Payload, Json)!;
                 done = await PayRunAsync(p.RunId, r.CashBoxId ?? 0, doer);
                 (table, resultId) = ("PayrollRuns", p.RunId);
+                break;
+            }
+            case PaymentRequestKind.CashAdjustment:
+            {
+                var p = JsonSerializer.Deserialize<AdjustPayload>(r.Payload, Json)!;
+                var cashSvc = new CashBoxService(_db);
+                var diff = p.Actual - await cashSvc.GetBalanceAsync(p.BoxId);
+                if (diff == 0) { done = FinanceOperationResult.Fail("الرصيد الدفتري صار يساوي الجرد الفعلي — لا فرق للتسوية"); table = null; resultId = null; break; }
+                var (res, t) = await cashSvc.PostAdjustmentAsync(p.BoxId, diff, p.Date, p.Reason, doer);
+                (done, table, resultId) = (res, "CashBoxTransactions", t?.Id);
                 break;
             }
             default:

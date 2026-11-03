@@ -11,7 +11,11 @@ public enum CashBoxTxType
     Opening, Deposit, Withdrawal, TransferIn, TransferOut,
     SalesReceipt, VoucherReceipt, VoucherPayment, RepHandover,
     CustomerDepositIn, CustomerDepositOut, EmployeeAdvance, PartnerWithdrawal,
-    Expense, OtherIncome, TempWages, PayrollPayout, CustodyIssue, CustodyReturn
+    Expense, OtherIncome, TempWages, PayrollPayout, CustodyIssue, CustodyReturn,
+    /// <summary>صرف من صندوق المنزل خارج العمل (الخمس، مساعدات، شراء أصول).</summary>
+    HomeSpend,
+    /// <summary>تسوية الرصيد الدفتري بالجرد الفعلي (زيادة أو عجز).</summary>
+    Adjustment
 }
 
 /// <summary>صندوق مالي: رئيسي أو خاص بمستخدم. الرصيد = مجموع حركاته غير الملغاة.</summary>

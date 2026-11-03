@@ -66,6 +66,8 @@ public class AssetReconciliation
     public decimal PartnerWithdrawalsSincePrevious { get; set; }
     /// <summary>إيداعات المالك في الصناديق منذ المطابقة السابقة — زيادة في النقد ليست ربحًا فتُطرح من الفائض.</summary>
     public decimal OwnerDepositsSincePrevious { get; set; }
+    /// <summary>ما صُرف من صندوق المنزل (الخمس، مساعدات، أصول) منذ المطابقة السابقة — ربح وُزّع لا خسارة، فيُضاف للفائض.</summary>
+    public decimal HomeDistributionsSincePrevious { get; set; }
     public decimal Surplus { get; set; }
     public bool IsBaseline { get; set; }
     public string? Notes { get; set; }

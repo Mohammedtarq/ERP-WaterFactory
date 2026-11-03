@@ -49,7 +49,11 @@ public class FinalAccountsReport
     public decimal OperatingProfit => GrossProfit - OperatingExpenses - Salaries - RepFieldExpenses - Losses;
     public decimal NonOperatingExpenses { get; init; }
     public decimal OtherIncome { get; init; }
-    public decimal NetProfit => OperatingProfit - NonOperatingExpenses + OtherIncome;
+    /// <summary>صافي فروقات جرد الصناديق في الشهر (عجز موجب، زيادة سالبة): خسارة فعلية خارج كلفة القنينة.</summary>
+    public decimal CashDifferences { get; init; }
+    public decimal NetProfit => OperatingProfit - NonOperatingExpenses + OtherIncome - CashDifferences;
+    /// <summary>ما صُرف من صندوق المنزل في الشهر خارج العمل (للعلم فقط — لا يدخل الربح ولا الكلفة).</summary>
+    public decimal HomeDistributions { get; init; }
     public decimal PiecesSold { get; init; }
     /// <summary>كلفة القنينة = (المواد + المصاريف التشغيلية والرواتب ومصاريف المندوبين) ÷ القطع المباعة. غير التشغيلي لا يدخل.</summary>
     public decimal CostPerPiece => PiecesSold == 0 ? 0 : Math.Round((MaterialsCost + OperatingExpenses + Salaries + RepFieldExpenses) / PiecesSold, 2);
@@ -73,8 +77,10 @@ public class WorkingCapitalSnapshot
     public DateTime? CapitalEffectiveFrom { get; init; }
     public decimal NetAssets { get; init; }
     public decimal HomeBoxBalance { get; init; }
-    /// <summary>صافي الموجودات داخل العمل (بلا صندوق المنزل).</summary>
-    public decimal NetAssetsInBusiness => NetAssets - HomeBoxBalance;
+    /// <summary>قروض صندوق المنزل غير المسدَّدة عند صناديق العمل: نقد في العمل لكنه ملك للمنزل، فلا يُحسب فائضًا.</summary>
+    public decimal HomeLoansOutstanding { get; init; }
+    /// <summary>صافي الموجودات داخل العمل (بلا صندوق المنزل وبلا ما اقترضه العمل منه).</summary>
+    public decimal NetAssetsInBusiness => NetAssets - HomeBoxBalance - HomeLoansOutstanding;
     /// <summary>الفائض عن رأس المال التشغيلي = ربح متحقق قابل للإخراج.</summary>
     public decimal Surplus => NetAssetsInBusiness - Capital;
     public decimal CashInBusinessBoxes { get; init; }
@@ -207,6 +213,9 @@ public class FinalAccountsService
         var losses = await new ProductionStockReports(_db).MonthlyLossesAsync(year, month);
         var lossByKind = losses.GroupBy(l => l.Kind).Select(g => (Kind: g.Key, Value: g.Sum(x => x.Value))).ToList();
 
+        var cashDifferences = await LedgerAsync("5105");
+        var homeSpend = await _db.HomeBoxEntries.AsNoTracking().Where(h => !h.IsVoided && h.EntryDate >= from && h.EntryDate < to)
+            .GroupBy(h => h.Kind).Select(g => new { Kind = g.Key, Amount = g.Sum(h => h.Amount) }).ToListAsync();
         var operating = entries.Where(e => e.Kind == FinanceCategoryKind.Operating).Sum(e => e.Amount) + otherVouchers;
         var report = new FinalAccountsReport
         {
@@ -217,6 +226,7 @@ public class FinalAccountsService
             Losses = lossByKind.Sum(l => l.Value),
             NonOperatingExpenses = entries.Where(e => e.Kind == FinanceCategoryKind.NonOperating).Sum(e => e.Amount),
             OtherIncome = entries.Where(e => e.Kind == FinanceCategoryKind.OtherIncome).Sum(e => e.Amount),
+            CashDifferences = cashDifferences, HomeDistributions = homeSpend.Sum(h => h.Amount),
             PiecesSold = products.Sum(p => p.PiecesSold)
         };
 
@@ -239,7 +249,10 @@ public class FinalAccountsService
             r.Add(new("غير تشغيلي (لا يدخل كلفة القنينة)", e.Name, -e.Amount));
         foreach (var e in entries.Where(e => e.Kind == FinanceCategoryKind.OtherIncome).OrderByDescending(e => e.Amount))
             r.Add(new("إيرادات أخرى", e.Name, e.Amount));
+        if (cashDifferences != 0) r.Add(new("فروقات جرد الصناديق", cashDifferences > 0 ? "عجز جرد الصناديق" : "زيادة جرد الصناديق", -cashDifferences));
         r.Add(new("النتيجة", "صافي ربح الشهر", report.NetProfit, true));
+        foreach (var h in homeSpend.OrderByDescending(h => h.Amount))
+            r.Add(new("صرف من صندوق المنزل (لا يؤثر على الربح ولا الكلفة)", HomeBoxService.KindText(h.Kind), h.Amount));
         return report;
     }
 
@@ -331,7 +344,8 @@ public class FinalAccountsService
         return new WorkingCapitalSnapshot
         {
             Date = date.Date, Capital = capital?.Amount ?? 0, CapitalEffectiveFrom = capital?.EffectiveFrom,
-            NetAssets = snapshot.NetAssets, HomeBoxBalance = home, CashInBusinessBoxes = business
+            NetAssets = snapshot.NetAssets, HomeBoxBalance = home, CashInBusinessBoxes = business,
+            HomeLoansOutstanding = await new HomeBoxService(_db).OutstandingTotalAsync()
         };
     }
 

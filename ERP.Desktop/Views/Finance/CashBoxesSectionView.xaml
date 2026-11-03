@@ -180,9 +180,9 @@
                                         <StackPanel Orientation="Horizontal">
                                             <Button Content="&#xE749;" ToolTip="طباعة الإيصال" Style="{StaticResource RowIconButton}" Tag="#0F766E"
                                                     Command="{Binding DataContext.PrintTxCommand, ElementName=Root}" CommandParameter="{Binding}"/>
-                                            <Button Content="&#xE70F;" ToolTip="تعديل / إلغاء (الأدمن)" Style="{StaticResource RowIconButton}" Tag="#2563EB"
+                                            <Button Content="&#xE70F;" ToolTip="تصحيح / إلغاء (بسبب مكتوب)" Style="{StaticResource RowIconButton}" Tag="#2563EB"
                                                     Command="{Binding DataContext.EditCommand, ElementName=Root}" CommandParameter="{Binding}"
-                                                    Visibility="{Binding DataContext.IsAdmin, ElementName=Root, Converter={StaticResource BoolToVisibility}}"/>
+                                                    Visibility="{Binding DataContext.CanCorrect, ElementName=Root, Converter={StaticResource BoolToVisibility}}"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
@@ -207,6 +207,8 @@
                         <DatePicker SelectedDate="{Binding EditDate}"/>
                         <TextBlock Text="البيان" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding EditDescription, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBlock Text="سبب التعديل (إلزامي)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding EditReason, UpdateSourceTrigger=PropertyChanged}"/>
                         <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                             <Button Style="{StaticResource PrimaryButton}" Command="{Binding SaveEditCommand}" Content="حفظ التعديل"/>
                             <Button Style="{StaticResource SecondaryButton}" Command="{Binding CancelEditCommand}" Content="إغلاق"/>
@@ -246,6 +248,23 @@
                             </StackPanel>
                         </Button>
                         <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- تسوية بالجرد الفعلي (الأدمن أو من يملك «تسوية أرصدة الصناديق») -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12"
+                        Visibility="{Binding CanCorrect, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="تسوية الرصيد بالجرد الفعلي" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="المبلغ الموجود فعلًا في الصندوق (د.ع)" Style="{StaticResource FieldLabel}" Margin="0"/>
+                        <TextBox Text="{Binding AdjustActual, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                        <TextBlock Text="{Binding AdjustDiffText}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        <TextBlock Text="السبب (إلزامي)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding AdjustReason, UpdateSourceTrigger=PropertyChanged}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button Style="{StaticResource PrimaryButton}" Command="{Binding AdjustCommand}" Content="تسوية بقيد مستقل"/>
+                            <Button Style="{StaticResource SecondaryButton}" Command="{Binding ChangesReportCommand}" Content="تقرير التعديلات" Margin="8,0,0,0"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

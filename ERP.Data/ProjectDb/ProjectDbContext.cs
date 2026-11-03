@@ -71,6 +71,9 @@ public partial class ProjectDbContext : DbContext
     // ---- المندوبون ----
     public DbSet<RepWalletTransaction> RepWalletTransactions => Set<RepWalletTransaction>();
     public DbSet<Custody> Custodies => Set<Custody>();
+    public DbSet<HomeBoxEntry> HomeBoxEntries => Set<HomeBoxEntry>();
+    public DbSet<HomeLoan> HomeLoans => Set<HomeLoan>();
+    public DbSet<HomeLoanRepayment> HomeLoanRepayments => Set<HomeLoanRepayment>();
     public DbSet<SalesInvoiceFee> SalesInvoiceFees => Set<SalesInvoiceFee>();
     public DbSet<CustodyTransaction> CustodyTransactions => Set<CustodyTransaction>();
     public DbSet<RepTerritory> RepTerritories => Set<RepTerritory>();
@@ -556,6 +559,43 @@ public partial class ProjectDbContext : DbContext
             e.HasOne(x => x.JournalEntry).WithMany().HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.FinanceEntry).WithMany().HasForeignKey(x => x.FinanceEntryId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.CashBoxTx).WithMany().HasForeignKey(x => x.CashBoxTxId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<HomeBoxEntry>(e =>
+        {
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(12);
+            e.Property(x => x.EntryNumber).HasMaxLength(30);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.EntryDate).HasColumnType("date");
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Beneficiary).HasMaxLength(150);
+            e.Property(x => x.Notes).HasMaxLength(300);
+            e.Property(x => x.VoidReason).HasMaxLength(300);
+            e.HasIndex(x => x.EntryNumber).IsUnique();
+            e.HasOne(x => x.CashBox).WithMany().HasForeignKey(x => x.CashBoxId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CashBoxTx).WithMany().HasForeignKey(x => x.CashBoxTxId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.JournalEntry).WithMany().HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<HomeLoan>(e =>
+        {
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.LoanNumber).HasMaxLength(30);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.LoanDate).HasColumnType("date");
+            e.Property(x => x.Reason).HasMaxLength(300);
+            e.HasIndex(x => x.LoanNumber).IsUnique();
+            e.HasOne(x => x.ToCashBox).WithMany().HasForeignKey(x => x.ToCashBoxId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.HomeCashBox).WithMany().HasForeignKey(x => x.HomeCashBoxId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<HomeLoanRepayment>(e =>
+        {
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.RepayDate).HasColumnType("date");
+            e.Property(x => x.Notes).HasMaxLength(300);
+            e.HasOne(x => x.Loan).WithMany(l => l.Repayments).HasForeignKey(x => x.LoanId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.FromCashBox).WithMany().HasForeignKey(x => x.FromCashBoxId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<RepWalletTransaction>().HasOne(w => w.Employee).WithMany().HasForeignKey(w => w.EmployeeId).OnDelete(DeleteBehavior.Restrict);

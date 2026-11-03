@@ -121,6 +121,7 @@ public class PartnersSectionViewModel : SectionViewModel
     private decimal _amount;
     private DateTime _date = DateTime.Today;
     private string? _withdrawNotes;
+    private CashBoxRow? _withdrawBox;
 
     public PartnersSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.Finance, "الشركاء والأرباح", Icons.People, "#7C3AED", "نسب الشركاء، أرصدة أرباحهم، السحب، وكشف كل شريك")
@@ -142,6 +143,9 @@ public class PartnersSectionViewModel : SectionViewModel
     protected override bool ReloadOnActivate => true;
 
     public ObservableCollection<PartnerBalanceRow> Partners { get; } = new();
+    /// <summary>صناديق السحب: النقدية فقط (المنزل، الرئيسي، صناديق المستخدمين) — لا بنك ولا بطاقات.</summary>
+    public ObservableCollection<CashBoxRow> WithdrawBoxes { get; } = new();
+    public CashBoxRow? WithdrawBox { get => _withdrawBox; set => SetProperty(ref _withdrawBox, value); }
     public ObservableCollection<PartnerStatementRow> Statement { get; } = new();
     public RelayCommand NewCommand { get; }
     public AsyncRelayCommand SaveCommand { get; }
@@ -188,6 +192,15 @@ public class PartnersSectionViewModel : SectionViewModel
         foreach (var p in await new ReconciliationService(db).GetPartnersAsync()) Partners.Add(p);
         OnPropertyChanged(nameof(TotalPercent));
         OnPropertyChanged(nameof(PercentHint));
+        var keepBox = WithdrawBox?.Id;
+        WithdrawBoxes.Clear();
+        var boxes = (await new CashBoxService(db).GetBoxesAsync(Session.UserId))
+            .Where(b => b.BoxType is CashBoxType.Home or CashBoxType.Main or CashBoxType.User).ToList();
+        foreach (var b in boxes.OrderBy(b => b.BoxType == CashBoxType.Home ? 0 : b.BoxType == CashBoxType.Main ? 1 : 2).ThenBy(b => b.Name)) WithdrawBoxes.Add(b);
+        // الافتراضي صندوق المنزل (الأرباح تُسحب منه)؛ وإن لم يكن فيه رصيد فالرئيسي
+        WithdrawBox = WithdrawBoxes.FirstOrDefault(b => b.Id == keepBox)
+                      ?? WithdrawBoxes.FirstOrDefault(b => b.BoxType == CashBoxType.Home && b.Balance > 0)
+                      ?? WithdrawBoxes.FirstOrDefault(b => b.BoxType == CashBoxType.Main) ?? WithdrawBoxes.FirstOrDefault();
         _selected = Partners.FirstOrDefault(p => p.Id == selectedId);
         OnPropertyChanged(nameof(Selected));
         OnPropertyChanged(nameof(HasSelection));
@@ -223,9 +236,17 @@ public class PartnersSectionViewModel : SectionViewModel
     {
         if (Selected is null) { Dialogs.Error("اختر الشريك من الجدول"); return; }
         if (Amount <= 0) { Dialogs.Error("أدخل مبلغًا أكبر من صفر"); return; }
+        var box = WithdrawBox;
+        // الافتراضي صندوق المنزل؛ إن لم يكفِ رصيده ويكفي الرئيسي يُعرض التحويل إليه (غير ذلك تتولى الخدمة الرسالة)
+        if (box is { BoxType: CashBoxType.Home } && box.Balance < Amount
+            && WithdrawBoxes.FirstOrDefault(b => b.BoxType == CashBoxType.Main && b.Balance >= Amount) is { } main)
+        {
+            if (!Dialogs.Confirm($"رصيد {box.Name} {box.Balance:N0} د.ع لا يكفي. هل يُسحب من «{main.Name}» ({main.Balance:N0} د.ع)؟")) return;
+            box = main;
+        }
         await using var db = Session.NewDb();
         // سحب الأرباح يخرج به نقد: طلب صرف ينتظر موافقة المالية، وسند السحب يُطبع عند الاعتماد
-        var (result, request) = await new PaymentApprovalService(db).RequestPartnerWithdrawalAsync(Selected.Id, Amount, Date, WithdrawNotes, null, Session.UserId);
+        var (result, request) = await new PaymentApprovalService(db).RequestPartnerWithdrawalAsync(Selected.Id, Amount, Date, WithdrawNotes, box?.Id, Session.UserId);
         if (!result.Success) { Dialogs.Error(result.ErrorMessage ?? "تعذّر تقديم الطلب"); return; }
         StatusMessage = $"أُرسل طلب سحب {Amount:N0} د.ع من أرباح {Selected.Name} ({request!.RequestNumber}) لموافقة القسم المالي — يُصرف بعد اعتماده من «طلبات الصرف»";
         Amount = 0;

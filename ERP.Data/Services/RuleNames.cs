@@ -49,6 +49,10 @@ public static class RuleNames
         ["CustodyReturn"] = "إعادة متبقي عهدة للصندوق",
         ["CustodyExpense"] = "مصروف تشغيلي من عهدة موظف",
         ["CustodyExpenseNonOp"] = "مصروف غير تشغيلي من عهدة موظف",
+        ["HomeDistribution"] = "صرف من صندوق المنزل (الخمس، مساعدات) — توزيع أرباح",
+        ["HomeAssetPurchase"] = "شراء أصول وماكنات من صندوق المنزل",
+        ["CashBoxAdjustGain"] = "زيادة جرد في صندوق",
+        ["CashBoxAdjustLoss"] = "عجز جرد في صندوق",
         ["SupplierOpeningAdvance"] = "رصيد افتتاحي لدفعة مقدمة لمورد",
     };
 

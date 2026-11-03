@@ -31,6 +31,10 @@ public class CashBoxesSectionViewModel : SectionViewModel
     private DateTime _editDate;
     private string? _editDescription;
     private string? _voidReason;
+    private string? _editReason;
+    private bool _canCorrect;
+    private decimal _adjustActual;
+    private string? _adjustReason;
     private string _newBoxName = "";
     private Option<CashBoxType> _newBoxType;
     private User? _newBoxOwner;
@@ -60,6 +64,56 @@ public class CashBoxesSectionViewModel : SectionViewModel
         CreateBoxCommand = new AsyncRelayCommand(CreateBoxAsync);
         ToggleActiveCommand = new AsyncRelayCommand(p => p is CashBoxRow b ? ToggleActiveAsync(b) : Task.CompletedTask);
         DeleteBoxCommand = new AsyncRelayCommand(p => p is CashBoxRow b ? DeleteBoxAsync(b) : Task.CompletedTask);
+        AdjustCommand = new AsyncRelayCommand(AdjustAsync);
+        ChangesReportCommand = new AsyncRelayCommand(ChangesReportAsync);
+    }
+
+    // ---- تسوية الرصيد بالجرد الفعلي (الأدمن أو صاحب «تسوية أرصدة الصناديق») ----
+    /// <summary>يصحّح الحركات ويسوّي الأرصدة: الأدمن أو من يملك الصلاحية.</summary>
+    public bool CanCorrect { get => _canCorrect; private set => SetProperty(ref _canCorrect, value); }
+    public decimal AdjustActual { get => _adjustActual; set { if (SetProperty(ref _adjustActual, value)) OnPropertyChanged(nameof(AdjustDiffText)); } }
+    public string? AdjustReason { get => _adjustReason; set => SetProperty(ref _adjustReason, value); }
+    public string AdjustDiffText => SelectedBox is null ? "" : AdjustActual - SelectedBox.Balance is var d && d == 0 ? "لا فرق عن الرصيد الدفتري"
+        : $"الرصيد الدفتري {SelectedBox.Balance:N0} — الفرق {(d > 0 ? "زيادة" : "عجز")} {Math.Abs(d):N0} د.ع"
+          + (Math.Abs(d) > CashBoxService.AdjustApprovalLimit ? $" (فوق {CashBoxService.AdjustApprovalLimit:N0}: يحتاج اعتماد المالية لغير الأدمن)" : "");
+    public AsyncRelayCommand AdjustCommand { get; }
+    public AsyncRelayCommand ChangesReportCommand { get; }
+    public string? EditReason { get => _editReason; set => SetProperty(ref _editReason, value); }
+
+    private async Task AdjustAsync()
+    {
+        if (SelectedBox is null) { Dialogs.Error("اختر الصندوق"); return; }
+        if (string.IsNullOrWhiteSpace(AdjustReason)) { Dialogs.Error("اكتب سبب التسوية"); return; }
+        await using var db = Session.NewDb();
+        var cash = new CashBoxService(db);
+        var diff = AdjustActual - await cash.GetBalanceAsync(SelectedBox.Id);
+        if (diff == 0) { Dialogs.Error("الرصيد الدفتري يساوي الجرد الفعلي — لا فرق للتسوية"); return; }
+        if (!Dialogs.Confirm($"تسوية \"{SelectedBox.Name}\" إلى {AdjustActual:N0} د.ع؟ تُقيَّد {(diff > 0 ? "زيادة جرد" : "عجز جرد")} {Math.Abs(diff):N0} د.ع بقيد مستقل يبقى في السجل.")) return;
+        var (r, tx, req) = await cash.AdjustToCountAsync(SelectedBox.Id, AdjustActual, DateTime.Today, AdjustReason, Session.UserId);
+        if (!r.Success) { Dialogs.Error(r.ErrorMessage!); return; }
+        StatusMessage = req is not null ? $"الفرق فوق السقف: أُرسل طلب التسوية {req.RequestNumber} لاعتماد المالية من «طلبات الصرف»"
+                                        : $"تمت التسوية ({tx!.TxNumber}): {(diff > 0 ? "زيادة" : "عجز")} {Math.Abs(diff):N0} د.ع";
+        AdjustActual = 0; AdjustReason = null;
+        Session.MarkDataChanged();
+        await ReloadBoxesKeepSelectionAsync();
+    }
+
+    private async Task ChangesReportAsync()
+    {
+        await using var db = Session.NewDb();
+        var rows = await new CashBoxService(db).ChangesAsync(From, To, SelectedBox?.Id);
+        var r = new ReportDocument { CompanyName = Session.ProjectName, Title = "تقرير تعديلات الصناديق", PrintedBy = Session.Username };
+        r.Field("الصندوق", SelectedBox?.Name ?? "كل الصناديق").Field("الفترة", $"{From:yyyy/MM/dd} — {To:yyyy/MM/dd}");
+        r.Columns.AddRange(new[] { "الحركة", "الصندوق", "النوع", "الإجراء", "القديم", "الجديد", "السبب", "بواسطة", "الوقت" });
+        foreach (var x in rows)
+            r.Rows.Add(new[]
+            {
+                x.TxNumber, x.BoxName, x.TypeLabel, x.Kind, x.OldAmount is null ? "" : $"{x.OldAmount:N0}", x.NewAmount is null ? "" : $"{x.NewAmount:N0}",
+                x.Reason ?? "", x.By, x.AtLocal.ToString("yyyy/MM/dd HH:mm")
+            });
+        r.Total("عدد التغييرات", rows.Count.ToString());
+        r.Signatures.AddRange(new[] { "المحاسب", "المدير" });
+        Dialogs.ShowReport(r);
     }
 
     public AsyncRelayCommand DeleteBoxCommand { get; }
@@ -96,6 +150,7 @@ public class CashBoxesSectionViewModel : SectionViewModel
             Editing = null;
             OnPropertyChanged(nameof(SelectedIsActive));
             OnPropertyChanged(nameof(InactiveNotice));
+            OnPropertyChanged(nameof(AdjustDiffText));
             RefreshTargets();
             Background(LoadStatementAsync());
         }
@@ -175,6 +230,7 @@ public class CashBoxesSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         var svc = new CashBoxService(db);
         IsAdmin = await svc.IsAdminAsync(Session.UserId);
+        CanCorrect = IsAdmin || await svc.CanCorrectAsync(Session.UserId);
         var selectedId = SelectedBox?.Id;
         Boxes.Clear();
         foreach (var b in await svc.GetBoxesAsync(Session.UserId, ShowInactive)) Boxes.Add(b);
@@ -283,12 +339,13 @@ public class CashBoxesSectionViewModel : SectionViewModel
 
     private void BeginEdit(CashBoxTxRow row)
     {
-        if (!IsAdmin) { Dialogs.Error("تعديل حركات الصندوق للأدمن فقط"); return; }
+        if (!CanCorrect) { Dialogs.Error("تعديل حركات الصندوق للأدمن فقط أو لمن يملك صلاحية «تسوية أرصدة الصناديق»"); return; }
         if (!row.IsManual) { Dialogs.Error("هذه الحركة ناتجة عن مستند (فاتورة/سند) — تُعدَّل من مستندها الأصلي"); return; }
         if (row.IsVoided) { Dialogs.Error("الحركة ملغاة"); return; }
         EditAmount = row.In > 0 ? row.In : row.Out;
         EditDate = row.TxDate;
         EditDescription = row.Description;
+        EditReason = null;
         VoidReason = null;
         Editing = row;
     }
@@ -296,9 +353,10 @@ public class CashBoxesSectionViewModel : SectionViewModel
     private async Task SaveEditAsync()
     {
         if (Editing is null) return;
-        if (!Dialogs.Confirm($"تعديل الحركة {Editing.TxNumber} إلى {EditAmount:N0} د.ع؟ يُحفظ المبلغ الأصلي واسمك ووقت التعديل.")) return;
+        if (string.IsNullOrWhiteSpace(EditReason)) { Dialogs.Error("اكتب سبب التعديل"); return; }
+        if (!Dialogs.Confirm($"تعديل الحركة {Editing.TxNumber} إلى {EditAmount:N0} د.ع؟ يُعكس قيدها القديم بقيد مستقل ويُنشأ قيد جديد، ويُحفظ المبلغ الأصلي واسمك ووقت التعديل.")) return;
         await using var db = Session.NewDb();
-        var r = await new CashBoxService(db).UpdateAsync(Editing.Id, EditAmount, EditDate, EditDescription, Session.UserId);
+        var r = await new CashBoxService(db).UpdateAsync(Editing.Id, EditAmount, EditDate, EditDescription, Session.UserId, EditReason);
         if (!r.Success) { Dialogs.Error(r.ErrorMessage!); return; }
         StatusMessage = $"تم تعديل الحركة {Editing.TxNumber}";
         Editing = null;

@@ -182,6 +182,7 @@ public static class DefaultConfiguration
         ("1201", "العملاء", AccountType.Asset),
         ("1301", "المخزون", AccountType.Asset),
         ("1302", "دفعات مقدمة للموردين", AccountType.Asset),
+        ("1401", "أصول ثابتة (ماكنات ومعدات) من أرباح مستثمرة", AccountType.Asset),
         ("2101", "الموردون", AccountType.Liability),
         ("2102", "ضريبة مبيعات مستحقة", AccountType.Liability),
         ("2103", "رواتب مستحقة الدفع", AccountType.Liability),
@@ -192,6 +193,7 @@ public static class DefaultConfiguration
         ("3102", "جاري المالك (إيداعات وسحوبات الصندوق)", AccountType.Equity),
         ("3103", "جاري الشركاء (أرباح مستحقة)", AccountType.Equity),
         ("3104", "أرباح المطابقة الموزعة", AccountType.Equity),
+        ("3105", "توزيعات المالك من صندوق المنزل (الخمس والمساعدات)", AccountType.Equity),
         ("4101", "إيرادات المبيعات", AccountType.Revenue),
         ("4102", "إيراد مستلزمات التحميل", AccountType.Revenue),
         ("4103", "إيراد بيع مواد تالفة", AccountType.Revenue),
@@ -200,6 +202,7 @@ public static class DefaultConfiguration
         ("5102", "مصروف الرواتب والأجور", AccountType.Expense),
         ("5103", "مصروفات ميدانية للمندوبين", AccountType.Expense),
         ("5104", "مصروفات غير تشغيلية (توسعة ومكائن)", AccountType.Expense),
+        ("5105", "فروقات جرد الصناديق", AccountType.Expense),
     };
 
     /// <summary>قواعد العقل المالي: نوع العملية ← (مدين، دائن).</summary>
@@ -250,6 +253,10 @@ public static class DefaultConfiguration
         (CustodyService.ReturnRule, "1101", "1105"),
         (CustodyService.ExpenseRule, "5101", "1105"),
         (CustodyService.NonOperatingRule, "5104", "1105"),
+        (HomeBoxService.DistributionRule, "3105", "1101"),
+        (HomeBoxService.AssetRule, "1401", "1101"),
+        (CashBoxService.AdjustGainRule, "1101", "5105"),
+        (CashBoxService.AdjustLossRule, "5105", "1101"),
     };
 
     private static readonly string[] AllModules =

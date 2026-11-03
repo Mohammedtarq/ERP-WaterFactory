@@ -32,9 +32,11 @@ public class ReconciliationSnapshot
     public decimal? PreviousNetAssets { get; init; }
     public decimal PartnerWithdrawals { get; init; }
     public decimal OwnerDeposits { get; init; }
+    /// <summary>ما صُرف من صندوق المنزل (الخمس، مساعدات، أصول) منذ السابقة: ربح وُزّع خارج العمل فلا ينقص الفائض.</summary>
+    public decimal HomeDistributions { get; init; }
     public bool IsBaseline => PreviousId is null;
-    /// <summary>الفائض = الصافي − صافي السابقة + سحوبات الشركاء − إيداعات المالك. صفر لمطابقة الأساس الأولى.</summary>
-    public decimal Surplus => IsBaseline ? 0 : NetAssets - PreviousNetAssets!.Value + PartnerWithdrawals - OwnerDeposits;
+    /// <summary>الفائض = الصافي − صافي السابقة + سحوبات الشركاء + صرف صندوق المنزل − إيداعات المالك. صفر لمطابقة الأساس الأولى.</summary>
+    public decimal Surplus => IsBaseline ? 0 : NetAssets - PreviousNetAssets!.Value + PartnerWithdrawals + HomeDistributions - OwnerDeposits;
     public List<ReconciliationLineDto> Lines { get; init; } = new();
     public List<PartnerSharePreview> Shares { get; init; } = new();
     public List<string> Warnings { get; init; } = new();
@@ -229,9 +231,10 @@ public class ReconciliationService
 
         // ---- المقارنة بالسابقة ----
         var prev = await _db.AssetReconciliations.AsNoTracking().OrderByDescending(r => r.ReconDate).ThenByDescending(r => r.Id).FirstOrDefaultAsync();
-        decimal partnerWithdrawals = 0, ownerDeposits = 0;
+        decimal partnerWithdrawals = 0, ownerDeposits = 0, homeDistributions = 0;
         if (prev is not null)
         {
+            homeDistributions = await _db.HomeBoxEntries.Where(e => !e.IsVoided && e.CreatedAt > prev.CreatedAt).SumAsync(e => (decimal?)e.Amount) ?? 0;
             partnerWithdrawals = -(await _db.PartnerTransactions.Where(t => t.Kind == PartnerTxKind.Withdrawal && t.CreatedAt > prev.CreatedAt)
                                                              .SumAsync(t => (decimal?)t.Amount) ?? 0);
             ownerDeposits = await _db.CashBoxTransactions.Where(t => t.TxType == CashBoxTxType.Deposit && !t.IsVoided && t.CreatedAt > prev.CreatedAt)
@@ -244,7 +247,7 @@ public class ReconciliationService
             CustomerDebts = customerDebts, CashInBoxes = boxes, CashWithReps = reps, EmployeeAdvances = employeeAdvances,
             SupplierAdvances = supplierAdvances, SupplierDebts = supplierDebts, CustomerDeposits = customerDeposits,
             PreviousId = prev?.Id, PreviousNumber = prev?.ReconNumber, PreviousDate = prev?.ReconDate, PreviousNetAssets = prev?.NetAssets,
-            PartnerWithdrawals = partnerWithdrawals, OwnerDeposits = ownerDeposits, Lines = lines, Warnings = warnings
+            PartnerWithdrawals = partnerWithdrawals, OwnerDeposits = ownerDeposits, HomeDistributions = homeDistributions, Lines = lines, Warnings = warnings
         };
         snapshot.Shares.AddRange(await PreviewSharesAsync(snapshot.Surplus));
         return snapshot;
@@ -299,7 +302,7 @@ public class ReconciliationService
             CustomerDebts = s.CustomerDebts, CashInBoxes = s.CashInBoxes, CashWithReps = s.CashWithReps, EmployeeAdvances = s.EmployeeAdvances,
             SupplierAdvances = s.SupplierAdvances, SupplierDebts = s.SupplierDebts, CustomerDeposits = s.CustomerDeposits, NetAssets = s.NetAssets,
             PreviousReconciliationId = s.PreviousId, PreviousNetAssets = s.PreviousNetAssets, PartnerWithdrawalsSincePrevious = s.PartnerWithdrawals,
-            OwnerDepositsSincePrevious = s.OwnerDeposits, Surplus = s.Surplus, IsBaseline = s.IsBaseline, Notes = Clean(notes), CreatedByUserId = userId
+            OwnerDepositsSincePrevious = s.OwnerDeposits, HomeDistributionsSincePrevious = s.HomeDistributions, Surplus = s.Surplus, IsBaseline = s.IsBaseline, Notes = Clean(notes), CreatedByUserId = userId
         };
         foreach (var line in s.Lines)
             recon.Lines.Add(new AssetReconciliationLine { Section = line.Section, Description = Trim(line.Description, 250), Quantity = line.Quantity, UnitValue = line.UnitValue, Value = line.Value });

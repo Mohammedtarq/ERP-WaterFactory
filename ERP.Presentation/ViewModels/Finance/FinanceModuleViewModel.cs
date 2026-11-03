@@ -17,6 +17,8 @@ public class FinanceModuleViewModel : ModuleViewModel
         UseDashboard(s, d, ModuleCode.Finance, ModuleDashboardViewModel.Finance);
         Boxes = Add(new CashBoxesSectionViewModel(s, d));
         Add(new PaymentRequestsSectionViewModel(s, d));
+        if (s.Permissions.Has(SpecialPermission.HomeBox))
+            HomeBox = Add(new HomeBoxSectionViewModel(s, d));
         Add(new CustodySectionViewModel(s, d));
         CashSettlement = Add(new Reps.RepCashSettlementSectionViewModel(s, d));
         Expenses = Add(new ExpensesSectionViewModel(s, d));
@@ -41,6 +43,7 @@ public class FinanceModuleViewModel : ModuleViewModel
     }
 
     public CashBoxesSectionViewModel Boxes { get; }
+    public HomeBoxSectionViewModel? HomeBox { get; }
     /// <summary>تسوية نقد المندوب (المالية) بعد تسوية أمين المخزن لمنتجاته.</summary>
     public Reps.RepCashSettlementSectionViewModel CashSettlement { get; }
     public ExpensesSectionViewModel Expenses { get; }

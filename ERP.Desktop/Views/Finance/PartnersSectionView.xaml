@@ -72,6 +72,8 @@
                     <Separator Margin="0,16,0,8"/>
                     <TextBlock Text="سحب أرباح من الصندوق" Style="{StaticResource SectionTitle}"/>
                     <TextBlock Text="{Binding Selected.Balance, StringFormat='رصيد الشريك المختار: {0:N0} د.ع', TargetNullValue='اختر الشريك من الجدول'}" Style="{StaticResource Muted}"/>
+                    <TextBlock Text="السحب من صندوق" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding WithdrawBoxes}" SelectedItem="{Binding WithdrawBox}" DisplayMemberPath="Display"/>
                     <TextBlock Text="المبلغ (د.ع)" Style="{StaticResource FieldLabel}"/>
                     <TextBox Text="{Binding Amount}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
                     <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
