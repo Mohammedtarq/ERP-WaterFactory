@@ -1,0 +1,69 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace ERP.Data.ProjectDb.Entities;
+
+public class Employee
+{
+    public int Id { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public string? Phone { get; set; }
+    public string? JobTitle { get; set; }
+
+    public int? DepartmentId { get; set; }
+    public Department? Department { get; set; }
+
+    public int? ShiftId { get; set; }
+    public Shift? Shift { get; set; }
+    /// <summary>شفت خاص بالموظف؛ وإلا يأخذ الشفت الافتراضي لقسمه (59_department_shift_annual_raise.sql).</summary>
+    public bool HasOwnShift { get; set; }
+
+    /// <summary>درجة العلاوة السنوية (A / B / C) — ثابتة عادةً، وتغييرها بقرار المدير يُسجَّل في سجل الحركات.</summary>
+    public int? RaiseGradeId { get; set; }
+    public RaiseGrade? RaiseGrade { get; set; }
+    /// <summary>مبلغ علاوة استثنائي (فارغ = مبلغ درجته).</summary>
+    public decimal? AnnualRaiseAmount { get; set; }
+    /// <summary>تاريخ آخر علاوة قبل النظام (للقدامى)؛ وإلا آخر علاوة/ترقية مسجّلة، وإلا تاريخ التعيين.</summary>
+    public DateTime? LastRaiseDate { get; set; }
+    /// <summary>تأجيل تنبيه العلاوة حتى هذا التاريخ، وسببه.</summary>
+    public DateTime? RaiseSnoozedUntil { get; set; }
+    public string? RaiseSnoozeReason { get; set; }
+
+    public int? BranchId { get; set; }
+    public Branch? Branch { get; set; }
+
+    public SalaryCurrency SalaryCurrency { get; set; } = SalaryCurrency.IQD;
+    public decimal BaseSalary { get; set; }
+
+    public bool IsSalesRep { get; set; }
+    /// <summary>دخول تطبيق المندوب (54_rep_app_login.sql): اسم قصير وكلمة مرور قصيرة مجزّأة بملح.</summary>
+    public string? RepLoginName { get; set; }
+    public string? RepLoginSalt { get; set; }
+    public string? RepLoginHash { get; set; }
+    public bool IsSalesManager { get; set; }
+
+    public DateTime? HireDate { get; set; }
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>عامل وقتي: أجر يومي، بلا بصمة ولا سلف، يُصرف أسبوعيًا أو عند إنهاء الخدمة (32_temp_workers.sql).</summary>
+    public bool IsTemporary { get; set; }
+    public decimal? DailyWage { get; set; }
+    /// <summary>معفى من البصمة بقرار الإدارة: لا يُخصم غيابه من الراتب.</summary>
+    public bool AttendanceExempt { get; set; }
+    public DateTime? EndOfServiceDate { get; set; }
+
+    /// <summary>رقم الموظف في جهاز البصمة (ZKTeco) لربط ملف الحضور ببطاقته (33_fingerprint.sql).</summary>
+    public string? FingerprintCode { get; set; }
+
+    /// <summary>ضمان اجتماعي: مبلغ ثابت (بعملة الراتب) يُستقطع شهريًا عند التفعيل (35_social_security.sql).</summary>
+    public bool HasSocialSecurity { get; set; }
+    public decimal? SocialSecurityAmount { get; set; }
+    /// <summary>تكافل اجتماعي: مبلغ ثابت يُستقطع شهريًا عند التفعيل.</summary>
+    public bool HasSocialSolidarity { get; set; }
+    public decimal? SocialSolidarityAmount { get; set; }
+
+    /// <summary>سعر ساعة إضافية خاص بالموظف (يعلو على السعر العام في سياسة الموارد البشرية) — 44_hr_leaves_overtime.sql.</summary>
+    public decimal? OvertimeHourlyRate { get; set; }
+
+    /// <summary>صورة الموظف للعرض في القوائم (تُملأ من EmployeePhotos عند الحاجة — ليست عمودًا).</summary>
+    [NotMapped] public byte[]? PhotoPreview { get; set; }
+}

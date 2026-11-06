@@ -1,0 +1,134 @@
+<UserControl x:Class="ERP.Desktop.Views.HR.OvertimeSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:OvertimeSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Style="{StaticResource Card}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="4">
+                    <!-- تسجيل -->
+                    <TextBlock Text="تسجيل عمل إضافي" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="الموظف" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding Employees}" SelectedItem="{Binding Employee}" DisplayMemberPath="FullName" IsTextSearchEnabled="True"/>
+                    <TextBlock Text="النوع" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" DisplayMemberPath="Label"/>
+                    <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                    <DatePicker SelectedDate="{Binding Date}"/>
+                    <TextBlock Text="{Binding QuantityLabel}" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsHours}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                    <TextBlock Text="ملاحظة (اختياري)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Note}"/>
+                    <StackPanel Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="سبب التعديل" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding EditReason, UpdateSourceTrigger=PropertyChanged}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Style="{StaticResource SuccessButton}" Command="{Binding AddCommand}" Content="{Binding AddText}" IsEnabled="{Binding CanAdd}"/>
+                        <Button Style="{StaticResource SecondaryButton}" Content="إلغاء التعديل" Command="{Binding CancelEditCommand}" Margin="6,0,0,0"
+                                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+
+                    <!-- سعر الساعة -->
+                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,14,0,0" Padding="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="سعر الساعة الإضافية" Style="{StaticResource SectionTitle}"/>
+                            <TextBlock Text="{Binding GlobalRateText}" FontWeight="SemiBold"/>
+                            <TextBlock Text="اليوم الإضافي بالأجر اليومي الاعتيادي (الراتب ÷ 30)." Style="{StaticResource Muted}" Margin="0,2,0,6"/>
+                            <TextBlock Text="المبلغ للساعة (د.ع)" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding Rate, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                            <RadioButton Content="اعتماده للكل (يُزيل الأسعار الخاصة)" IsChecked="{Binding RateForAll}" Margin="0,8,0,0" GroupName="rateTarget"/>
+                            <RadioButton Content="اعتماده لموظف بعينه" IsChecked="{Binding RateForEmployee}" Margin="0,4,0,0" GroupName="rateTarget"/>
+                            <ComboBox ItemsSource="{Binding Employees}" SelectedItem="{Binding RateEmployee}" DisplayMemberPath="FullName" IsTextSearchEnabled="True" Margin="0,6,0,0"
+                                      Visibility="{Binding RateForEmployee, Converter={StaticResource BoolToVisibility}}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Style="{StaticResource PrimaryButton}" Content="اعتماد السعر" Command="{Binding ApplyRateCommand}" IsEnabled="{Binding CanEdit}" Margin="0,0,8,0"/>
+                                <Button Style="{StaticResource SecondaryButton}" Content="إعادته للسعر العام" Command="{Binding ClearEmployeeRateCommand}"
+                                        Visibility="{Binding RateForEmployee, Converter={StaticResource BoolToVisibility}}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel Margin="4">
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="الشهر:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox ItemsSource="{Binding Months}" SelectedItem="{Binding Month}" Width="70" Margin="0,0,6,0"/>
+                        <ComboBox ItemsSource="{Binding Years}" SelectedItem="{Binding Year}" Width="90"/>
+                    </StackPanel>
+                </DockPanel>
+                <Border DockPanel.Dock="Top" Background="#FEF3C7" CornerRadius="6" Padding="10,8" Margin="0,0,0,8"
+                        Visibility="{Binding HasMissingRate, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{Binding MissingRateText}" Foreground="#92400E" TextWrapping="Wrap"/>
+                </Border>
+                <TextBlock DockPanel.Dock="Top" Text="ملخّص الشهر (يدخل كشف الراتب)" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <DataGrid DockPanel.Dock="Top" ItemsSource="{Binding Summary}" IsReadOnly="True" MaxHeight="200" Margin="0,0,0,10">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*"/>
+                        <DataGridTextColumn Header="أيام" Binding="{Binding Days, StringFormat=0.##}" Width="60"/>
+                        <DataGridTextColumn Header="ساعات" Binding="{Binding Hours, StringFormat=0.##}" Width="70"/>
+                        <DataGridTextColumn Header="الأجر اليومي" Binding="{Binding DailyWage, StringFormat=N0}" Width="100"/>
+                        <DataGridTextColumn Header="سعر الساعة" Binding="{Binding RateText}" Width="110"/>
+                        <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="100"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <Border DockPanel.Dock="Bottom" Background="#FEF2F2" CornerRadius="8" Padding="12,10" Margin="0,10,0,0"
+                        Visibility="{Binding IsVoiding, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding VoidTarget.EmployeeName, StringFormat='إلغاء عمل إضافي لـ {0} — سبب الإلغاء:'}" FontWeight="SemiBold"/>
+                        <TextBox Text="{Binding VoidReason, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,6"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource DangerButton}" Content="تأكيد الإلغاء" Command="{Binding VoidCommand}" Margin="0,0,8,0"/>
+                            <Button Style="{StaticResource SecondaryButton}" Content="تراجع" Command="{Binding CancelVoidCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsVoided}" Value="True">
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding WorkDate, StringFormat=yyyy/MM/dd}" Width="95"/>
+                        <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*" MinWidth="120"/>
+                        <DataGridTextColumn Header="النوع" Binding="{Binding KindText}" Width="110"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityText}" Width="80"/>
+                        <DataGridTextColumn Header="ملاحظة" Binding="{Binding Note}" Width="*"/>
+                        <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="90"/>
+                        <DataGridTemplateColumn Header="" Width="80">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                    <Button Content="&#xE70F;" ToolTip="تعديل (يُلغى القديم بسبب ويُسجَّل الجديد)" Style="{StaticResource RowIconButton}" Tag="#2563EB"
+                                            Command="{Binding DataContext.BeginEditCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    <Button Content="&#xE711;" ToolTip="إلغاء" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.BeginVoidCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,100 @@
+using ERP.Data.ProjectDb;
+using Microsoft.EntityFrameworkCore;
+
+namespace ERP.Data.Services;
+
+public class CurrentStockRow
+{
+    public int ItemId { get; set; }
+    public string ItemCode { get; set; } = string.Empty;
+    public string ItemName { get; set; } = string.Empty;
+    public string WarehouseName { get; set; } = string.Empty;
+    public decimal QuantityBaseUnits { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal Value => QuantityBaseUnits * UnitPrice;
+    public string? BatchNumber { get; set; }
+    public DateTime? ExpiryDate { get; set; }
+    /// <summary>الكمية بالعبوات: "50 شرنك" (المنتج المصنَّع بعبوة واحدة فالعدد دقيق).</summary>
+    public string Breakdown { get; set; } = "";
+    public int? RecipeId { get; set; }
+    /// <summary>أجزاء الاسم الموحد للأعمدة المنفصلة: العبوة | المحتوى | المتغير.</summary>
+    public string Pack { get; set; } = "";
+    public string Content { get; set; } = "";
+    public string Variant { get; set; } = "";
+    /// <summary>الاسم المعروض: الموحد للمصنَّع، والكامل للمادة الأولية.</summary>
+    public string DisplayName { get; set; } = "";
+    public bool IsFinished { get; set; }
+    /// <summary>رأس المجموعة «الصنف · الرمز».</summary>
+    public string Group => $"{ItemName} · {ItemCode}";
+}
+
+/// <summary>
+/// يحسب الرصيد الحالي من سجل الحركة (StockTransactions) مباشرة — لا يوجد
+/// عمود رصيد مخزَّن في أي مكان، تمامًا كما في تصميم قاعدة البيانات الأصلي.
+/// </summary>
+public class StockQueryService
+{
+    private readonly ProjectDbContext _db;
+
+    public StockQueryService(ProjectDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task<List<CurrentStockRow>> GetCurrentStockAsync(int? warehouseId = null)
+    {
+        var query = _db.StockTransactions
+            .Include(t => t.Item)
+            .Include(t => t.Warehouse)
+            .Include(t => t.Batch)
+            .AsQueryable();
+
+        if (warehouseId.HasValue)
+            query = query.Where(t => t.WarehouseId == warehouseId.Value);
+
+        var grouped = await query
+            .GroupBy(t => new
+            {
+                t.ItemId,
+                t.Item.ItemCode,
+                t.Item.ItemName,
+                t.Item.SalePrice,
+                t.WarehouseId,
+                t.Warehouse.Name,
+                t.BatchId,
+                BatchNumber = t.Batch != null ? t.Batch.BatchNumber : null,
+                ExpiryDate = t.Batch != null ? t.Batch.ExpiryDate : null,
+                RecipeId = t.Batch != null ? t.Batch.CustomRecipeId : null
+            })
+            .Select(g => new CurrentStockRow
+            {
+                ItemId = g.Key.ItemId,
+                ItemCode = g.Key.ItemCode,
+                ItemName = g.Key.ItemName,
+                WarehouseName = g.Key.Name,
+                UnitPrice = g.Key.SalePrice,
+                BatchNumber = g.Key.BatchNumber,
+                ExpiryDate = g.Key.ExpiryDate,
+                RecipeId = g.Key.RecipeId,
+                QuantityBaseUnits = g.Sum(t => t.QuantityBaseUnits)
+            })
+            .ToListAsync();
+
+        // إخفاء الأسطر التي تصفّرت كميتها تمامًا (وارد بالكامل ثم صادر بالكامل)
+        var rows = grouped.Where(r => r.QuantityBaseUnits != 0).OrderBy(r => r.ItemName).ToList();
+        var itemIds = rows.Select(r => r.ItemId).Distinct().ToList();
+        var levels = (await _db.ItemPackagingLevels.AsNoTracking().Where(l => itemIds.Contains(l.ItemId)).ToListAsync())
+            .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.EquivalentBaseUnits).ToList());
+        foreach (var r in rows) r.Breakdown = WarehouseDocumentService.Breakdown(r.QuantityBaseUnits, levels.GetValueOrDefault(r.ItemId));
+        var names = await ProductNames.LoadAsync(_db, itemIds);
+        var finished = await _db.Items.AsNoTracking().Where(i => itemIds.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, i => i.SourcingMethod != ERP.Data.ProjectDb.Entities.SourcingMethod.Purchased);
+        foreach (var r in rows)
+        {
+            (r.Pack, r.Content, r.Variant) = names.Parts(r.ItemId, r.RecipeId);
+            r.IsFinished = finished.GetValueOrDefault(r.ItemId);
+            r.DisplayName = r.IsFinished ? names.Name(r.ItemId, r.RecipeId) : r.ItemName;
+        }
+        return rows.OrderBy(r => r.IsFinished ? 0 : 1).ThenBy(r => r.DisplayName).ThenBy(r => r.WarehouseName).ThenBy(r => r.ExpiryDate).ToList();
+    }
+}

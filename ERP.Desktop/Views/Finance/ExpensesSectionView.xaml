@@ -1,0 +1,102 @@
+<UserControl x:Class="ERP.Desktop.Views.Finance.ExpensesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Finance;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ExpensesSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="380"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="مصروف / إيراد آخر جديد" Style="{StaticResource SectionTitle}"/>
+                <StackPanel DockPanel.Dock="Bottom">
+                    <Button Content="حفظ (من صندوقي)" Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}" Margin="0,10,0,0" HorizontalAlignment="Stretch"/>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="النوع" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding Category}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
+                        <TextBlock Text="{Binding KindHint}" Style="{StaticResource Muted}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="140"/></Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="المبلغ (د.ع)" Style="{StaticResource FieldLabel}"/>
+                                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight" FontSize="16"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                                <DatePicker SelectedDate="{Binding Date}"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="السيارة (اختياري)" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="بدون" Style="{StaticResource RowIconButton}" Tag="#64748B" Command="{Binding ClearVehicleCommand}" Margin="4,0,0,0"/>
+                            <ComboBox ItemsSource="{Binding Vehicles}" SelectedItem="{Binding Vehicle}" DisplayMemberPath="VehicleName"/>
+                        </DockPanel>
+                        <TextBlock Text="القسم (اختياري)" Style="{StaticResource FieldLabel}"/>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="بدون" Style="{StaticResource RowIconButton}" Tag="#64748B" Command="{Binding ClearDepartmentCommand}" Margin="4,0,0,0"/>
+                            <ComboBox ItemsSource="{Binding Departments}" SelectedItem="{Binding Department}" DisplayMemberPath="Name"/>
+                        </DockPanel>
+                        <TextBlock Text="الصرف لـ / المستلم منه" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding PartyName}"/>
+                        <TextBlock Text="رقم الوصل" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding ReceiptNumber}" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="ملاحظات" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Notes}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBlock Text="من" VerticalAlignment="Center" Margin="0,0,6,0" FontWeight="SemiBold"/>
+                    <DatePicker SelectedDate="{Binding From}" Width="125"/>
+                    <TextBlock Text="إلى" VerticalAlignment="Center" Margin="8,0,6,0"/>
+                    <DatePicker SelectedDate="{Binding To}" Width="125"/>
+                    <ComboBox ItemsSource="{Binding Categories}" SelectedItem="{Binding FilterCategory}" DisplayMemberPath="Name" Width="150" Margin="8,0,0,0" ToolTip="تصفية بالنوع"/>
+                    <Button Content="&#xE711;" ToolTip="كل الأنواع" Style="{StaticResource RowIconButton}" Tag="#64748B" Command="{Binding ClearFilterCommand}"/>
+                    <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding LoadListCommand}" Margin="8,0,0,0"/>
+                    <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="6,0,0,0"/>
+                </WrapPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <TextBox DockPanel.Dock="Left" Text="{Binding VoidReason}" Width="220" ToolTip="سبب الإلغاء (للسطر الذي تلغيه)"/>
+                    <TextBlock VerticalAlignment="Center" Margin="12,0,0,0" FontWeight="SemiBold">
+                        <Run Text="تشغيلي "/><Run Text="{Binding OperatingTotal, Mode=OneWay, StringFormat=N0}"/>
+                        <Run Text=" — غير تشغيلي "/><Run Text="{Binding NonOperatingTotal, Mode=OneWay, StringFormat=N0}"/>
+                        <Run Text=" — إيرادات أخرى "/><Run Text="{Binding IncomeTotal, Mode=OneWay, StringFormat=N0}"/>
+                    </TextBlock>
+                </DockPanel>
+                <DataGrid ItemsSource="{Binding Entries}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الرقم" Binding="{Binding EntryNumber}" Width="110"/>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding EntryDate, StringFormat=yyyy/MM/dd}" Width="85"/>
+                        <DataGridTextColumn Header="النوع" Binding="{Binding Category}" Width="*"/>
+                        <DataGridTextColumn Header="التصنيف" Binding="{Binding KindText}" Width="85"/>
+                        <DataGridTextColumn Header="المبلغ" Binding="{Binding Amount, StringFormat=N0}" Width="90"/>
+                        <DataGridTextColumn Header="السيارة" Binding="{Binding Vehicle}" Width="90"/>
+                        <DataGridTextColumn Header="القسم" Binding="{Binding Department}" Width="90"/>
+                        <DataGridTextColumn Header="الجهة" Binding="{Binding PartyName}" Width="110"/>
+                        <DataGridTextColumn Header="الوصل" Binding="{Binding ReceiptNumber}" Width="70"/>
+                        <DataGridTextColumn Header="الحالة" Binding="{Binding VoidReason}" Width="100"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE711;" ToolTip="إلغاء (قيد عكسي)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.VoidCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

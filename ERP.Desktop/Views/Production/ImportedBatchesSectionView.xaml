@@ -1,0 +1,71 @@
+<UserControl x:Class="ERP.Desktop.Views.Production.ImportedBatchesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Production;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ImportedBatchesSectionViewModel}"
+             x:Name="Root">
+    <!-- التشغيلات المستوردة يمينًا (تأشير + المتغير)، والمعاينة والتطبيق يسارًا -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2*"/>
+            <ColumnDefinition Width="*" MinWidth="320"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Content="تأشير المطابق تمامًا" Style="{StaticResource SecondaryButton}" Command="{Binding CheckAllExactCommand}"/>
+                        <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="تشغيلات الرصيد الافتتاحي المستوردة (RH-…) بلا متغير" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"
+                           Text="النقل من نظام الرحمة أدخل كل رصيد بتشغيلة باسم الملصق لكنها «أساسي». اختر لكل تشغيلة متغيرها الصحيح (المطعم أو المناسبة)، والمطابق تمامًا مؤشَّر مسبقًا."/>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <DataGrid ItemsSource="{Binding Lines}" IsReadOnly="False" CanUserAddRows="False">
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="✓" Width="44">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate><CheckBox IsChecked="{Binding IsChecked, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Margin="0"/></DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="التشغيلة" Binding="{Binding Row.BatchNumber}" Width="1.2*" MinWidth="130" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding Row.ProductName}" Width="*" MinWidth="120" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="الرصيد" Binding="{Binding Row.BalanceText}" Width="110" IsReadOnly="True"/>
+                        <DataGridTemplateColumn Header="المتغير الصحيح" Width="1.4*" MinWidth="170">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding Choice, UpdateSourceTrigger=PropertyChanged}" DisplayMemberPath="Name" Margin="0,2"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="المطابقة" Binding="{Binding MatchText}" Width="110" IsReadOnly="True"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="المعاينة قبل التطبيق" Style="{StaticResource SectionTitle}"/>
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                    <TextBlock Text="سبب التصحيح (إلزامي)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Reason, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Margin="0,8,0,0"><Run Text="المؤشَّر للتطبيق:"/> <Run Text="{Binding CheckedCount, Mode=OneWay}" FontWeight="Bold"/></TextBlock>
+                    <Button Content="تطبيق الربط" Style="{StaticResource SuccessButton}" Command="{Binding ApplyCommand}" IsEnabled="{Binding CanApply}" Margin="0,8,0,0" HorizontalAlignment="Stretch"/>
+                    <TextBlock Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Text="لا حركات مخزنية: يتغير متغير التشغيلة فقط، فيظهر الرصيد والمتاح في طلب التحميل لكل متغير صحيحًا. كل تغيير في سجل التدقيق، ويحتاج صلاحية «المخزون المحجوز»."/>
+                </StackPanel>
+                <DataGrid ItemsSource="{Binding Preview}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="المنتج" Binding="{Binding Product}" Width="*"/>
+                        <DataGridTextColumn Header="المتغير" Binding="{Binding Variant}" Width="*"/>
+                        <DataGridTextColumn Header="قبل" Binding="{Binding Before}" Width="80"/>
+                        <DataGridTextColumn Header="بعد" Binding="{Binding After}" Width="80" FontWeight="Bold"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>
