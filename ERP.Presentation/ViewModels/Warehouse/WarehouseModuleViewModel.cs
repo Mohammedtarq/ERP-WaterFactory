@@ -680,6 +680,12 @@ public class BomSectionViewModel : SectionViewModel
         if (!Dialogs.Confirm($"حذف {row.RawMaterialName} من الوصفة؟")) return;
         await using var db = Session.NewDb();
         await db.BOMLines.Where(l => l.Id == row.Id).ExecuteDeleteAsync();
+        // وصفة بلا مكوّنات لا تُبقي المنتج في قوائم الإنتاج: تُعطَّل (لا تُحذف لأن أوامر إنتاج قديمة قد تشير إليها)
+        if (_bom is not null && !await db.BOMLines.AnyAsync(l => l.BOMId == _bom.Id))
+        {
+            await db.BillOfMaterials.Where(b => b.Id == _bom.Id).ExecuteUpdateAsync(u => u.SetProperty(b => b.IsActive, false));
+            StatusMessage = $"حُذفت آخر مادة: عُطّلت وصفة {FinishedItem?.ItemName} فلا يظهر المنتج في أوامر الإنتاج";
+        }
         await LoadBomAsync();
     }
 }

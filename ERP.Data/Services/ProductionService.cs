@@ -298,10 +298,14 @@ public class ProductionService
         {
             var a = availability[itemId];
             if (a.Available >= required) continue;
+            // من يستهلك المادة: الصنف (والمتغير) وكمية المادة لكل وحدة منتج، ليُعرف أي وصفة تحتاج تصحيحًا
+            var recipeNames = await _db.CustomRecipes.AsNoTracking().Select(r => new { r.Id, r.Name }).ToDictionaryAsync(r => r.Id, r => r.Name);
             var users = order.Consumptions.Where(c => c.RawMaterialItemId == itemId && c.ProductionOrderLineId != null)
-                             .Select(c => order.Lines.First(l => l.Id == c.ProductionOrderLineId).FinishedItem.ItemName).Distinct().ToList();
+                             .Select(c => order.Lines.First(l => l.Id == c.ProductionOrderLineId))
+                             .Select(l => l.FinishedItem.ItemName + (l.CustomRecipeId is int rid && recipeNames.TryGetValue(rid, out var rn) ? $" ({rn})" : ""))
+                             .Distinct().ToList();
             var msg = $"الرصيد غير كافٍ للصنف \"{a.ItemName}\": المطلوب {required:0.###}"
-                      + (users.Count > 1 ? $" (مشترك بين: {string.Join("، ", users)})" : "")
+                      + (users.Count > 0 ? $" (تستهلكه وصفة: {string.Join("، ", users)})" : "")
                       + $"، المتاح في مخازن المواد الأولية {a.Available:0.###}";
             if (a.ElsewhereQuantity > 0) msg += $" (يوجد {a.ElsewhereQuantity:0.###} في مخازن أخرى — انقله إلى مخزن المواد الأولية أولًا)";
             return FinanceOperationResult.Fail(msg);

@@ -321,7 +321,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         // المنتجات ذات قائمة المواد تُحدَّث في كل تحميل (قد تُنشأ قائمة مواد جديدة من المخازن أو بقالب تعبئة)
-        var withBom = db.BillOfMaterials.Where(b => b.IsActive).Select(b => b.FinishedItemId);
+        var withBom = db.BillOfMaterials.Where(b => b.IsActive && b.Lines.Any()).Select(b => b.FinishedItemId);
         var finished = await db.Items.AsNoTracking().Where(i => withBom.Contains(i.Id)).OrderBy(i => i.ItemName).ToListAsync();
         if (!finished.Select(i => i.Id).SequenceEqual(FinishedItems.Select(i => i.Id)))
         {
@@ -1038,7 +1038,7 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
     protected override async Task LoadLookupsAsync(ProjectDbContext db)
     {
         FinishedItems.Clear();
-        var withBom = db.BillOfMaterials.Where(b => b.IsActive).Select(b => b.FinishedItemId);
+        var withBom = db.BillOfMaterials.Where(b => b.IsActive && b.Lines.Any()).Select(b => b.FinishedItemId);
         foreach (var i in await db.Items.AsNoTracking().Where(i => withBom.Contains(i.Id)).OrderBy(i => i.ItemName).ToListAsync()) FinishedItems.Add(i);
         RawItems.Clear();
         foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Manufactured).OrderBy(i => i.ItemName).ToListAsync())

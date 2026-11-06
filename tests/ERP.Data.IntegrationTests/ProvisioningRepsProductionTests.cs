@@ -734,10 +734,10 @@ public class ProductionServiceTests
         Assert.All(order.Lines, l => Assert.StartsWith(l.ProductText.Split(' ')[0], l.DisplayName));
         Assert.Single(order.Variants);                                                      // كلاهما أساسي ← شريحة واحدة
 
-        // المجموع غير كافٍ رغم كفاية كل صنف وحده (50 متبقية، كل صنف يحتاج 40) ← رفض برسالة "مشترك بين" ودون صرف
+        // المجموع غير كافٍ رغم كفاية كل صنف وحده (50 متبقية، كل صنف يحتاج 40) ← رفض برسالة "تستهلكه وصفة" ودون صرف
         var (_, short1) = await prod.CreateOrderAsync(new[] { new ProductionLineInput(itemA.Id, 40), new ProductionLineInput(itemB.Id, 40) }, raw.Id, machineId, user);
         var error = (await prod.StartAsync(short1!.Value, user)).ErrorMessage;
-        Assert.Contains("مشترك بين", error);
+        Assert.Contains("تستهلكه وصفة", error);
         Assert.Contains("المطلوب 80", error);
         await using var after = _f.NewDb();
         Assert.Equal(50m, await Balance(after, shared.Id, raw.Id));

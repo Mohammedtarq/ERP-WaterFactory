@@ -137,7 +137,7 @@ public class DailyProductionSectionViewModel : SectionViewModel
     public override async Task LoadAsync()
     {
         await using var db = Session.NewDb();
-        var withBom = await db.BillOfMaterials.Where(b => b.IsActive).Select(b => b.FinishedItemId).Distinct().ToListAsync();
+        var withBom = await db.BillOfMaterials.Where(b => b.IsActive && b.Lines.Any()).Select(b => b.FinishedItemId).Distinct().ToListAsync();
         Products.Clear();
         foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && withBom.Contains(i.Id)).OrderBy(i => i.ItemName).ToListAsync())
             Products.Add(i);
