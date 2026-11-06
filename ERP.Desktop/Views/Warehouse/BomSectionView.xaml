@@ -11,7 +11,7 @@
         <DockPanel>
             <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
                 <TextBlock Text="المنتج النهائي:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
-                <ComboBox ItemsSource="{Binding AllItems}" SelectedItem="{Binding FinishedItem}" DisplayMemberPath="ItemName" Width="260"/>
+                <ComboBox ItemsSource="{Binding FinishedChoices}" SelectedItem="{Binding FinishedItem}" DisplayMemberPath="ItemName" Width="260"/>
             </StackPanel>
             <TextBlock DockPanel.Dock="Top" Text="{Binding BomStatus}" Style="{StaticResource Muted}" Margin="0,0,0,12"/>
             <Border DockPanel.Dock="Top" Background="#F0F9FF" CornerRadius="8" Padding="12" Margin="0,0,0,12">

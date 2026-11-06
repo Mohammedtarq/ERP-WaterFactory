@@ -538,7 +538,7 @@ public class ManufacturingRequirementSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         FinishedItems.Clear();
         var withBom = db.BillOfMaterials.Where(b => b.IsActive).Select(b => b.FinishedItemId);
-        foreach (var i in await db.Items.AsNoTracking().Where(i => withBom.Contains(i.Id)).OrderBy(i => i.ItemName).ToListAsync()) FinishedItems.Add(i);
+        foreach (var i in await db.Items.AsNoTracking().Where(i => withBom.Contains(i.Id) && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync()) FinishedItems.Add(i);
     }
 
     private async Task CalculateAsync()
@@ -609,6 +609,8 @@ public class BomSectionViewModel : SectionViewModel
     }
 
     public ObservableCollection<Item> AllItems { get; } = new();
+    /// <summary>المنتجات التي تُصنَّع فقط (لا المشتريات كالليبل والغطاء): لا وصفة لمادة مشتراة.</summary>
+    public ObservableCollection<Item> FinishedChoices { get; } = new();
     public ObservableCollection<BomLineRow> Lines { get; } = new();
 
     public Item? FinishedItem { get => _finishedItem; set { if (SetProperty(ref _finishedItem, value)) Background(LoadBomAsync()); } }
@@ -625,6 +627,8 @@ public class BomSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         AllItems.Clear();
         foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.ItemName).ToListAsync()) AllItems.Add(i);
+        FinishedChoices.Clear();
+        foreach (var i in AllItems.Where(i => i.SourcingMethod != SourcingMethod.Purchased)) FinishedChoices.Add(i);
         var templateId = Template?.Id;
         Templates.Clear();
         foreach (var t in await new PackagingTemplateService(db).GetAllAsync(activeOnly: true)) Templates.Add(t);
