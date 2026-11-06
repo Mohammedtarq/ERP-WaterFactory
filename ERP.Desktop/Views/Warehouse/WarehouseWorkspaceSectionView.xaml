@@ -32,13 +32,19 @@
                 <StackPanel><TextBlock Text="عدد الأصناف" Style="{StaticResource Muted}"/><TextBlock Text="{Binding ItemsCount}" FontSize="20" FontWeight="Bold"/></StackPanel>
             </Border>
             <Border Grid.Column="2" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,8,0">
-                <StackPanel><TextBlock Text="{Binding TotalLabel}" Style="{StaticResource Muted}"/><TextBlock Text="{Binding TotalLines}" FontSize="18" FontWeight="Bold" TextWrapping="NoWrap" ToolTip="{Binding TotalPieces, StringFormat='{}{0:N0} قطعة'}"/></StackPanel>
+                <StackPanel>
+                    <TextBlock Text="{Binding TotalLabel}" Style="{StaticResource Muted}"/>
+                    <!-- أسطر كثيرة (منتج × عبوة × متغير): خط أصغر وتمرير داخل البطاقة بدل أن تتمدد وتُقصّ -->
+                    <ScrollViewer MaxHeight="64" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                        <TextBlock Text="{Binding TotalLines}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" ToolTip="{Binding TotalPieces, StringFormat='{}{0:N0} قطعة'}"/>
+                    </ScrollViewer>
+                </StackPanel>
             </Border>
             <Border Grid.Column="3" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,8,0">
-                <StackPanel><TextBlock Text="وارد اليوم" Style="{StaticResource Muted}"/><TextBlock Text="{Binding TodayInText}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" Foreground="{StaticResource SuccessBrush}"/></StackPanel>
+                <StackPanel><TextBlock Text="وارد اليوم" Style="{StaticResource Muted}"/><ScrollViewer MaxHeight="64" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False"><TextBlock Text="{Binding TodayInText}" FontSize="14" FontWeight="Bold" TextWrapping="Wrap" Foreground="{StaticResource SuccessBrush}"/></ScrollViewer></StackPanel>
             </Border>
             <Border Grid.Column="4" Style="{StaticResource Card}" Padding="14,10" Margin="0,0,8,0">
-                <StackPanel><TextBlock Text="صادر اليوم" Style="{StaticResource Muted}"/><TextBlock Text="{Binding TodayOutText}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}"/></StackPanel>
+                <StackPanel><TextBlock Text="صادر اليوم" Style="{StaticResource Muted}"/><ScrollViewer MaxHeight="64" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False"><TextBlock Text="{Binding TodayOutText}" FontSize="14" FontWeight="Bold" TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}"/></ScrollViewer></StackPanel>
             </Border>
             <Border Grid.Column="5" Style="{StaticResource Card}" Padding="14,10">
                 <StackPanel><TextBlock Text="عند حد التنبيه" Style="{StaticResource Muted}"/><TextBlock Text="{Binding LowCount}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource WarningBrush}"/></StackPanel>
