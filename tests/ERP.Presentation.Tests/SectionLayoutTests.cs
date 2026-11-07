@@ -23,6 +23,25 @@ public class SectionLayoutTests
     }
 
     [Fact]
+    public async Task Changing_role_reloads_only_the_rows_and_keeps_the_roles_list()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var settings = shell.Open<SettingsModuleViewModel>(ModuleCode.SystemSettings);
+        var layout = settings.Section<SectionLayoutSectionViewModel>();
+        await Open(settings, layout);
+        var count = layout.Roles.Count;
+        var names = layout.Roles.Select(r => r.Name).ToList();
+        layout.Role = layout.Roles.Single(r => r.Name == "موظف مبيعات");
+        await layout.IdleAsync();
+        layout.Role = layout.Roles.First(r => r.Name != "موظف مبيعات");
+        await layout.IdleAsync();
+        Assert.Equal(count, layout.Roles.Count);
+        Assert.Equal(names, layout.Roles.Select(r => r.Name).ToList());
+        Assert.NotEmpty(layout.Rows);
+        Assert.Empty(dialogs.Errors);
+    }
+
+    [Fact]
     public async Task Admin_moves_a_screen_to_sales_and_hides_a_screen_from_the_clerk_role()
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);

@@ -642,7 +642,10 @@ public class SectionLayoutSectionViewModel : SectionViewModel
         RolesPermissionsSectionViewModel.Modules.Where(m => SectionCatalog.IsConfigurable(m.code)).Select(m => new ModuleOption(m.code, m.name)).ToList();
     public IReadOnlyList<string> ModuleFilters { get; } =
         new[] { "" }.Concat(RolesPermissionsSectionViewModel.Modules.Where(m => SectionCatalog.IsConfigurable(m.code)).Select(m => m.name)).ToList();
-    public Role? Role { get => _role; set { if (SetProperty(ref _role, value)) Background(LoadAsync()); } }
+    private bool _loadingRoles;
+    // تفريغ قائمة الأدوار يجعل القائمة المنسدلة تلغي الاختيار فيعود الإعداد إلى هنا من داخل حدث التفريغ نفسه:
+    // لا يُعاد التحميل أثناء بناء القائمة، ولا يُمسّ إلا صفوف الأقسام عند تغيير الدور.
+    public Role? Role { get => _role; set { if (SetProperty(ref _role, value) && !_loadingRoles && value is not null) Background(LoadRowsAsync()); } }
     public string ModuleFilter { get => _moduleFilter; set { if (SetProperty(ref _moduleFilter, value)) ApplyFilter(); } }
     public AsyncRelayCommand SaveCommand { get; }
     public RelayCommand ResetRoleCommand { get; }
@@ -653,10 +656,28 @@ public class SectionLayoutSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         var keep = Role?.Id;
-        Roles.Clear();
-        foreach (var r in await db.Roles.AsNoTracking().OrderBy(r => r.Name).ToListAsync()) Roles.Add(r);
-        _role = Roles.FirstOrDefault(r => r.Id == keep) ?? Roles.FirstOrDefault();
-        OnPropertyChanged(nameof(Role));
+        var roles = await db.Roles.AsNoTracking().OrderBy(r => r.Name).ToListAsync();
+        _loadingRoles = true;
+        try
+        {
+            Roles.Clear();
+            foreach (var r in roles) Roles.Add(r);
+            _role = Roles.FirstOrDefault(r => r.Id == keep) ?? Roles.FirstOrDefault();
+            OnPropertyChanged(nameof(Role));
+        }
+        finally { _loadingRoles = false; }
+        await LoadRowsCoreAsync(db);
+    }
+
+    /// <summary>تغيير الدور: يُعاد تحميل صفوف الأقسام فقط، وقائمة الأدوار كما هي.</summary>
+    private async Task LoadRowsAsync()
+    {
+        await using var db = Session.NewDb();
+        await LoadRowsCoreAsync(db);
+    }
+
+    private async Task LoadRowsCoreAsync(ERP.Data.ProjectDb.ProjectDbContext db)
+    {
         var svc = new SectionLayoutService(db);
         var placements = await svc.PlacementsAsync();
         var hidden = _role is null ? new HashSet<string>() : await svc.HiddenAsync(_role.Id);
