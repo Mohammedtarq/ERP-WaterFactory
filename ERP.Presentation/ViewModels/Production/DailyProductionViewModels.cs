@@ -80,7 +80,7 @@ public class DailyProductionSectionViewModel : SectionViewModel
         : base(s, d, ModuleCode.Production, "إنتاج اليوم", Icons.Factory, "#14B8A6", "تسجيل إنتاج اليوم بضغطة واحدة: صرف المواد، الكلفة الفعلية، والتشغيلة")
     {
         AddLineCommand = new RelayCommand(() => Lines.Add(new DailyLineDraft(this)));
-        RemoveLineCommand = new RelayCommand(p => { if (p is DailyLineDraft l) { Lines.Remove(l); RaiseTotals(); } });
+        RemoveLineCommand = new RelayCommand(p => { if (p is DailyLineDraft l) { Lines.Remove(l); RaiseTotals(); ClearStalePreviewIfEmpty(); } });
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         RepeatLastCommand = new AsyncRelayCommand(RepeatLastAsync);
         ApplyTemplateCommand = new AsyncRelayCommand(ApplyTemplateAsync);
@@ -224,6 +224,15 @@ public class DailyProductionSectionViewModel : SectionViewModel
             TemplateName = "";
             await LoadTemplatesAsync(db);
         }
+    }
+
+    /// <summary>إن أُفرغت الأسطر بقيت رسالة «المواد لا تكفي» من فحص سابق: تُمسح مع جدول الاحتياج.</summary>
+    private void ClearStalePreviewIfEmpty()
+    {
+        if (Lines.Any(l => l.Product is not null)) return;
+        Needs.Clear();
+        OnPropertyChanged(nameof(HasShortage));
+        StatusMessage = "";
     }
 
     private async Task PreviewAsync()

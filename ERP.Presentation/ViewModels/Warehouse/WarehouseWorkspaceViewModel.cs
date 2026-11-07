@@ -735,12 +735,12 @@ public class WarehouseWorkspaceSectionViewModel : SectionViewModel
         foreach (var b in VisibleBalances)
             r.Rows.Add(new[] { (++i).ToString(), b.DisplayName + (b.BelowAlert ? " ⚠" : ""), b.BatchNumber ?? "—",
                                b.ExpiryDate?.ToString("yyyy/MM/dd") ?? "", b.QuantityText, $"{b.Quantity:N0}", b.ItemCode });
+        // لا مربع مظلل بإجمالي المنتج التام في الطباعة: الجدول نفسه هو المرجع، والمجاميع الطويلة كانت تتكرر وتشوّش الصفحة
         if (HasSearch)
-            r.Total("عدد الأصناف في النتائج", VisibleBalances.Select(b => b.ItemId).Distinct().Count().ToString())
-             .Total("إجمالي النتائج", NamedTotal(VisibleBalances.Where(b => b.IsFinished).Select(b => (b.ItemId, b.RecipeId, b.Quantity))), true);
+            r.Total("عدد الأصناف في النتائج", VisibleBalances.Select(b => b.ItemId).Distinct().Count().ToString());
         else
         {
-            r.Total("عدد الأصناف", ItemsCount.ToString()).Total(TotalLabel, TotalText, true);
+            r.Total("عدد الأصناف", ItemsCount.ToString());
             if (LowCount > 0) r.Total("أصناف عند حد التنبيه", LowCount.ToString());
         }
         r.Signatures.AddRange(new[] { "أمين المخزن", "المدقق" });

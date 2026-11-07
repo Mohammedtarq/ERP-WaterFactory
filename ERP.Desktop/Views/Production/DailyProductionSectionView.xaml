@@ -53,7 +53,18 @@
                             </StackPanel>
                         </Button>
                     </StackPanel>
-                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                    <TextBlock Text="{Binding StatusMessage}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource StatusText}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasShortage}" Value="True">
+                                        <Setter Property="Foreground" Value="#DC2626"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
