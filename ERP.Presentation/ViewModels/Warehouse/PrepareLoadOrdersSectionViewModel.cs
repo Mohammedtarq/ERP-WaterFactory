@@ -20,6 +20,8 @@ public class PrepareLoadOrdersSectionViewModel : SectionViewModel
         : base(s, d, ModuleCode.Warehouse, "طلبات التجهيز", Icons.Truck, "#2563EB",
                "طلبات تحميل سيارات المندوبين: المطلوب والمتاح في المخزن، والتجهيز يُخرج البضاعة للسيارة")
     {
+        ApproveExtraCommand = new AsyncRelayCommand(ApproveExtraAsync);
+        RejectExtraCommand = new AsyncRelayCommand(RejectExtraAsync);
         PrepareCommand = new AsyncRelayCommand(PrepareAsync);
         PrintCommand = new AsyncRelayCommand(p => p is RepLoadOrderRow r ? PrintAsync(db => LoadOrderTools.ReportAsync(Session, db, r.Id)) : Task.CompletedTask);
     }
@@ -31,6 +33,68 @@ public class PrepareLoadOrdersSectionViewModel : SectionViewModel
     {
         _selectedOrder = null;
         PrepareLines.Clear();
+    }
+
+    // ---------------- إنتاج إضافي على أوامر الإنتاج بانتظار موافقة أمين المخزن ----------------
+    private ExtraRequestRow? _selectedExtra;
+    private decimal _approvePacks;
+    private string _rejectNote = "";
+    public ObservableCollection<ExtraRequestRow> ExtraRequests { get; } = new();
+    public bool HasExtraRequests => ExtraRequests.Count > 0;
+    public AsyncRelayCommand ApproveExtraCommand { get; }
+    public AsyncRelayCommand RejectExtraCommand { get; }
+    public ExtraRequestRow? SelectedExtra
+    {
+        get => _selectedExtra;
+        set
+        {
+            if (!SetProperty(ref _selectedExtra, value)) return;
+            ApprovePacks = value?.Packs ?? 0;
+            RejectNote = "";
+        }
+    }
+    /// <summary>العبوات المعتمدة: المطلوب كله بالافتراض، وأقل منه موافقة جزئية.</summary>
+    public decimal ApprovePacks { get => _approvePacks; set => SetProperty(ref _approvePacks, value); }
+    public string RejectNote { get => _rejectNote; set => SetProperty(ref _rejectNote, value); }
+
+    private async Task LoadExtraAsync(Data.ProjectDb.ProjectDbContext db)
+    {
+        var keep = SelectedExtra?.Id;
+        ExtraRequests.Clear();
+        foreach (var r in await new ExtraProductionService(db).PendingAsync()) ExtraRequests.Add(r);
+        OnPropertyChanged(nameof(HasExtraRequests));
+        SelectedExtra = ExtraRequests.FirstOrDefault(r => r.Id == keep) ?? ExtraRequests.FirstOrDefault();
+    }
+
+    private async Task ApproveExtraAsync()
+    {
+        if (!Require(CanAdd, "الموافقة على الإنتاج الإضافي")) return;
+        if (SelectedExtra is not { } req) { Dialogs.Error("اختر طلب الإنتاج الإضافي"); return; }
+        var packs = ApprovePacks;
+        var partial = packs < req.Packs;
+        if (!Dialogs.Confirm($"الموافقة على {packs:N0} {req.LevelName} من {req.ItemName} ({req.VariantText}) على الأمر {req.OrderNumber}"
+                             + (partial ? $" (جزئيًا من {req.Packs:N0})" : "") + "؟\nتُصرف المواد الأولية الزائدة ويدخل الناتج مخزن المنتج التام على دفعة الأمر نفسها."))
+            return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ExtraProductionService(db).ApproveAsync(req.Id, packs, Session.UserId),
+                                    $"اعتُمد الإنتاج الإضافي على {req.OrderNumber}: {packs:N0} {req.LevelName}"))
+        {
+            await using var db2 = Session.NewDb();
+            await LoadExtraAsync(db2);
+        }
+    }
+
+    private async Task RejectExtraAsync()
+    {
+        if (!Require(CanAdd, "رفض الإنتاج الإضافي")) return;
+        if (SelectedExtra is not { } req) { Dialogs.Error("اختر طلب الإنتاج الإضافي"); return; }
+        var note = RejectNote;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ExtraProductionService(db).RejectAsync(req.Id, note, Session.UserId), $"رُفض طلب الإنتاج الإضافي على {req.OrderNumber}"))
+        {
+            await using var db2 = Session.NewDb();
+            await LoadExtraAsync(db2);
+        }
     }
 
     public ObservableCollection<RepLoadOrderRow> Orders { get; } = new();
@@ -55,8 +119,10 @@ public class PrepareLoadOrdersSectionViewModel : SectionViewModel
         foreach (var o in await svc.GetLoadOrdersAsync(DateTime.Today.AddYears(-1), DateTime.Today.AddDays(30), RepLoadOrderStatus.Pending)) Orders.Add(o);
         foreach (var o in (await svc.GetLoadOrdersAsync(DateTime.Today, DateTime.Today, RepLoadOrderStatus.Prepared))) Orders.Add(o);
         OnPropertyChanged(nameof(PendingCount));
+        await LoadExtraAsync(db);
         SelectedOrder = Orders.FirstOrDefault(o => o.Id == keep) ?? Orders.FirstOrDefault(o => o.Status == RepLoadOrderStatus.Pending);
         StatusMessage = PendingCount == 0 ? "لا طلبات بانتظار التجهيز" : $"بانتظار التجهيز: {PendingCount}";
+        if (ExtraRequests.Count > 0) StatusMessage += $" — وإنتاج إضافي بانتظار موافقتك: {ExtraRequests.Count}";
     }
 
     private async Task LoadLinesAsync()

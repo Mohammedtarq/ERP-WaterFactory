@@ -189,6 +189,94 @@ public class DailyProductionService
         return error is not null ? (error, new()) : (null, await NeedsAsync(plans, raw.Value));
     }
 
+    /// <summary>معاينة إنتاج إضافي على سطر أمر: احتياج المواد الأولية مقابل المتاح في مخزن مواد الأمر.</summary>
+    public async Task<(string? error, List<MaterialNeedRow> needs)> PreviewExtraAsync(int lineId, int levelId, decimal packs)
+    {
+        var line = await _db.ProductionOrderLines.AsNoTracking().Include(l => l.ProductionOrder).FirstOrDefaultAsync(l => l.Id == lineId);
+        if (line is null) return ("سطر الأمر غير موجود", new());
+        return await PreviewAsync(new[] { new DailyProductionLineInput(line.FinishedItemId, levelId, packs, line.CustomRecipeId) }, line.ProductionOrder.RawMaterialsWarehouseId);
+    }
+
+    /// <summary>
+    /// إنتاج إضافي على تشغيلة سطر أمر قائم: تُصرف المواد الأولية الزائدة بالكلفة الفعلية، ويدخل الناتج مخزن المنتج التام على تشغيلة السطر
+    /// نفسها، ويُسوّى ما بيع قبل إنتاجه. لا تتغير كمية الأمر ولا فحصه ولا تواريخ التشغيلة.
+    /// </summary>
+    public async Task<(FinanceOperationResult result, decimal settled, decimal pieces)> PostExtraAsync(int lineId, int levelId, decimal packs, int userId, int? finishedWarehouseId = null)
+    {
+        var fail = (string m) => (FinanceOperationResult.Fail(m), 0m, 0m);
+        if (packs <= 0) return fail("عدد العبوات يجب أن يكون أكبر من صفر");
+        var line = await _db.ProductionOrderLines.Include(l => l.ProductionOrder).FirstOrDefaultAsync(l => l.Id == lineId);
+        if (line is null) return fail("سطر الأمر غير موجود");
+        var order = line.ProductionOrder;
+        if (order.Status is ProductionOrderStatus.Draft or ProductionOrderStatus.Cancelled)
+            return fail("الإنتاج الإضافي يكون لأمر بدأ تشغيله أو اكتمل");
+        if (line.OutputBatchId is not int batchId) return fail("لا تشغيلة لهذا السطر");
+        if (await new PeriodLockService(_db).GetLockedThroughAsync() is DateTime locked && DateTime.Today <= locked)
+            return fail($"الفترة حتى {locked:yyyy-MM-dd} مقفلة");
+        var fg = finishedWarehouseId is int f ? await _db.Warehouses.FindAsync(f)
+                 : await _db.Warehouses.Where(w => w.IsActive && w.WarehouseType == WarehouseType.FinishedGoods).OrderBy(w => w.Id).FirstOrDefaultAsync();
+        if (fg is null || fg.WarehouseType != WarehouseType.FinishedGoods) return fail("لا يوجد مخزن منتج تام");
+        var raw = order.RawMaterialsWarehouseId;
+
+        var (plans, planError) = await PlanAsync(new[] { new DailyProductionLineInput(line.FinishedItemId, levelId, packs, line.CustomRecipeId) });
+        if (planError is not null) return fail(planError);
+        var plan = plans[0];
+        var shortages = (await NeedsAsync(plans, raw)).Where(n => n.Short > 0)
+                              .Select(n => $"«{n.ItemName}»: المطلوب {n.Required:N0}، المتاح {n.Available:N0}، الناقص {n.Short:N0}").ToList();
+        if (shortages.Count > 0)
+            return fail("المواد الأولية لا تكفي الإنتاج الإضافي — سجّل الشراء أو صحّح الرصيد أولًا:\n" + string.Join("\n", shortages));
+
+        var availability = new MaterialAvailabilityService(_db);
+        var ownTx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        try
+        {
+            var stamp = DateTime.UtcNow;
+            decimal cost = 0;
+            foreach (var (rawItemId, qty) in plan.materials)
+            {
+                var unitCost = await _db.Items.Where(x => x.Id == rawItemId).Select(x => x.CostPrice).FirstAsync();
+                var (alloc, error) = await availability.AllocateAsync(rawItemId, qty, raw);
+                if (error is not null) throw new DailyAbort(error);
+                foreach (var a in alloc)
+                    _db.StockTransactions.Add(new StockTransaction
+                    {
+                        ItemId = rawItemId, WarehouseId = a.WarehouseId, BatchId = a.BatchId, QuantityBaseUnits = -a.Quantity, UnitCost = unitCost,
+                        TransactionType = StockTransactionType.ProductionConsume, ReferenceTable = "ProductionOrders", ReferenceId = order.Id,
+                        TransactionDate = stamp, CreatedByUserId = userId
+                    });
+                _db.ProductionOrderConsumptions.Add(new ProductionOrderConsumption
+                {
+                    ProductionOrderId = order.Id, ProductionOrderLineId = line.Id, RawMaterialItemId = rawItemId, QuantityRequired = qty, QuantityConsumed = qty
+                });
+                cost += qty * (unitCost ?? 0);
+                await _db.SaveChangesAsync();
+            }
+            var unit = plan.pieces > 0 && cost > 0 ? Math.Round(cost / plan.pieces, 4) : (decimal?)null;
+            _db.StockTransactions.Add(new StockTransaction
+            {
+                ItemId = line.FinishedItemId, WarehouseId = fg.Id, BatchId = batchId, QuantityBaseUnits = plan.pieces, UnitCost = unit,
+                TransactionType = StockTransactionType.ProductionOutput, ReferenceTable = "ProductionOrders", ReferenceId = order.Id,
+                TransactionDate = stamp, CreatedByUserId = userId
+            });
+            await _db.SaveChangesAsync();
+            var settled = await new PendingProductionService(_db).SettleAsync(line.FinishedItemId, fg.Id, batchId, userId);
+            await new AuditService(_db).LogAsync(userId, "Post", "ProductionOrders", order.Id,
+                $"إنتاج إضافي على {order.MONumber}: {plan.pieces:N0} قطعة على التشغيلة نفسها");
+            if (ownTx is not null) await ownTx.CommitAsync();
+            return (FinanceOperationResult.Ok(), settled, plan.pieces);
+        }
+        catch (DailyAbort ex)
+        {
+            if (ownTx is not null) await ownTx.RollbackAsync();
+            _db.ChangeTracker.Clear();
+            return fail(ex.Message);
+        }
+        finally
+        {
+            if (ownTx is not null) await ownTx.DisposeAsync();
+        }
+    }
+
     private sealed class DailyAbort(string message) : Exception(message);
 }
 

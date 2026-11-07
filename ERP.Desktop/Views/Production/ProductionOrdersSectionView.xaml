@@ -94,6 +94,8 @@
                             </DataGridTextColumn.CellStyle>
                         </DataGridTextColumn>
                         <DataGridTextColumn Header="المعبّأ" Binding="{Binding PackedText}" Width="95" MinWidth="72" ElementStyle="{StaticResource WrapCell}"/>
+                        <DataGridTextColumn Header="إضافي (قطعة)" Binding="{Binding ExtraText}" Width="70" MinWidth="60"
+                                            Visibility="{Binding Data.HasSidePanel, Source={StaticResource Proxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
                         <DataGridTextColumn Header="رقم الدفعة" Binding="{Binding OutputBatch}" Width="115" MinWidth="105"
                                             Visibility="{Binding Data.HasSidePanel, Source={StaticResource Proxy}, Converter={StaticResource InverseBoolToVisibility}}"/>
                         <DataGridTextColumn Header="المرحلة" Binding="{Binding StageText}" Width="1.3*" MinWidth="110" ElementStyle="{StaticResource WrapCell}"/>
@@ -114,6 +116,7 @@
                                                     <TextBlock Text="&#xE712;" FontFamily="{StaticResource IconFont}"/>
                                                 </MenuItem.Header>
                                                 <MenuItem Header="استبدال مكوّن لهذا الأمر فقط (قبل التشغيل)" Command="{Binding DataContext.OverrideCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                <MenuItem Header="إنتاج إضافي على هذا الأمر (بموافقة المخزن)" Command="{Binding DataContext.ExtraCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                                 <MenuItem Header="تعديل رقم الدفعة" Command="{Binding DataContext.EditBatchCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                                 <MenuItem Header="إغلاق بما عُبّئ" Command="{Binding DataContext.CompleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                                 <MenuItem Header="طباعة محضر التعبئة" Command="{Binding DataContext.PrintPackingCommand, ElementName=Root}" CommandParameter="{Binding}"/>
@@ -250,6 +253,44 @@
                     <TextBlock Text="الاستبدالات المسجلة على الأمر" Style="{StaticResource FieldLabel}" Margin="0,14,0,4"/>
                 </StackPanel>
                 <ListBox ItemsSource="{Binding OverrideHistory}"/>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="400" Margin="12,0,0,0"
+                Visibility="{Binding IsExtra, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionTitle}">
+                    <Run Text="إنتاج إضافي — "/><Run Text="{Binding ExtraOrder.MONumber, Mode=OneWay}"/>
+                </TextBlock>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="زيادة على الدفعة نفسها دون تغيير كمية الأمر ولا فحصه. يصل الطلب إلى أمين المخزن للموافقة على صرف المواد وإدخال الناتج." Style="{StaticResource Muted}" TextWrapping="Wrap"/>
+                    <TextBlock Text="الصنف / المتغير" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding ExtraLines}" SelectedItem="{Binding ExtraLine}" DisplayMemberPath="DisplayName"/>
+                    <TextBlock Text="وحدة التعبئة" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding ExtraLevels}" SelectedItem="{Binding ExtraLevel}" DisplayMemberPath="LevelName"/>
+                    <TextBlock Text="عدد العبوات الزائدة" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding ExtraPacks, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="{Binding ExtraPiecesText}" Style="{StaticResource Muted}"/>
+                    <TextBlock Text="السبب (إلزامي)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding ExtraReason, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="{Binding ExtraNeedsText}" TextWrapping="Wrap" Margin="0,8,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource StatusText}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ExtraShort}" Value="True">
+                                        <Setter Property="Foreground" Value="#DC2626"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="إرسال لموافقة أمين المخزن" Style="{StaticResource SuccessButton}" Command="{Binding SaveExtraCommand}"/>
+                        <Button Content="إغلاق" Style="{StaticResource SecondaryButton}" Command="{Binding CloseExtraCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="سجل الزيادات على هذا الأمر" Style="{StaticResource FieldLabel}" Margin="0,14,0,4"/>
+                </StackPanel>
+                <ListBox ItemsSource="{Binding ExtraHistory}"/>
             </DockPanel>
         </Border>
     </Grid>

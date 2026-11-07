@@ -8,12 +8,52 @@
              x:Name="Root">
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="1.2*"/>
         </Grid.RowDefinitions>
 
+        <!-- إنتاج إضافي بانتظار الموافقة (من أوامر الإنتاج): يظهر فقط حين يوجد طلب -->
+        <Border Style="{StaticResource Card}" Margin="0,0,0,12" MaxHeight="300"
+                Visibility="{Binding HasExtraRequests, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="إنتاج إضافي بانتظار موافقتك" Style="{StaticResource SectionTitle}" Margin="0,0,0,6"/>
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6"
+                           Text="زيادة على أمر إنتاج قائم: الموافقة تصرف المواد الأولية الزائدة وتُدخل الناتج مخزن المنتج التام على دفعة الأمر نفسها. يمكن الاعتماد جزئيًا بتقليل العدد، أو الرفض بسبب."/>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
+                    <TextBlock Text="المعتمد (عبوات)" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox Text="{Binding ApprovePacks, UpdateSourceTrigger=PropertyChanged}" Width="80"/>
+                    <Button Content="موافقة وتنفيذ (صرف + إدخال)" Style="{StaticResource SuccessButton}" Command="{Binding ApproveExtraCommand}" Margin="8,0,0,0"/>
+                    <TextBox Text="{Binding RejectNote, UpdateSourceTrigger=PropertyChanged}" Width="200" Margin="14,0,0,0" ToolTip="سبب الرفض"/>
+                    <Button Content="رفض بسبب" Style="{StaticResource SecondaryButton}" Command="{Binding RejectExtraCommand}"/>
+                </StackPanel>
+                <DataGrid ItemsSource="{Binding ExtraRequests}" SelectedItem="{Binding SelectedExtra}" IsReadOnly="True" MaxHeight="150">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الرقم" Binding="{Binding Id}" Width="60"/>
+                        <DataGridTemplateColumn Header="النوع" Width="110">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border Background="#CFFAFE" CornerRadius="9" Padding="8,1" HorizontalAlignment="Left">
+                                        <TextBlock Text="إنتاج إضافي" Foreground="#0E7490" FontSize="12"/>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="الأمر" Binding="{Binding OrderNumber}" Width="100"/>
+                        <DataGridTextColumn Header="الدفعة" Binding="{Binding BatchNumber}" Width="80"/>
+                        <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
+                        <DataGridTextColumn Header="المتغير" Binding="{Binding VariantText}" Width="*"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding PacksText}" Width="110"/>
+                        <DataGridTextColumn Header="القطع" Binding="{Binding Pieces, StringFormat=N0}" Width="70"/>
+                        <DataGridTextColumn Header="السبب" Binding="{Binding Reason}" Width="*"/>
+                        <DataGridTextColumn Header="طلبه" Binding="{Binding RequestedBy}" Width="90"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
         <!-- الطلبات -->
-        <Border Style="{StaticResource Card}">
+        <Border Grid.Row="1" Style="{StaticResource Card}">
             <DockPanel>
                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                     <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#2563EB" Command="{Binding RefreshCommand}"/>
@@ -44,7 +84,7 @@
         </Border>
 
         <!-- التجهيز -->
-        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,12,0,0">
+        <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,12,0,0">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Top" Text="تجهيز الطلب المختار" Style="{StaticResource SectionTitle}"/>
                 <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" TextWrapping="Wrap"

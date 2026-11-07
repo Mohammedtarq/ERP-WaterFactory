@@ -669,4 +669,74 @@ public class BatchVariantTests
         Assert.Contains("المتاح 60", r.ErrorMessage);
         Assert.Contains("الناقص 40", r.ErrorMessage);
     }
+
+    [Fact]
+    public async Task Extra_production_is_requested_approved_partially_and_lands_on_the_same_batch()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "EX1");
+        var (r, orderId, _) = await new DailyProductionService(db).RecordAsync(DateTime.Today,
+            new[] { new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 5, s.HassounRecipe.Id) }, _f.AdminId);
+        Assert.True(r.Success, r.ErrorMessage);
+        var line = await db.ProductionOrderLines.AsNoTracking().SingleAsync(l => l.ProductionOrderId == orderId);
+        var batches = await db.ItemBatches.CountAsync(b => b.ItemId == s.Water.Id);
+        var svc = new ExtraProductionService(db);
+
+        // مادة ناقصة: تُسمّى ولا يُسجَّل طلب
+        var (tooMuch, noId) = await svc.RequestAsync(line.Id, s.Carton.Id, 5_000, "كبير جدًا", _f.AdminId);
+        Assert.False(tooMuch.Success);
+        Assert.Null(noId);
+        Assert.Contains("الناقص", tooMuch.ErrorMessage);
+        Assert.Contains("الحسون", tooMuch.ErrorMessage);
+        // السبب إلزامي
+        Assert.False((await svc.RequestAsync(line.Id, s.Carton.Id, 2, " ", _f.AdminId)).result.Success);
+
+        var (ok, reqId) = await svc.RequestAsync(line.Id, s.Carton.Id, 2, "طلب إضافي من المطعم", _f.AdminId);
+        Assert.True(ok.Success, ok.ErrorMessage);
+        var pending = Assert.Single(await svc.PendingAsync());
+        Assert.Equal(2m, pending.Packs);
+        Assert.Equal(24m, pending.Pieces);
+        Assert.Equal(60m, await FgAsync(db, s, s.HassounRecipe.Id));      // لا شيء قبل الموافقة
+
+        // موافقة جزئية: كرتون واحد = 12 قطعة على التشغيلة نفسها
+        Assert.False((await svc.ApproveAsync(reqId!.Value, 3, _f.AdminId)).Success);   // أكثر من المطلوب
+        var approved = await svc.ApproveAsync(reqId.Value, 1, _f.AdminId);
+        Assert.True(approved.Success, approved.ErrorMessage);
+        Assert.Equal(72m, await FgAsync(db, s, s.HassounRecipe.Id));
+        Assert.Equal(batches, await db.ItemBatches.CountAsync(b => b.ItemId == s.Water.Id));   // لا تشغيلة جديدة
+        Assert.Equal(60m, (await db.ProductionOrderLines.AsNoTracking().SingleAsync(l => l.Id == line.Id)).QuantityToProduce);   // كمية الأمر كما هي
+        var row = Assert.Single(await svc.ForOrderAsync(orderId!.Value));
+        Assert.Equal(ExtraProductionStatus.Partial, row.Status);
+        Assert.Equal(12m, (await svc.ApprovedPiecesByLineAsync(orderId.Value))[line.Id]);
+        Assert.Empty(await svc.PendingAsync());
+        Assert.False((await svc.ApproveAsync(reqId.Value, null, _f.AdminId)).Success);   // لا يُعتمد مرتين
+
+        // رفض بسبب إلزامي، بلا أثر على المخزن
+        var (ok2, req2) = await svc.RequestAsync(line.Id, s.Carton.Id, 1, "زيادة أخرى", _f.AdminId);
+        Assert.True(ok2.Success, ok2.ErrorMessage);
+        Assert.False((await svc.RejectAsync(req2!.Value, "", _f.AdminId)).Success);
+        Assert.True((await svc.RejectAsync(req2.Value, "لا حاجة", _f.AdminId)).Success);
+        Assert.Equal(72m, await FgAsync(db, s, s.HassounRecipe.Id));
+        Assert.Equal(ExtraProductionStatus.Rejected, (await db.ExtraProductionRequests.AsNoTracking().SingleAsync(x => x.Id == req2.Value)).Status);
+    }
+
+    [Fact]
+    public async Task Extra_production_settles_a_variant_sold_before_it_was_made()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "EX2");
+        var (r, orderId, _) = await new DailyProductionService(db).RecordAsync(DateTime.Today,
+            new[] { new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 1, s.HassounRecipe.Id) }, _f.AdminId);   // 12 قطعة
+        Assert.True(r.Success, r.ErrorMessage);
+        var (posted, _) = await SellAsync(db, s, s.Hassoun, 30, _f.AdminId, s.HassounRecipe.Id);   // 12 متاح + 18 بانتظار الإنتاج
+        Assert.True(posted.Success, posted.ErrorMessage);
+        Assert.Equal(18m, (await new PendingProductionService(db).OpenAsync()).Sum(o => o.Open));
+        var line = await db.ProductionOrderLines.AsNoTracking().SingleAsync(l => l.ProductionOrderId == orderId);
+        var svc = new ExtraProductionService(db);
+        var (ok, id) = await svc.RequestAsync(line.Id, s.Carton.Id, 2, "تغطية بيع سابق", _f.AdminId);   // 24 قطعة
+        Assert.True(ok.Success, ok.ErrorMessage);
+        Assert.True((await svc.ApproveAsync(id!.Value, null, _f.AdminId)).Success);
+        Assert.Empty(await new PendingProductionService(db).OpenAsync());     // سُوّي الـ18
+        Assert.Equal(6m, await FgAsync(db, s, s.HassounRecipe.Id));          // 24 - 18
+    }
 }

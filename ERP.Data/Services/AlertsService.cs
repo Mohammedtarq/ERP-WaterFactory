@@ -203,6 +203,26 @@ public class AlertsService
                     open.Count, AlertLevel.Warning, ModuleCode.Production, "PendingProductionSectionViewModel"));
         }
 
+        // 6-أ) إنتاج إضافي على أوامر: بانتظار موافقة أمين المخزن، وقرارات حديثة لمن طلبها
+        if (warehouse)
+        {
+            var extra = await _db.ExtraProductionRequests.AsNoTracking().Where(r => r.Status == ExtraProductionStatus.Pending)
+                .OrderBy(r => r.Id).Select(r => r.ProductionOrder.MONumber).ToListAsync();
+            if (extra.Count > 0)
+                alerts.Add(new("extra-production", $"إنتاج إضافي بانتظار موافقتك: {extra.Count}", Names(extra.Distinct(), extra.Distinct().Count()),
+                    extra.Count, AlertLevel.Warning, ModuleCode.Warehouse, "PrepareLoadOrdersSectionViewModel"));
+        }
+        if (p.CanView(ModuleCode.Production))
+        {
+            var since = DateTime.UtcNow.AddDays(-2);
+            var decided = await _db.ExtraProductionRequests.AsNoTracking().Where(r => r.Status != ExtraProductionStatus.Pending && r.DecidedAt >= since)
+                .OrderByDescending(r => r.DecidedAt).Select(r => new { r.ProductionOrder.MONumber, r.Status }).ToListAsync();
+            if (decided.Count > 0)
+                alerts.Add(new("extra-production-decided", $"قرارات الإنتاج الإضافي: {decided.Count}",
+                    Names(decided.Select(d => $"{d.MONumber} ({(d.Status == ExtraProductionStatus.Rejected ? "مرفوض" : d.Status == ExtraProductionStatus.Partial ? "جزئي" : "موافق")})"), decided.Count),
+                    decided.Count, AlertLevel.Info, ModuleCode.Production, "ProductionOrdersSectionViewModel"));
+        }
+
         // 6-ب) أوامر بدأ تشغيلها ولم تُفحص بعد (المختبر)
         if (p.CanView(ModuleCode.Lab))
         {

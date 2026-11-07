@@ -87,6 +87,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         NewOrderCommand = new AsyncRelayCommand(async () =>
         {
             if (!Require(CanAdd, "إنشاء أوامر الإنتاج")) return;
+            ExtraOrder = null;
             BatchOrder = null;
             ComposeLines.Clear();
             SetPacks(0);
@@ -100,6 +101,9 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         OverrideCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenOverrideAsync(r) : Task.CompletedTask);
         SaveOverrideCommand = new AsyncRelayCommand(SaveOverrideAsync);
         CloseOverrideCommand = new RelayCommand(() => OverrideOrder = null);
+        ExtraCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenExtraAsync(r) : Task.CompletedTask);
+        SaveExtraCommand = new AsyncRelayCommand(SaveExtraAsync);
+        CloseExtraCommand = new RelayCommand(() => ExtraOrder = null);
         CancelComposeCommand = new RelayCommand(() => IsComposing = false);
         AddLineCommand = new AsyncRelayCommand(AddLineAsync);
         RemoveLineCommand = new AsyncRelayCommand(async p => { if (p is OrderLineDraft l) { ComposeLines.Remove(l); await PreviewAsync(); } });
@@ -128,7 +132,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
 
     public bool IsComposing { get => _isComposing; private set { if (SetProperty(ref _isComposing, value)) OnPropertyChanged(nameof(HasSidePanel)); } }
     /// <summary>لوحة جانبية مفتوحة (أمر جديد، رقم الدفعة، الاستبدال): تأخذ عرضًا من الجدول، فتُخفى منه الأعمدة الأقل أهمية.</summary>
-    public bool HasSidePanel => IsComposing || IsEditingBatch || IsOverriding;
+    public bool HasSidePanel => IsComposing || IsEditingBatch || IsOverriding || IsExtra;
     public Item? FinishedItem { get => _finishedItem; set { if (SetProperty(ref _finishedItem, value)) Background(LoadRecipesAsync()); } }
     public CustomRecipe? Recipe { get => _recipe; set { if (SetProperty(ref _recipe, value)) Background(PreviewAsync()); } }
     /// <summary>عبوات المنتج المختار (كارتون، شرنك…) — الأكبر أولًا؛ الإنتاج يُدخل بالعبوة لا بالقطعة.</summary>
@@ -210,7 +214,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     public string NewBatchNumber { get => _newBatchNumber; set => SetProperty(ref _newBatchNumber, value); }
     public string BatchReason { get => _batchReason; set => SetProperty(ref _batchReason, value); }
     public ObservableCollection<string> BatchHistory { get; } = new();
-    protected override bool HasPendingInput => IsComposing || IsEditingBatch || IsOverriding;
+    protected override bool HasPendingInput => IsComposing || IsEditingBatch || IsOverriding || IsExtra;
 
     protected override void ResetInput()
     {
@@ -219,6 +223,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         SetPacks(0);
         BatchOrder = null;
         OverrideOrder = null;
+        ExtraOrder = null;
     }
 
     // ---------------- استبدال مكوّن في أمر واحد ----------------
@@ -255,6 +260,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     {
         if (!Require(CanEdit, "استبدال مكوّن في أمر الإنتاج")) return;
         if (row.Status != ProductionOrderStatus.Draft) { Dialogs.Error("الاستبدال يكون قبل بدء التشغيل (الأمر مسودة)"); return; }
+        ExtraOrder = null;
         OverrideOrder = row;
         OverrideReason = "";
         OverrideReplacement = null;
@@ -304,6 +310,123 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
             await LoadAsync();
         }
     }
+    // ---------------- إنتاج إضافي على أمر/دفعة (يوافق عليه أمين المخزن) ----------------
+    private ProductionOrderRow? _extraOrder;
+    private ProductionLineRow? _extraLine;
+    private ItemPackagingLevel? _extraLevel;
+    private decimal _extraPacks;
+    private string _extraReason = "";
+    private string _extraNeedsText = "";
+    private bool _extraShort;
+    private int _extraToken;
+    private int _extraLevelsToken;
+    public AsyncRelayCommand ExtraCommand { get; }
+    public AsyncRelayCommand SaveExtraCommand { get; }
+    public RelayCommand CloseExtraCommand { get; }
+    public ProductionOrderRow? ExtraOrder
+    {
+        get => _extraOrder;
+        private set
+        {
+            if (!SetProperty(ref _extraOrder, value)) return;
+            OnPropertyChanged(nameof(IsExtra));
+            OnPropertyChanged(nameof(HasSidePanel));
+            if (value is not null) { IsComposing = false; BatchOrder = null; OverrideOrder = null; }
+        }
+    }
+    public bool IsExtra => ExtraOrder is not null;
+    public ObservableCollection<ProductionLineRow> ExtraLines { get; } = new();
+    public ObservableCollection<ItemPackagingLevel> ExtraLevels { get; } = new();
+    public ObservableCollection<string> ExtraHistory { get; } = new();
+    public ProductionLineRow? ExtraLine { get => _extraLine; set { if (SetProperty(ref _extraLine, value)) Background(LoadExtraLevelsAsync()); } }
+    public ItemPackagingLevel? ExtraLevel { get => _extraLevel; set { if (SetProperty(ref _extraLevel, value)) { OnPropertyChanged(nameof(ExtraPiecesText)); Background(CheckExtraAsync()); } } }
+    public decimal ExtraPacks { get => _extraPacks; set { if (SetProperty(ref _extraPacks, value)) { OnPropertyChanged(nameof(ExtraPiecesText)); Background(CheckExtraAsync()); } } }
+    public string ExtraReason { get => _extraReason; set => SetProperty(ref _extraReason, value); }
+    /// <summary>نتيجة فحص المواد للزيادة: «المواد تكفي» أو اسم كل مادة ناقصة ومقدار نقصها.</summary>
+    public string ExtraNeedsText { get => _extraNeedsText; private set => SetProperty(ref _extraNeedsText, value); }
+    public bool ExtraShort { get => _extraShort; private set => SetProperty(ref _extraShort, value); }
+    public string ExtraPiecesText => ExtraLevel is { EquivalentBaseUnits: > 1 } l && ExtraPacks > 0 ? $"{ExtraPacks:N0} {l.LevelName} = {ExtraPacks * l.EquivalentBaseUnits:N0} قطعة" : "";
+
+    private async Task OpenExtraAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanAdd, "الإنتاج الإضافي")) return;
+        if (row.Status is ProductionOrderStatus.Draft or ProductionOrderStatus.Cancelled)
+        { Dialogs.Error("الإنتاج الإضافي يكون لأمر بدأ تشغيله أو اكتمل"); return; }
+        ExtraOrder = row;
+        ExtraLines.Clear();
+        foreach (var l in row.Lines) ExtraLines.Add(l);
+        _extraPacks = 0;
+        OnPropertyChanged(nameof(ExtraPacks));
+        ExtraReason = "";
+        ExtraNeedsText = "";
+        ExtraShort = false;
+        _extraLine = ExtraLines.FirstOrDefault();
+        OnPropertyChanged(nameof(ExtraLine));
+        await LoadExtraLevelsAsync();
+        await LoadExtraHistoryAsync();
+    }
+
+    private async Task LoadExtraLevelsAsync()
+    {
+        var token = ++_extraLevelsToken;
+        ExtraLevels.Clear();
+        _extraLevel = null;
+        if (ExtraLine is null) { OnPropertyChanged(nameof(ExtraLevel)); return; }
+        await using var db = Session.NewDb();
+        var levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == ExtraLine.FinishedItemId && l.EquivalentBaseUnits > 0)
+            .OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync();
+        if (token != _extraLevelsToken) return;
+        foreach (var l in levels) ExtraLevels.Add(l);
+        _extraLevel = ExtraLevels.FirstOrDefault();
+        OnPropertyChanged(nameof(ExtraLevel));
+        OnPropertyChanged(nameof(ExtraPiecesText));
+        await CheckExtraAsync();
+    }
+
+    /// <summary>فحص المواد للزيادة فورًا: تُسمّى المادة الناقصة قبل الإرسال.</summary>
+    private async Task CheckExtraAsync()
+    {
+        var token = ++_extraToken;
+        if (ExtraLine is null || ExtraLevel is null || ExtraPacks <= 0) { ExtraNeedsText = ""; ExtraShort = false; return; }
+        await using var db = Session.NewDb();
+        var (error, needs) = await new DailyProductionService(db).PreviewExtraAsync(ExtraLine.LineId, ExtraLevel.Id, ExtraPacks);
+        if (token != _extraToken) return;
+        var missing = needs.Where(n => n.IsShort).ToList();
+        ExtraShort = error is not null || missing.Count > 0;
+        ExtraNeedsText = error ?? (missing.Count > 0
+            ? "المواد لا تكفي:\n" + string.Join("\n", missing.Select(n => $"«{n.ItemName}»: المطلوب {n.Required:N0}، المتاح {n.Available:N0}، الناقص {n.Short:N0}"))
+            : $"المواد تكفي ({needs.Count} مادة)");
+    }
+
+    private async Task LoadExtraHistoryAsync()
+    {
+        ExtraHistory.Clear();
+        if (ExtraOrder is null) return;
+        await using var db = Session.NewDb();
+        foreach (var r in await new ExtraProductionService(db).ForOrderAsync(ExtraOrder.Id))
+            ExtraHistory.Add($"{r.RequestedAt.ToLocalTime():yyyy/MM/dd} — {r.PacksText} {r.VariantText} — {r.StatusText}" + (r.ApprovedPacks is decimal a && r.Status == ExtraProductionStatus.Partial ? $" ({a:N0})" : "")
+                             + $" — {r.Reason}" + (string.IsNullOrWhiteSpace(r.DecisionNote) ? "" : $" — {r.DecisionNote}"));
+    }
+
+    private async Task SaveExtraAsync()
+    {
+        if (ExtraOrder is null || !Require(CanAdd, "الإنتاج الإضافي")) return;
+        if (ExtraLine is null || ExtraLevel is null) { Dialogs.Error("اختر الصنف ووحدة التعبئة"); return; }
+        if (ExtraShort) { Dialogs.Error(ExtraNeedsText); return; }
+        await using var db = Session.NewDb();
+        var (lineId, levelId, packs, reason) = (ExtraLine.LineId, ExtraLevel.Id, ExtraPacks, ExtraReason);
+        var order = ExtraOrder.MONumber;
+        if (await RunOperationAsync(async () => (await new ExtraProductionService(db).RequestAsync(lineId, levelId, packs, reason, Session.UserId)).result,
+                                    $"أُرسل طلب الإنتاج الإضافي على {order} إلى أمين المخزن للموافقة"))
+        {
+            _extraPacks = 0;
+            OnPropertyChanged(nameof(ExtraPacks));
+            ExtraReason = "";
+            ExtraNeedsText = "";
+            await LoadExtraHistoryAsync();
+        }
+    }
+
     public RelayCommand CancelComposeCommand { get; }
     public AsyncRelayCommand PreviewCommand { get; }
     public AsyncRelayCommand CreateCommand { get; }
@@ -352,7 +475,16 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         _machine = Machines.FirstOrDefault(m => m.Id == machineId) ?? Machines.FirstOrDefault();
         OnPropertyChanged(nameof(Machine));
         Orders.Clear();
-        foreach (var o in await new ProductionService(db).GetOrdersAsync(OrdersFrom, OrdersTo)) Orders.Add(o);
+        var orderRows = await new ProductionService(db).GetOrdersAsync(OrdersFrom, OrdersTo);
+        var extras = await db.ExtraProductionRequests.AsNoTracking()
+            .Where(r => (r.Status == ExtraProductionStatus.Approved || r.Status == ExtraProductionStatus.Partial) && orderRows.Select(o => o.Id).Contains(r.ProductionOrderId))
+            .Select(r => new { r.ProductionOrderId, Pieces = (r.ApprovedPacks ?? r.Packs) * r.PackagingLevel.EquivalentBaseUnits }).ToListAsync();
+        foreach (var o in orderRows)
+        {
+            var sum = extras.Where(x => x.ProductionOrderId == o.Id).Sum(x => x.Pieces);
+            o.ExtraText = sum > 0 ? $"+ {sum:N0}" : "";
+            Orders.Add(o);
+        }
     }
 
     private async Task LoadRecipesAsync()
@@ -462,6 +594,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private async Task OpenBatchAsync(ProductionOrderRow row)
     {
         if (!Require(CanEdit, "تعديل رقم الدفعة")) return;
+        ExtraOrder = null;
         BatchOrder = row;
         BatchLines.Clear();
         foreach (var l in row.Lines) BatchLines.Add(l);

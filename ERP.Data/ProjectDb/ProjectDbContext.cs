@@ -72,6 +72,7 @@ public partial class ProjectDbContext : DbContext
     public DbSet<RepWalletTransaction> RepWalletTransactions => Set<RepWalletTransaction>();
     public DbSet<Custody> Custodies => Set<Custody>();
     public DbSet<HomeBoxEntry> HomeBoxEntries => Set<HomeBoxEntry>();
+    public DbSet<ExtraProductionRequest> ExtraProductionRequests => Set<ExtraProductionRequest>();
     public DbSet<HomeLoan> HomeLoans => Set<HomeLoan>();
     public DbSet<FinanceSetting> FinanceSettings => Set<FinanceSetting>();
     public DbSet<HomeLoanRepayment> HomeLoanRepayments => Set<HomeLoanRepayment>();
@@ -582,6 +583,21 @@ public partial class ProjectDbContext : DbContext
             e.HasOne(x => x.CashBoxTx).WithMany().HasForeignKey(x => x.CashBoxTxId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.JournalEntry).WithMany().HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ExtraProductionRequest>(e =>
+        {
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.Packs).HasPrecision(18, 3);
+            e.Property(x => x.Pieces).HasPrecision(18, 3);
+            e.Property(x => x.ApprovedPacks).HasPrecision(18, 3);
+            e.Property(x => x.Reason).HasMaxLength(300);
+            e.Property(x => x.DecisionNote).HasMaxLength(300);
+            e.HasOne(x => x.ProductionOrder).WithMany().HasForeignKey(x => x.ProductionOrderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ProductionOrderLine).WithMany().HasForeignKey(x => x.ProductionOrderLineId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.PackagingLevel).WithMany().HasForeignKey(x => x.PackagingLevelId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.RequestedByUser).WithMany().HasForeignKey(x => x.RequestedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.DecidedByUser).WithMany().HasForeignKey(x => x.DecidedByUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.Status, x.ProductionOrderId });
         });
         modelBuilder.Entity<HomeLoan>(e =>
         {

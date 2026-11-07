@@ -66,6 +66,8 @@ public class ProductionOrderRow
     public string QuantityText { get; init; } = "";
     public string PackedText { get; init; } = "";
     public string PiecesHint => $"{QuantityToProduce:N0} قطعة — المعبّأ {PackedQuantity:N0} قطعة";
+    /// <summary>الإنتاج الإضافي المعتمد على هذا الأمر بالقطع (من الطلبات الموافق عليها)، يُملأ عند التحميل.</summary>
+    public string ExtraText { get; set; } = "";
     public IReadOnlyList<ProductionLineRow> Lines { get; init; } = Array.Empty<ProductionLineRow>();
     /// <summary>المنتج بالعبوة والمحتوى (بلا تكرار لسطور الصنف نفسه): «كارتون 12×500».</summary>
     public string ProductText { get; init; } = "";
