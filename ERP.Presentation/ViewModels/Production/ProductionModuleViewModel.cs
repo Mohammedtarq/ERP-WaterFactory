@@ -517,7 +517,9 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     /// <summary>أصناف الأمر: المضافة + الصنف المختار حاليًا (إن وُجد).</summary>
     private List<ProductionLineInput> CollectLines()
     {
-        var lines = ComposeLines.Select(l => l.ToInput()).ToList();
+        // رقم الدفعة موحّد لكل أصناف الأمر: ما في الحقل الآن (المقترح آخر رقم + 1 قابل للتعديل)
+        var number = BatchNumber.Trim();
+        var lines = ComposeLines.Select(l => l.ToInput() with { BatchNumber = number }).ToList();
         if (FinishedItem is not null && Quantity > 0 && lines.All(l => l.FinishedItemId != FinishedItem.Id || l.CustomRecipeId != Recipe?.Id))
             lines.Add(new ProductionLineInput(FinishedItem.Id, Quantity, Recipe?.Id, BatchNumber));
         return lines;
@@ -531,25 +533,14 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         // الصنف نفسه مسموح مرتين: عام وطلب خاص (أو طلبان خاصان مختلفان)
         if (ComposeLines.Any(l => l.FinishedItemId == FinishedItem.Id && l.RecipeId == Recipe?.Id))
         { Dialogs.Error(Recipe is null ? "الصنف العام مضاف للأمر مسبقًا" : $"الطلب الخاص «{Recipe.Name}» مضاف للأمر مسبقًا"); return; }
-        if (!string.IsNullOrWhiteSpace(BatchNumber) && ComposeLines.Any(l => l.BatchNumber == BatchNumber.Trim()))
-        { Dialogs.Error("رقم الدفعة مستخدم لصنف آخر في الأمر"); return; }
         ComposeLines.Add(new OrderLineDraft
         {
             FinishedItemId = FinishedItem.Id, ItemName = FinishedItem.ItemName, RecipeId = Recipe?.Id, RecipeName = Recipe?.Name,
             Quantity = Quantity, QuantityText = $"{Packs:N0} {LevelName}", BatchNumber = BatchNumber.Trim()
         });
-        BatchNumber = NextSuggested(BatchNumber);
-        SetPacks(0);
+        SetPacks(0);   // رقم الدفعة يبقى كما هو: موحّد لكل أصناف الأمر
         FinishedItem = null;
         await PreviewAsync();
-    }
-
-    /// <summary>B261002-004 ← B261002-005 (أو فارغ = تلقائي إن لم يكن بنمط التسلسل).</summary>
-    public static string NextSuggested(string current)
-    {
-        var dash = current.LastIndexOf('-');
-        if (dash < 0 || !int.TryParse(current[(dash + 1)..], out var n)) return "";
-        return $"{current[..(dash + 1)]}{(n + 1).ToString(new string('0', current.Length - dash - 1))}";
     }
 
     /// <summary>معاينة المواد المطلوبة لكل أصناف الأمر (المشتركة مجمَّعة) مقابل المتاح قبل إنشاء الأمر.</summary>

@@ -288,7 +288,7 @@ public partial class ProjectDbContext : DbContext
             .HasConversion<string>();
 
         modelBuilder.Entity<ItemBatch>()
-            .HasIndex(b => new { b.ItemId, b.BatchNumber })
+            .HasIndex(b => new { b.ItemId, b.BatchNumber, b.CustomRecipeId })
             .IsUnique();
 
         modelBuilder.Entity<StockTransaction>()

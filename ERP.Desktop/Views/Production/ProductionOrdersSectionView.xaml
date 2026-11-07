@@ -149,7 +149,7 @@
                         <TextBlock Text="طلب خاص لزبون (اختياري — فارغ = الأساسي)" Style="{StaticResource FieldLabel}"/>
                         <ComboBox ItemsSource="{Binding Recipes}" SelectedItem="{Binding Recipe}" ItemTemplate="{StaticResource RecipeChoiceTemplate}"
                                   TextSearch.TextPath="Name"/>
-                        <TextBlock Text="رقم الدفعة (مولَّد تلقائيًا ويمكن تعديله)" Style="{StaticResource FieldLabel}"/>
+                        <TextBlock Text="رقم الدفعة — موحّد لكل أصناف الأمر (المقترح آخر رقم + 1، يمكن تعديله)" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding BatchNumber, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
                         <TextBlock Text="الكمية المطلوب إنتاجها (بالكارتون/الشرنك)" Style="{StaticResource FieldLabel}"/>
                         <Grid>
@@ -217,7 +217,7 @@
                     <ComboBox ItemsSource="{Binding BatchLines}" SelectedItem="{Binding BatchLine}" DisplayMemberPath="FinishedItemName"/>
                     <TextBlock Text="الرقم الحالي" Style="{StaticResource FieldLabel}"/>
                     <TextBlock Text="{Binding BatchLine.OutputBatch}" FontWeight="SemiBold"/>
-                    <TextBlock Text="الرقم الجديد (فريد على مستوى النظام)" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Text="الرقم الجديد (لكل دفعات هذا الأمر، فريد على مستوى النظام)" Style="{StaticResource FieldLabel}"/>
                     <TextBox Text="{Binding NewBatchNumber, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
                     <TextBlock Text="سبب التعديل (اختياري)" Style="{StaticResource FieldLabel}"/>
                     <TextBox Text="{Binding BatchReason}"/>

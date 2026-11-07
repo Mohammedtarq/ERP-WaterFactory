@@ -310,7 +310,7 @@ public class WarehouseDocumentService
                 if (batchId is null && newNumber is not null)
                 {
                     var number = newNumber;
-                    var batch = await _db.ItemBatches.FirstOrDefaultAsync(b => b.ItemId == l.ItemId && b.BatchNumber == number);
+                    var batch = await _db.ItemBatches.FirstOrDefaultAsync(b => b.ItemId == l.ItemId && b.BatchNumber == number && b.CustomRecipeId == l.CustomRecipeId);
                     if (batch is null)
                     {
                         // تشغيلة جديدة لطلب خاص تحمل متغيرها، وإلا ضاع الاسم الخاص وظهرت كالأساسي

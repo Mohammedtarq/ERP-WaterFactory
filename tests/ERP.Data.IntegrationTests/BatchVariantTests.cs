@@ -739,4 +739,48 @@ public class BatchVariantTests
         Assert.Empty(await new PendingProductionService(db).OpenAsync());     // سُوّي الـ18
         Assert.Equal(6m, await FgAsync(db, s, s.HassounRecipe.Id));          // 24 - 18
     }
+
+    [Fact]
+    public async Task One_unified_batch_number_serves_every_line_of_the_order_and_continues_the_counter()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "UN1");
+        var raw = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial);
+        var (_, machineId) = await new MachineService(db).SaveAsync(null, "خط موحّد UN1", "تعبئة", null, null, true);
+        var prod = new ProductionService(db);
+
+        // أول رقم يكتبه المستخدم (311) يصير رقم كل أسطر الأمر: الأساسي ومطعم الحسون والزواج
+        var lines = new[]
+        {
+            new ProductionLineInput(s.Water.Id, 120, null, "7311"), new ProductionLineInput(s.Water.Id, 48, s.HassounRecipe.Id, "7311"),
+            new ProductionLineInput(s.Water.Id, 24, s.Wedding.Id, "7311")
+        };
+        var (r, orderId) = await prod.CreateOrderAsync(lines, raw.Id, machineId, _f.AdminId);
+        Assert.True(r.Success, r.ErrorMessage);
+        var batches = await db.ProductionOrderLines.AsNoTracking().Where(l => l.ProductionOrderId == orderId).OrderBy(l => l.LineNo).Select(l => l.OutputBatch!).ToListAsync();
+        Assert.All(batches, b => Assert.Equal("7311", b.BatchNumber));
+        Assert.Equal(3, batches.Select(b => b.Id).Distinct().Count());     // ولكل سطر دفعته: تتبع الصنف والمتغير
+        Assert.Equal(new int?[] { null, s.HassounRecipe.Id, s.Wedding.Id }, batches.Select(b => b.CustomRecipeId).ToArray());
+
+        // العدّاد متصل: التالي 7312 (الأرقام الحرة والقديمة لا تؤثر فيه)
+        Assert.Equal("7312", await prod.NextBatchNumberAsync());
+        // رقم مكرر لأمر آخر مرفوض
+        Assert.Contains("مستخدم", (await prod.CreateOrderAsync(new[] { new ProductionLineInput(s.Water.Id, 12, null, "7311") }, raw.Id, machineId, _f.AdminId)).result.ErrorMessage);
+        // بلا رقم: يُولَّد واحد لكل الأسطر
+        var (r2, order2) = await prod.CreateOrderAsync(new[] { new ProductionLineInput(s.Water.Id, 12), new ProductionLineInput(s.Water.Id, 12, s.HassounRecipe.Id) }, raw.Id, machineId, _f.AdminId);
+        Assert.True(r2.Success, r2.ErrorMessage);
+        var auto = await db.ProductionOrderLines.AsNoTracking().Where(l => l.ProductionOrderId == order2).Select(l => l.OutputBatch!.BatchNumber).ToListAsync();
+        Assert.Equal(new[] { "7312", "7312" }, auto);
+
+        // تعديل رقم الأمر يغيّر كل دفعاته معًا، وسجل واحد
+        var firstLine = await db.ProductionOrderLines.AsNoTracking().Where(l => l.ProductionOrderId == orderId).OrderBy(l => l.LineNo).Select(l => l.Id).FirstAsync();
+        Assert.True((await prod.ChangeLineBatchNumberAsync(firstLine, "8000", "تصحيح", _f.AdminId)).Success);
+        var renamed = await db.ItemBatches.AsNoTracking().Where(b => b.ProductionOrderId == orderId).Select(b => b.BatchNumber).ToListAsync();
+        Assert.All(renamed, n => Assert.Equal("8000", n));
+        var history = await prod.GetBatchHistoryAsync(orderId!.Value);   // تعديل الإنشاء ثم تعديل الرقم: مرة واحدة لكل منهما لا لكل دفعة
+        Assert.Equal(new[] { ("7311", "8000") }, history.Where(h => h.NewNumber == "8000").Select(h => (h.OldNumber, h.NewNumber)).ToArray());
+        Assert.Equal(2, history.Count);
+        // المختبر يصل إلى الأمر برقم الدفعة الموحّد
+        Assert.True((await prod.RecordQcByBatchAsync("8000", Array.Empty<QcInput>(), _f.AdminId)).result.ErrorMessage?.Contains("الدفعة") != true);
+    }
 }

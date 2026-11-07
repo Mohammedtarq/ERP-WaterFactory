@@ -135,8 +135,9 @@ public class ProductionService
         // الصنف نفسه مسموح مرتين بوصفتين مختلفتين (عام وطلب خاص)؛ المكرر بالوصفة نفسها يُجمع في سطر
         if (inputs.GroupBy(i => (i.FinishedItemId, i.CustomRecipeId)).Any(g => g.Count() > 1))
             return (FinanceOperationResult.Fail("الصنف مكرر في الأمر بالوصفة نفسها — اجمع كميته في سطر واحد"), null);
-        var customBatches = inputs.Where(i => !string.IsNullOrWhiteSpace(i.BatchNumber)).Select(i => i.BatchNumber!.Trim()).ToList();
-        if (customBatches.Count != customBatches.Distinct().Count()) return (FinanceOperationResult.Fail("رقم الدفعة مكرر بين أصناف الأمر"), null);
+        // رقم الدفعة موحّد للأمر كله (أصنافه ومتغيراته): الرقم المكتوب أو المولَّد مرة واحدة. أرقام مختلفة مكتوبة لأسطر مختلفة تبقى كما كتبت (للتوافق)
+        var customBatches = inputs.Where(i => !string.IsNullOrWhiteSpace(i.BatchNumber)).Select(i => i.BatchNumber!.Trim()).Distinct().ToList();
+        var unified = customBatches.Count <= 1;
         var raw = await _db.Warehouses.FindAsync(rawWarehouseId);
         if (raw is null) return (FinanceOperationResult.Fail("اختر مخزن المواد الأولية"), null);
         var machine = machineId is int mid ? await _db.Machines.FindAsync(mid) : null;
@@ -160,6 +161,7 @@ public class ProductionService
             if (batchError is not null) return (FinanceOperationResult.Fail(batchError), null);
         }
 
+        var orderGenerated = unified ? await NextBatchNumberAsync() : null;
         var first = recipes[0];
         var order = new ProductionOrder
         {
@@ -189,8 +191,9 @@ public class ProductionService
                 });
 
             // رقم الدفعة: المولَّد تلقائيًا، أو ما عدّله المستخدم قبل الإنشاء (يُحفظ الأصلي ويُسجَّل التعديل)
-            var generated = await NextBatchNumberAsync();
-            var chosen = string.IsNullOrWhiteSpace(input.BatchNumber) ? generated : input.BatchNumber.Trim();
+            var generated = orderGenerated ?? await NextBatchNumberAsync();
+            var chosen = unified ? (customBatches.Count == 1 ? customBatches[0] : generated)
+                                 : (string.IsNullOrWhiteSpace(input.BatchNumber) ? generated : input.BatchNumber.Trim());
             var batch = new ItemBatch
             {
                 ItemId = input.FinishedItemId, BatchNumber = chosen, ProductionOrderId = order.Id, CustomRecipeId = line.CustomRecipeId,
@@ -208,25 +211,26 @@ public class ProductionService
         return (FinanceOperationResult.Ok(), order.Id);
     }
 
-    /// <summary>الرقم التلقائي التالي لدفعة إنتاج: B + تاريخ اليوم + تسلسل يومي (مثال B261002-003).</summary>
+    /// <summary>
+    /// الرقم التلقائي التالي لدفعة إنتاج: عدّاد سنوي متصل (آخر رقم مستعمل + 1) يستمر عبر السنين دون تصفير (مثل 312).
+    /// يُحسب من أرقام دفعات الإنتاج الصرفة (أرقام فقط)، فالأرقام الحرة (LOT-777) والقديمة (B261002-003) لا تؤثر فيه.
+    /// </summary>
     public async Task<string> NextBatchNumberAsync()
     {
-        var prefix = $"B{DateTime.Today:yyMMdd}-";
-        var used = await _db.ItemBatches.Where(b => b.ProductionOrderId != null && (b.BatchNumber.StartsWith(prefix) || (b.OriginalBatchNumber != null && b.OriginalBatchNumber.StartsWith(prefix))))
-                                        .Select(b => new { b.BatchNumber, b.OriginalBatchNumber }).ToListAsync();
+        var used = await _db.ItemBatches.Where(b => b.ProductionOrderId != null).Select(b => new { b.BatchNumber, b.OriginalBatchNumber }).ToListAsync();
         var max = used.SelectMany(u => new[] { u.BatchNumber, u.OriginalBatchNumber })
-                      .Where(n => n != null && n.StartsWith(prefix))
-                      .Select(n => int.TryParse(n![prefix.Length..], out var x) ? x : 0)
+                      .Where(n => !string.IsNullOrEmpty(n) && n.Length <= 9 && n.All(char.IsAsciiDigit))
+                      .Select(n => int.Parse(n!))
                       .DefaultIfEmpty(0).Max();
-        return $"{prefix}{max + 1:D3}";
+        return (max + 1).ToString();
     }
 
-    private async Task<string?> ValidateBatchNumberAsync(string number, int? exceptBatchId)
+    private async Task<string?> ValidateBatchNumberAsync(string number, IReadOnlyCollection<int>? exceptBatchIds)
     {
         if (string.IsNullOrWhiteSpace(number)) return "أدخل رقم الدفعة";
         if (number.Length > 50) return "رقم الدفعة طويل جدًا (50 حرفًا كحد أقصى)";
-        var except = exceptBatchId ?? 0;
-        if (await _db.ItemBatches.AnyAsync(b => b.ProductionOrderId != null && b.BatchNumber == number && b.Id != except))
+        var except = exceptBatchIds ?? Array.Empty<int>();
+        if (await _db.ItemBatches.AnyAsync(b => b.ProductionOrderId != null && b.BatchNumber == number && !except.Contains(b.Id)))
             return $"رقم الدفعة \"{number}\" مستخدم لدفعة إنتاج أخرى — أرقام الدفعات يجب أن تكون فريدة";
         return null;
     }
@@ -241,16 +245,23 @@ public class ProductionService
         if (line?.OutputBatch is null) return FinanceOperationResult.Fail("السطر بلا دفعة");
         if (line.ProductionOrder.Status == ProductionOrderStatus.Cancelled) return FinanceOperationResult.Fail("الأمر ملغى");
         newNumber = (newNumber ?? "").Trim();
-        if (newNumber == line.OutputBatch.BatchNumber) return FinanceOperationResult.Fail("الرقم الجديد مطابق للحالي");
-        var error = await ValidateBatchNumberAsync(newNumber, line.OutputBatch.Id);
+        var oldNumber = line.OutputBatch.BatchNumber;
+        if (newNumber == oldNumber) return FinanceOperationResult.Fail("الرقم الجديد مطابق للحالي");
+        // الرقم موحّد للأمر: كل دفعات الأمر التي تحمل هذا الرقم تتغير معًا
+        var batches = await _db.ProductionOrderLines.Where(l => l.ProductionOrderId == line.ProductionOrderId && l.OutputBatch != null && l.OutputBatch.BatchNumber == oldNumber)
+                                                    .Select(l => l.OutputBatch!).Distinct().ToListAsync();
+        var error = await ValidateBatchNumberAsync(newNumber, batches.Select(b => b.Id).ToList());
         if (error is not null) return FinanceOperationResult.Fail(error);
-        _db.BatchNumberChanges.Add(new BatchNumberChange
+        foreach (var batch in batches)
         {
-            BatchId = line.OutputBatch.Id, OldNumber = line.OutputBatch.BatchNumber, NewNumber = newNumber,
-            Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(), ChangedByUserId = userId
-        });
-        line.OutputBatch.OriginalBatchNumber ??= line.OutputBatch.BatchNumber;
-        line.OutputBatch.BatchNumber = newNumber;
+            _db.BatchNumberChanges.Add(new BatchNumberChange
+            {
+                BatchId = batch.Id, OldNumber = oldNumber, NewNumber = newNumber,
+                Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(), ChangedByUserId = userId
+            });
+            batch.OriginalBatchNumber ??= oldNumber;
+            batch.BatchNumber = newNumber;
+        }
         await _db.SaveChangesAsync();
         return FinanceOperationResult.Ok();
     }
@@ -263,10 +274,14 @@ public class ProductionService
     }
 
     /// <summary>سجل تعديلات أرقام دفعات كل أصناف الأمر.</summary>
-    public Task<List<BatchNumberChange>> GetBatchHistoryAsync(int orderId) =>
-        _db.BatchNumberChanges.AsNoTracking().Include(c => c.ChangedByUser).Include(c => c.Batch)
+    public async Task<List<BatchNumberChange>> GetBatchHistoryAsync(int orderId)
+    {
+        var all = await _db.BatchNumberChanges.AsNoTracking().Include(c => c.ChangedByUser).Include(c => c.Batch)
            .Where(c => _db.ProductionOrderLines.Any(l => l.ProductionOrderId == orderId && l.OutputBatchId == c.BatchId))
            .OrderBy(c => c.Id).ToListAsync();
+        // رقم موحّد: تعديل واحد يُسجَّل لكل دفعة في الأمر، ويُعرض مرة واحدة
+        return all.GroupBy(c => (c.OldNumber, c.NewNumber, c.ChangedByUserId, c.Reason)).Select(g => g.First()).OrderBy(c => c.Id).ToList();
+    }
 
     /// <summary>المختبر يصل إلى الأمر برقم أي دفعة فيه، والنتيجة تسري على الأمر كله.</summary>
     public async Task<(FinanceOperationResult result, QCOverallResult? overall)> RecordQcByBatchAsync(string batchNumber, IReadOnlyCollection<QcInput> inputs, int userId)

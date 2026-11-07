@@ -350,7 +350,7 @@ public class ProductionServiceTests
         Assert.Equal(fgBefore + 1000, await Balance(db, w500.Id, fg.Id));
         var order = await db.ProductionOrders.AsNoTracking().Include(o => o.OutputBatch).SingleAsync(o => o.Id == orderId);
         Assert.Equal(ProductionOrderStatus.Completed, order.Status);
-        Assert.StartsWith($"B{DateTime.Today:yyMMdd}-", order.OutputBatch!.BatchNumber);
+        Assert.True(int.TryParse(order.OutputBatch!.BatchNumber, out _), order.OutputBatch.BatchNumber);   // عدّاد متصل برقم صرف
         Assert.Equal(order.Id, order.OutputBatch.ProductionOrderId);
 
         // أمر ثانٍ: pH خارج الحدود ← الدفعة مرفوضة ← لا تعبئة ← الإلغاء مسموح
@@ -573,17 +573,16 @@ public class ProductionServiceTests
         var w500 = await db.Items.FirstAsync(i => i.ItemCode == "W-500");
         var raw = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial && w.Name == "مخزن المواد الأولية");
         var machineId = (int?)(await db.Machines.FirstAsync(m => m.Name == "نافخة 1")).Id;
-        var prefix = $"B{DateTime.Today:yyMMdd}-";
 
-        // تلقائي ومتسلسل
+        // تلقائي ومتسلسل: عدّاد متصل برقم صرف (312...) لا بتاريخ اليوم
         var expected = await prod.NextBatchNumberAsync();
-        Assert.StartsWith(prefix, expected);
+        Assert.True(int.TryParse(expected, out _), expected);
         var (_, a) = await prod.CreateOrderAsync(w500.Id, 10, null, raw.Id, machineId, user);
         var batchA = await db.ItemBatches.AsNoTracking().SingleAsync(b => b.ProductionOrderId == a);
         Assert.Equal(expected, batchA.BatchNumber);
         Assert.Null(batchA.OriginalBatchNumber);
         var next = await prod.NextBatchNumberAsync();
-        Assert.Equal(int.Parse(expected[prefix.Length..]) + 1, int.Parse(next[prefix.Length..]));
+        Assert.Equal(int.Parse(expected) + 1, int.Parse(next));
 
         // معدَّل عند الإنشاء ← يُحفظ المولَّد كأصلي ويُسجَّل التعديل
         var (cr, b) = await prod.CreateOrderAsync(w500.Id, 10, null, raw.Id, machineId, user, " LOT-777 ");
@@ -682,7 +681,8 @@ public class ProductionServiceTests
         Assert.True(cr.Success, cr.ErrorMessage);
         var orderLines = await db.ProductionOrderLines.AsNoTracking().Include(l => l.OutputBatch).Where(l => l.ProductionOrderId == orderId).OrderBy(l => l.LineNo).ToListAsync();
         Assert.Equal(2, orderLines.Count);
-        Assert.NotEqual(orderLines[0].OutputBatch!.BatchNumber, orderLines[1].OutputBatch!.BatchNumber);
+        Assert.Equal(orderLines[0].OutputBatch!.BatchNumber, orderLines[1].OutputBatch!.BatchNumber);   // رقم دفعة واحد للأمر كله
+        Assert.NotEqual(orderLines[0].OutputBatchId, orderLines[1].OutputBatchId);                       // ولكل صنف دفعته (تتبع الصنف والمتغير)
         var consumptions = await db.ProductionOrderConsumptions.AsNoTracking().Where(c => c.ProductionOrderId == orderId).ToListAsync();
         Assert.Equal(4, consumptions.Count);
         Assert.Equal(2, consumptions.Count(c => c.RawMaterialItemId == shared.Id));
