@@ -87,6 +87,9 @@
                                     Click="ClearCombo" Margin="4,0,0,0"/>
                             <ComboBox ItemsSource="{Binding Employees}" DisplayMemberPath="FullName" SelectedValuePath="Id" SelectedValue="{Binding Editor.OwnerEmployeeId}"/>
                         </DockPanel>
+                        <TextBlock Text="تظهر مساحة هذا المخزن في وحدة" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding ShowInOptions}" DisplayMemberPath="Name" SelectedValuePath="Code" SelectedValue="{Binding Editor.ShowInModule}"
+                                  ToolTip="مثلًا مخزن الإنتاج أو التالف يظهر تبويبه في قسم الإنتاج بدل المخازن. لا يتغير المخزون ولا الصلاحيات الأصلية"/>
                         <CheckBox Content="فعّال" IsChecked="{Binding Editor.IsActive}"/>
                         <TextBlock Text="مخازن التالف والفحص والمرتجعات والمواد الأولية والطريق تُجعل غير قابلة للبيع تلقائيًا." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>
                     </StackPanel>

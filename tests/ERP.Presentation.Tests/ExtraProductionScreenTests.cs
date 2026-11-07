@@ -165,4 +165,51 @@ public class ExtraProductionScreenTests
         Assert.Single(lines);
         Assert.Equal(120m, lines[0].QuantityToProduce);
     }
+
+    [Fact]
+    public async Task Warehouse_workspace_can_show_in_production_instead_of_warehouses_and_daily_production_is_hidden_by_default()
+    {
+        int whId;
+        await using (var db = _f.NewDb())
+        {
+            var branch = await db.Branches.FirstAsync();
+            var w = new Warehouse { BranchId = branch.Id, Name = "مخزن تالف الإنتاج SM", WarehouseType = WarehouseType.Damaged, IsSellableStock = false, ShowInModule = ModuleCode.Production };
+            db.Warehouses.Add(w);
+            await db.SaveChangesAsync();
+            whId = w.Id;
+        }
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
+        await prod.IdleAsync();
+        await prod.RefreshWorkspacesAsync();
+        var ws = Assert.Single(prod.Workspaces, x => x.WarehouseId == whId);
+        Assert.Equal(ModuleCode.Production, ws.Module);          // صلاحياته على الإنتاج
+        Assert.Equal("المخازن", ws.MovedFrom);
+        Assert.Contains(ws, prod.Tabs);
+        var warehouse = shell.Open<WarehouseModuleViewModel>(ModuleCode.Warehouse);
+        await warehouse.IdleAsync();
+        await warehouse.RefreshWorkspacesAsync();
+        Assert.DoesNotContain(warehouse.Workspaces, x => x.WarehouseId == whId);
+
+        // إعادته إلى المخازن من تعريف المخزن تعيد المساحة هناك وتزيلها من الإنتاج
+        await using (var db = _f.NewDb())
+            await db.Warehouses.Where(x => x.Id == whId).ExecuteUpdateAsync(u => u.SetProperty(x => x.ShowInModule, ""));
+        await warehouse.RefreshWorkspacesAsync();
+        await prod.RefreshWorkspacesAsync();
+        Assert.Contains(warehouse.Workspaces, x => x.WarehouseId == whId);
+        Assert.DoesNotContain(prod.Workspaces, x => x.WarehouseId == whId);
+
+        // «إنتاج اليوم»: مخفية افتراضيًا، وتظهر إن فُعِّل ظهورها، وبأرقام خطوات متتابعة
+        ProductionModuleViewModel.ShowDailyProduction = false;
+        try
+        {
+            var hidden = new ProductionModuleViewModel(shell.Session, dialogs);
+            Assert.DoesNotContain(hidden.Tabs, t => t is DailyProductionSectionViewModel);
+            Assert.Equal(new int?[] { 1, 2, 3, 4 }, hidden.Tabs.OfType<SectionViewModel>().Where(t => t.Step is not null).Select(t => t.Step).ToArray());
+            Assert.DoesNotContain(SectionCatalog.QuickEntries(shell.Session, dialogs), e => e.Key == "DailyProduction");
+        }
+        finally { ProductionModuleViewModel.ShowDailyProduction = true; }
+        var shown = new ProductionModuleViewModel(shell.Session, dialogs);
+        Assert.Contains(shown.Tabs, t => t is DailyProductionSectionViewModel);
+    }
 }

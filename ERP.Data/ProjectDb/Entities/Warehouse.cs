@@ -15,4 +15,7 @@ public class Warehouse
     public Employee? OwnerEmployee { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>الوحدة التي تظهر فيها مساحة المخزن: فارغ = المخازن، أو «Production» لتظهر في قسم الإنتاج (80_warehouse_show_in_module.sql).</summary>
+    public string ShowInModule { get; set; } = "";
 }

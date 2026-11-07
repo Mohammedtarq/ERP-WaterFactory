@@ -31,6 +31,8 @@ public static class UiThread
             app.InitializeComponent();   // يحمّل الموارد فقط؛ OnStartup لا يُستدعى لأننا لا نستدعي Run
             app.DispatcherUnhandledException += (_, e) => { lock (Unhandled) Unhandled.Add(e.Exception); e.Handled = true; };
             AsyncRelayCommand.UnhandledErrorHandler = ex => { lock (Unhandled) Unhandled.Add(ex); };
+            // «إنتاج اليوم» مخفية افتراضيًا في البرنامج؛ جولات الشاشات تصوّرها
+            ERP.Presentation.ViewModels.Production.ProductionModuleViewModel.ShowDailyProduction = true;
 
             PresentationTraceSources.Refresh();
             PresentationTraceSources.DataBindingSource.Listeners.Add(new Collector());

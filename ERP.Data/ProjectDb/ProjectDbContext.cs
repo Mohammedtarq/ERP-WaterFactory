@@ -286,6 +286,7 @@ public partial class ProjectDbContext : DbContext
         modelBuilder.Entity<Warehouse>()
             .Property(w => w.WarehouseType)
             .HasConversion<string>();
+        modelBuilder.Entity<Warehouse>().Property(w => w.ShowInModule).HasMaxLength(30).HasDefaultValue("");
 
         modelBuilder.Entity<ItemBatch>()
             .HasIndex(b => new { b.ItemId, b.BatchNumber, b.CustomRecipeId })

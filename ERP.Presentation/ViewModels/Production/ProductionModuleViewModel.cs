@@ -17,16 +17,59 @@ public class ProductionModuleViewModel : ModuleViewModel
         UseDashboard(s, d, ModuleCode.Production, ModuleDashboardViewModel.Production);
         // تسلسل العمل مرقّم: الأمر ← تحت التصنيع ← (فحص المختبر في وحدة المختبر) ← التعبئة للمخزن، ثم المتابعة والمرجعيات بلا أرقام
         Orders = AddStep(1, new ProductionOrdersSectionViewModel(s, d));
-        Daily = AddStep(2, new DailyProductionSectionViewModel(s, d));
-        Wip = AddStep(3, new MachineWipSectionViewModel(s, d));
-        Packing = AddStep(4, new PackingSectionViewModel(s, d));
-        AddStep(5, new PendingProductionSectionViewModel(s, d));
+        // «إنتاج اليوم» حلّ محله الإنتاج الإضافي داخل أوامر الإنتاج؛ يبقى في الكود مخفيًا (ShowDailyProduction) ويمكن إعادته
+        Daily = new DailyProductionSectionViewModel(s, d);
+        var step = 2;
+        if (ShowDailyProduction) AddStep(step++, Daily);
+        Wip = AddStep(step++, new MachineWipSectionViewModel(s, d));
+        Packing = AddStep(step++, new PackingSectionViewModel(s, d));
+        AddStep(step, new PendingProductionSectionViewModel(s, d));
         Add(new VariantStockSectionViewModel(s, d));
         Add(new ImportedBatchesSectionViewModel(s, d));
         Add(new ProductionReportsSectionViewModel(s, d));
         Add(new ProductionMonthSectionViewModel(s, d));
         Machines = Add(new MachinesSectionViewModel(s, d));
         Add(new CustomRecipesSectionViewModel(s, d));
+        _session = s;
+        _dialogs = d;
+        s.WorkspacesChanged += OnWorkspacesChanged;
+        Background(RefreshWorkspacesAsync());
+    }
+
+    /// <summary>إظهار شاشة «إنتاج اليوم» في القائمة (مخفية افتراضيًا بعد الإنتاج الإضافي في أوامر الإنتاج).</summary>
+    public static bool ShowDailyProduction { get; set; }
+
+    private readonly AppSession _session;
+    private readonly IDialogService _dialogs;
+    private readonly SemaphoreSlim _workspaceLock = new(1, 1);
+    private void OnWorkspacesChanged() => Background(RefreshWorkspacesAsync());
+
+    /// <summary>مساحات المخازن التي نُقلت إلى الإنتاج (تعريف المخازن ← يظهر في وحدة: الإنتاج): تبويب لكل مخزن منها، صلاحياته على وحدة الإنتاج.</summary>
+    public IReadOnlyList<Warehouse.WarehouseWorkspaceSectionViewModel> Workspaces => Tabs.ToArray().OfType<Warehouse.WarehouseWorkspaceSectionViewModel>().ToList();
+
+    public async Task RefreshWorkspacesAsync()
+    {
+        await _workspaceLock.WaitAsync();
+        try
+        {
+            await using var db = _session.NewDb();
+            var warehouses = await db.Warehouses.AsNoTracking()
+                .Where(w => w.IsActive && w.ShowInModule == ModuleCode.Production && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.RepVan)
+                .OrderBy(w => w.Name).ToListAsync();
+            foreach (var ws in Workspaces)
+            {
+                var w = warehouses.FirstOrDefault(x => x.Id == ws.WarehouseId);
+                if (w is null || w.Name != ws.Title || w.WarehouseType != ws.WarehouseType) RemoveSection(ws);
+            }
+            foreach (var w in warehouses)
+            {
+                if (Workspaces.Any(x => x.WarehouseId == w.Id)) continue;
+                var section = new Warehouse.WarehouseWorkspaceSectionViewModel(_session, _dialogs, w) { Module = ModuleCode.Production };
+                section.MovedFrom = "المخازن";
+                InsertSection(Tabs.Count, section);
+            }
+        }
+        finally { _workspaceLock.Release(); }
     }
 
     public DailyProductionSectionViewModel Daily { get; }

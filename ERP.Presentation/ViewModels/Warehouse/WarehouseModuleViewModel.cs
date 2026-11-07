@@ -73,6 +73,7 @@ public class WarehouseModuleViewModel : ModuleViewModel
         await _refreshLock.WaitAsync();
         try { await RefreshWorkspacesCoreAsync(); }
         finally { _refreshLock.Release(); }
+        _session.RaiseWorkspacesChanged();
     }
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -82,7 +83,8 @@ public class WarehouseModuleViewModel : ModuleViewModel
         await using var db = _session.NewDb();
         // سيارات المندوبين لا تأخذ تبويبًا لكل سيارة: كلها في شاشة «سيارات المندوبين»
         var warehouses = (await db.Warehouses.AsNoTracking()
-                .Where(w => w.IsActive && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.RepVan).OrderBy(w => w.Name).ToListAsync())
+                .Where(w => w.IsActive && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.RepVan
+                         && (w.ShowInModule == "" || w.ShowInModule == ModuleCode.Warehouse)).OrderBy(w => w.Name).ToListAsync())
             // ترتيب ثابت: المنتج التام، المواد الأولية، ثم بقية المخازن
             .OrderBy(w => w.WarehouseType switch { WarehouseType.FinishedGoods => 0, WarehouseType.RawMaterial => 1, _ => 2 })
             .ThenBy(w => w.Name).ToList();
@@ -210,6 +212,11 @@ public class WarehousesSectionViewModel : CrudSectionViewModel<Data.ProjectDb.En
         ArabicLabels.OptionsOf<WarehouseType>().Where(o => o.Value != WarehouseType.WorkInProcess).ToList();
     public ObservableCollection<Branch> Branches { get; } = new();
     public ObservableCollection<Employee> Employees { get; } = new();
+    /// <summary>الوحدة التي تظهر فيها مساحة هذا المخزن: المخازن (الافتراضي) أو الإنتاج.</summary>
+    public IReadOnlyList<Settings.ModuleOption> ShowInOptions { get; } = new[]
+    {
+        new Settings.ModuleOption("", "المخازن (الافتراضي)"), new Settings.ModuleOption(ModuleCode.Production, "الإنتاج")
+    };
 
     protected override int GetId(Data.ProjectDb.Entities.Warehouse e) => e.Id;
     protected override string Describe(Data.ProjectDb.Entities.Warehouse e) => e.Name;

@@ -80,6 +80,8 @@ public class AppFixture
     {
         // أي خطأ غير متوقع في الخلفية يُفشل الاختبار بدل أن يضيع
         AsyncRelayCommand.UnhandledErrorHandler = ex => Unhandled.Add(ex);
+        // «إنتاج اليوم» مخفية افتراضيًا في البرنامج، وبقية الاختبارات تغطي شاشتها وخدمتها فتُظهَر هنا
+        ERP.Presentation.ViewModels.Production.ProductionModuleViewModel.ShowDailyProduction = true;
         // الاختبارات تكتب أحيانًا مباشرة في القاعدة (خارج الجلسة): شاشات الأرصدة تُحدَّث عند كل فتح بلا مهلة
         SectionViewModel.IdleRefreshInterval = TimeSpan.Zero;
 

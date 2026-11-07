@@ -10,6 +10,10 @@ namespace ERP.Presentation.Services;
 /// </summary>
 public class AppSession
 {
+    /// <summary>تغيّرت مساحات المخازن (إضافة/نقل إلى وحدة أخرى): الوحدات التي تعرض مساحات مخازن تعيد بناء تبويباتها.</summary>
+    public event Action? WorkspacesChanged;
+    public void RaiseWorkspacesChanged() => WorkspacesChanged?.Invoke();
+
     public AppSession(string projectName, string fullName, ProjectSessionInfo info,
                       string? controlConnectionString = null, string? globalUsername = null, int projectId = 0)
     {

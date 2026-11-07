@@ -33,6 +33,9 @@ public static class SectionCatalog
         Settings.RolesPermissionsSectionViewModel.Modules.FirstOrDefault(m => m.code == code).name ?? code;
 
     /// <summary>أقسام الإعدادات ولوحة المعلومات خارج التوزيع.</summary>
+    /// <summary>شاشة مخفية من القوائم والبحث (حلّ محلها غيرها) ما لم يُفعَّل ظهورها: «إنتاج اليوم».</summary>
+    public static bool IsRetired(Type type) => type == typeof(Production.DailyProductionSectionViewModel) && !Production.ProductionModuleViewModel.ShowDailyProduction;
+
     public static bool IsConfigurable(string homeModule) => homeModule is not (ModuleCode.SystemSettings or ModuleCode.Dashboard);
 
     public static bool IsMovable(Type type, string homeModule) => IsConfigurable(homeModule) && !NotMovable.Contains(KeyOf(type));
@@ -47,7 +50,7 @@ public static class SectionCatalog
     /// <summary>الأقسام القابلة للتوزيع مرتبة حسب الوحدة ثم الاسم (تُبنى بإنشاء كل شاشة دون تحميلها).</summary>
     public static List<SectionEntry> Entries(AppSession session, IDialogService dialogs) =>
         Types.Value.Keys.Select(k => Create(k, session, dialogs)).OfType<SectionViewModel>()
-            .Where(s => IsConfigurable(s.HomeModule))
+            .Where(s => IsConfigurable(s.HomeModule) && !IsRetired(s.GetType()))
             .Select(s => new SectionEntry(KeyOf(s), s.Title, s.HomeModule, ModuleTitle(s.HomeModule), IsMovable(s.GetType(), s.HomeModule)))
             .OrderBy(e => Settings.RolesPermissionsSectionViewModel.Modules.Select(m => m.code).ToList().IndexOf(e.HomeModule)).ThenBy(e => e.Title)
             .ToList();
@@ -55,7 +58,7 @@ public static class SectionCatalog
     /// <summary>كل الشاشات (ومنها الإعدادات) بعنوانها ووحدتها ولونها: للبحث السريع (Ctrl+K) و«مفضلتي».</summary>
     public static List<QuickEntry> QuickEntries(AppSession session, IDialogService dialogs) =>
         Types.Value.Keys.Select(k => Create(k, session, dialogs)).OfType<SectionViewModel>()
-            .Where(s => s.HomeModule != ModuleCode.Dashboard && session.Permissions.CanView(s.HomeModule))
+            .Where(s => s.HomeModule != ModuleCode.Dashboard && !IsRetired(s.GetType()) && session.Permissions.CanView(s.HomeModule))
             .Select(s => new QuickEntry(KeyOf(s), s.Title, s.HomeModule, ModuleTitle(s.HomeModule), s.Glyph, s.Color, s.Description))
             .OrderBy(e => e.ModuleTitle).ThenBy(e => e.Title).ToList();
 
