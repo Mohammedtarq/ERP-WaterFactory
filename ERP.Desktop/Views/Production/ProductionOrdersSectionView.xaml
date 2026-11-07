@@ -116,6 +116,7 @@
                                                     <TextBlock Text="&#xE712;" FontFamily="{StaticResource IconFont}"/>
                                                 </MenuItem.Header>
                                                 <MenuItem Header="استبدال مكوّن لهذا الأمر فقط (قبل التشغيل)" Command="{Binding DataContext.OverrideCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                                <MenuItem Header="تعديل المسودة (النوع والعدد)" Command="{Binding DataContext.EditDraftCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                                 <MenuItem Header="إنتاج إضافي على هذا الأمر (بموافقة المخزن)" Command="{Binding DataContext.ExtraCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                                 <MenuItem Header="تعديل رقم الدفعة" Command="{Binding DataContext.EditBatchCommand, ElementName=Root}" CommandParameter="{Binding}"/>
                                                 <MenuItem Header="إغلاق بما عُبّئ" Command="{Binding DataContext.CompleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
@@ -136,9 +137,9 @@
         <Border Grid.Column="1" Style="{StaticResource Card}" Width="400" Margin="12,0,0,0"
                 Visibility="{Binding IsComposing, Converter={StaticResource BoolToVisibility}}">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="أمر إنتاج جديد" Style="{StaticResource SectionTitle}"/>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding ComposeTitle}" Style="{StaticResource SectionTitle}"/>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
-                    <Button Content="إنشاء الأمر" Style="{StaticResource SuccessButton}" Command="{Binding CreateCommand}"/>
+                    <Button Content="{Binding CreateButtonText}" Style="{StaticResource SuccessButton}" Command="{Binding CreateCommand}"/>
                     <Button Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CancelComposeCommand}"/>
                 </StackPanel>
                 <!-- الحقول والمعاينة داخل منطقة تمرير: الزرّان في الأسفل يبقيان ظاهرين مهما صغرت النافذة -->

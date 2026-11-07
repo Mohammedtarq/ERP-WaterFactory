@@ -226,7 +226,7 @@ public class AlertsService
         // 6-ب) أوامر بدأ تشغيلها ولم تُفحص بعد (المختبر)
         if (p.CanView(ModuleCode.Lab))
         {
-            var waiting = await _db.ProductionOrders.Where(o => o.Status == ProductionOrderStatus.InProgress && !_db.QCBatchResults.Any(q => q.ProductionOrderId == o.Id))
+            var waiting = await _db.ProductionOrders.Where(o => o.Status == ProductionOrderStatus.InProgress && !_db.QCBatchResults.Any(q => q.ProductionOrderId == o.Id && !q.IsPreRun))
                 .OrderBy(o => o.Id).Select(o => o.MONumber).ToListAsync();
             if (waiting.Count > 0)
                 alerts.Add(new("lab-waiting", $"بانتظار فحص المختبر: {waiting.Count} أمر", Names(waiting, waiting.Count),

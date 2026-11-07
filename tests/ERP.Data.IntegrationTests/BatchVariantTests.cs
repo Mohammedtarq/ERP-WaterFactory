@@ -783,4 +783,55 @@ public class BatchVariantTests
         // المختبر يصل إلى الأمر برقم الدفعة الموحّد
         Assert.True((await prod.RecordQcByBatchAsync("8000", Array.Empty<QcInput>(), _f.AdminId)).result.ErrorMessage?.Contains("الدفعة") != true);
     }
+
+    [Fact]
+    public async Task Draft_order_is_checked_by_the_lab_before_start_edited_and_packing_still_needs_the_post_run_check()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "DR1");
+        var raw = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial);
+        var (_, machineId) = await new MachineService(db).SaveAsync(null, "خط مسودة DR1", "تعبئة", null, null, true);
+        var prod = new ProductionService(db);
+        var (created, orderId) = await prod.CreateOrderAsync(new[] { new ProductionLineInput(s.Water.Id, 120), new ProductionLineInput(s.Water.Id, 48, s.HassounRecipe.Id) }, raw.Id, machineId, _f.AdminId);
+        Assert.True(created.Success, created.ErrorMessage);
+        var tests = await prod.GetOrderTestsAsync(orderId!.Value);
+        QcInput Ok(string name, string value) => new(tests.Single(t => t.TestName.StartsWith(name)).Id, value);
+        var good = new[] { Ok("درجة", "7.2"), Ok("الأملاح", "120"), Ok("إحكام", "سليم") };
+
+        // المسودة تظهر في قائمة المختبر بحالتها، ويُسجَّل فحصها قبل التشغيل
+        var row = (await prod.GetQcOrdersAsync()).Single(o => o.OrderId == orderId);
+        Assert.True(row.IsDraft);
+        Assert.Contains("مسودة — لم يبدأ التشغيل", row.Display);
+        Assert.Null(row.LastQc);
+        var (pre, overall) = await prod.RecordQcAsync(orderId.Value, good, _f.AdminId);
+        Assert.True(pre.Success, pre.ErrorMessage);
+        Assert.Equal(QCOverallResult.Passed, overall);
+        Assert.All(await db.QCBatchResults.AsNoTracking().Where(q => q.ProductionOrderId == orderId).ToListAsync(), q => Assert.True(q.IsPreRun));
+        Assert.Equal(QCOverallResult.Passed, (await prod.GetQcOrdersAsync()).Single(o => o.OrderId == orderId).LastQc);
+        Assert.True(await prod.HasPassedPreRunQcAsync(orderId.Value));
+
+        // التعديل: الخاص من 48 إلى 60، وإضافة صنف جديد، وحذف العام — الدفعات بالرقم الموحّد نفسه
+        var number = await db.ItemBatches.AsNoTracking().Where(b => b.ProductionOrderId == orderId).Select(b => b.BatchNumber).FirstAsync();
+        var edited = await prod.UpdateDraftAsync(orderId.Value, new[] { new ProductionLineInput(s.Water.Id, 60, s.HassounRecipe.Id), new ProductionLineInput(s.Water.Id, 24, s.Wedding.Id) }, raw.Id, machineId, _f.AdminId);
+        Assert.True(edited.Success, edited.ErrorMessage);
+        var lines = await db.ProductionOrderLines.AsNoTracking().Include(l => l.OutputBatch).Where(l => l.ProductionOrderId == orderId).OrderBy(l => l.LineNo).ToListAsync();
+        Assert.Equal(new int?[] { s.HassounRecipe.Id, s.Wedding.Id }, lines.Select(l => l.CustomRecipeId).ToArray());
+        Assert.Equal(new[] { 60m, 24m }, lines.Select(l => l.QuantityToProduce).ToArray());
+        Assert.All(lines, l => Assert.Equal(number, l.OutputBatch!.BatchNumber));
+        Assert.Equal(84m, (await db.ProductionOrders.AsNoTracking().SingleAsync(o => o.Id == orderId)).QuantityToProduce);
+        var cons = await db.ProductionOrderConsumptions.AsNoTracking().Where(c => c.ProductionOrderId == orderId).ToListAsync();
+        Assert.Equal(6, cons.Count);                                                  // 3 مكوّنات لكل سطر
+        Assert.All(cons.Where(c => c.ProductionOrderLineId == lines[0].Id), c => Assert.Equal(60m, c.QuantityRequired));
+        Assert.DoesNotContain(await db.ItemBatches.AsNoTracking().Where(b => b.ProductionOrderId == orderId).Select(b => b.CustomRecipeId).ToListAsync(), r => r == null);
+        // بعد البدء لا تعديل
+        Assert.True((await prod.StartAsync(orderId.Value, _f.AdminId)).Success);
+        Assert.False((await prod.UpdateDraftAsync(orderId.Value, new[] { new ProductionLineInput(s.Water.Id, 12) }, raw.Id, machineId, _f.AdminId)).Success);
+
+        // فحص المسودة لا يسمح بالتعبئة: يلزم فحص بعد التشغيل
+        var blocked = await prod.PackAsync(orderId.Value, s.Carton.Id, 1, s.Fg.Id, _f.AdminId, lines[0].Id);
+        Assert.False(blocked.Success);
+        Assert.Contains("قبل فحص المختبر", blocked.ErrorMessage);
+        Assert.True((await prod.RecordQcAsync(orderId.Value, good, _f.AdminId)).result.Success);
+        Assert.True((await prod.PackAsync(orderId.Value, s.Carton.Id, 1, s.Fg.Id, _f.AdminId, lines[0].Id)).Success);
+    }
 }

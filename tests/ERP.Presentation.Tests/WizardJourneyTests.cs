@@ -279,7 +279,7 @@ public class WizardJourneyTests : IAsyncLifetime
         var orders = prod.Orders;
         await Open(prod, orders);
         await orders.NewOrderCommand.ExecuteAsync();
-        Assert.StartsWith($"B{DateTime.Today:yyMMdd}-", orders.BatchNumber);
+        Assert.True(int.TryParse(orders.BatchNumber, out _), orders.BatchNumber);   // المقترح: آخر رقم + 1 (عدّاد متصل بلا تاريخ)
         orders.FinishedItem = orders.FinishedItems.Single(i => i.ItemCode == "W-500");
         orders.Machine = orders.Machines.Single(m => m.Name == "نافخة 1");
         await orders.IdleAsync();

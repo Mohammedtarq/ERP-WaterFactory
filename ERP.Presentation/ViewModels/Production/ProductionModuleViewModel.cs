@@ -87,6 +87,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         NewOrderCommand = new AsyncRelayCommand(async () =>
         {
             if (!Require(CanAdd, "إنشاء أوامر الإنتاج")) return;
+            EditingOrder = null;
             ExtraOrder = null;
             BatchOrder = null;
             ComposeLines.Clear();
@@ -101,10 +102,11 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         OverrideCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenOverrideAsync(r) : Task.CompletedTask);
         SaveOverrideCommand = new AsyncRelayCommand(SaveOverrideAsync);
         CloseOverrideCommand = new RelayCommand(() => OverrideOrder = null);
+        EditDraftCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenEditDraftAsync(r) : Task.CompletedTask);
         ExtraCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenExtraAsync(r) : Task.CompletedTask);
         SaveExtraCommand = new AsyncRelayCommand(SaveExtraAsync);
         CloseExtraCommand = new RelayCommand(() => ExtraOrder = null);
-        CancelComposeCommand = new RelayCommand(() => IsComposing = false);
+        CancelComposeCommand = new RelayCommand(() => { IsComposing = false; EditingOrder = null; ComposeLines.Clear(); });
         AddLineCommand = new AsyncRelayCommand(AddLineAsync);
         RemoveLineCommand = new AsyncRelayCommand(async p => { if (p is OrderLineDraft l) { ComposeLines.Remove(l); await PreviewAsync(); } });
         PreviewCommand = new AsyncRelayCommand(PreviewAsync);
@@ -219,6 +221,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     protected override void ResetInput()
     {
         IsComposing = false;
+        EditingOrder = null;
         ComposeLines.Clear();
         SetPacks(0);
         BatchOrder = null;
@@ -310,6 +313,47 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
             await LoadAsync();
         }
     }
+    // ---------------- تعديل مسودة أمر (النوع والعدد) بنفس لوحة الأمر الجديد ----------------
+    private ProductionOrderRow? _editingOrder;
+    public AsyncRelayCommand EditDraftCommand { get; }
+    /// <summary>المسودة قيد التعديل في لوحة «أمر إنتاج جديد» (null = أمر جديد).</summary>
+    public ProductionOrderRow? EditingOrder
+    {
+        get => _editingOrder;
+        private set { if (SetProperty(ref _editingOrder, value)) { OnPropertyChanged(nameof(ComposeTitle)); OnPropertyChanged(nameof(CreateButtonText)); } }
+    }
+    public string ComposeTitle => EditingOrder is null ? "أمر إنتاج جديد" : $"تعديل المسودة {EditingOrder.MONumber}";
+    public string CreateButtonText => EditingOrder is null ? "إنشاء الأمر" : "حفظ التعديل";
+
+    private async Task OpenEditDraftAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanEdit, "تعديل مسودة الأمر")) return;
+        if (row.Status != ProductionOrderStatus.Draft) { Dialogs.Error("تعديل النوع والعدد يكون قبل بدء التشغيل (الأمر مسودة)"); return; }
+        ExtraOrder = null;
+        BatchOrder = null;
+        OverrideOrder = null;
+        await using var db = Session.NewDb();
+        var header = await db.ProductionOrders.AsNoTracking().Where(o => o.Id == row.Id).Select(o => new { o.RawMaterialsWarehouseId, o.MachineId }).FirstAsync();
+        ComposeLines.Clear();
+        foreach (var l in row.Lines)
+            ComposeLines.Add(new OrderLineDraft
+            {
+                FinishedItemId = l.FinishedItemId, ItemName = l.FinishedItemName, RecipeId = l.CustomRecipeId, RecipeName = l.RecipeName,
+                Quantity = l.QuantityToProduce, QuantityText = l.QuantityText, BatchNumber = l.OutputBatch ?? ""
+            });
+        BatchNumber = row.OutputBatch ?? "";
+        _finishedItem = null;
+        OnPropertyChanged(nameof(FinishedItem));
+        SetPacks(0);
+        _rawWarehouse = RawWarehouses.FirstOrDefault(w => w.Id == header.RawMaterialsWarehouseId) ?? _rawWarehouse;
+        OnPropertyChanged(nameof(RawWarehouse));
+        _machine = Machines.FirstOrDefault(m => m.Id == header.MachineId) ?? _machine;
+        OnPropertyChanged(nameof(Machine));
+        EditingOrder = row;
+        IsComposing = true;
+        await PreviewAsync();
+    }
+
     // ---------------- إنتاج إضافي على أمر/دفعة (يوافق عليه أمين المخزن) ----------------
     private ProductionOrderRow? _extraOrder;
     private ProductionLineRow? _extraLine;
@@ -572,6 +616,19 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         if (FinishedItem is not null && Packs != Math.Floor(Packs)) { Dialogs.Error($"أدخل عددًا صحيحًا من {LevelName}"); return; }
         if (Machine is null) { Dialogs.Error("اختر الماكينة (أضفها من تبويب الماكينات إن لم توجد)"); return; }
         await using var db = Session.NewDb();
+        if (EditingOrder is { } editing)
+        {
+            var (rawId, machineId) = (RawWarehouse.Id, Machine.Id);
+            if (await RunOperationAsync(() => new ProductionService(db).UpdateDraftAsync(editing.Id, lines, rawId, machineId, Session.UserId), $"تم تعديل المسودة {editing.MONumber}"))
+            {
+                IsComposing = false;
+                EditingOrder = null;
+                ComposeLines.Clear();
+                SetPacks(0);
+                await LoadAsync();
+            }
+            return;
+        }
         if (await RunOperationAsync(async () => (await new ProductionService(db).CreateOrderAsync(lines, RawWarehouse.Id, Machine.Id, Session.UserId)).result,
                                     lines.Count > 1 ? $"تم إنشاء أمر إنتاج بـ {lines.Count} أصناف — ابدأ تشغيله من الجدول" : "تم إنشاء أمر الإنتاج — ابدأ تشغيله من الجدول"))
         {
@@ -622,7 +679,10 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
     private async Task StartAsync(ProductionOrderRow row)
     {
         if (!Require(CanEdit, "بدء التشغيل")) return;
-        if (!Dialogs.Confirm($"بدء تشغيل {row.MONumber}؟ ستُصرف المواد الأولية من المخزن إلى تحت تصنيع الماكينة {row.MachineName} فورًا.")) return;
+        await using var preDb = Session.NewDb();
+        var preChecked = await new ProductionService(preDb).HasPassedPreRunQcAsync(row.Id);
+        var preNote = preChecked ? "" : "\nتنبيه: لم تُفحص هذه المسودة في المختبر قبل التشغيل.";
+        if (!Dialogs.Confirm($"بدء تشغيل {row.MONumber}؟ ستُصرف المواد الأولية من المخزن إلى تحت تصنيع الماكينة {row.MachineName} فورًا." + preNote)) return;
         await using var db = Session.NewDb();
         if (await RunOperationAsync(() => new ProductionService(db).StartAsync(row.Id, Session.UserId), $"بدأ تشغيل {row.MONumber} — أرسل عينة للمختبر"))
             await LoadAsync();
@@ -795,7 +855,11 @@ public class QcSectionViewModel : SectionViewModel
             }, "تم حفظ نتيجة الفحص"))
         {
             var count = Order.LineCount == 1 ? "صنفه" : $"أصنافه الـ{Order.LineCount}";
-            LastResult = overall == QCOverallResult.Passed
+            LastResult = Order.IsDraft
+                ? (overall == QCOverallResult.Passed
+                    ? $"المسودة {Order.MONumber}: النتيجة ناجحة ✓ لكل {count} — يلزم فحص آخر بعد بدء التشغيل قبل التعبئة"
+                    : $"المسودة {Order.MONumber}: النتيجة مرفوضة ✗ لكل {count} — تبقى مسودة: عدّلها (⋯ ← تعديل المسودة) أو ألغِها ثم أعد الفحص")
+                : overall == QCOverallResult.Passed
                 ? $"الأمر {Order.MONumber}: النتيجة ناجحة ✓ لكل {count}"
                 : Order.Status == ProductionOrderStatus.Completed
                     ? $"الأمر {Order.MONumber}: النتيجة مرفوضة ✗ لكل {count} — إنتاجه في المخزن: انقله إلى التالف أو أعد الفحص"

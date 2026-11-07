@@ -9,8 +9,10 @@ public record QcInput(int QualityTestId, string MeasuredValue, bool? ManualPass 
 /// <summary>أمر إنتاج في شاشة المختبر: يُفحص مرة واحدة لكل أصنافه.</summary>
 public record QcOrderRow(int OrderId, string MONumber, DateTime? Date, string Items, int LineCount, ProductionOrderStatus Status, QCOverallResult? LastQc)
 {
+    /// <summary>مسودة لم يبدأ تشغيلها: فحصها قبل التشغيل، ولا يغني عن فحص ما بعد التشغيل.</summary>
+    public bool IsDraft => Status == ProductionOrderStatus.Draft;
     public string QcText => LastQc switch { QCOverallResult.Passed => "ناجح", QCOverallResult.Rejected => "مرفوض", _ => "بانتظار الفحص" };
-    public string Display => $"{MONumber} · {Date:yyyy-MM-dd} · {Items} · {QcText}";
+    public string Display => IsDraft ? $"{MONumber} · مسودة — لم يبدأ التشغيل · {Items} · {QcText}" : $"{MONumber} · {Date:yyyy-MM-dd} · {Items} · {QcText}";
 }
 
 /// <summary>صنف في أمر إنتاج جديد: المنتج، الكمية، الوصفة المخصصة، ورقم دفعة معدَّل (فارغ = تلقائي).</summary>
@@ -210,6 +212,142 @@ public class ProductionService
         await tx.CommitAsync();
         return (FinanceOperationResult.Ok(), order.Id);
     }
+
+    /// <summary>
+    /// تعديل مسودة أمر إنتاج (النوع والعدد) قبل بدء التشغيل: السطر الباقي (نفس الصنف والمتغير) يُعدَّل عدده وتتناسب مكوّناته
+    /// (فتبقى استبدالات المكوّنات)، والسطر المحذوف تُحذف دفعته ومكوّناته، والسطر الجديد يأخذ دفعة برقم الأمر نفسه.
+    /// لا حركة مخزنية في المسودة، فلا أثر على المخازن. تُسجَّل في سجل التدقيق.
+    /// </summary>
+    public async Task<FinanceOperationResult> UpdateDraftAsync(int orderId, IReadOnlyList<ProductionLineInput> inputs, int rawWarehouseId, int? machineId, int userId)
+    {
+        var order = await _db.ProductionOrders.Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order is null) return FinanceOperationResult.Fail("أمر الإنتاج غير موجود");
+        if (order.Status != ProductionOrderStatus.Draft) return FinanceOperationResult.Fail("تعديل النوع والعدد يكون قبل بدء التشغيل (الأمر مسودة)");
+        if (inputs.Count == 0) return FinanceOperationResult.Fail("أبقِ صنفًا واحدًا على الأقل في الأمر");
+        if (inputs.Any(i => i.Quantity <= 0)) return FinanceOperationResult.Fail("كمية الإنتاج يجب أن تكون أكبر من صفر لكل صنف");
+        if (inputs.GroupBy(i => (i.FinishedItemId, i.CustomRecipeId)).Any(g => g.Count() > 1))
+            return FinanceOperationResult.Fail("الصنف مكرر في الأمر بالوصفة نفسها — اجمع كميته في سطر واحد");
+        if (await _db.Warehouses.FindAsync(rawWarehouseId) is null) return FinanceOperationResult.Fail("اختر مخزن المواد الأولية");
+        var machine = machineId is int mid ? await _db.Machines.FindAsync(mid) : null;
+        if (machine is null || !machine.IsActive) return FinanceOperationResult.Fail("اختر الماكينة التي سيُصرف لها ويُنتج عليها");
+
+        var recipes = new Dictionary<(int, int?), (int bomId, List<(int rawItemId, decimal perUnit)> lines)>();
+        foreach (var i in inputs)
+        {
+            var (lines, error) = await MergeRecipeAsync(i.FinishedItemId, i.CustomRecipeId);
+            if (error is not null)
+            {
+                var name = await _db.Items.Where(x => x.Id == i.FinishedItemId).Select(x => x.ItemName).FirstOrDefaultAsync();
+                return FinanceOperationResult.Fail(inputs.Count > 1 ? $"{name}: {error}" : error);
+            }
+            recipes[(i.FinishedItemId, i.CustomRecipeId)] = (await _db.BillOfMaterials.Where(b => b.FinishedItemId == i.FinishedItemId && b.IsActive).Select(b => b.Id).FirstAsync(), lines);
+        }
+
+        // رقم الدفعة موحّد: ما كُتب الآن، وإلا ما للأمر، وإلا رقم جديد
+        var existingBatches = await _db.ItemBatches.Where(b => b.ProductionOrderId == orderId).ToListAsync();
+        var typed = inputs.Where(i => !string.IsNullOrWhiteSpace(i.BatchNumber)).Select(i => i.BatchNumber!.Trim()).Distinct().ToList();
+        if (typed.Count > 1) return FinanceOperationResult.Fail("رقم الدفعة موحّد للأمر: اكتب رقمًا واحدًا");
+        var currentNumber = existingBatches.OrderBy(b => b.Id).Select(b => b.BatchNumber).FirstOrDefault();
+        var number = typed.Count == 1 ? typed[0] : currentNumber ?? await NextBatchNumberAsync();
+        if (number != currentNumber)
+        {
+            var numberError = await ValidateBatchNumberAsync(number, existingBatches.Select(b => b.Id).ToList());
+            if (numberError is not null) return FinanceOperationResult.Fail(numberError);
+        }
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var before = string.Join("، ", order.Lines.OrderBy(l => l.LineNo).Select(l => $"{l.FinishedItemId}/{l.CustomRecipeId?.ToString() ?? "-"}×{l.QuantityToProduce:N0}"));
+        var byKey = order.Lines.ToDictionary(l => (l.FinishedItemId, l.CustomRecipeId));
+        var keep = inputs.Select(i => (i.FinishedItemId, i.CustomRecipeId)).ToHashSet();
+
+        // 1) سطور حُذفت: مكوّناتها واستبدالاتها وفحص مسودتها ودفعتها
+        var removed = order.Lines.Where(l => !keep.Contains((l.FinishedItemId, l.CustomRecipeId))).ToList();
+        if (removed.Count > 0)
+        {
+            var removedIds = removed.Select(l => l.Id).ToList();
+            var removedBatchIds = removed.Select(l => l.OutputBatchId).OfType<int>().ToList();
+            if (await _db.PackingOrders.AnyAsync(p => removedIds.Contains(p.ProductionOrderLineId ?? 0))) return FinanceOperationResult.Fail("لسطر محذوف تعبئة مسجّلة");
+            _db.ProductionOrderComponentOverrides.RemoveRange(await _db.ProductionOrderComponentOverrides.Where(o => removedIds.Contains(o.ProductionOrderLineId)).ToListAsync());
+            _db.ProductionOrderConsumptions.RemoveRange(await _db.ProductionOrderConsumptions.Where(c => c.ProductionOrderLineId != null && removedIds.Contains(c.ProductionOrderLineId.Value)).ToListAsync());
+            var qcIds = await _db.QCBatchResults.Where(q => removedBatchIds.Contains(q.BatchId)).Select(q => q.Id).ToListAsync();
+            _db.QCTestResultLines.RemoveRange(await _db.QCTestResultLines.Where(r => qcIds.Contains(r.QCBatchResultId)).ToListAsync());
+            _db.QCBatchResults.RemoveRange(await _db.QCBatchResults.Where(q => qcIds.Contains(q.Id)).ToListAsync());
+            foreach (var l in removed) l.OutputBatchId = null;
+            if (order.OutputBatchId is int ob && removedBatchIds.Contains(ob)) order.OutputBatchId = null;
+            await _db.SaveChangesAsync();
+            _db.BatchNumberChanges.RemoveRange(await _db.BatchNumberChanges.Where(c => removedBatchIds.Contains(c.BatchId)).ToListAsync());
+            _db.ItemBatches.RemoveRange(await _db.ItemBatches.Where(b => removedBatchIds.Contains(b.Id)).ToListAsync());
+            _db.ProductionOrderLines.RemoveRange(removed);
+            await _db.SaveChangesAsync();
+        }
+
+        // 2) سطور باقية: عدد جديد وتناسب المكوّنات. وسطور جديدة بدفعة برقم الأمر
+        var no = 0;
+        ProductionOrderLine? firstLine = null;
+        foreach (var input in inputs)
+        {
+            var (bomId, recipeLines) = recipes[(input.FinishedItemId, input.CustomRecipeId)];
+            ProductionOrderLine line;
+            if (byKey.TryGetValue((input.FinishedItemId, input.CustomRecipeId), out var existing))
+            {
+                line = existing;
+                var oldQty = line.QuantityToProduce;
+                line.LineNo = ++no;
+                line.QuantityToProduce = input.Quantity;
+                var cons = await _db.ProductionOrderConsumptions.Where(c => c.ProductionOrderLineId == line.Id).ToListAsync();
+                foreach (var c in cons) c.QuantityRequired = oldQty > 0 ? Math.Round(c.QuantityRequired * input.Quantity / oldQty, 4) : c.QuantityRequired;
+            }
+            else
+            {
+                line = new ProductionOrderLine
+                {
+                    ProductionOrderId = order.Id, LineNo = ++no, FinishedItemId = input.FinishedItemId, BOMId = bomId,
+                    CustomRecipeId = input.CustomRecipeId, QuantityToProduce = input.Quantity
+                };
+                _db.ProductionOrderLines.Add(line);
+                await _db.SaveChangesAsync();
+                foreach (var (rawItemId, perUnit) in recipeLines)
+                    _db.ProductionOrderConsumptions.Add(new ProductionOrderConsumption
+                    {
+                        ProductionOrderId = order.Id, ProductionOrderLineId = line.Id, RawMaterialItemId = rawItemId,
+                        QuantityRequired = Math.Round(perUnit * input.Quantity, 4)
+                    });
+                var batch = new ItemBatch { ItemId = input.FinishedItemId, BatchNumber = number, ProductionOrderId = order.Id, CustomRecipeId = input.CustomRecipeId };
+                _db.ItemBatches.Add(batch);
+                await _db.SaveChangesAsync();
+                line.OutputBatchId = batch.Id;
+            }
+            firstLine ??= line;
+        }
+        await _db.SaveChangesAsync();
+
+        // 3) رقم الدفعة الموحّد، ورأس الأمر
+        if (number != currentNumber && currentNumber is not null)
+        {
+            foreach (var b in await _db.ItemBatches.Where(b => b.ProductionOrderId == orderId && b.BatchNumber == currentNumber).ToListAsync())
+            {
+                _db.BatchNumberChanges.Add(new BatchNumberChange { BatchId = b.Id, OldNumber = currentNumber, NewNumber = number, Reason = "تعديل مسودة الأمر", ChangedByUserId = userId });
+                b.OriginalBatchNumber ??= currentNumber;
+                b.BatchNumber = number;
+            }
+        }
+        order.FinishedItemId = firstLine!.FinishedItemId;
+        order.BOMId = firstLine.BOMId;
+        order.CustomRecipeId = firstLine.CustomRecipeId;
+        order.OutputBatchId = firstLine.OutputBatchId;
+        order.QuantityToProduce = inputs.Sum(i => i.Quantity);
+        order.RawMaterialsWarehouseId = rawWarehouseId;
+        order.MachineId = machine.Id;
+        await _db.SaveChangesAsync();
+        var after = string.Join("، ", order.Lines.OrderBy(l => l.LineNo).Select(l => $"{l.FinishedItemId}/{l.CustomRecipeId?.ToString() ?? "-"}×{l.QuantityToProduce:N0}"));
+        await new AuditService(_db).LogAsync(userId, "Edit", "ProductionOrders", orderId, $"تعديل مسودة الأمر {order.MONumber}: قبل [{before}] ← بعد [{after}]");
+        await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
+    }
+
+    /// <summary>هل فُحصت مسودة الأمر بنجاح قبل التشغيل (تنبيه عند البدء فقط)؟</summary>
+    public Task<bool> HasPassedPreRunQcAsync(int orderId) =>
+        _db.QCBatchResults.AnyAsync(q => q.ProductionOrderId == orderId && q.IsPreRun && q.OverallResult == QCOverallResult.Passed);
 
     /// <summary>
     /// الرقم التلقائي التالي لدفعة إنتاج: عدّاد سنوي متصل (آخر رقم مستعمل + 1) يستمر عبر السنين دون تصفير (مثل 312).
@@ -454,7 +592,7 @@ public class ProductionService
     {
         var since = DateTime.Today.AddDays(-days);
         var rows = await _db.ProductionOrders.AsNoTracking()
-            .Where(o => o.Status == ProductionOrderStatus.InProgress
+            .Where(o => o.Status == ProductionOrderStatus.Draft || o.Status == ProductionOrderStatus.InProgress
                         || (o.Status == ProductionOrderStatus.Completed && o.Lines.Any(l => l.OutputBatch != null && l.OutputBatch.ManufactureDate >= since)))
             .Where(o => o.Lines.Any(l => l.OutputBatchId != null))
             .Select(o => new
@@ -462,7 +600,7 @@ public class ProductionService
                 o.Id, o.MONumber, o.Status,
                 Date = o.Lines.Select(l => l.OutputBatch!.ManufactureDate).Max(),
                 Items = o.Lines.OrderBy(l => l.LineNo).Select(l => l.FinishedItem.ItemName + (l.CustomRecipe != null ? " — " + l.CustomRecipe.Name : "")).ToList(),
-                LastQc = _db.QCBatchResults.Where(q => q.ProductionOrderId == o.Id).OrderByDescending(q => q.Id).Select(q => (QCOverallResult?)q.OverallResult).FirstOrDefault()
+                LastQc = _db.QCBatchResults.Where(q => q.ProductionOrderId == o.Id && ((o.Status == ProductionOrderStatus.Draft && q.IsPreRun) || (o.Status != ProductionOrderStatus.Draft && !q.IsPreRun))).OrderByDescending(q => q.Id).Select(q => (QCOverallResult?)q.OverallResult).FirstOrDefault()
             })
             .OrderByDescending(o => o.Id).ToListAsync();
         return rows.Select(o => new QcOrderRow(o.Id, o.MONumber, o.Date, string.Join("، ", o.Items.Distinct()), o.Items.Count, o.Status, o.LastQc)).ToList();
@@ -485,8 +623,9 @@ public class ProductionService
         var order = await _db.ProductionOrders.Include(o => o.Lines).FirstOrDefaultAsync(o => o.Id == orderId);
         if (order is null) return (FinanceOperationResult.Fail("أمر الإنتاج غير موجود"), null);
         var lines = order.Lines.Where(l => l.OutputBatchId != null).OrderBy(l => l.LineNo).ToList();
-        if (order.Status is not (ProductionOrderStatus.InProgress or ProductionOrderStatus.Completed) || lines.Count == 0)
-            return (FinanceOperationResult.Fail("الفحص يكون لأمر قيد التشغيل أو لإنتاج مسجّل"), null);
+        if (order.Status is not (ProductionOrderStatus.Draft or ProductionOrderStatus.InProgress or ProductionOrderStatus.Completed) || lines.Count == 0)
+            return (FinanceOperationResult.Fail("الفحص يكون لمسودة أو لأمر قيد التشغيل أو لإنتاج مسجّل"), null);
+        var preRun = order.Status == ProductionOrderStatus.Draft;   // فحص المسودة قبل التشغيل
 
         var tests = (await GetOrderTestsAsync(orderId)).ToDictionary(t => t.Id);
         if (tests.Count == 0) return (FinanceOperationResult.Fail("لا توجد اختبارات جودة معرّفة لهذا المنتج — أضفها من تبويب اختبارات الجودة"), null);
@@ -499,14 +638,14 @@ public class ProductionService
         var overall = evaluated.Any(e => e.result == QCLineResult.Fail) ? QCOverallResult.Rejected : QCOverallResult.Passed;
         foreach (var line in lines)
         {
-            var result = new QCBatchResult { ProductionOrderId = order.Id, BatchId = line.OutputBatchId!.Value, TestedByUserId = userId, OverallResult = overall };
+            var result = new QCBatchResult { ProductionOrderId = order.Id, BatchId = line.OutputBatchId!.Value, TestedByUserId = userId, OverallResult = overall, IsPreRun = preRun };
             foreach (var e in evaluated.Where(e => e.test.ApplicableItemId == null || e.test.ApplicableItemId == line.FinishedItemId))
                 result.ResultLines.Add(new QCTestResultLine { QualityTestId = e.test.Id, MeasuredValue = e.measured, Result = e.result });
             _db.QCBatchResults.Add(result);
         }
         await _db.SaveChangesAsync();
         await new AuditService(_db).LogAsync(userId, "Post", "ProductionOrders", order.Id,
-            $"فحص المختبر للأمر {order.MONumber} ({lines.Count} صنف): {(overall == QCOverallResult.Passed ? "ناجح" : "مرفوض")}");
+            $"فحص المختبر{(preRun ? " (مسودة قبل التشغيل)" : "")} للأمر {order.MONumber} ({lines.Count} صنف): {(overall == QCOverallResult.Passed ? "ناجح" : "مرفوض")}");
         return (FinanceOperationResult.Ok(), overall);
     }
 
@@ -537,9 +676,9 @@ public class ProductionService
         var line = level is null ? null : order.Lines.FirstOrDefault(l => l.FinishedItemId == level.ItemId && (lineId is null || l.Id == lineId));
         if (level is null || line is null) return FinanceOperationResult.Fail("وحدة التعبئة لا تخص أي صنف في هذا الأمر");
 
-        var lastQc = await _db.QCBatchResults.Where(q => q.BatchId == line.OutputBatchId).OrderByDescending(q => q.Id)
+        var lastQc = await _db.QCBatchResults.Where(q => q.BatchId == line.OutputBatchId && !q.IsPreRun).OrderByDescending(q => q.Id)
                                              .Select(q => (QCOverallResult?)q.OverallResult).FirstOrDefaultAsync();
-        if (lastQc is null) return FinanceOperationResult.Fail("لا يمكن التعبئة قبل فحص المختبر");
+        if (lastQc is null) return FinanceOperationResult.Fail("لا يمكن التعبئة قبل فحص المختبر بعد بدء التشغيل");
         if (lastQc == QCOverallResult.Rejected) return FinanceOperationResult.Fail("الدفعة مرفوضة من المختبر — لا يمكن تعبئتها");
 
         var fg = await _db.Warehouses.FindAsync(finishedGoodsWarehouseId);
@@ -714,7 +853,7 @@ public class ProductionService
                 Recipe = l.CustomRecipe != null ? l.CustomRecipe.Name : null, l.CustomRecipeId, l.QuantityToProduce, l.ProductionOrder.Status,
                 Batch = l.OutputBatch != null ? l.OutputBatch.BatchNumber : null,
                 Machine = l.ProductionOrder.Machine != null ? l.ProductionOrder.Machine.Name : null,
-                LastQc = _db.QCBatchResults.Where(q => q.BatchId == l.OutputBatchId).OrderByDescending(q => q.Id).Select(q => (QCOverallResult?)q.OverallResult).FirstOrDefault(),
+                LastQc = _db.QCBatchResults.Where(q => q.BatchId == l.OutputBatchId && !q.IsPreRun).OrderByDescending(q => q.Id).Select(q => (QCOverallResult?)q.OverallResult).FirstOrDefault(),
                 Packed = _db.PackingOrders.Where(p => p.ProductionOrderLineId == l.Id).Sum(p => (decimal?)(p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits)) ?? 0
             })
             .OrderByDescending(l => l.ProductionOrderId).ThenBy(l => l.LineNo).ToListAsync();

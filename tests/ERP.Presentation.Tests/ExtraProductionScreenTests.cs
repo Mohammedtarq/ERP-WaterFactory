@@ -100,4 +100,69 @@ public class ExtraProductionScreenTests
         await orders.RefreshCommand.ExecuteAsync();
         Assert.Equal("+ 12", orders.Orders.Single(o => o.Id == orderId).ExtraText);
     }
+
+    [Fact]
+    public async Task Draft_is_edited_from_the_orders_screen_and_checked_in_the_lab_screen_before_start()
+    {
+        int orderId;
+        await using (var db = _f.NewDb())
+        {
+            var branch = await db.Branches.FirstAsync();
+            var raw = await db.Warehouses.FirstOrDefaultAsync(w => w.WarehouseType == WarehouseType.RawMaterial);
+            if (raw is null) db.Warehouses.Add(raw = new Warehouse { BranchId = branch.Id, Name = "مخزن المواد الأولية DE", WarehouseType = WarehouseType.RawMaterial, IsSellableStock = false });
+            var admin = await db.Users.FirstAsync(u => u.Username == AppFixture.AdminUser);
+            Item Raw(string code, string name) => new() { ItemCode = code, ItemName = name, SourcingMethod = SourcingMethod.Purchased, CostPrice = 10 };
+            var pre = Raw("DE-PRE", "امبولة DE"); var cap = Raw("DE-CAP", "سدادة DE");
+            var a = new Item { ItemCode = "DE-A", ItemName = "ماء DE أ", SalePrice = 250 };
+            var b = new Item { ItemCode = "DE-B", ItemName = "ماء DE ب", SalePrice = 250 };
+            db.Items.AddRange(pre, cap, a, b);
+            await db.SaveChangesAsync();
+            foreach (var r in new[] { pre, cap })
+            {
+                db.ItemPackagingLevels.Add(new ItemPackagingLevel { ItemId = r.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 });
+                db.StockTransactions.Add(new StockTransaction { ItemId = r.Id, WarehouseId = raw.Id, QuantityBaseUnits = 5_000, UnitCost = 10, TransactionType = StockTransactionType.Receipt, CreatedByUserId = admin.Id });
+            }
+            foreach (var w in new[] { a, b })
+            {
+                db.ItemPackagingLevels.AddRange(new ItemPackagingLevel { ItemId = w.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 }, new ItemPackagingLevel { ItemId = w.Id, LevelName = "كارتون", ContainsQuantity = 12, EquivalentBaseUnits = 12 });
+                var bom = new BillOfMaterials { FinishedItemId = w.Id };
+                bom.Lines.Add(new BOMLine { RawMaterialItemId = pre.Id, QuantityPerUnit = 1, ComponentRole = "امبولة" });
+                bom.Lines.Add(new BOMLine { RawMaterialItemId = cap.Id, QuantityPerUnit = 1, ComponentRole = "غطاء" });
+                db.BillOfMaterials.Add(bom);
+            }
+            await db.SaveChangesAsync();
+            var (_, machineId) = await new MachineService(db).SaveAsync(null, "خط DE", "تعبئة", null, null, true);
+            var (cr, oid) = await new ProductionService(db).CreateOrderAsync(new[] { new ProductionLineInput(a.Id, 120), new ProductionLineInput(b.Id, 24) }, raw.Id, machineId, admin.Id);
+            Assert.True(cr.Success, cr.ErrorMessage);
+            orderId = oid!.Value;
+        }
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+
+        // المسودة تظهر في قائمة فحص المختبر قبل التشغيل
+        var lab = shell.Open<LabModuleViewModel>(ModuleCode.Lab);
+        lab.SelectedTab = lab.Qc;
+        await lab.IdleAsync(); await lab.Qc.IdleAsync();
+        var qcRow = lab.Qc.QcOrders.Single(o => o.OrderId == orderId);
+        Assert.True(qcRow.IsDraft);
+        Assert.Contains("مسودة", qcRow.Display);
+
+        // التعديل: حذف الصنف الثاني من لوحة الأمر ثم حفظ
+        var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
+        var orders = prod.Section<ProductionOrdersSectionViewModel>();
+        prod.SelectedTab = orders;
+        await prod.IdleAsync(); await orders.IdleAsync();
+        await orders.EditDraftCommand.ExecuteAsync(orders.Orders.Single(o => o.Id == orderId));
+        Assert.True(orders.IsComposing);
+        Assert.Equal(2, orders.ComposeLines.Count);
+        Assert.Contains("تعديل المسودة", orders.ComposeTitle);
+        Assert.Equal("حفظ التعديل", orders.CreateButtonText);
+        await orders.RemoveLineCommand.ExecuteAsync(orders.ComposeLines[1]);
+        await orders.CreateCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.False(orders.IsComposing);
+        await using var check = _f.NewDb();
+        var lines = await check.ProductionOrderLines.AsNoTracking().Where(l => l.ProductionOrderId == orderId).ToListAsync();
+        Assert.Single(lines);
+        Assert.Equal(120m, lines[0].QuantityToProduce);
+    }
 }

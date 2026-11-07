@@ -31,6 +31,9 @@ public class QCBatchResult
 
     public DateTime TestDate { get; set; } = DateTime.UtcNow;
 
+    /// <summary>فحص المسودة قبل بدء التشغيل (79_qc_prerun.sql): لا يسمح بالتعبئة، التي تشترط فحصًا بعد التشغيل.</summary>
+    public bool IsPreRun { get; set; }
+
     /// <summary>القاعدة الافتراضية المتفق عليها: فشل اختبار واحد فقط يكفي لرفض الدفعة كاملة.</summary>
     public QCOverallResult OverallResult { get; set; }
 

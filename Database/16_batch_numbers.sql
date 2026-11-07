@@ -26,6 +26,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_BatchNumberChanges_Bat
 GO
 
 -- رقم دفعة الإنتاج فريد على مستوى النظام كله (المختبر يربط النتائج بالرقم وحده)
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_ItemBatches_ProductionNumber')
+-- (الملف 78 يستبدله بفهرس يشمل الصنف والمتغير ليتشارك الأمر رقمًا واحدًا؛ لا يُعاد إنشاء القديم بعده)
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name IN ('UX_ItemBatches_ProductionNumber', 'UX_ItemBatches_ProductionNumber_Variant'))
     CREATE UNIQUE INDEX UX_ItemBatches_ProductionNumber ON ItemBatches (BatchNumber) WHERE ProductionOrderId IS NOT NULL;
 GO
