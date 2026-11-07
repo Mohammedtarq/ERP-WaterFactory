@@ -543,6 +543,8 @@ public class ProductionService
                                                          UnitCost = _lastConsumedCost > 0 ? Math.Round(_lastConsumedCost / pieces, 4) : null,
                                                          ReferenceTable = "ProductionOrders", ReferenceId = orderId, CreatedByUserId = userId });
         await _db.SaveChangesAsync();
+        // ما بيع قبل إنتاجه (الأساسي أو المتغير نفسه) يُسوّى من هذه التعبئة تلقائيًا
+        if (line.OutputBatchId is int outBatch) await new PendingProductionService(_db).SettleAsync(line.FinishedItemId, fg.Id, outBatch, userId);
         var allPacked = true;
         foreach (var l in order.Lines)
             if (await PackedLineQuantityAsync(l.Id) < l.QuantityToProduce) { allPacked = false; break; }

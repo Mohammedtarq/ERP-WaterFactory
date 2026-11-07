@@ -18,6 +18,7 @@
                     <DataGridTextColumn Header="الوقت" Binding="{Binding CreatedAt, StringFormat=yyyy/MM/dd HH:mm}" Width="130"/>
                     <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
                     <DataGridTextColumn Header="المخزن" Binding="{Binding WarehouseName}" Width="150"/>
+                    <DataGridTextColumn Header="المتغير" Binding="{Binding RecipeName, TargetNullValue=الأساسي}" Width="130"/>
                     <DataGridTextColumn Header="الفاتورة" Binding="{Binding InvoiceNumber}" Width="120"/>
                     <DataGridTextColumn Header="المباع فوق الرصيد" Binding="{Binding Quantity, StringFormat=N0}" Width="120"/>
                     <DataGridTextColumn Header="سُوّي" Binding="{Binding Settled, StringFormat=N0}" Width="80"/>

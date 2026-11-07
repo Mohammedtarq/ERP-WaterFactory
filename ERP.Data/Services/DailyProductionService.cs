@@ -127,8 +127,8 @@ public class DailyProductionService
                 });
                 await _db.SaveChangesAsync();
 
-                // العجز المبيع مسبقًا عجز في الأساسي: لا يُسوّى من تشغيلة مطعم أو مناسبة
-                var settled = p.input.CustomRecipeId is null ? await new PendingProductionService(_db).SettleAsync(p.item.Id, fg.Id, batch.Id, userId) : 0;
+                // عجز المتغير يُسوّى من تشغيلة المتغير نفسه، وعجز الأساسي من تشغيلة الأساسي فقط
+                var settled = await new PendingProductionService(_db).SettleAsync(p.item.Id, fg.Id, batch.Id, userId);
                 results.Add(new DailyProductionLineResult(line.Id, p.item.ItemName, recipeName, batch.BatchNumber, p.input.Packs, p.pieces,
                                                           Math.Round(cost, 2), unit ?? 0, settled));
             }
@@ -204,7 +204,9 @@ public class PendingProductionService
     /// <summary>يسوّي العجز المفتوح للصنف في المخزن من تشغيلة منتجة حديثًا (الأقدم أولًا). يعيد الكمية المسوّاة.</summary>
     public async Task<decimal> SettleAsync(int itemId, int warehouseId, int batchId, int userId)
     {
-        var open = await _db.PendingProductionShortages.Where(s => s.ItemId == itemId && s.WarehouseId == warehouseId && s.SettledQuantity < s.Quantity)
+        var recipeId = await _db.ItemBatches.Where(b => b.Id == batchId).Select(b => b.CustomRecipeId).FirstOrDefaultAsync();
+        var open = await _db.PendingProductionShortages.Where(s => s.ItemId == itemId && s.WarehouseId == warehouseId && s.CustomRecipeId == recipeId
+                                                                   && s.SettledQuantity < s.Quantity)
                                                       .OrderBy(s => s.Id).ToListAsync();
         if (open.Count == 0) return 0;
         var available = await LedgerHelper.BalanceAsync(_db, itemId, warehouseId, batchId);
@@ -228,13 +230,13 @@ public class PendingProductionService
         return total;
     }
 
-    public record OpenShortageRow(int Id, DateTime CreatedAt, string ItemName, string WarehouseName, string? InvoiceNumber, decimal Quantity, decimal Settled, decimal Open);
+    public record OpenShortageRow(int Id, DateTime CreatedAt, string ItemName, string WarehouseName, string? InvoiceNumber, decimal Quantity, decimal Settled, decimal Open, string? RecipeName = null);
 
     public async Task<List<OpenShortageRow>> OpenAsync() =>
         (await _db.PendingProductionShortages.AsNoTracking().Where(s => s.SettledQuantity < s.Quantity).OrderBy(s => s.Id)
-            .Select(s => new { s.Id, s.CreatedAt, s.Item.ItemName, Wh = s.Warehouse.Name, Inv = s.SalesInvoice != null ? s.SalesInvoice.InvoiceNumber : null, s.Quantity, s.SettledQuantity })
+            .Select(s => new { s.Id, s.CreatedAt, s.Item.ItemName, Wh = s.Warehouse.Name, Inv = s.SalesInvoice != null ? s.SalesInvoice.InvoiceNumber : null, s.Quantity, s.SettledQuantity, Recipe = s.CustomRecipe != null ? s.CustomRecipe.Name : null })
             .ToListAsync())
-        .Select(s => new OpenShortageRow(s.Id, DateTime.SpecifyKind(s.CreatedAt, DateTimeKind.Utc).ToLocalTime(), s.ItemName, s.Wh, s.Inv, s.Quantity, s.SettledQuantity, s.Quantity - s.SettledQuantity))
+        .Select(s => new OpenShortageRow(s.Id, DateTime.SpecifyKind(s.CreatedAt, DateTimeKind.Utc).ToLocalTime(), s.ItemName, s.Wh, s.Inv, s.Quantity, s.SettledQuantity, s.Quantity - s.SettledQuantity, s.Recipe))
         .ToList();
 }
 

@@ -620,4 +620,53 @@ public class BatchVariantTests
         Assert.DoesNotContain(after.Rows, r => r[after.Columns.IndexOf("الجهة")] == "جهة مجاني S9");
         Assert.Contains(after.Rows, r => r[after.Columns.IndexOf("الجهة")] == s.General.Name);
     }
+
+    [Fact]
+    public async Task Variant_sold_ahead_of_production_is_settled_only_by_that_variants_production()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "PV1");
+
+        // بيع 50 قطعة «مطعم الحسون» قبل إنتاجها (المدير يملك صلاحية البيع بانتظار الإنتاج): الفاتورة تُرحَّل والعجز يُسجَّل باسم المتغير
+        var (posted, inv) = await SellAsync(db, s, s.Hassoun, 50, _f.AdminId, s.HassounRecipe.Id);
+        Assert.True(posted.Success, posted.ErrorMessage);
+        var shortage = await db.PendingProductionShortages.AsNoTracking().SingleAsync(x => x.SalesInvoiceId == inv);
+        Assert.Equal(s.HassounRecipe.Id, shortage.CustomRecipeId);
+        Assert.Equal(50m, shortage.Quantity);
+        var open = Assert.Single(await new PendingProductionService(db).OpenAsync());
+        Assert.Equal(s.HassounRecipe.Name, open.RecipeName);
+
+        // إنتاج الأساسي لا يسوّي عجز المتغير
+        var (baseRun, _, baseLines) = await new DailyProductionService(db).RecordAsync(DateTime.Today,
+            new[] { new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 5) }, _f.AdminId);
+        Assert.True(baseRun.Success, baseRun.ErrorMessage);
+        Assert.Equal(0m, baseLines.Sum(l => l.SettledShortage));
+        Assert.Single(await new PendingProductionService(db).OpenAsync());
+
+        // إنتاج «مطعم الحسون» 5 كراتين = 60 قطعة: يسوّي الـ50 ويبقى 10 في تشغيلة المتغير
+        var (varRun, _, varLines) = await new DailyProductionService(db).RecordAsync(DateTime.Today,
+            new[] { new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 5, s.HassounRecipe.Id) }, _f.AdminId);
+        Assert.True(varRun.Success, varRun.ErrorMessage);
+        Assert.Equal(50m, varLines.Sum(l => l.SettledShortage));
+        Assert.Empty(await new PendingProductionService(db).OpenAsync());
+        Assert.Equal(10m, await FgAsync(db, s, s.HassounRecipe.Id));
+        Assert.Equal(60m, await FgAsync(db, s, null));
+        var negatives = await db.StockTransactions.Where(t => t.ItemId == s.Water.Id && t.WarehouseId == s.Fg.Id)
+            .GroupBy(t => t.BatchId).Select(g => g.Sum(t => t.QuantityBaseUnits)).ToListAsync();
+        Assert.DoesNotContain(negatives, q => q < 0);
+    }
+
+    [Fact]
+    public async Task Insufficient_stock_message_states_required_available_and_missing()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var s = await ArrangeAsync(db, "PV2");
+        var seller = await SellerAsync(db, "seller_pv2");
+        await new DailyProductionService(db).RecordAsync(DateTime.Today, new[] { new DailyProductionLineInput(s.Water.Id, s.Carton.Id, 5) }, _f.AdminId);
+        var (r, _) = await SellAsync(db, s, s.General, 100, seller.Id);
+        Assert.False(r.Success);
+        Assert.Contains("المطلوب 100", r.ErrorMessage);
+        Assert.Contains("المتاح 60", r.ErrorMessage);
+        Assert.Contains("الناقص 40", r.ErrorMessage);
+    }
 }

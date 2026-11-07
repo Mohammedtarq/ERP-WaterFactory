@@ -55,6 +55,9 @@ public class PendingProductionShortage
     public Warehouse Warehouse { get; set; } = null!;
     public decimal Quantity { get; set; }
     public decimal SettledQuantity { get; set; }
+    /// <summary>المتغير الخاص الذي بيع قبل إنتاجه (NULL = الأساسي): يُسوّى من إنتاج المتغير نفسه فقط.</summary>
+    public int? CustomRecipeId { get; set; }
+    public CustomRecipe? CustomRecipe { get; set; }
     public int? SalesInvoiceId { get; set; }
     public SalesInvoice? SalesInvoice { get; set; }
     public int CreatedByUserId { get; set; }
