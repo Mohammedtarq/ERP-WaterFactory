@@ -107,7 +107,8 @@
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="MaxDropDownHeight" Value="380"/>
+        <!-- قائمة كبيرة: نحو 14 اسمًا ظاهرًا مع البحث، وتتسع للشاشات الكبيرة؛ الشاشة الصغيرة تقصّها تلقائيًا -->
+        <Setter Property="MaxDropDownHeight" Value="620"/>
         <Setter Property="m:ComboSearch.IsEnabled" Value="True"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -158,10 +159,18 @@
                                                    Foreground="{StaticResource MutedTextBrush}"/>
                                     </Grid>
                                     <ListBox x:Name="PART_Results" BorderThickness="0" Margin="2,0,2,4"
+                                             FontSize="14"
                                              ItemTemplate="{TemplateBinding ItemTemplate}"
                                              DisplayMemberPath="{TemplateBinding DisplayMemberPath}"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                             VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"/>
+                                             VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="Padding" Value="10,7"/>
+                                                <Setter Property="MinHeight" Value="36"/>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                    </ListBox>
                                 </DockPanel>
                             </Border>
                         </Popup>
@@ -392,7 +401,8 @@
                 <ControlTemplate TargetType="ScrollBar">
                     <Border Background="{TemplateBinding Background}" CornerRadius="7" Padding="2,2">
                         <Track x:Name="PART_Track" IsDirectionReversed="True">
-                            <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}"/></Track.Thumb>
+                            <!-- مقبض لا يصغر عن 44: مع مئات العناصر كان يصير نقطة صغيرة يصعب الإمساك بها -->
+                            <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}" MinHeight="44"/></Track.Thumb>
                         </Track>
                     </Border>
                 </ControlTemplate>
@@ -409,7 +419,7 @@
                         <ControlTemplate TargetType="ScrollBar">
                             <Border Background="{TemplateBinding Background}" CornerRadius="7" Padding="2,2">
                                 <Track x:Name="PART_Track" IsDirectionReversed="False">
-                                    <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}"/></Track.Thumb>
+                                    <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}" MinWidth="44"/></Track.Thumb>
                                 </Track>
                             </Border>
                         </ControlTemplate>
