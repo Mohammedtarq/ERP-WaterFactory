@@ -4,7 +4,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ERP.Data.Services;
 
-public record ReconciliationLineDto(string Section, string Description, decimal? Quantity, decimal? UnitValue, decimal Value);
+/// <summary>بند مطابقة. الحقول الاختيارية للتعديل اليدوي (للأدمن): القيمة الأصلية قبل التعديل، وسبب التعديل، وهل هو بند يدوي أو مستبعد.</summary>
+public record ReconciliationLineDto(string Section, string Description, decimal? Quantity, decimal? UnitValue, decimal Value,
+                                    decimal? OriginalValue = null, string? Note = null, bool IsManual = false, bool IsExcluded = false)
+{
+    public bool IsAdjusted => OriginalValue is not null || IsManual || IsExcluded;
+}
+
+public enum AdjustmentKind { Edit, Exclude, ManualAsset, ManualLiability }
+
+/// <summary>
+/// تعديل يدوي على لقطة المطابقة قبل اعتمادها (للأدمن). Edit/Exclude يشيران لبند محسوب بقسمه ووصفه وقيمته الأصلية المتوقعة
+/// (إن تغيّرت القيمة الأصلية بعد التعديل يُرفض الاعتماد حتى يُعاد الحساب)، وManual* يضيفان بندًا جديدًا بالمبلغ الموجب.
+/// السبب إلزامي في كل الأنواع.
+/// </summary>
+public record ReconciliationAdjustment(AdjustmentKind Kind, string Section, string Description, decimal OriginalValue, decimal NewValue, string Reason);
 
 public record PartnerSharePreview(int PartnerId, string PartnerName, decimal SharePercent, bool IsManager, decimal Amount);
 
@@ -23,8 +37,17 @@ public class ReconciliationSnapshot
     public decimal SupplierAdvances { get; init; }
     public decimal SupplierDebts { get; init; }
     public decimal CustomerDeposits { get; init; }
-    public decimal TotalAssets => RawMaterials + WorkInProcess + FinishedGoods + CustomerDebts + CashInBoxes + CashWithReps + EmployeeAdvances + SupplierAdvances;
-    public decimal TotalLiabilities => SupplierDebts + CustomerDeposits;
+    /// <summary>بنود يدوية أضافها الأدمن (أصول / التزامات) — خارج الأقسام المحسوبة.</summary>
+    public decimal ManualAssets { get; init; }
+    public decimal ManualLiabilities { get; init; }
+    /// <summary>أثر التعديلات اليدوية الكلي على صافي الموجودات (موجب = زاد الصافي).</summary>
+    public decimal AdjustmentsDelta { get; init; }
+    public List<string> AdjustmentErrors { get; init; } = new();
+    public bool HasAdjustments => Lines.Any(l => l.IsAdjusted);
+    /// <summary>الفائض لو لم تُطبَّق التعديلات اليدوية (للمقارنة والعرض).</summary>
+    public decimal SurplusBeforeAdjustments => IsBaseline ? 0 : Surplus - AdjustmentsDelta;
+    public decimal TotalAssets => RawMaterials + WorkInProcess + FinishedGoods + CustomerDebts + CashInBoxes + CashWithReps + EmployeeAdvances + SupplierAdvances + ManualAssets;
+    public decimal TotalLiabilities => SupplierDebts + CustomerDeposits + ManualLiabilities;
     public decimal NetAssets => TotalAssets - TotalLiabilities;
     public int? PreviousId { get; init; }
     public string? PreviousNumber { get; init; }
@@ -106,6 +129,8 @@ public class ReconciliationService
     public const string SupplierAdvancesSection = "دفعات مقدمة للموردين";
     public const string SupplierDebtsSection = "ديون الموردين";
     public const string DepositsSection = "تأمينات العملاء";
+    public const string ManualAssetSection = "بند يدوي (أصل)";
+    public const string ManualLiabilitySection = "بند يدوي (التزام)";
 
     private readonly ProjectDbContext _db;
     public ReconciliationService(ProjectDbContext db) => _db = db;
@@ -134,7 +159,7 @@ public class ReconciliationService
         return result;
     }
 
-    public async Task<ReconciliationSnapshot> ComputeAsync(DateTime reconDate, FinishedGoodsValuation valuation)
+    public async Task<ReconciliationSnapshot> ComputeAsync(DateTime reconDate, FinishedGoodsValuation valuation, IReadOnlyList<ReconciliationAdjustment>? adjustments = null)
     {
         var lines = new List<ReconciliationLineDto>();
         var warnings = new List<string>();
@@ -243,8 +268,48 @@ public class ReconciliationService
                                                        .SumAsync(t => (decimal?)t.Amount) ?? 0;
         }
 
+        // ---- التعديلات اليدوية (للأدمن): تُطبَّق على البنود ثم تنعكس على قسمها وعلى الصافي ----
+        var errors = new List<string>();
+        decimal manualAssets = 0, manualLiabilities = 0, netImpact = 0;
+        var liabilitySections = new[] { SupplierDebtsSection, DepositsSection };
+        foreach (var a in adjustments ?? Array.Empty<ReconciliationAdjustment>())
+        {
+            if (string.IsNullOrWhiteSpace(a.Reason)) { errors.Add($"اكتب سبب التعديل على «{a.Description}»"); continue; }
+            var reason = a.Reason.Trim();
+            if (a.Kind is AdjustmentKind.ManualAsset or AdjustmentKind.ManualLiability)
+            {
+                if (a.NewValue <= 0 || string.IsNullOrWhiteSpace(a.Description)) { errors.Add("البند اليدوي يحتاج وصفًا ومبلغًا أكبر من صفر"); continue; }
+                var asset = a.Kind == AdjustmentKind.ManualAsset;
+                lines.Add(new ReconciliationLineDto(asset ? ManualAssetSection : ManualLiabilitySection, a.Description.Trim(), null, null, a.NewValue, null, reason, IsManual: true));
+                if (asset) { manualAssets += a.NewValue; netImpact += a.NewValue; } else { manualLiabilities += a.NewValue; netImpact -= a.NewValue; }
+                continue;
+            }
+            var idx = lines.FindIndex(l => l.Section == a.Section && l.Description == a.Description && !l.IsManual);
+            if (idx < 0) { errors.Add($"البند «{a.Description}» لم يعد موجودًا في الحساب — أعد الحساب"); continue; }
+            var line = lines[idx];
+            if (line.Value != a.OriginalValue) { errors.Add($"قيمة «{a.Description}» تغيّرت من {a.OriginalValue:N0} إلى {line.Value:N0} بعد التعديل — أعد التعديل"); continue; }
+            var newValue = a.Kind == AdjustmentKind.Exclude ? 0 : a.NewValue;
+            var delta = newValue - line.Value;
+            lines[idx] = line with { Value = newValue, OriginalValue = line.Value, Note = reason, IsExcluded = a.Kind == AdjustmentKind.Exclude };
+            switch (a.Section)
+            {
+                case RawSection: raw += delta; break;
+                case WipSection: wip += delta; break;
+                case FgSection: fg += delta; break;
+                case CustomersSection: customerDebts += delta; break;
+                case CashSection: boxes += delta; break;
+                case RepsSection: reps += delta; break;
+                case AdvancesSection: employeeAdvances += delta; break;
+                case SupplierAdvancesSection: supplierAdvances += delta; break;
+                case SupplierDebtsSection: supplierDebts += delta; break;
+                case DepositsSection: customerDeposits += delta; break;
+            }
+            netImpact += liabilitySections.Contains(a.Section) ? -delta : delta;
+        }
+
         var snapshot = new ReconciliationSnapshot
         {
+            ManualAssets = manualAssets, ManualLiabilities = manualLiabilities, AdjustmentsDelta = netImpact, AdjustmentErrors = errors,
             ReconDate = reconDate.Date, Valuation = valuation, RawMaterials = raw, WorkInProcess = wip, FinishedGoods = fg,
             CustomerDebts = customerDebts, CashInBoxes = boxes, CashWithReps = reps, EmployeeAdvances = employeeAdvances,
             SupplierAdvances = supplierAdvances, SupplierDebts = supplierDebts, CustomerDeposits = customerDeposits,
@@ -281,13 +346,15 @@ public class ReconciliationService
     /// يحفظ المطابقة كلقطة (يعيد الحساب لحظة الحفظ). أول مطابقة "أساس" بلا توزيع. ما بعدها يوزّع الفائض
     /// (أو الخسارة) على الشركاء الفعّالين — يلزم أن مجموع نسبهم 100% — بقيد واحد على جاري الشركاء.
     /// </summary>
-    public async Task<(FinanceOperationResult result, AssetReconciliation? recon)> PostAsync(DateTime reconDate, FinishedGoodsValuation valuation, string? notes, int userId)
+    public async Task<(FinanceOperationResult result, AssetReconciliation? recon)> PostAsync(DateTime reconDate, FinishedGoodsValuation valuation, string? notes, int userId,
+                                                                                            IReadOnlyList<ReconciliationAdjustment>? adjustments = null)
     {
         if (!await new CashBoxService(_db).IsAdminAsync(userId)) return (FinanceOperationResult.Fail("اعتماد المطابقة وتوزيع الأرباح للأدمن فقط"), null);
         var last = await _db.AssetReconciliations.AsNoTracking().OrderByDescending(r => r.ReconDate).Select(r => (DateTime?)r.ReconDate).FirstOrDefaultAsync();
         if (last is { } l && reconDate.Date < l) return (FinanceOperationResult.Fail($"تاريخ المطابقة قبل آخر مطابقة ({l:yyyy/MM/dd})"), null);
 
-        var s = await ComputeAsync(reconDate, valuation);
+        var s = await ComputeAsync(reconDate, valuation, adjustments);
+        if (s.AdjustmentErrors.Count > 0) return (FinanceOperationResult.Fail("التعديلات اليدوية: " + string.Join(" — ", s.AdjustmentErrors)), null);
         if (!s.IsBaseline && s.Surplus != 0)
         {
             if (s.Shares.Count == 0) return (FinanceOperationResult.Fail("لا يوجد شركاء فعّالون بنسب — أضفهم من شاشة الشركاء أولًا"), null);
@@ -304,12 +371,21 @@ public class ReconciliationService
             CustomerDebts = s.CustomerDebts, CashInBoxes = s.CashInBoxes, CashWithReps = s.CashWithReps, EmployeeAdvances = s.EmployeeAdvances,
             SupplierAdvances = s.SupplierAdvances, SupplierDebts = s.SupplierDebts, CustomerDeposits = s.CustomerDeposits, NetAssets = s.NetAssets,
             PreviousReconciliationId = s.PreviousId, PreviousNetAssets = s.PreviousNetAssets, PartnerWithdrawalsSincePrevious = s.PartnerWithdrawals,
-            OwnerDepositsSincePrevious = s.OwnerDeposits, HomeDistributionsSincePrevious = s.HomeDistributions, Surplus = s.Surplus, IsBaseline = s.IsBaseline, Notes = Clean(notes), CreatedByUserId = userId
+            OwnerDepositsSincePrevious = s.OwnerDeposits, HomeDistributionsSincePrevious = s.HomeDistributions, Surplus = s.Surplus, IsBaseline = s.IsBaseline, Notes = Clean(notes), CreatedByUserId = userId,
+            ManualAssets = s.ManualAssets, ManualLiabilities = s.ManualLiabilities, AdjustmentsDelta = s.AdjustmentsDelta
         };
         foreach (var line in s.Lines)
-            recon.Lines.Add(new AssetReconciliationLine { Section = line.Section, Description = Trim(line.Description, 250), Quantity = line.Quantity, UnitValue = line.UnitValue, Value = line.Value });
+            recon.Lines.Add(new AssetReconciliationLine { Section = line.Section, Description = Trim(line.Description, 250), Quantity = line.Quantity, UnitValue = line.UnitValue, Value = line.Value,
+                IsManual = line.IsManual, IsExcluded = line.IsExcluded, OriginalValue = line.OriginalValue, AdjustReason = line.Note is null ? null : Trim(line.Note, 250), AdjustedByUserId = line.IsAdjusted ? userId : null });
         _db.AssetReconciliations.Add(recon);
         await _db.SaveChangesAsync();
+        if (s.HasAdjustments)
+        {
+            var adj = s.Lines.Where(l => l.IsAdjusted).Select(l => l.IsManual ? $"+{l.Description} {l.Value:N0} ({l.Note})" : l.IsExcluded ? $"استبعاد {l.Description} {l.OriginalValue:N0} ({l.Note})" : $"{l.Description}: {l.OriginalValue:N0}→{l.Value:N0} ({l.Note})");
+            await new AuditService(_db).LogAsync(userId, "Adjust", "AssetReconciliations", recon.Id,
+                $"اعتماد {recon.ReconNumber} بتعديلات يدوية (الفائض {s.SurplusBeforeAdjustments:N0} → {s.Surplus:N0}): " + string.Join(" | ", adj));
+            await _db.SaveChangesAsync();
+        }
 
         if (!s.IsBaseline && s.Surplus != 0)
         {

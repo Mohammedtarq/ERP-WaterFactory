@@ -65,13 +65,64 @@
                     </StackPanel>
                 </Border>
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
-                <DataGrid ItemsSource="{Binding Lines}" IsReadOnly="True">
+
+                <!-- تنبيه التعديلات اليدوية وأثرها على الفائض -->
+                <Border DockPanel.Dock="Top" Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,0,0,10"
+                        Visibility="{Binding HasAdjustments, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource SecondaryButton}" Content="إلغاء كل التعديلات" Command="{Binding ResetAdjustmentsCommand}" Margin="12,0,0,0"/>
+                        <TextBlock Text="{Binding AdjustmentBanner}" FontWeight="SemiBold" Foreground="#92400E" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Border>
+
+                <!-- أدوات الأدمن: تعديل قيمة / استبعاد / بند يدوي (السبب إلزامي) -->
+                <Expander DockPanel.Dock="Bottom" Header="تعديل بنود المطابقة قبل الاعتماد (للأدمن)" Margin="0,8,0,0"
+                          Visibility="{Binding ShowAdjustTools, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel Margin="0,8,0,0">
+                        <TextBlock Text="{Binding SelectedLineTitle}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                        <WrapPanel Margin="0,6,0,0">
+                            <TextBlock Text="القيمة الجديدة:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBox Text="{Binding EditValue, UpdateSourceTrigger=PropertyChanged, StringFormat=N0}" Width="130" Margin="0,0,10,0"/>
+                            <Button Style="{StaticResource PrimaryButton}" Content="تطبيق القيمة" Command="{Binding ApplyEditCommand}" IsEnabled="{Binding CanEditSelected}" Margin="0,0,6,0"/>
+                            <Button Style="{StaticResource SecondaryButton}" Content="استبعاد البند" Command="{Binding ExcludeCommand}" IsEnabled="{Binding CanEditSelected}" Margin="0,0,6,0"/>
+                            <Button Style="{StaticResource SecondaryButton}" Content="إلغاء تعديل البند" Command="{Binding RevertLineCommand}" IsEnabled="{Binding CanEditSelected}"/>
+                        </WrapPanel>
+                        <TextBlock Text="سبب التعديل (إلزامي — يُطبع ويُسجَّل)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding EditReason, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBlock Text="أو إضافة بند يدوي (له نفس السبب أعلاه)" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                        <WrapPanel Margin="0,4,0,0">
+                            <RadioButton Content="أصل (يزيد الصافي)" IsChecked="{Binding ManualIsLiability, Converter={StaticResource InverseBool}}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                            <RadioButton Content="التزام (ينقص الصافي)" IsChecked="{Binding ManualIsLiability}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                            <TextBox Text="{Binding ManualDescription, UpdateSourceTrigger=PropertyChanged}" Width="200" Margin="0,0,8,0" ToolTip="وصف البند"/>
+                            <TextBox Text="{Binding ManualAmount, UpdateSourceTrigger=PropertyChanged, StringFormat=N0}" Width="110" Margin="0,0,8,0" ToolTip="المبلغ"/>
+                            <Button Style="{StaticResource SecondaryButton}" Content="إضافة البند" Command="{Binding AddManualCommand}"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Expander>
+
+                <DataGrid ItemsSource="{Binding Lines}" SelectedItem="{Binding SelectedLine}" IsReadOnly="True" SelectionMode="Single">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsAdjusted}" Value="True">
+                                    <Setter Property="Background" Value="#FFFBEB"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="القسم" Binding="{Binding Section}" Width="140"/>
                         <DataGridTextColumn Header="البيان" Binding="{Binding Description}" Width="*" MinWidth="180"/>
                         <DataGridTextColumn Header="الكمية" Binding="{Binding Quantity, StringFormat=#\,0.###}" Width="100"/>
                         <DataGridTextColumn Header="سعر الوحدة" Binding="{Binding UnitValue, StringFormat=#\,0.####}" Width="100"/>
                         <DataGridTextColumn Header="القيمة" Binding="{Binding Value, StringFormat=N0}" Width="120"/>
+                        <DataGridTemplateColumn Header="تعديل يدوي" Width="190">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Note}" TextWrapping="Wrap" FontSize="11" Foreground="#92400E" ToolTip="{Binding Note}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>

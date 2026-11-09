@@ -31,9 +31,94 @@ public class ReconciliationSectionViewModel : SectionViewModel
         });
         PrintCommand = new AsyncRelayCommand(p => p is ReconciliationListRow r ? PrintAsync(db => DocumentReports.ReconciliationAsync(Session, db, r.Id)) : Task.CompletedTask);
         DeleteCommand = new AsyncRelayCommand(p => p is ReconciliationListRow r ? DeleteAsync(r) : Task.CompletedTask);
+        ApplyEditCommand = new AsyncRelayCommand(() => AdjustSelectedAsync(AdjustmentKind.Edit));
+        ExcludeCommand = new AsyncRelayCommand(() => AdjustSelectedAsync(AdjustmentKind.Exclude));
+        RevertLineCommand = new AsyncRelayCommand(RevertSelectedAsync);
+        ResetAdjustmentsCommand = new AsyncRelayCommand(async () => { _adjustments.Clear(); await ComputeAsync(); StatusMessage = "أُلغيت كل التعديلات اليدوية"; });
+        AddManualCommand = new AsyncRelayCommand(AddManualAsync);
     }
 
     protected override bool ReloadOnActivate => true;
+
+    // ======== تعديل البنود قبل الاعتماد (للأدمن) ========
+    private readonly List<ReconciliationAdjustment> _adjustments = new();
+    private bool _canAdjust;
+    private ReconciliationLineDto? _selectedLine;
+    private decimal _editValue;
+    private string? _editReason;
+    private bool _manualIsLiability;
+    private string? _manualDescription;
+    private decimal _manualAmount;
+
+    public AsyncRelayCommand ApplyEditCommand { get; }
+    public AsyncRelayCommand ExcludeCommand { get; }
+    public AsyncRelayCommand RevertLineCommand { get; }
+    public AsyncRelayCommand ResetAdjustmentsCommand { get; }
+    public AsyncRelayCommand AddManualCommand { get; }
+
+    /// <summary>أدوات التعديل تظهر للأدمن فقط (نفس شرط الاعتماد).</summary>
+    public bool CanAdjust { get => _canAdjust; private set { if (SetProperty(ref _canAdjust, value)) OnPropertyChanged(nameof(ShowAdjustTools)); } }
+    public bool ShowAdjustTools => CanAdjust && HasSnapshot;
+    public ReconciliationLineDto? SelectedLine
+    {
+        get => _selectedLine;
+        set
+        {
+            if (!SetProperty(ref _selectedLine, value)) return;
+            if (value is { IsManual: false }) EditValue = value.Value;
+            OnPropertyChanged(nameof(SelectedLineTitle));
+            OnPropertyChanged(nameof(CanEditSelected));
+        }
+    }
+    public bool CanEditSelected => SelectedLine is not null;
+    public string SelectedLineTitle => SelectedLine is null ? "اختر بندًا من الجدول لتعديله أو استبعاده" : $"{SelectedLine.Section} — {SelectedLine.Description}";
+    public decimal EditValue { get => _editValue; set => SetProperty(ref _editValue, value); }
+    /// <summary>سبب التعديل — إلزامي، ويُطبع بجانب البند ويُسجَّل في التدقيق.</summary>
+    public string? EditReason { get => _editReason; set => SetProperty(ref _editReason, value); }
+    public bool ManualIsLiability { get => _manualIsLiability; set => SetProperty(ref _manualIsLiability, value); }
+    public string? ManualDescription { get => _manualDescription; set => SetProperty(ref _manualDescription, value); }
+    public decimal ManualAmount { get => _manualAmount; set => SetProperty(ref _manualAmount, value); }
+    public bool HasAdjustments => Snapshot?.HasAdjustments == true;
+    public string AdjustmentBanner => Snapshot is not { HasAdjustments: true } s ? "" :
+        s.IsBaseline ? $"تعديلات يدوية مطبّقة — أثرها على صافي الموجودات {s.AdjustmentsDelta:+#,0;-#,0;0} د.ع"
+                     : $"تعديلات يدوية مطبّقة — الفائض كان {s.SurplusBeforeAdjustments:N0} وصار {s.Surplus:N0} د.ع (الأثر {s.AdjustmentsDelta:+#,0;-#,0;0})";
+
+    private async Task AdjustSelectedAsync(AdjustmentKind kind)
+    {
+        if (SelectedLine is null) { Dialogs.Error("اختر بندًا من الجدول أولًا"); return; }
+        if (SelectedLine.IsManual) { Dialogs.Error("البند اليدوي يُلغى بزر «إلغاء التعديل» ثم يُضاف من جديد"); return; }
+        if (string.IsNullOrWhiteSpace(EditReason)) { Dialogs.Error("اكتب سبب التعديل أولًا"); return; }
+        var line = SelectedLine;
+        var original = line.OriginalValue ?? line.Value;
+        _adjustments.RemoveAll(a => a.Kind is AdjustmentKind.Edit or AdjustmentKind.Exclude && a.Section == line.Section && a.Description == line.Description);
+        if (kind == AdjustmentKind.Edit && EditValue == original) { await ComputeAsync(); return; }   // رجوع للقيمة الأصلية = لا تعديل
+        _adjustments.Add(new ReconciliationAdjustment(kind, line.Section, line.Description, original, kind == AdjustmentKind.Exclude ? 0 : EditValue, EditReason!));
+        EditReason = null;
+        await ComputeAsync();
+        StatusMessage = kind == AdjustmentKind.Exclude ? "استُبعد البند من الحساب" : "عُدّلت قيمة البند — راجع أثرها على الفائض ثم اعتمد";
+    }
+
+    private async Task RevertSelectedAsync()
+    {
+        if (SelectedLine is null) { Dialogs.Error("اختر البند المعدّل أولًا"); return; }
+        var line = SelectedLine;
+        var n = _adjustments.RemoveAll(a => a.Description == line.Description && (a.Section == line.Section || (line.IsManual && a.Kind is AdjustmentKind.ManualAsset or AdjustmentKind.ManualLiability)));
+        if (n == 0) { Dialogs.Error("هذا البند غير معدّل"); return; }
+        await ComputeAsync();
+        StatusMessage = "أُلغي التعديل ورجع البند لقيمته المحسوبة";
+    }
+
+    private async Task AddManualAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ManualDescription)) { Dialogs.Error("اكتب وصف البند اليدوي"); return; }
+        if (ManualAmount <= 0) { Dialogs.Error("اكتب مبلغًا أكبر من صفر"); return; }
+        if (string.IsNullOrWhiteSpace(EditReason)) { Dialogs.Error("اكتب سبب إضافة البند"); return; }
+        _adjustments.Add(new ReconciliationAdjustment(ManualIsLiability ? AdjustmentKind.ManualLiability : AdjustmentKind.ManualAsset,
+            "", ManualDescription!.Trim(), 0, ManualAmount, EditReason!));
+        ManualDescription = null; ManualAmount = 0; EditReason = null;
+        await ComputeAsync();
+        StatusMessage = "أُضيف البند اليدوي — راجع أثره على الفائض ثم اعتمد";
+    }
 
     public IReadOnlyList<Option<FinishedGoodsValuation>> Valuations { get; } = ArabicLabels.OptionsOf<FinishedGoodsValuation>();
     public ObservableCollection<ReconciliationLineDto> Lines { get; } = new();
@@ -50,8 +135,8 @@ public class ReconciliationSectionViewModel : SectionViewModel
     /// <summary>سبب حذف آخر مطابقة (إلزامي، يُسجَّل في سجل التدقيق).</summary>
     public string? DeleteReason { get => _deleteReason; set => SetProperty(ref _deleteReason, value); }
 
-    public DateTime Date { get => _date; set { if (SetProperty(ref _date, value)) Snapshot = null; } }
-    public Option<FinishedGoodsValuation> Valuation { get => _valuation; set { if (SetProperty(ref _valuation, value)) Background(ComputeAsync()); } }
+    public DateTime Date { get => _date; set { if (SetProperty(ref _date, value)) { _adjustments.Clear(); Snapshot = null; } } }
+    public Option<FinishedGoodsValuation> Valuation { get => _valuation; set { if (SetProperty(ref _valuation, value)) { _adjustments.Clear(); Background(ComputeAsync()); } } }
     public string? Notes { get => _notes; set => SetProperty(ref _notes, value); }
 
     public ReconciliationSnapshot? Snapshot
@@ -65,9 +150,11 @@ public class ReconciliationSectionViewModel : SectionViewModel
             {
                 foreach (var l in value.Lines) Lines.Add(l);
                 foreach (var sh in value.Shares) Shares.Add(sh);
+                foreach (var e in value.AdjustmentErrors) Warnings.Add("تعديل يدوي: " + e);
                 foreach (var w in value.Warnings) Warnings.Add(w);
             }
-            foreach (var n in new[] { nameof(HasSnapshot), nameof(SurplusText), nameof(SurplusLabel), nameof(HasWarnings), nameof(SharesHint) }) OnPropertyChanged(n);
+            SelectedLine = null;
+            foreach (var n in new[] { nameof(HasSnapshot), nameof(SurplusText), nameof(SurplusLabel), nameof(HasWarnings), nameof(SharesHint), nameof(ShowAdjustTools), nameof(HasAdjustments), nameof(AdjustmentBanner) }) OnPropertyChanged(n);
         }
     }
     public bool HasSnapshot => Snapshot is not null;
@@ -86,6 +173,7 @@ public class ReconciliationSectionViewModel : SectionViewModel
         History.Clear();
         foreach (var r in await new ReconciliationService(db).GetReconciliationsAsync()) History.Add(r);
         if (History.Count > 0) History[0].IsLast = true;   // الأحدث أولًا
+        CanAdjust = await new CashBoxService(db).IsAdminAsync(Session.UserId);
     }
 
     private async Task DeleteAsync(ReconciliationListRow row)
@@ -107,7 +195,7 @@ public class ReconciliationSectionViewModel : SectionViewModel
     public async Task ComputeAsync()
     {
         await using var db = Session.NewDb();
-        Snapshot = await new ReconciliationService(db).ComputeAsync(Date, Valuation.Value);
+        Snapshot = await new ReconciliationService(db).ComputeAsync(Date, Valuation.Value, _adjustments.ToList());
         StatusMessage = $"حُسبت المطابقة ({Valuation.Label} للمنتج التام)";
     }
 
@@ -115,13 +203,16 @@ public class ReconciliationSectionViewModel : SectionViewModel
     {
         if (Snapshot is null) await ComputeAsync();
         var s = Snapshot!;
+        if (s.AdjustmentErrors.Count > 0) { Dialogs.Error("تعديلات يدوية غير صالحة: " + string.Join(" — ", s.AdjustmentErrors)); return; }
         var question = s.IsBaseline
             ? $"اعتماد مطابقة الأساس بصافي موجودات {s.NetAssets:N0} د.ع؟"
             : $"اعتماد المطابقة وتوزيع {(s.Surplus >= 0 ? "فائض" : "خسارة")} {s.Surplus:N0} د.ع على الشركاء؟ يمكن للأدمن حذف آخر مطابقة لاحقًا إن لزم.";
+        if (s.HasAdjustments) question += $"\n\n{AdjustmentBanner}. ستُطبع البنود المعدّلة بقيمتها الأصلية وسببها.";
         if (!Dialogs.Confirm(question)) return;
         await using var db = Session.NewDb();
-        var (result, recon) = await new ReconciliationService(db).PostAsync(Date, Valuation.Value, Notes, Session.UserId);
+        var (result, recon) = await new ReconciliationService(db).PostAsync(Date, Valuation.Value, Notes, Session.UserId, _adjustments.ToList());
         if (!result.Success) { Dialogs.Error(result.ErrorMessage ?? "تعذّر الاعتماد"); return; }
+        _adjustments.Clear();
         StatusMessage = $"اعتُمدت المطابقة {recon!.ReconNumber}";
         Notes = null;
         Snapshot = null;

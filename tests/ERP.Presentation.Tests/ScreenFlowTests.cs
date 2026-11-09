@@ -1027,6 +1027,41 @@ public class ScreenFlowTests
         await rec.ComputeCommand.ExecuteAsync();
         await rec.PostCommand.ExecuteAsync();
         Assert.Single(rec.History);
+
+        // تعديل بنود المطابقة قبل الاعتماد (أدمن): السبب إلزامي، والأثر على الفائض ظاهر، ويُطبع بالقيمة الأصلية
+        await rec.ComputeCommand.ExecuteAsync();
+        Assert.True(rec.CanAdjust);
+        var surplusBefore = rec.Snapshot!.Surplus;
+        var target = rec.Lines.First(l => l.Section == Data.Services.ReconciliationService.FgSection);
+        rec.SelectedLine = target;
+        rec.EditValue = target.Value + 500;
+        dialogs.Errors.Clear();
+        await rec.ApplyEditCommand.ExecuteAsync();
+        Assert.Contains(dialogs.Errors, e => e.Contains("سبب"));
+        dialogs.Errors.Clear();
+        rec.EditReason = "جرد فعلي";
+        await rec.ApplyEditCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(surplusBefore + 500, rec.Snapshot!.Surplus);
+        Assert.True(rec.HasAdjustments);
+        Assert.Contains("كان", rec.AdjustmentBanner);
+        rec.SelectedLine = rec.Lines.Single(l => l.IsAdjusted);
+        await rec.RevertLineCommand.ExecuteAsync();                                   // الإلغاء يعيد القيمة المحسوبة
+        Assert.False(rec.HasAdjustments);
+        Assert.Equal(surplusBefore, rec.Snapshot!.Surplus);
+        rec.ManualDescription = "التزام غير مسجّل"; rec.ManualAmount = 200; rec.ManualIsLiability = true; rec.EditReason = "التزام قديم";
+        await rec.AddManualCommand.ExecuteAsync();
+        Assert.Equal(surplusBefore - 200, rec.Snapshot!.Surplus);
+        rec.PrintPreviewCommand.Execute(null);
+        Assert.Contains(dialogs.Reports.Last().Rows, r => r.Any(c => c.Contains("بند يدوي") && c.Contains("التزام قديم")));
+        await rec.PostCommand.ExecuteAsync();
+        Assert.Empty(dialogs.Errors);
+        Assert.Equal(2, rec.History.Count);
+        Assert.Contains(dialogs.Reports.Last().Rows, r => r.Any(c => c.Contains("بند يدوي") && c.Contains("التزام قديم")));
+        Assert.False(rec.HasAdjustments);                                              // انتهت التعديلات بعد الاعتماد
+        rec.DeleteReason = "تنظيف الاختبار";                                           // تنظيف: حذف المطابقة المعدّلة
+        await rec.DeleteCommand.ExecuteAsync(rec.History[0]);
+        Assert.Single(rec.History);
         Assert.Empty(_f.Unhandled);
     }
 }

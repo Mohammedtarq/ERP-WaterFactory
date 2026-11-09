@@ -724,7 +724,8 @@ public partial class ProjectDbContext : DbContext
                                       nameof(AssetReconciliation.CustomerDebts), nameof(AssetReconciliation.CashInBoxes), nameof(AssetReconciliation.CashWithReps),
                                       nameof(AssetReconciliation.EmployeeAdvances), nameof(AssetReconciliation.SupplierAdvances), nameof(AssetReconciliation.SupplierDebts),
                                       nameof(AssetReconciliation.CustomerDeposits), nameof(AssetReconciliation.NetAssets), nameof(AssetReconciliation.PreviousNetAssets),
-                                      nameof(AssetReconciliation.PartnerWithdrawalsSincePrevious), nameof(AssetReconciliation.OwnerDepositsSincePrevious), nameof(AssetReconciliation.Surplus) })
+                                      nameof(AssetReconciliation.PartnerWithdrawalsSincePrevious), nameof(AssetReconciliation.OwnerDepositsSincePrevious), nameof(AssetReconciliation.Surplus),
+                                      nameof(AssetReconciliation.ManualAssets), nameof(AssetReconciliation.ManualLiabilities), nameof(AssetReconciliation.AdjustmentsDelta) })
                 e.Property(p).HasPrecision(18, 2);
             e.HasOne(r => r.PreviousReconciliation).WithMany().HasForeignKey(r => r.PreviousReconciliationId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(r => r.JournalEntry).WithMany().HasForeignKey(r => r.JournalEntryId).OnDelete(DeleteBehavior.Restrict);
@@ -736,6 +737,8 @@ public partial class ProjectDbContext : DbContext
             e.Property(l => l.Quantity).HasPrecision(18, 3);
             e.Property(l => l.UnitValue).HasPrecision(18, 4);
             e.Property(l => l.Value).HasPrecision(18, 2);
+            e.Property(l => l.OriginalValue).HasPrecision(18, 2);
+            e.Property(l => l.AdjustReason).HasMaxLength(250);
         });
         modelBuilder.Entity<EmployeeDeduction>(e =>
         {

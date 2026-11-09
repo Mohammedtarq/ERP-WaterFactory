@@ -549,18 +549,19 @@ public static class DocumentReports
     // ============================ المطابقة والشركاء ============================
 
     private static ReportDocument BuildReconciliation(AppSession s, string title, string? stamp, string? number, DateTime date, FinishedGoodsValuation valuation,
-        IEnumerable<(string section, string description, decimal? qty, decimal? unit, decimal value)> lines,
+        IEnumerable<(string section, string description, decimal? qty, decimal? unit, decimal value, string? note)> lines,
         decimal assets, decimal liabilities, decimal net, string? previous, decimal? previousNet, decimal withdrawals, decimal ownerDeposits,
-        bool baseline, decimal surplus, IEnumerable<(string name, decimal percent, decimal amount)> shares, string? notes)
+        bool baseline, decimal surplus, IEnumerable<(string name, decimal percent, decimal amount)> shares, string? notes, decimal adjustmentsDelta = 0)
     {
         var r = New(s, title, stamp, notes);
         r.Field("رقم المطابقة", number).Field("التاريخ", date.ToString("yyyy/MM/dd"))
          .Field("تقييم المنتج التام", ArabicLabels.Of(valuation)).Field("المطابقة السابقة", previous);
         r.Columns.AddRange(new[] { "القسم", "البيان", "الكمية", "سعر الوحدة", "القيمة" });
         foreach (var l in lines)
-            r.Rows.Add(new[] { l.section, l.description, l.qty is { } q ? Q(q) : "", l.unit is { } u ? $"{u:#,0.####}" : "", N(l.value) });
+            r.Rows.Add(new[] { l.section, l.note is null ? l.description : $"{l.description}\n{l.note}", l.qty is { } q ? Q(q) : "", l.unit is { } u ? $"{u:#,0.####}" : "", N(l.value) });
         r.Total("إجمالي الموجودات", $"{N(assets)} د.ع").Total("الالتزامات (موردون + تأمينات)", $"{N(liabilities)} د.ع")
          .Total("صافي الموجودات", $"{N(net)} د.ع", true);
+        if (adjustmentsDelta != 0) r.Total("أثر التعديلات اليدوية على الصافي (للأدمن)", $"{N(adjustmentsDelta)} د.ع");
         if (baseline) r.Total("الفائض", "مطابقة أساس — لا توزيع");
         else
         {
@@ -574,12 +575,15 @@ public static class DocumentReports
         return r;
     }
 
+    private static string? AdjNote(bool manual, bool excluded, decimal? original, string? reason) =>
+        manual ? $"◄ بند يدوي — {reason}" : excluded ? $"◄ مستبعد (الأصلي {N(original ?? 0)}) — {reason}" : original is not null ? $"◄ معدّل يدويًا (الأصلي {N(original.Value)}) — {reason}" : null;
+
     /// <summary>معاينة مطابقة قبل الاعتماد.</summary>
     public static ReportDocument ReconciliationPreview(AppSession s, ReconciliationSnapshot x) =>
         BuildReconciliation(s, "مطابقة الموجودات", "معاينة — غير معتمدة", null, x.ReconDate, x.Valuation,
-            x.Lines.Select(l => (l.Section, l.Description, l.Quantity, l.UnitValue, l.Value)), x.TotalAssets, x.TotalLiabilities, x.NetAssets,
+            x.Lines.Select(l => (l.Section, l.Description, l.Quantity, l.UnitValue, l.Value, AdjNote(l.IsManual, l.IsExcluded, l.OriginalValue, l.Note))), x.TotalAssets, x.TotalLiabilities, x.NetAssets,
             x.PreviousNumber, x.PreviousNetAssets, x.PartnerWithdrawals, x.OwnerDeposits, x.IsBaseline, x.Surplus,
-            x.Shares.Select(sh => (sh.PartnerName, sh.SharePercent, sh.Amount)), null);
+            x.Shares.Select(sh => (sh.PartnerName, sh.SharePercent, sh.Amount)), null, x.AdjustmentsDelta);
 
     public static async Task<ReportDocument?> ReconciliationAsync(AppSession s, ProjectDbContext db, int reconId)
     {
@@ -587,11 +591,11 @@ public static class DocumentReports
         var x = await svc.GetAsync(reconId);
         if (x is null) return null;
         var shares = await svc.GetSharesAsync(reconId);
-        var assets = x.RawMaterialsValue + x.WorkInProcessValue + x.FinishedGoodsValue + x.CustomerDebts + x.CashInBoxes + x.CashWithReps + x.EmployeeAdvances + x.SupplierAdvances;
+        var assets = x.RawMaterialsValue + x.WorkInProcessValue + x.FinishedGoodsValue + x.CustomerDebts + x.CashInBoxes + x.CashWithReps + x.EmployeeAdvances + x.SupplierAdvances + x.ManualAssets;
         return BuildReconciliation(s, "مطابقة الموجودات", null, x.ReconNumber, x.ReconDate, x.FinishedGoodsValuation,
-            x.Lines.OrderBy(l => l.Id).Select(l => (l.Section, l.Description, l.Quantity, l.UnitValue, l.Value)), assets, x.SupplierDebts + x.CustomerDeposits,
+            x.Lines.OrderBy(l => l.Id).Select(l => (l.Section, l.Description, l.Quantity, l.UnitValue, l.Value, AdjNote(l.IsManual, l.IsExcluded, l.OriginalValue, l.AdjustReason))), assets, x.SupplierDebts + x.CustomerDeposits + x.ManualLiabilities,
             x.NetAssets, x.PreviousReconciliation?.ReconNumber, x.PreviousNetAssets, x.PartnerWithdrawalsSincePrevious, x.OwnerDepositsSincePrevious,
-            x.IsBaseline, x.Surplus, shares.Select(t => (t.Partner.Name, t.SharePercent ?? 0, t.Amount)), x.Notes);
+            x.IsBaseline, x.Surplus, shares.Select(t => (t.Partner.Name, t.SharePercent ?? 0, t.Amount)), x.Notes, x.AdjustmentsDelta);
     }
 
     /// <summary>تقرير مطابقة النقل من نظام الرحمة: كل بند في النظام القديم مقابل ما سُجّل فعلًا في النظام الجديد.</summary>

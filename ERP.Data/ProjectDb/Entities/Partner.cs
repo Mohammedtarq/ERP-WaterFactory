@@ -69,6 +69,10 @@ public class AssetReconciliation
     /// <summary>ما صُرف من صندوق المنزل (الخمس، مساعدات، أصول) منذ المطابقة السابقة — ربح وُزّع لا خسارة، فيُضاف للفائض.</summary>
     public decimal HomeDistributionsSincePrevious { get; set; }
     public decimal Surplus { get; set; }
+    /// <summary>بنود يدوية أضافها الأدمن قبل الاعتماد (أصول / التزامات) وأثر التعديلات الكلي على الصافي.</summary>
+    public decimal ManualAssets { get; set; }
+    public decimal ManualLiabilities { get; set; }
+    public decimal AdjustmentsDelta { get; set; }
     public bool IsBaseline { get; set; }
     public string? Notes { get; set; }
     public int? JournalEntryId { get; set; }
@@ -89,4 +93,10 @@ public class AssetReconciliationLine
     public decimal? Quantity { get; set; }
     public decimal? UnitValue { get; set; }
     public decimal Value { get; set; }
+    /// <summary>تعديل يدوي (للأدمن): بند أضيف يدويًا / استُبعد / عُدّلت قيمته (القيمة الأصلية وسبب التعديل).</summary>
+    public bool IsManual { get; set; }
+    public bool IsExcluded { get; set; }
+    public decimal? OriginalValue { get; set; }
+    public string? AdjustReason { get; set; }
+    public int? AdjustedByUserId { get; set; }
 }
