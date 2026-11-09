@@ -35,7 +35,8 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 Copy-Item (Join-Path $PSScriptRoot 'Check-GitHubUpdate.ps1') (Join-Path $dir 'Check-GitHubUpdate.ps1') -Force
 
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $dir 'Check-GitHubUpdate.ps1')`""
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $EveryMinutes)
+# المدة صريحة: بدونها لا يتكرر المشغّل على بعض إصدارات Windows فيعمل المرة الأولى فقط
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $EveryMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 Register-ScheduledTask -TaskName 'ERP-AutoPublish' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
