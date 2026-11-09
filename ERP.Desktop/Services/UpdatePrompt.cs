@@ -20,8 +20,8 @@ public static class UpdatePrompt
         try
         {
             if (Environment.GetEnvironmentVariable("ERP_NO_UPDATE") == "1") return false;
-            var host = UpdateService.ServerHost(controlConnectionString);
-            if (host is null) return false;
+            // جهاز التمرين على LocalDB لا اسم سيرفر له: يجرّب هذا الجهاز نفسه (إن لم يكن عليه خادم محلي يفشل الفحص بصمت)
+            var host = UpdateService.ServerHost(controlConnectionString) ?? "localhost";
             var current = typeof(App).Assembly.GetName().Version ?? new Version(0, 0);
             var baseUri = UpdateService.BaseUri(host);
             using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
