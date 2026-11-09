@@ -174,12 +174,26 @@
                                     <DockPanel Margin="0,2">
                                         <Button DockPanel.Dock="Right" Content="&#xE711;" ToolTip="حذف الصنف من الأمر" Style="{StaticResource RowIconButton}" Tag="#DC2626"
                                                 Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <StackPanel>
                                         <TextBlock VerticalAlignment="Center" TextWrapping="Wrap">
                                             <Run Text="{Binding ItemName, Mode=OneWay}" FontWeight="SemiBold"/>
                                             <Run Text=" — "/><Run Text="{Binding QuantityText, Mode=OneWay}"/><Run Text=" — دفعة "/>
                                             <Run Text="{Binding BatchNumber, Mode=OneWay}"/>
                                             <Run Text="{Binding RecipeName, Mode=OneWay}" Foreground="{StaticResource MutedTextBrush}"/>
                                         </TextBlock>
+                                        <WrapPanel Visibility="{Binding HasSoldAhead, Converter={StaticResource BoolToVisibility}}" Margin="0,1,0,0">
+                                            <Border Background="#FEF3C7" CornerRadius="5" Padding="6,1" Margin="0,0,6,0"><TextBlock Text="{Binding SoldAheadText}" FontSize="11" Foreground="#92400E"/></Border>
+                                            <TextBlock Text="{Binding ToStockText}" FontSize="11" Foreground="#166534">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsShort}" Value="True"><Setter Property="Foreground" Value="#B45309"/><Setter Property="FontWeight" Value="SemiBold"/></DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </WrapPanel>
+                                        </StackPanel>
                                     </DockPanel>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

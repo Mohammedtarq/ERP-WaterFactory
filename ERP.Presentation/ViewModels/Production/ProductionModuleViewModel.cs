@@ -110,6 +110,17 @@ public class OrderLineDraft
     /// <summary>الكمية بالعبوة كما أُدخلت: «7 كارتون».</summary>
     public string QuantityText { get; init; } = "";
     public string BatchNumber { get; init; } = "";
+    /// <summary>ما بيع مقدمًا من هذا الصنف/المتغير ولا يغطيه أمر آخر (بالقطعة)، ووحدة البيع لعرضه: «2 شرنك (40 قطعة)».</summary>
+    public decimal SoldAheadPieces { get; init; }
+    public string? SaleLevelName { get; init; }
+    public decimal SaleLevelPer { get; init; } = 1;
+    public bool HasSoldAhead => SoldAheadPieces > 0;
+    public string SoldAheadText => HasSoldAhead ? $"مباع مقدمًا: {PendingProductionService.FormatPacks(SoldAheadPieces, SaleLevelName, SaleLevelPer)}" : "";
+    /// <summary>ما يبقى للمخزن بعد تسوية المباع، أو تنبيه خفيف (لا يمنع) إن كانت الكمية أقل من المباع.</summary>
+    public string ToStockText => !HasSoldAhead ? ""
+        : Quantity >= SoldAheadPieces ? $"للمخزن بعد التسوية: {PendingProductionService.FormatPacks(Quantity - SoldAheadPieces, SaleLevelName, SaleLevelPer)}"
+        : $"⚠ كميتك أقل من المباع بـ {PendingProductionService.FormatPacks(SoldAheadPieces - Quantity, SaleLevelName, SaleLevelPer)}";
+    public bool IsShort => HasSoldAhead && Quantity < SoldAheadPieces;
     public ProductionLineInput ToInput() => new(FinishedItemId, Quantity, RecipeId, BatchNumber);
 }
 
@@ -138,6 +149,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
             await using var db = Session.NewDb();
             BatchNumber = await new ProductionService(db).NextBatchNumberAsync();
             IsComposing = true;
+            await AddSoldAheadLinesAsync(db);
         });
         EditBatchCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenBatchAsync(r) : Task.CompletedTask);
         SaveBatchCommand = new AsyncRelayCommand(SaveBatchAsync);
@@ -394,6 +406,7 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         OnPropertyChanged(nameof(Machine));
         EditingOrder = row;
         IsComposing = true;
+        await RefreshSoldAheadAsync(row.Id);
         await PreviewAsync();
     }
 
@@ -612,18 +625,76 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         return lines;
     }
 
+    private List<PendingProductionService.SoldAhead> _soldAhead = new();
+    private int? _soldAheadExclude;
+
+    /// <summary>
+    /// المبيعات المقدمة (بيع قبل الإنتاج) تدخل المسودة تلقائيًا: كل صنف/متغير بكمية المباع الذي لا يغطيه أمر آخر مفتوح، مقرّبًا لوحدة البيع.
+    /// للمخطّط تعديل الكمية أو حذف البند بحرية (تنبيه خفيف فقط إن نقصت عن المباع، وتنبيه عند بدء الأمر).
+    /// </summary>
+    private async Task AddSoldAheadLinesAsync(ProjectDbContext db)
+    {
+        _soldAheadExclude = null;
+        _soldAhead = await new PendingProductionService(db).SoldAheadAsync();
+        var added = 0;
+        foreach (var x in _soldAhead.Where(x => x.Uncovered > 0))
+        {
+            var qty = PendingProductionService.CeilToLevel(x.Uncovered, x.PerLevel);
+            ComposeLines.Add(SoldAheadLine(x, qty));
+            added++;
+        }
+        if (added > 0)
+        {
+            StatusMessage = $"أُضيف {added} صنف من المبيعات المقدمة (بيع قبل الإنتاج) — عدّل الكمية أو احذف بحرية";
+            await PreviewAsync();
+        }
+    }
+
+    private OrderLineDraft SoldAheadLine(PendingProductionService.SoldAhead x, decimal qty) => new()
+    {
+        FinishedItemId = x.ItemId, ItemName = x.ItemName, RecipeId = x.RecipeId, RecipeName = x.RecipeName,
+        Quantity = qty, QuantityText = PendingProductionService.FormatPacks(qty, x.LevelName, x.PerLevel), BatchNumber = BatchNumber.Trim(),
+        SoldAheadPieces = x.Uncovered, SaleLevelName = x.LevelName, SaleLevelPer = x.PerLevel
+    };
+
+    /// <summary>يلحق بكل بند معروض ما بيع مقدمًا من صنفه (للمسودة المعدّلة أو بند أضافه المخطّط).</summary>
+    private async Task RefreshSoldAheadAsync(int? excludeOrderId)
+    {
+        await using var db = Session.NewDb();
+        _soldAheadExclude = excludeOrderId;
+        _soldAhead = await new PendingProductionService(db).SoldAheadAsync(excludeOrderId);
+        for (var i = 0; i < ComposeLines.Count; i++)
+        {
+            var l = ComposeLines[i];
+            var x = _soldAhead.FirstOrDefault(a => a.ItemId == l.FinishedItemId && a.RecipeId == l.RecipeId);
+            if (x is null || x.Uncovered <= 0) continue;
+            ComposeLines[i] = new OrderLineDraft
+            {
+                FinishedItemId = l.FinishedItemId, ItemName = l.ItemName, RecipeId = l.RecipeId, RecipeName = l.RecipeName, Quantity = l.Quantity,
+                QuantityText = l.QuantityText, BatchNumber = l.BatchNumber, SoldAheadPieces = x.Uncovered, SaleLevelName = x.LevelName, SaleLevelPer = x.PerLevel
+            };
+        }
+    }
+
     /// <summary>يثبّت الصنف المختار كسطر في الأمر ويجهّز إدخال صنف آخر برقم الدفعة التالي.</summary>
     private async Task AddLineAsync()
     {
         if (FinishedItem is null || Quantity <= 0) { Dialogs.Error($"اختر المنتج وأدخل عدد {LevelName} أكبر من صفر"); return; }
         if (Packs != Math.Floor(Packs)) { Dialogs.Error($"أدخل عددًا صحيحًا من {LevelName}"); return; }
         // الصنف نفسه مسموح مرتين: عام وطلب خاص (أو طلبان خاصان مختلفان)
-        if (ComposeLines.Any(l => l.FinishedItemId == FinishedItem.Id && l.RecipeId == Recipe?.Id))
+        var existing = ComposeLines.FirstOrDefault(l => l.FinishedItemId == FinishedItem.Id && l.RecipeId == Recipe?.Id);
+        if (existing is not null && !existing.HasSoldAhead)
         { Dialogs.Error(Recipe is null ? "الصنف العام مضاف للأمر مسبقًا" : $"الطلب الخاص «{Recipe.Name}» مضاف للأمر مسبقًا"); return; }
+        // بند أُضيف تلقائيًا من المبيعات المقدمة: الكمية المكتوبة تحلّ محله (للزيادة فوق المباع فتذهب للمخزن)
+        OrderLineDraft? sold = existing;
+        if (existing is null && _soldAhead.FirstOrDefault(a => a.ItemId == FinishedItem.Id && a.RecipeId == Recipe?.Id) is { Uncovered: > 0 } x)
+            sold = new OrderLineDraft { SoldAheadPieces = x.Uncovered, SaleLevelName = x.LevelName, SaleLevelPer = x.PerLevel };
+        if (existing is not null) ComposeLines.Remove(existing);
         ComposeLines.Add(new OrderLineDraft
         {
             FinishedItemId = FinishedItem.Id, ItemName = FinishedItem.ItemName, RecipeId = Recipe?.Id, RecipeName = Recipe?.Name,
-            Quantity = Quantity, QuantityText = $"{Packs:N0} {LevelName}", BatchNumber = BatchNumber.Trim()
+            Quantity = Quantity, QuantityText = $"{Packs:N0} {LevelName}", BatchNumber = BatchNumber.Trim(),
+            SoldAheadPieces = sold?.SoldAheadPieces ?? 0, SaleLevelName = sold?.SaleLevelName, SaleLevelPer = sold?.SaleLevelPer ?? 1
         });
         SetPacks(0);   // رقم الدفعة يبقى كما هو: موحّد لكل أصناف الأمر
         FinishedItem = null;
@@ -725,6 +796,12 @@ public class ProductionOrdersSectionViewModel : SectionViewModel
         await using var preDb = Session.NewDb();
         var preChecked = await new ProductionService(preDb).HasPassedPreRunQcAsync(row.Id);
         var preNote = preChecked ? "" : "\nتنبيه: لم تُفحص هذه المسودة في المختبر قبل التشغيل.";
+        // تنبيه خفيف (لا يمنع): مبيعات مقدمة لا يغطيها هذا الأمر ولا أمر آخر مفتوح
+        var shortNotes = (await new PendingProductionService(preDb).SoldAheadAsync(row.Id))
+            .Select(x => (x, qty: row.Lines.Where(l => l.FinishedItemId == x.ItemId && l.CustomRecipeId == x.RecipeId).Sum(l => l.QuantityToProduce)))
+            .Where(t => t.qty > 0 && t.qty < t.x.Uncovered)
+            .Select(t => $"{t.x.ItemName}: مباع مقدمًا {PendingProductionService.FormatPacks(t.x.Uncovered, t.x.LevelName, t.x.PerLevel)} وأمرك فيه {PendingProductionService.FormatPacks(t.qty, t.x.LevelName, t.x.PerLevel)} فقط").ToList();
+        if (shortNotes.Count > 0) preNote += "\nتنبيه — مبيعات مقدمة أكثر من كمية الأمر:\n• " + string.Join("\n• ", shortNotes);
         if (!Dialogs.Confirm($"بدء تشغيل {row.MONumber}؟ ستُصرف المواد الأولية من المخزن إلى تحت تصنيع الماكينة {row.MachineName} فورًا." + preNote)) return;
         await using var db = Session.NewDb();
         if (await RunOperationAsync(() => new ProductionService(db).StartAsync(row.Id, Session.UserId), $"بدأ تشغيل {row.MONumber} — أرسل عينة للمختبر"))

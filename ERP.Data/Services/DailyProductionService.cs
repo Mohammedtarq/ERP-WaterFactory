@@ -320,7 +320,7 @@ public class PendingProductionService
 
     /// <summary>سطر بيع بانتظار الإنتاج. الكميات مخزّنة بالقطعة، وتُعرض بوحدة البيع في الفاتورة مع القطع بين قوسين.</summary>
     public record OpenShortageRow(int Id, DateTime CreatedAt, string ItemName, string WarehouseName, string? InvoiceNumber, decimal Quantity, decimal Settled, decimal Open,
-                                  string? RecipeName = null, string? LevelName = null, decimal PerLevel = 1)
+                                  string? RecipeName = null, string? LevelName = null, decimal PerLevel = 1, int ItemId = 0, int? RecipeId = null)
     {
         public string QuantityText => FormatPacks(Quantity, LevelName, PerLevel);
         public string SettledText => FormatPacks(Settled, LevelName, PerLevel);
@@ -337,6 +337,33 @@ public class PendingProductionService
         return rest == 0 ? $"{packs:N0} {level} ({total})" : $"{packs:N0} {level} و{rest:N0} قطع ({total})";
     }
 
+    /// <summary>ما بيع قبل إنتاجه لصنف/متغير (مجمَّعًا من كل الفواتير)، وما تغطيه أوامر إنتاج مفتوحة (مسودة أو جارية) من ذلك.</summary>
+    public record SoldAhead(int ItemId, int? RecipeId, string ItemName, string? RecipeName, decimal OpenPieces, decimal CoveredByOrders, string? LevelName, decimal PerLevel)
+    {
+        /// <summary>المباع الذي لا يغطيه أي أمر مفتوح: هو ما يجب أن يغطيه الأمر الجديد.</summary>
+        public decimal Uncovered => Math.Max(0, OpenPieces - CoveredByOrders);
+    }
+
+    /// <param name="excludeOrderId">أمر يُستثنى من التغطية (المسودة التي تُعدَّل أو الأمر المراد بدؤه).</param>
+    public async Task<List<SoldAhead>> SoldAheadAsync(int? excludeOrderId = null)
+    {
+        var rows = await OpenAsync();
+        if (rows.Count == 0) return new();
+        var covered = (await _db.ProductionOrderLines.AsNoTracking()
+                .Where(l => (l.ProductionOrder.Status == ProductionOrderStatus.Draft || l.ProductionOrder.Status == ProductionOrderStatus.InProgress) && l.ProductionOrderId != excludeOrderId)
+                .GroupBy(l => new { l.FinishedItemId, l.CustomRecipeId })
+                .Select(g => new { g.Key.FinishedItemId, g.Key.CustomRecipeId, Qty = g.Sum(l => l.QuantityToProduce) }).ToListAsync())
+            .ToDictionary(x => (x.FinishedItemId, x.CustomRecipeId), x => x.Qty);
+        return rows.GroupBy(r => (r.ItemId, r.RecipeId)).Select(g =>
+        {
+            var lv = g.Where(r => r.LevelName != null && r.PerLevel > 1).OrderByDescending(r => r.PerLevel).FirstOrDefault();
+            return new SoldAhead(g.Key.ItemId, g.Key.RecipeId, g.First().ItemName, g.First().RecipeName, g.Sum(r => r.Open), covered.GetValueOrDefault(g.Key), lv?.LevelName, lv?.PerLevel ?? 1);
+        }).OrderBy(x => x.ItemName).ThenBy(x => x.RecipeName).ToList();
+    }
+
+    /// <summary>تقريب الكمية لأعلى إلى عدد صحيح من وحدة البيع (الإنتاج بعبوات كاملة؛ الزيادة تذهب للمخزن).</summary>
+    public static decimal CeilToLevel(decimal pieces, decimal perLevel) => perLevel > 1 ? Math.Ceiling(pieces / perLevel) * perLevel : pieces;
+
     private record SaleLevel(int SalesInvoiceId, int ItemId, int? CustomRecipeId, string LevelName, decimal PerLevel);
 
     public async Task<List<OpenShortageRow>> OpenAsync()
@@ -352,7 +379,7 @@ public class PendingProductionService
         {
             var lv = levels.FirstOrDefault(l => l.SalesInvoiceId == s.SalesInvoiceId && l.ItemId == s.ItemId && l.CustomRecipeId == s.CustomRecipeId);
             return new OpenShortageRow(s.Id, DateTime.SpecifyKind(s.CreatedAt, DateTimeKind.Utc).ToLocalTime(), s.ItemName, s.Wh, s.Inv, s.Quantity, s.SettledQuantity,
-                                       s.Quantity - s.SettledQuantity, s.Recipe, lv?.LevelName, lv?.PerLevel ?? 1);
+                                       s.Quantity - s.SettledQuantity, s.Recipe, lv?.LevelName, lv?.PerLevel ?? 1, s.ItemId, s.CustomRecipeId);
         }).ToList();
     }
 }
