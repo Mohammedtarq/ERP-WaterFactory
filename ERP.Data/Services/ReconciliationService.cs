@@ -78,6 +78,8 @@ public class ReconciliationListRow
     public decimal NetAssets { get; init; }
     public decimal Surplus { get; init; }
     public bool IsBaseline { get; init; }
+    /// <summary>آخر مطابقة: وحدها يُعرض لها زر الحذف (يُملأ عند التحميل).</summary>
+    public bool IsLast { get; set; }
     public string CreatedBy { get; init; } = "";
 }
 
@@ -470,6 +472,71 @@ public class ReconciliationService
                 Credit = t.Amount > 0 ? t.Amount : 0, Debit = t.Amount < 0 ? -t.Amount : 0, Balance = balance, Reference = t.Recon, Notes = t.Notes
             };
         }).ToList();
+    }
+
+    /// <summary>
+    /// حذف آخر مطابقة معتمدة (للأدمن): يُعكس قيد التوزيع بقيد مقابل، وتُعكس حصص الشركاء بحركات سالبة، ثم تُحذف المطابقة وبنودها من القائمة.
+    /// القيد وعكسه وحصص الشركاء وعكسها تبقى في الدفاتر وكشوف الشركاء (صافيها صفر) فلا ينكسر تسلسل المحاسبة.
+    /// يُرفض إن لم تكن الأخيرة، أو وقعت في فترة مقفلة، أو صار رصيد شريك سالبًا بعد عكس حصته (أي سحب من أرباحها).
+    /// </summary>
+    public async Task<FinanceOperationResult> DeleteLastAsync(int reconId, string? reason, int userId)
+    {
+        if (!await new CashBoxService(_db).IsAdminAsync(userId)) return FinanceOperationResult.Fail("حذف المطابقة للأدمن فقط");
+        if (string.IsNullOrWhiteSpace(reason)) return FinanceOperationResult.Fail("اكتب سبب حذف المطابقة");
+        var recon = await _db.AssetReconciliations.Include(r => r.Lines).FirstOrDefaultAsync(r => r.Id == reconId);
+        if (recon is null) return FinanceOperationResult.Fail("المطابقة غير موجودة");
+        var lastId = await _db.AssetReconciliations.OrderByDescending(r => r.ReconDate).ThenByDescending(r => r.Id).Select(r => r.Id).FirstAsync();
+        if (lastId != recon.Id) return FinanceOperationResult.Fail("تُحذف آخر مطابقة فقط، لأن ما بعدها يعتمد عليها");
+        if (await new PeriodLockService(_db).GetLockedThroughAsync() is DateTime locked && (recon.ReconDate.Date <= locked || DateTime.Today <= locked))
+            return FinanceOperationResult.Fail($"الفترة حتى {locked:yyyy/MM/dd} مقفلة. افتحها من المدير أولًا");
+
+        var shares = await _db.PartnerTransactions.Where(t => t.ReconciliationId == recon.Id).ToListAsync();
+        foreach (var sh in shares)
+        {
+            var balance = await GetPartnerBalanceAsync(sh.PartnerId);
+            if (balance - sh.Amount < 0)
+            {
+                var name = await _db.Partners.Where(p => p.Id == sh.PartnerId).Select(p => p.Name).FirstAsync();
+                return FinanceOperationResult.Fail($"لا يمكن حذف المطابقة: رصيد {name} الآن {balance:N0} وحصته منها {sh.Amount:N0}، فيصير رصيده {balance - sh.Amount:N0} بعد العكس (سحب من أرباحها). ألغِ سحبه أو أرجعه أولًا");
+            }
+        }
+
+        await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
+        var number = recon.ReconNumber;
+        var surplus = recon.Surplus;
+        var text = $"حذف المطابقة {number} — {reason.Trim()}";
+        // عكس القيد بقيد مقابل
+        if (recon.JournalEntryId is int jeId)
+        {
+            var lines = await _db.JournalEntryLines.AsNoTracking().Where(l => l.JournalEntryId == jeId).ToListAsync();
+            var count = await _db.JournalEntries.CountAsync();
+            var rev = new JournalEntry
+            {
+                EntryNumber = $"RCV-{count + 1:D5}", EntryDate = DateTime.Today, EntryType = JournalEntryType.AutoVoucher,
+                Description = $"عكس قيد توزيع المطابقة {number} المحذوفة: {reason.Trim()}", CreatedByUserId = userId, IsPosted = true
+            };
+            foreach (var l in lines)
+                rev.Lines.Add(new JournalEntryLine { AccountId = l.AccountId, Debit = l.Credit, Credit = l.Debit, Description = "عكس: " + l.Description });
+            _db.JournalEntries.Add(rev);
+        }
+        // عكس الحصص بحركات سالبة، وفكّ ارتباط الحركات بالمطابقة المحذوفة (تبقى ظاهرة في كشف الشريك)
+        foreach (var sh in shares)
+        {
+            _db.PartnerTransactions.Add(new PartnerTransaction
+            {
+                TxNumber = await NextTxNumberAsync(DateTime.Today), PartnerId = sh.PartnerId, TxDate = DateTime.Today, Kind = PartnerTxKind.ProfitShare,
+                Amount = -sh.Amount, SharePercent = sh.SharePercent, Notes = $"عكس حصة المطابقة {number} المحذوفة — {reason.Trim()}", CreatedByUserId = userId
+            });
+            sh.ReconciliationId = null;
+            sh.Notes = $"{sh.Notes} (من المطابقة المحذوفة {number})";
+        }
+        await _db.SaveChangesAsync();
+        _db.AssetReconciliationLines.RemoveRange(recon.Lines);
+        _db.AssetReconciliations.Remove(recon);
+        await _db.SaveChangesAsync();
+        await new AuditService(_db).LogAsync(userId, "Delete", "AssetReconciliations", reconId, $"{text} (الفائض الموزَّع {surplus:N0}، {shares.Count} شريك)");
+        if (tx is not null) await tx.CommitAsync();
+        return FinanceOperationResult.Ok();
     }
 
     public async Task<List<ReconciliationListRow>> GetReconciliationsAsync() =>

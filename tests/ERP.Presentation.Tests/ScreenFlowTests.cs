@@ -1010,6 +1010,23 @@ public class ScreenFlowTests
         Assert.Contains(dialogs.Errors, e => e.Contains("رصيد أرباح محمد 0"));
         await partners.PrintStatementCommand.ExecuteAsync();
         Assert.Equal("كشف حساب شريك", dialogs.Reports.Last().Title);
+
+        // حذف آخر مطابقة من الشاشة: بسبب إلزامي، ثم تُحسب من جديد (تبقى مطابقة الأساس لبقية الشاشات)
+        await Open(fin, rec);
+        var last = Assert.Single(rec.History);
+        Assert.True(last.IsLast);
+        dialogs.Errors.Clear();
+        await rec.DeleteCommand.ExecuteAsync(last);
+        Assert.Contains(dialogs.Errors, e => e.Contains("سبب الحذف"));
+        dialogs.Errors.Clear();
+        rec.DeleteReason = "مطابقة تجريبية";
+        await rec.DeleteCommand.ExecuteAsync(last);
+        Assert.Empty(dialogs.Errors);
+        Assert.Empty(rec.History);
+        Assert.Contains("حُذفت المطابقة", rec.StatusMessage);
+        await rec.ComputeCommand.ExecuteAsync();
+        await rec.PostCommand.ExecuteAsync();
+        Assert.Single(rec.History);
         Assert.Empty(_f.Unhandled);
     }
 }

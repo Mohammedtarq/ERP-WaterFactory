@@ -132,5 +132,33 @@ public class ReconciliationTests
         Assert.False(incomplete.result.Success);
         Assert.Contains("100%", incomplete.result.ErrorMessage);
         Assert.Equal(3, (await svc.GetReconciliationsAsync()).Count);
+
+        // ---- حذف آخر مطابقة: للأدمن، بسبب، للأخيرة فقط، ويعكس القيد والحصص ----
+        var clerkId = (await db.Users.FirstAsync(u => u.Username != "admin" && u.Id != admin)).Id;
+        Assert.Contains("للأدمن", (await svc.DeleteLastAsync(recon3.Id, "تجربة", clerkId)).ErrorMessage);
+        Assert.Contains("سبب", (await svc.DeleteLastAsync(recon3.Id, " ", admin)).ErrorMessage);
+        Assert.Contains("آخر مطابقة", (await svc.DeleteLastAsync(recon2.Id, "ليست الأخيرة", admin)).ErrorMessage);
+        var before = (await svc.GetPartnersAsync()).ToDictionary(p => p.Id, p => p.Balance);
+        var deleted = await svc.DeleteLastAsync(recon3.Id, "مطابقة خاطئة", admin);
+        Assert.True(deleted.Success, deleted.ErrorMessage);
+        Assert.Equal(2, (await svc.GetReconciliationsAsync()).Count);
+        Assert.False(await db.AssetReconciliations.AnyAsync(r => r.Id == recon3.Id));
+        var after = (await svc.GetPartnersAsync()).ToDictionary(p => p.Id, p => p.Balance);
+        Assert.Equal(before[mohammed.Id] + 150, after[mohammed.Id]);   // عادت حصته من الخسارة (−150)
+        Assert.Equal(50, after[mohammed.Id]);                           // 250 − 200
+        Assert.Equal(150, after[second!.Id]);
+        // الحصص وعكسها تبقى ظاهرة في كشف الشريك (صافيها صفر) وغير مرتبطة بمطابقة
+        var txs = await db.PartnerTransactions.Where(t => t.PartnerId == mohammed.Id && t.Kind == PartnerTxKind.ProfitShare).ToListAsync();
+        Assert.Contains(txs, t => t.Amount == -150 && t.Notes!.Contains("المحذوفة"));
+        Assert.Contains(txs, t => t.Amount == 150 && t.ReconciliationId == null);
+        // القيد وعكسه صافيهما صفر على كل حساب
+        var reversal = await db.JournalEntries.SingleAsync(j => j.Description.Contains($"عكس قيد توزيع المطابقة {recon3.ReconNumber}"));
+        var both = await db.JournalEntryLines.Where(l => l.JournalEntryId == recon3.JournalEntryId || l.JournalEntryId == reversal.Id).ToListAsync();
+        Assert.All(both.GroupBy(l => l.AccountId), g => Assert.Equal(0m, g.Sum(l => l.Debit - l.Credit)));
+        // لا يمكن حذف مطابقة سُحب من أرباحها: محمد سحب 200 من حصته (250)
+        var blocked = await svc.DeleteLastAsync(recon2.Id, "تجربة", admin);
+        Assert.False(blocked.Success);
+        Assert.Contains("سحب من أرباحها", blocked.ErrorMessage);
+        Assert.Equal(2, (await svc.GetReconciliationsAsync()).Count);
     }
 }

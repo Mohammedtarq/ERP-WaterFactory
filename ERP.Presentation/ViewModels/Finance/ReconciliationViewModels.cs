@@ -30,6 +30,7 @@ public class ReconciliationSectionViewModel : SectionViewModel
             Dialogs.ShowReport(DocumentReports.ReconciliationPreview(Session, Snapshot));
         });
         PrintCommand = new AsyncRelayCommand(p => p is ReconciliationListRow r ? PrintAsync(db => DocumentReports.ReconciliationAsync(Session, db, r.Id)) : Task.CompletedTask);
+        DeleteCommand = new AsyncRelayCommand(p => p is ReconciliationListRow r ? DeleteAsync(r) : Task.CompletedTask);
     }
 
     protected override bool ReloadOnActivate => true;
@@ -44,6 +45,10 @@ public class ReconciliationSectionViewModel : SectionViewModel
     public AsyncRelayCommand PostCommand { get; }
     public RelayCommand PrintPreviewCommand { get; }
     public AsyncRelayCommand PrintCommand { get; }
+    public AsyncRelayCommand DeleteCommand { get; }
+    private string? _deleteReason;
+    /// <summary>سبب حذف آخر مطابقة (إلزامي، يُسجَّل في سجل التدقيق).</summary>
+    public string? DeleteReason { get => _deleteReason; set => SetProperty(ref _deleteReason, value); }
 
     public DateTime Date { get => _date; set { if (SetProperty(ref _date, value)) Snapshot = null; } }
     public Option<FinishedGoodsValuation> Valuation { get => _valuation; set { if (SetProperty(ref _valuation, value)) Background(ComputeAsync()); } }
@@ -80,6 +85,23 @@ public class ReconciliationSectionViewModel : SectionViewModel
         await using var db = Session.NewDb();
         History.Clear();
         foreach (var r in await new ReconciliationService(db).GetReconciliationsAsync()) History.Add(r);
+        if (History.Count > 0) History[0].IsLast = true;   // الأحدث أولًا
+    }
+
+    private async Task DeleteAsync(ReconciliationListRow row)
+    {
+        if (!row.IsLast) { Dialogs.Error("تُحذف آخر مطابقة فقط"); return; }
+        if (string.IsNullOrWhiteSpace(DeleteReason)) { Dialogs.Error("اكتب سبب الحذف في خانة «سبب الحذف» أولًا"); return; }
+        var effect = row.IsBaseline ? "مطابقة أساس بلا توزيع" : $"سيُعكس توزيع {row.Surplus:N0} د.ع على الشركاء ويعود رصيد كل شريك كما كان";
+        if (!Dialogs.Confirm($"حذف المطابقة {row.ReconNumber}؟\n{effect}.\nيبقى القيد وعكسه في الدفاتر (صافيهما صفر)، وتبقى حصص الشركاء وعكسها في كشوفهم.")) return;
+        await using var db = Session.NewDb();
+        var reason = DeleteReason!;
+        if (await RunOperationAsync(() => new ReconciliationService(db).DeleteLastAsync(row.Id, reason, Session.UserId), $"حُذفت المطابقة {row.ReconNumber}"))
+        {
+            DeleteReason = null;
+            Snapshot = null;
+            await LoadAsync();
+        }
     }
 
     public async Task ComputeAsync()
@@ -95,7 +117,7 @@ public class ReconciliationSectionViewModel : SectionViewModel
         var s = Snapshot!;
         var question = s.IsBaseline
             ? $"اعتماد مطابقة الأساس بصافي موجودات {s.NetAssets:N0} د.ع؟"
-            : $"اعتماد المطابقة وتوزيع {(s.Surplus >= 0 ? "فائض" : "خسارة")} {s.Surplus:N0} د.ع على الشركاء؟ لا يمكن التراجع.";
+            : $"اعتماد المطابقة وتوزيع {(s.Surplus >= 0 ? "فائض" : "خسارة")} {s.Surplus:N0} د.ع على الشركاء؟ يمكن للأدمن حذف آخر مطابقة لاحقًا إن لزم.";
         if (!Dialogs.Confirm(question)) return;
         await using var db = Session.NewDb();
         var (result, recon) = await new ReconciliationService(db).PostAsync(Date, Valuation.Value, Notes, Session.UserId);

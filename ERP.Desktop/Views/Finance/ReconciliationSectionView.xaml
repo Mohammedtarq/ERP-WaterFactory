@@ -103,16 +103,26 @@
                     </ItemsControl>
                 </StackPanel>
                 <TextBlock DockPanel.Dock="Top" Text="المطابقات السابقة" Style="{StaticResource SectionTitle}" Margin="0,14,0,6"/>
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                    <TextBlock Text="سبب حذف آخر مطابقة (للأدمن)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding DeleteReason, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="يُحذف زر السلة بجانب آخر مطابقة فقط. يعكس القيد والحصص ويُرفض إن سُحب من أرباحها أو كانت الفترة مقفلة"/>
+                </StackPanel>
                 <DataGrid ItemsSource="{Binding History}" IsReadOnly="True">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="الرقم" Binding="{Binding ReconNumber}" Width="100" MinWidth="95"/>
                         <DataGridTextColumn Header="التاريخ" Binding="{Binding ReconDate, StringFormat=yyyy/MM/dd}" Width="85"/>
                         <DataGridTextColumn Header="الفائض" Binding="{Binding Surplus, StringFormat=N0}" Width="*" MinWidth="80"/>
-                        <DataGridTemplateColumn Header="" Width="40">
+                        <DataGridTemplateColumn Header="" Width="80">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Button Content="&#xE749;" ToolTip="طباعة المطابقة" Style="{StaticResource RowIconButton}" Tag="#0F766E"
-                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="&#xE749;" ToolTip="طباعة المطابقة" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                                Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Button Content="&#xE74D;" ToolTip="حذف آخر مطابقة (للأدمن)" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                Visibility="{Binding IsLast, Converter={StaticResource BoolToVisibility}}"
+                                                Command="{Binding DataContext.DeleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
