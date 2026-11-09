@@ -212,4 +212,49 @@ public class ExtraProductionScreenTests
         var shown = new ProductionModuleViewModel(shell.Session, dialogs);
         Assert.Contains(shown.Tabs, t => t is DailyProductionSectionViewModel);
     }
+
+    [Fact]
+    public async Task Variant_wizard_lists_components_without_roles_and_proposes_the_label_by_customer_name()
+    {
+        int waterId; int customerId; string customerName;
+        await using (var db = _f.NewDb())
+        {
+            Item Raw(string code, string name) => new() { ItemCode = code, ItemName = name, SourcingMethod = SourcingMethod.Purchased, CostPrice = 5, BaseUnitName = "قطعة" };
+            var pre = Raw("NS-PRE", "بريفورم NS"); var cap = Raw("NS-CAP", "غطاء NS"); var lbl = Raw("NS-LBL", "ليبل الرحمة NS");
+            var water = new Item { ItemCode = "NS-W", ItemName = "ماء NS", SalePrice = 250 };
+            var customer = new Customer { Name = "مطعم بيت الشناشيل NS" };
+            db.Items.AddRange(pre, cap, lbl, water);
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync();
+            db.BillOfMaterials.Add(new BillOfMaterials { FinishedItemId = water.Id, IsActive = true, Lines =
+            {
+                new BOMLine { RawMaterialItemId = pre.Id, QuantityPerUnit = 1 }, new BOMLine { RawMaterialItemId = cap.Id, QuantityPerUnit = 1 },
+                new BOMLine { RawMaterialItemId = lbl.Id, QuantityPerUnit = 1 }
+            } });
+            await db.SaveChangesAsync();
+            (waterId, customerId, customerName) = (water.Id, customer.Id, customer.Name);
+        }
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var prod = shell.Open<ProductionModuleViewModel>(ModuleCode.Production);
+        var recipes = prod.Section<CustomRecipesSectionViewModel>();
+        prod.SelectedTab = recipes;
+        await prod.IdleAsync(); await recipes.IdleAsync();
+        Assert.False(recipes.HasSelectedRecipe);                       // الأدوات المتقدمة مطوية بلا وصفة مختارة
+        recipes.OpenWizardCommand.Execute(null);
+        recipes.WizardProduct = recipes.FinishedItems.Single(i => i.Id == waterId);
+        await recipes.IdleAsync();
+        Assert.Equal(3, recipes.WizardRoles.Count);                    // كل المكونات تظهر رغم غياب الأدوار
+        Assert.All(recipes.WizardRoles, r => Assert.False(r.HasRole));
+        recipes.WizardCustomer = recipes.WizardCustomers.Single(c => c.Id == customerId);
+        var label = recipes.WizardRoles.Single(r => r.BaseName.StartsWith("ليبل"));
+        Assert.True(label.CreateNew);                                  // الليبل يُقترح له صنف جديد تلقائيًا
+        Assert.Equal($"ليبل {customerName}", label.NewItemName);
+        Assert.All(recipes.WizardRoles.Where(r => r != label), r => Assert.False(r.CreateNew));
+        await recipes.CreateVariantCommand.ExecuteAsync();             // ثلاث حركات: المنتج ثم الزبون ثم «إنشاء»
+        Assert.Empty(dialogs.Errors);
+        Assert.False(recipes.IsWizardOpen);
+        Assert.True(recipes.HasSelectedRecipe);
+        await recipes.IdleAsync();
+        Assert.Contains(recipes.Lines, l => l.ComponentName == $"ليبل {customerName}" && l.ReplacesName == "ليبل الرحمة NS");
+    }
 }

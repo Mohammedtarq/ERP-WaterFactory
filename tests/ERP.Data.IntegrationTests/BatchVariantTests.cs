@@ -834,4 +834,45 @@ public class BatchVariantTests
         Assert.True((await prod.RecordQcAsync(orderId.Value, good, _f.AdminId)).result.Success);
         Assert.True((await prod.PackAsync(orderId.Value, s.Carton.Id, 1, s.Fg.Id, _f.AdminId, lines[0].Id)).Success);
     }
+
+    [Fact]
+    public async Task New_variant_works_for_a_product_whose_bom_has_no_roles_and_matches_by_material()
+    {
+        await using var db = _f.NewDb(_f.AdminId);
+        var raw = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial);
+        Item Raw(string code, string name) => new() { ItemCode = code, ItemName = name, SourcingMethod = SourcingMethod.Purchased, CostPrice = 7, BaseUnitName = "قطعة" };
+        var pre = Raw("NR-PRE", "بريفورم NR"); var lbl = Raw("NR-LBL", "ليبل الرحمة NR");
+        var water = new Item { ItemCode = "NR-W", ItemName = "ماء NR", SalePrice = 250 };
+        db.Items.AddRange(pre, lbl, water);
+        await db.SaveChangesAsync();
+        // قائمة مواد بلا أي «دور»: لا يستطيع المعالج القديم التعامل معها
+        db.BillOfMaterials.Add(new BillOfMaterials { FinishedItemId = water.Id, IsActive = true, Lines =
+        {
+            new BOMLine { RawMaterialItemId = pre.Id, QuantityPerUnit = 1 }, new BOMLine { RawMaterialItemId = lbl.Id, QuantityPerUnit = 1 }
+        } });
+        await db.SaveChangesAsync();
+        var pack = new PackagingTemplateService(db);
+        Assert.Empty(await pack.GetRolesAsync(water.Id));
+        var components = await pack.GetComponentsAsync(water.Id);
+        Assert.Equal(2, components.Count);
+
+        var (created, recipeId) = await pack.CreateVariantAsync(new NewVariantRequest(water.Id, null, "مطعم بيت الشناشيل NR", new[]
+        {
+            new VariantRoleInput("بريفورم NR", null, null, pre.Id),
+            new VariantRoleInput("ليبل الرحمة NR", null, "ليبل مطعم بيت الشناشيل NR", lbl.Id)
+        }));
+        Assert.True(created.Success, created.ErrorMessage);
+        var recipe = await db.CustomRecipes.AsNoTracking().Include(c => c.Lines).ThenInclude(l => l.ComponentItem).SingleAsync(c => c.Id == recipeId);
+        var line = Assert.Single(recipe.Lines);
+        Assert.Equal(lbl.Id, line.ReplacesRawMaterialItemId);
+        Assert.Equal("ليبل مطعم بيت الشناشيل NR", line.ComponentItem.ItemName);
+        // الوصفة المدموجة تستبدل الليبل وتُبقي البريفورم
+        var (merged, error) = await new ProductionService(db).MergeRecipeAsync(water.Id, recipeId);
+        Assert.Null(error);
+        Assert.Contains(merged, m => m.rawItemId == pre.Id);
+        Assert.Contains(merged, m => m.rawItemId == line.ComponentItemId);
+        Assert.DoesNotContain(merged, m => m.rawItemId == lbl.Id);
+        // مكوّن غير موجود في القائمة يُرفض
+        Assert.False((await pack.CreateVariantAsync(new NewVariantRequest(water.Id, null, "خطأ NR", new[] { new VariantRoleInput("س", null, "ليبل س", 999_999) }))).result.Success);
+    }
 }

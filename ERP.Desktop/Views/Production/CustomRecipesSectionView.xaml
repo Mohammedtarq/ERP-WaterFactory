@@ -39,7 +39,8 @@
                 </DockPanel>
 
                 <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
-                <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="12" Margin="0,10,0,0" MaxHeight="300">
+                <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="12" Margin="0,10,0,0" MaxHeight="300"
+                        Visibility="{Binding HasSelectedRecipe, Converter={StaticResource BoolToVisibility}}">
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="{Binding SelectedRecipe.Name, StringFormat='مكوّنات الوصفة المختارة: {0}', TargetNullValue='اختر وصفة من الجدول لعرض مكوّناتها'}" FontWeight="SemiBold" Margin="0,0,0,8"/>
                         <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
@@ -119,14 +120,14 @@
                         <ComboBox ItemsSource="{Binding WizardCustomers}" SelectedItem="{Binding WizardCustomer}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
                         <TextBlock Text="3) اسم المتغير كما يظهر في الإنتاج والبيع" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding WizardName, UpdateSourceTrigger=PropertyChanged}"/>
-                        <TextBlock Text="4) ما يتغير (الباقي يبقى من الوصفة الأساسية)" Style="{StaticResource FieldLabel}" Margin="0,10,0,4"/>
+                        <TextBlock Text="4) مكونات المنتج — بدّل ما يختلف فقط (الباقي يبقى من الوصفة الأساسية)" Style="{StaticResource FieldLabel}" Margin="0,10,0,4"/>
                         <ItemsControl ItemsSource="{Binding WizardRoles}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,0,0,8">
                                         <StackPanel>
                                             <TextBlock FontWeight="SemiBold">
-                                                <Run Text="{Binding Role, Mode=OneWay}"/><Run Text=" — الأساسي: " Foreground="{StaticResource MutedTextBrush}"/><Run Text="{Binding BaseName, Mode=OneWay}" Foreground="{StaticResource MutedTextBrush}"/>
+                                                <Run Text="{Binding Display, Mode=OneWay}"/>
                                             </TextBlock>
                                             <ComboBox ItemsSource="{Binding DataContext.WizardItems, ElementName=Root}" SelectedItem="{Binding Choice}" DisplayMemberPath="ItemName"
                                                       IsTextSearchEnabled="True" Margin="0,6,0,0" ToolTip="صنف موجود يحل محل الأساسي"/>

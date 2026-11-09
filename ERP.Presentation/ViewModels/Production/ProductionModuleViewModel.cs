@@ -1106,9 +1106,21 @@ public class VariantRoleRow : ObservableObject
     private Item? _choice;
     private bool _createNew;
     private string _newItemName = "";
-    public VariantRoleRow(string role, string baseName) { Role = role; BaseName = baseName; }
+    public VariantRoleRow(string role, string baseName, int rawItemId = 0, bool hasRole = true)
+    {
+        Role = role; BaseName = baseName; RawItemId = rawItemId; HasRole = hasRole;
+        // البادئة المقترحة للصنف الجديد: الدور («لاصق»)، أو أول كلمة من اسم المادة («ليبل») لمكوّن بلا دور
+        Prefix = hasRole ? role : baseName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? baseName;
+    }
     public string Role { get; }
     public string BaseName { get; }
+    public int RawItemId { get; }
+    public bool HasRole { get; }
+    public string Prefix { get; }
+    /// <summary>ما يُعرض عنوانًا للمكوّن: «لاصق — الأساسي: ليبل الرحمة»، أو اسم المادة وحده إن لم يكن له دور.</summary>
+    public string Display => HasRole ? $"{Role} — الأساسي: {BaseName}" : BaseName;
+    /// <summary>الليبل واللاصق هما الغالب تبديلهما باسم الزبون: يُقترح لهما صنف جديد تلقائيًا.</summary>
+    public bool LooksLikeLabel => Role.Contains("لاصق") || Role.Contains("ليبل") || BaseName.Contains("لاصق") || BaseName.Contains("ليبل") || BaseName.Contains("label", StringComparison.OrdinalIgnoreCase);
     public Item? Choice { get => _choice; set { if (SetProperty(ref _choice, value) && value is { Id: > 0 }) CreateNew = false; } }
     public bool CreateNew { get => _createNew; set { if (SetProperty(ref _createNew, value) && value) Choice = CustomRecipesSectionViewModel.KeepBase; } }
     public string NewItemName { get => _newItemName; set => SetProperty(ref _newItemName, value); }
@@ -1116,7 +1128,7 @@ public class VariantRoleRow : ObservableObject
     /// <summary>اسم مقترح للصنف الجديد: «ليبل مطعم الحسون».</summary>
     internal void SuggestName(string variant)
     {
-        if (!string.IsNullOrWhiteSpace(variant)) NewItemName = $"{Role} {variant.Trim()}";
+        if (!string.IsNullOrWhiteSpace(variant)) NewItemName = $"{Prefix} {variant.Trim()}";
     }
 }
 
@@ -1169,7 +1181,7 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
         set
         {
             if (!SetProperty(ref _wizardName, value)) return;
-            foreach (var r in WizardRoles.Where(r => r.NewItemName.Length == 0 || r.NewItemName.StartsWith(r.Role + " "))) r.SuggestName(value);
+            foreach (var r in WizardRoles.Where(r => r.NewItemName.Length == 0 || r.NewItemName.StartsWith(r.Prefix + " "))) r.SuggestName(value);
         }
     }
     public RelayCommand OpenWizardCommand { get; }
@@ -1197,20 +1209,22 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
         WizardRoles.Clear();
         if (WizardProduct is null) return;
         await using var db = Session.NewDb();
-        foreach (var r in await new PackagingTemplateService(db).GetRolesAsync(WizardProduct.Id))
+        // كل مكونات المنتج تظهر مباشرة (بدور أو بلا دور)، والليبل/اللاصق يُقترح له صنف جديد باسم الزبون
+        foreach (var r in await new PackagingTemplateService(db).GetComponentsAsync(WizardProduct.Id))
         {
-            var row = new VariantRoleRow(r.ComponentRole!, r.RawMaterialItem.ItemName) { Choice = KeepBase };
+            var row = new VariantRoleRow(r.ComponentRole ?? r.RawMaterialItem.ItemName, r.RawMaterialItem.ItemName, r.RawMaterialItemId, r.ComponentRole is not null) { Choice = KeepBase };
             row.SuggestName(WizardName);
+            if (row.LooksLikeLabel) row.CreateNew = true;
             WizardRoles.Add(row);
         }
-        if (WizardRoles.Count == 0) StatusMessage = "قائمة مواد المنتج بلا أدوار (غطاء، لاصق) — طبّق قالب التعبئة عليه أولًا";
+        if (WizardRoles.Count == 0) StatusMessage = "المنتج بلا مكونات في قائمة المواد";
     }
 
     private async Task CreateVariantAsync()
     {
         if (!Require(CanAdd, "إضافة متغير")) return;
         if (WizardProduct is null) { Dialogs.Error("اختر المنتج"); return; }
-        var roles = WizardRoles.Select(r => new VariantRoleInput(r.Role, r.Choice is { Id: > 0 } i ? i.Id : null, r.CreateNew ? r.NewItemName : null)).ToList();
+        var roles = WizardRoles.Select(r => new VariantRoleInput(r.Role, r.Choice is { Id: > 0 } i ? i.Id : null, r.CreateNew ? r.NewItemName : null, r.RawItemId > 0 ? r.RawItemId : null)).ToList();
         await using var db = Session.NewDb();
         // تُلتقط القيم قبل إعادة التحميل: تفريغ القوائم يصفّر اختيارات القوائم المنسدلة المرتبطة بها
         var name = WizardName.Trim();
@@ -1254,7 +1268,9 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
     public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
     public ObservableCollection<RecipeLineRow> Lines { get; } = new();
 
-    public CustomRecipe? SelectedRecipe { get => _selectedRecipe; set { if (SetProperty(ref _selectedRecipe, value)) Background(LoadLinesAsync()); } }
+    public CustomRecipe? SelectedRecipe { get => _selectedRecipe; set { if (SetProperty(ref _selectedRecipe, value)) { OnPropertyChanged(nameof(HasSelectedRecipe)); Background(LoadLinesAsync()); } } }
+    /// <summary>أدوات التعديل المتقدم على وصفة محددة تظهر عند اختيار وصفة من الجدول فقط.</summary>
+    public bool HasSelectedRecipe => _selectedRecipe is not null;
     public Item? NewComponent { get => _newComponent; set => SetProperty(ref _newComponent, value); }
     public string NewLabel { get => _newLabel; set => SetProperty(ref _newLabel, value); }
     public decimal NewQuantity { get => _newQuantity; set => SetProperty(ref _newQuantity, value); }

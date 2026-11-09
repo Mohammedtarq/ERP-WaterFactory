@@ -8,7 +8,8 @@ namespace ERP.Data.Services;
 public record TemplateLineInput(string Role, int? DefaultItemId, decimal ComponentQuantity, decimal PerUnits);
 
 /// <summary>بديل دور في متغير جديد: صنف موجود، أو اسم صنف مخزني جديد يُنشأ (مثل: ليبل مطعم الحسون).</summary>
-public record VariantRoleInput(string Role, int? ExistingItemId, string? NewItemName);
+/// <param name="RawItemId">المادة الأساسية المراد استبدالها (لمكوّن بلا «دور»)؛ فارغ = يُطابَق الدور.</param>
+public record VariantRoleInput(string Role, int? ExistingItemId, string? NewItemName, int? RawItemId = null);
 
 /// <param name="CustomerId">صاحب الاسم (تُحجز تشغيلاته له)؛ NULL = ملصق مناسبة يُباع لمن يطلبه.</param>
 public record NewVariantRequest(int FinishedItemId, int? CustomerId, string Name, IReadOnlyList<VariantRoleInput> Roles);
@@ -90,6 +91,12 @@ public class PackagingTemplateService
         return FinanceOperationResult.Ok();
     }
 
+    /// <summary>كل مكونات قائمة مواد الصنف الفعّالة (بدور أو بلا دور) لمعالج المتغير الجديد.</summary>
+    public Task<List<BOMLine>> GetComponentsAsync(int finishedItemId) =>
+        _db.BOMLines.AsNoTracking().Include(l => l.RawMaterialItem)
+           .Where(l => l.BOM.FinishedItemId == finishedItemId && l.BOM.IsActive)
+           .OrderBy(l => l.ComponentRole == null).ThenBy(l => l.ComponentRole).ThenBy(l => l.RawMaterialItem.ItemName).ToListAsync();
+
     /// <summary>أدوار قائمة مواد الصنف (لاختيار بدائل العميل): الدور، المادة الأساسية، والكمية لكل وحدة.</summary>
     public Task<List<BOMLine>> GetRolesAsync(int finishedItemId) =>
         _db.BOMLines.AsNoTracking().Include(l => l.RawMaterialItem)
@@ -129,17 +136,18 @@ public class PackagingTemplateService
         if (roles.Count == 0) return (FinanceOperationResult.Fail("اختر بديلًا لدور واحد على الأقل (الغطاء أو الليبل)"), null);
         if (await _db.CustomRecipes.AnyAsync(c => c.FinishedItemId == r.FinishedItemId && c.Name == name))
             return (FinanceOperationResult.Fail($"يوجد متغير باسم «{name}» لهذا المنتج"), null);
-        var baseLines = await GetRolesAsync(r.FinishedItemId);
-        if (baseLines.Count == 0) return (FinanceOperationResult.Fail("قائمة مواد المنتج بلا أدوار — طبّق قالب التعبئة عليه أولًا"), null);
-        if (roles.FirstOrDefault(x => baseLines.All(b => b.ComponentRole != x.Role)) is { } unknown)
-            return (FinanceOperationResult.Fail($"لا يوجد دور \"{unknown.Role}\" في قائمة مواد المنتج"), null);
+        var baseLines = await GetComponentsAsync(r.FinishedItemId);
+        if (baseLines.Count == 0) return (FinanceOperationResult.Fail("المنتج بلا مكونات في قائمة المواد"), null);
+        BOMLine? Match(VariantRoleInput x) => x.RawItemId is int rid ? baseLines.FirstOrDefault(b => b.RawMaterialItemId == rid) : baseLines.FirstOrDefault(b => b.ComponentRole == x.Role);
+        if (roles.FirstOrDefault(x => Match(x) is null) is { } unknown)
+            return (FinanceOperationResult.Fail($"لا يوجد المكوّن \"{unknown.Role}\" في قائمة مواد المنتج"), null);
         if (r.CustomerId is int cid && !await _db.Customers.AnyAsync(c => c.Id == cid)) return (FinanceOperationResult.Fail("العميل غير موجود"), null);
 
         await using var tx = _db.Database.CurrentTransaction is null ? await _db.Database.BeginTransactionAsync() : null;
         var recipe = new CustomRecipe { FinishedItemId = r.FinishedItemId, CustomerId = r.CustomerId, Name = name };
         foreach (var role in roles)
         {
-            var baseLine = baseLines.First(b => b.ComponentRole == role.Role);
+            var baseLine = Match(role)!;
             int itemId;
             if (role.ExistingItemId is int existing)
             {
@@ -166,7 +174,7 @@ public class PackagingTemplateService
                 }
                 itemId = item.Id;
             }
-            recipe.Lines.Add(new CustomRecipeLine { ComponentItemId = itemId, ComponentLabel = role.Role, QuantityPerUnit = baseLine.QuantityPerUnit,
+            recipe.Lines.Add(new CustomRecipeLine { ComponentItemId = itemId, ComponentLabel = baseLine.ComponentRole ?? role.Role, QuantityPerUnit = baseLine.QuantityPerUnit,
                                                     ReplacesRawMaterialItemId = baseLine.RawMaterialItemId });
         }
         _db.CustomRecipes.Add(recipe);
