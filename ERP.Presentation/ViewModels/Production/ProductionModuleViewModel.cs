@@ -1198,6 +1198,11 @@ public class VariantRoleRow : ObservableObject
     public string Display => HasRole ? $"{Role} — الأساسي: {BaseName}" : BaseName;
     /// <summary>الليبل واللاصق هما الغالب تبديلهما باسم الزبون: يُقترح لهما صنف جديد تلقائيًا.</summary>
     public bool LooksLikeLabel => Role.Contains("لاصق") || Role.Contains("ليبل") || BaseName.Contains("لاصق") || BaseName.Contains("ليبل") || BaseName.Contains("label", StringComparison.OrdinalIgnoreCase);
+    /// <summary>السدادة/الغطاء: لونها يُختار من أصناف موجودة، فلا يُعرض لها «صنف جديد باسم».</summary>
+    public bool IsCap => Role.Contains("سدادة") || Role.Contains("سداده") || Role.Contains("غطاء") || BaseName.Contains("سدادة") || BaseName.Contains("غطاء") || BaseName.Contains("cap", StringComparison.OrdinalIgnoreCase);
+    /// <summary>ما يتغير بين المتغيرات عادة: السدادة والليبل فقط. الأمبولة والكارتون وغيرهما تبقى من الوصفة الأساسية ولا تُعرض إلا بطلب.</summary>
+    public bool Changeable => IsCap || LooksLikeLabel;
+    public bool AllowNew => !IsCap;
     public Item? Choice { get => _choice; set { if (SetProperty(ref _choice, value) && value is { Id: > 0 }) CreateNew = false; } }
     public bool CreateNew { get => _createNew; set { if (SetProperty(ref _createNew, value) && value) Choice = CustomRecipesSectionViewModel.KeepBase; } }
     public string NewItemName { get => _newItemName; set => SetProperty(ref _newItemName, value); }
@@ -1241,7 +1246,13 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
     public bool IsWizardOpen { get => _isWizardOpen; set => SetProperty(ref _isWizardOpen, value); }
     public ObservableCollection<Customer> WizardCustomers { get; } = new();
     public ObservableCollection<Item> WizardItems { get; } = new();
+    /// <summary>كل مكونات المنتج (المصدر عند الإنشاء)، ومنها يُشتق ما يُعرض: ما يتغير عادة (السدادة والليبل)، وبقية المكونات خلف «إظهار».</summary>
     public ObservableCollection<VariantRoleRow> WizardRoles { get; } = new();
+    public ObservableCollection<VariantRoleRow> ChangeableRoles { get; } = new();
+    public ObservableCollection<VariantRoleRow> OtherRoles { get; } = new();
+    public bool HasOtherRoles => OtherRoles.Count > 0;
+    private bool _showOtherRoles;
+    public bool ShowOtherRoles { get => _showOtherRoles; set => SetProperty(ref _showOtherRoles, value); }
     public Item? WizardProduct { get => _wizardProduct; set { if (SetProperty(ref _wizardProduct, value)) Background(LoadWizardRolesAsync()); } }
     public Customer? WizardCustomer
     {
@@ -1283,8 +1294,9 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
 
     private async Task LoadWizardRolesAsync()
     {
-        WizardRoles.Clear();
-        if (WizardProduct is null) return;
+        WizardRoles.Clear(); ChangeableRoles.Clear(); OtherRoles.Clear();
+        ShowOtherRoles = false;
+        if (WizardProduct is null) { OnPropertyChanged(nameof(HasOtherRoles)); return; }
         await using var db = Session.NewDb();
         // كل مكونات المنتج تظهر مباشرة (بدور أو بلا دور)، والليبل/اللاصق يُقترح له صنف جديد باسم الزبون
         foreach (var r in await new PackagingTemplateService(db).GetComponentsAsync(WizardProduct.Id))
@@ -1293,7 +1305,11 @@ public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
             row.SuggestName(WizardName);
             if (row.LooksLikeLabel) row.CreateNew = true;
             WizardRoles.Add(row);
+            (row.Changeable ? ChangeableRoles : OtherRoles).Add(row);
         }
+        // منتج لا سدادة ولا ليبل فيه: تُعرض كل المكونات كما كانت بدل نافذة فارغة
+        if (ChangeableRoles.Count == 0) { foreach (var r in OtherRoles.ToList()) ChangeableRoles.Add(r); OtherRoles.Clear(); }
+        OnPropertyChanged(nameof(HasOtherRoles));
         if (WizardRoles.Count == 0) StatusMessage = "المنتج بلا مكونات في قائمة المواد";
     }
 

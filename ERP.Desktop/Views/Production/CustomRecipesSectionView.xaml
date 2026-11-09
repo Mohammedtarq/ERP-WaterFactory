@@ -120,19 +120,39 @@
                         <ComboBox ItemsSource="{Binding WizardCustomers}" SelectedItem="{Binding WizardCustomer}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
                         <TextBlock Text="3) اسم المتغير كما يظهر في الإنتاج والبيع" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding WizardName, UpdateSourceTrigger=PropertyChanged}"/>
-                        <TextBlock Text="4) مكونات المنتج — بدّل ما يختلف فقط (الباقي يبقى من الوصفة الأساسية)" Style="{StaticResource FieldLabel}" Margin="0,10,0,4"/>
-                        <ItemsControl ItemsSource="{Binding WizardRoles}">
+                        <TextBlock Text="4) ما يتغير في هذا المتغير: السدادة والليبل (الباقي يبقى من الوصفة الأساسية)" Style="{StaticResource FieldLabel}" Margin="0,10,0,4"/>
+                        <ItemsControl ItemsSource="{Binding ChangeableRoles}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,0,0,8">
                                         <StackPanel>
-                                            <TextBlock FontWeight="SemiBold">
-                                                <Run Text="{Binding Display, Mode=OneWay}"/>
-                                            </TextBlock>
+                                            <TextBlock FontWeight="SemiBold"><Run Text="{Binding Display, Mode=OneWay}"/></TextBlock>
                                             <ComboBox ItemsSource="{Binding DataContext.WizardItems, ElementName=Root}" SelectedItem="{Binding Choice}" DisplayMemberPath="ItemName"
                                                       IsTextSearchEnabled="True" Margin="0,6,0,0" ToolTip="صنف موجود يحل محل الأساسي"/>
-                                            <CheckBox Content="أو صنف جديد باسم:" IsChecked="{Binding CreateNew}" Margin="0,6,0,0"/>
-                                            <TextBox Text="{Binding NewItemName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CreateNew}" Margin="0,4,0,0"/>
+                                            <StackPanel Visibility="{Binding AllowNew, Converter={StaticResource BoolToVisibility}}">
+                                                <CheckBox Content="أو صنف جديد باسم:" IsChecked="{Binding CreateNew}" Margin="0,6,0,0"/>
+                                                <TextBox Text="{Binding NewItemName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CreateNew}" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <CheckBox Content="إظهار بقية المكونات (الأمبولة والكارتون…) — لا تتغير عادة" IsChecked="{Binding ShowOtherRoles}" Margin="0,2,0,6"
+                                  Visibility="{Binding HasOtherRoles, Converter={StaticResource BoolToVisibility}}"/>
+                        <ItemsControl ItemsSource="{Binding OtherRoles}"
+                                      Visibility="{Binding ShowOtherRoles, Converter={StaticResource BoolToVisibility}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,0,0,8">
+                                        <StackPanel>
+                                            <TextBlock FontWeight="SemiBold"><Run Text="{Binding Display, Mode=OneWay}"/></TextBlock>
+                                            <ComboBox ItemsSource="{Binding DataContext.WizardItems, ElementName=Root}" SelectedItem="{Binding Choice}" DisplayMemberPath="ItemName"
+                                                      IsTextSearchEnabled="True" Margin="0,6,0,0" ToolTip="صنف موجود يحل محل الأساسي"/>
+                                            <StackPanel Visibility="{Binding AllowNew, Converter={StaticResource BoolToVisibility}}">
+                                                <CheckBox Content="أو صنف جديد باسم:" IsChecked="{Binding CreateNew}" Margin="0,6,0,0"/>
+                                                <TextBox Text="{Binding NewItemName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CreateNew}" Margin="0,4,0,0"/>
+                                            </StackPanel>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
