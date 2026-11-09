@@ -1,6 +1,7 @@
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
 using ERP.Presentation.ViewModels.Production;
+using Finance = ERP.Presentation.ViewModels.Finance;
 using ERP.Presentation.ViewModels.Shell;
 using ERP.Presentation.ViewModels.Warehouse;
 using Microsoft.EntityFrameworkCore;
@@ -256,5 +257,40 @@ public class ExtraProductionScreenTests
         Assert.True(recipes.HasSelectedRecipe);
         await recipes.IdleAsync();
         Assert.Contains(recipes.Lines, l => l.ComponentName == $"ليبل {customerName}" && l.ReplacesName == "ليبل الرحمة NS");
+    }
+
+    [Fact]
+    public async Task Reconciliation_hub_is_one_page_with_three_tabs_and_hides_the_separate_screens_by_default()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens = false;
+        try
+        {
+            var module = new Finance.FinanceModuleViewModel(shell.Session, dialogs);
+            var hub = Assert.IsType<Finance.ReconciliationHubSectionViewModel>(module.ReconciliationHub);
+            Assert.Contains(hub, module.Tabs);
+            // الشاشات الثلاث لا تظهر منفصلة في القائمة ولا في البحث السريع
+            Assert.DoesNotContain(module.Tabs, t => t is Finance.ReconciliationSectionViewModel or Finance.PartnersSectionViewModel or Finance.WorkingCapitalSectionViewModel);
+            Assert.DoesNotContain(SectionCatalog.QuickEntries(shell.Session, dialogs), e => e.Key is "Reconciliation" or "Partners" or "WorkingCapital");
+            Assert.Contains(SectionCatalog.QuickEntries(shell.Session, dialogs), e => e.Key == "ReconciliationHub");
+        }
+        finally { Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens = true; }
+
+        // التبويبات تحمّل شاشاتها: المطابقة افتراضيًا، ثم الشركاء، ثم الفائض
+        var fin = shell.Open<Finance.FinanceModuleViewModel>(ModuleCode.Finance);
+        var page = Assert.IsType<Finance.ReconciliationHubSectionViewModel>(fin.ReconciliationHub);
+        fin.SelectedTab = page;
+        await fin.IdleAsync(); await page.IdleAsync();
+        Assert.Equal(1, page.SelectedIndex);
+        Assert.Same(page.Reconciliation, page.SelectedChild);
+        page.SelectedIndex = 2;
+        await page.IdleAsync(); await page.Partners.IdleAsync();
+        Assert.Same(page.Partners, page.SelectedChild);
+        page.SelectedIndex = 0;
+        await page.IdleAsync(); await page.Surplus.IdleAsync();
+        Assert.Same(page.Surplus, page.SelectedChild);
+        Assert.NotNull(page.Surplus.Snapshot);                          // مؤشر الفائض يُحمَّل عند فتح تبويبه
+        Assert.Empty(dialogs.Errors);
+        Assert.Empty(_f.Unhandled);
     }
 }

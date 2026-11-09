@@ -34,7 +34,10 @@ public static class SectionCatalog
 
     /// <summary>أقسام الإعدادات ولوحة المعلومات خارج التوزيع.</summary>
     /// <summary>شاشة مخفية من القوائم والبحث (حلّ محلها غيرها) ما لم يُفعَّل ظهورها: «إنتاج اليوم».</summary>
-    public static bool IsRetired(Type type) => type == typeof(Production.DailyProductionSectionViewModel) && !Production.ProductionModuleViewModel.ShowDailyProduction;
+    public static bool IsRetired(Type type) =>
+        (type == typeof(Production.DailyProductionSectionViewModel) && !Production.ProductionModuleViewModel.ShowDailyProduction)
+        || ((type == typeof(Finance.ReconciliationSectionViewModel) || type == typeof(Finance.PartnersSectionViewModel) || type == typeof(Finance.WorkingCapitalSectionViewModel))
+            && !Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens);
 
     public static bool IsConfigurable(string homeModule) => homeModule is not (ModuleCode.SystemSettings or ModuleCode.Dashboard);
 

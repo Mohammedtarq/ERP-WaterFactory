@@ -26,10 +26,19 @@ public class FinanceModuleViewModel : ModuleViewModel
         // المطابقة الحسابية وحصص الشركاء معلومات حساسة: تظهر فقط لمن يملك صلاحية "الحسابات الختامية"
         if (s.Permissions.Has(SpecialPermission.FinalAccounts))
         {
-            Reconciliation = Add(new ReconciliationSectionViewModel(s, d));
-            Partners = Add(new PartnersSectionViewModel(s, d));
+            // «المطابقة والأرباح» صفحة واحدة بثلاث تبويبات تضم الشاشات الثلاث (الفائض، المطابقة، الشركاء)؛
+            // الشاشات الثلاث نفسها تبقى مخفية من القائمة (ShowSeparateReconciliationScreens) ويمكن إعادتها
+            Reconciliation = new ReconciliationSectionViewModel(s, d);
+            Partners = new PartnersSectionViewModel(s, d);
+            WorkingCapital = new WorkingCapitalSectionViewModel(s, d);
+            ReconciliationHub = Add(new ReconciliationHubSectionViewModel(s, d, Reconciliation, WorkingCapital, Partners));
+            if (ShowSeparateReconciliationScreens)
+            {
+                Add(Reconciliation);
+                Add(Partners);
+            }
             FinalAccounts = Add(new FinalAccountsSectionViewModel(s, d));
-            WorkingCapital = Add(new WorkingCapitalSectionViewModel(s, d));
+            if (ShowSeparateReconciliationScreens) Add(WorkingCapital);
         }
         if (s.Permissions.Has(SpecialPermission.CostAndProfit))
             CostSimulation = Add(new CostSimulationSectionViewModel(s, d));
@@ -53,6 +62,9 @@ public class FinanceModuleViewModel : ModuleViewModel
     public CostSimulationSectionViewModel? CostSimulation { get; }
     public ReconciliationSectionViewModel? Reconciliation { get; }
     public PartnersSectionViewModel? Partners { get; }
+    public ReconciliationHubSectionViewModel? ReconciliationHub { get; }
+    /// <summary>إظهار الشاشات الثلاث منفصلة (المطابقة، الشركاء، رأس المال والفائض) إلى جانب الصفحة المدموجة؛ مخفية افتراضيًا.</summary>
+    public static bool ShowSeparateReconciliationScreens { get; set; }
     public Controls.PeriodLockSectionViewModel PeriodLock { get; }
 }
 

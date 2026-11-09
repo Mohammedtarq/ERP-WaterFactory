@@ -79,7 +79,7 @@ public static class SectionGrouping
         },
         [ModuleCode.Finance] = new[]
         {
-            new GroupDef("النقد", Green, "CashBoxes", "HomeBox", "PaymentRequests", "Custody", "RepCashSettlement", "DailyCash", "Vouchers", "Expenses", "Reconciliation"),
+            new GroupDef("النقد", Green, "CashBoxes", "HomeBox", "PaymentRequests", "Custody", "RepCashSettlement", "DailyCash", "Vouchers", "Expenses", "ReconciliationHub", "Reconciliation"),
             new GroupDef("الحسابات", Blue, "ChartOfAccounts", "JournalEntries", "ExchangeRates", "MappingRules"),
             new GroupDef("التقارير والتحليل", Purple, "FinalAccounts", "WorkingCapital", "CostSimulation", "Partners"),
             new GroupDef("الإعداد", Slate, "FinanceCategories", "PeriodLock"),

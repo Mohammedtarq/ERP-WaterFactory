@@ -33,6 +33,7 @@ public static class UiThread
             AsyncRelayCommand.UnhandledErrorHandler = ex => { lock (Unhandled) Unhandled.Add(ex); };
             // «إنتاج اليوم» مخفية افتراضيًا في البرنامج؛ جولات الشاشات تصوّرها
             ERP.Presentation.ViewModels.Production.ProductionModuleViewModel.ShowDailyProduction = true;
+            ERP.Presentation.ViewModels.Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens = true;
 
             PresentationTraceSources.Refresh();
             PresentationTraceSources.DataBindingSource.Listeners.Add(new Collector());
