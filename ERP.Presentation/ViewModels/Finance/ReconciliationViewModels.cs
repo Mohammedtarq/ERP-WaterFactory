@@ -171,8 +171,9 @@ public class ReconciliationSectionViewModel : SectionViewModel
     {
         await using var db = Session.NewDb();
         History.Clear();
-        foreach (var r in await new ReconciliationService(db).GetReconciliationsAsync()) History.Add(r);
-        if (History.Count > 0) History[0].IsLast = true;   // الأحدث أولًا
+        var rows = await new ReconciliationService(db).GetReconciliationsAsync();
+        if (rows.Count > 0) rows[0].IsLast = true;   // الأحدث أولًا — يُعيَّن قبل الإضافة كي يقرأه الربط عند بناء الصف
+        foreach (var r in rows) History.Add(r);
         CanAdjust = await new CashBoxService(db).IsAdminAsync(Session.UserId);
     }
 

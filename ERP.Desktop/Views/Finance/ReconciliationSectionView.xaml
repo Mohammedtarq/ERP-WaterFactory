@@ -9,7 +9,7 @@
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="330"/>
+            <ColumnDefinition Width="400"/>
         </Grid.ColumnDefinitions>
 
         <!-- الحساب والتفاصيل -->
@@ -161,10 +161,10 @@
                 </StackPanel>
                 <DataGrid ItemsSource="{Binding History}" IsReadOnly="True">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="الرقم" Binding="{Binding ReconNumber}" Width="100" MinWidth="95"/>
-                        <DataGridTextColumn Header="التاريخ" Binding="{Binding ReconDate, StringFormat=yyyy/MM/dd}" Width="85"/>
-                        <DataGridTextColumn Header="الفائض" Binding="{Binding Surplus, StringFormat=N0}" Width="*" MinWidth="80"/>
-                        <DataGridTemplateColumn Header="" Width="80">
+                        <DataGridTextColumn Header="الرقم" Binding="{Binding ReconNumber}" Width="105"/>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding ReconDate, StringFormat=yyyy/MM/dd}" Width="90"/>
+                        <DataGridTextColumn Header="الفائض" Binding="{Binding Surplus, StringFormat=N0}" Width="*" MinWidth="70"/>
+                        <DataGridTemplateColumn Header="" Width="84">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel Orientation="Horizontal">
