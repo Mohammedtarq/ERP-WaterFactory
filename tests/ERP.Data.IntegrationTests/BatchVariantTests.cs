@@ -635,6 +635,7 @@ public class BatchVariantTests
         Assert.Equal(50m, shortage.Quantity);
         var open = Assert.Single(await new PendingProductionService(db).OpenAsync());
         Assert.Equal(s.HassounRecipe.Name, open.RecipeName);
+        Assert.Contains("50", open.QuantityText);   // العرض بوحدة سطر الفاتورة مع القطع
 
         // إنتاج الأساسي لا يسوّي عجز المتغير
         var (baseRun, _, baseLines) = await new DailyProductionService(db).RecordAsync(DateTime.Today,

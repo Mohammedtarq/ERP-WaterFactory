@@ -549,6 +549,7 @@ public class PendingProductionSectionViewModel : SectionViewModel
         Rows.Clear();
         foreach (var r in await new PendingProductionService(db).OpenAsync()) Rows.Add(r);
         OnPropertyChanged(nameof(TotalOpen));
-        StatusMessage = Rows.Count == 0 ? "لا يوجد بيع بانتظار الإنتاج" : $"{TotalOpen:N0} قطعة بيعت ولم يُسجَّل إنتاجها بعد";
+        StatusMessage = Rows.Count == 0 ? "لا يوجد بيع بانتظار الإنتاج"
+            : $"بيع بانتظار الإنتاج: {string.Join(" + ", Rows.Select(r => r.OpenText))}" + (Rows.Count > 1 ? $" — الإجمالي {TotalOpen:N0} قطعة" : "");
     }
 }

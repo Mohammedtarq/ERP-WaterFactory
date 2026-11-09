@@ -318,14 +318,43 @@ public class PendingProductionService
         return total;
     }
 
-    public record OpenShortageRow(int Id, DateTime CreatedAt, string ItemName, string WarehouseName, string? InvoiceNumber, decimal Quantity, decimal Settled, decimal Open, string? RecipeName = null);
+    /// <summary>سطر بيع بانتظار الإنتاج. الكميات مخزّنة بالقطعة، وتُعرض بوحدة البيع في الفاتورة مع القطع بين قوسين.</summary>
+    public record OpenShortageRow(int Id, DateTime CreatedAt, string ItemName, string WarehouseName, string? InvoiceNumber, decimal Quantity, decimal Settled, decimal Open,
+                                  string? RecipeName = null, string? LevelName = null, decimal PerLevel = 1)
+    {
+        public string QuantityText => FormatPacks(Quantity, LevelName, PerLevel);
+        public string SettledText => FormatPacks(Settled, LevelName, PerLevel);
+        public string OpenText => FormatPacks(Open, LevelName, PerLevel);
+    }
 
-    public async Task<List<OpenShortageRow>> OpenAsync() =>
-        (await _db.PendingProductionShortages.AsNoTracking().Where(s => s.SettledQuantity < s.Quantity).OrderBy(s => s.Id)
-            .Select(s => new { s.Id, s.CreatedAt, s.Item.ItemName, Wh = s.Warehouse.Name, Inv = s.SalesInvoice != null ? s.SalesInvoice.InvoiceNumber : null, s.Quantity, s.SettledQuantity, Recipe = s.CustomRecipe != null ? s.CustomRecipe.Name : null })
-            .ToListAsync())
-        .Select(s => new OpenShortageRow(s.Id, DateTime.SpecifyKind(s.CreatedAt, DateTimeKind.Utc).ToLocalTime(), s.ItemName, s.Wh, s.Inv, s.Quantity, s.SettledQuantity, s.Quantity - s.SettledQuantity, s.Recipe))
-        .ToList();
+    /// <summary>«2 شرنك (40 قطعة)»، أو «2 شرنك و5 قطع (45 قطعة)» عند الكسر، و«40 قطعة» إن كانت الوحدة قطعة أو مجهولة.</summary>
+    public static string FormatPacks(decimal pieces, string? level, decimal perLevel)
+    {
+        var total = $"{pieces:N0} قطعة";
+        if (string.IsNullOrWhiteSpace(level) || perLevel <= 1 || pieces < perLevel) return total;
+        var packs = Math.Floor(pieces / perLevel);
+        var rest = pieces - packs * perLevel;
+        return rest == 0 ? $"{packs:N0} {level} ({total})" : $"{packs:N0} {level} و{rest:N0} قطع ({total})";
+    }
+
+    private record SaleLevel(int SalesInvoiceId, int ItemId, int? CustomRecipeId, string LevelName, decimal PerLevel);
+
+    public async Task<List<OpenShortageRow>> OpenAsync()
+    {
+        var rows = await _db.PendingProductionShortages.AsNoTracking().Where(s => s.SettledQuantity < s.Quantity).OrderBy(s => s.Id)
+            .Select(s => new { s.Id, s.CreatedAt, s.ItemId, s.CustomRecipeId, s.SalesInvoiceId, s.Item.ItemName, Wh = s.Warehouse.Name, Inv = s.SalesInvoice != null ? s.SalesInvoice.InvoiceNumber : null, s.Quantity, s.SettledQuantity, Recipe = s.CustomRecipe != null ? s.CustomRecipe.Name : null })
+            .ToListAsync();
+        // وحدة البيع في سطر الفاتورة نفسه (الصنف والمتغير)
+        var invoiceIds = rows.Where(r => r.SalesInvoiceId != null).Select(r => r.SalesInvoiceId!.Value).Distinct().ToList();
+        var levels = invoiceIds.Count == 0 ? new List<SaleLevel>() : await _db.SalesInvoiceLines.AsNoTracking().Where(l => invoiceIds.Contains(l.SalesInvoiceId))
+            .Select(l => new SaleLevel(l.SalesInvoiceId, l.ItemId, l.CustomRecipeId, l.PackagingLevel.LevelName, l.PackagingLevel.EquivalentBaseUnits)).ToListAsync();
+        return rows.Select(s =>
+        {
+            var lv = levels.FirstOrDefault(l => l.SalesInvoiceId == s.SalesInvoiceId && l.ItemId == s.ItemId && l.CustomRecipeId == s.CustomRecipeId);
+            return new OpenShortageRow(s.Id, DateTime.SpecifyKind(s.CreatedAt, DateTimeKind.Utc).ToLocalTime(), s.ItemName, s.Wh, s.Inv, s.Quantity, s.SettledQuantity,
+                                       s.Quantity - s.SettledQuantity, s.Recipe, lv?.LevelName, lv?.PerLevel ?? 1);
+        }).ToList();
+    }
 }
 
 /// <summary>سطر جاهز لأمر اليوم (من قالب أو من آخر إنتاج).</summary>

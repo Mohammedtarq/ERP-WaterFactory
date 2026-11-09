@@ -20,9 +20,9 @@
                     <DataGridTextColumn Header="المخزن" Binding="{Binding WarehouseName}" Width="150"/>
                     <DataGridTextColumn Header="المتغير" Binding="{Binding RecipeName, TargetNullValue=الأساسي}" Width="130"/>
                     <DataGridTextColumn Header="الفاتورة" Binding="{Binding InvoiceNumber}" Width="120"/>
-                    <DataGridTextColumn Header="المباع فوق الرصيد" Binding="{Binding Quantity, StringFormat=N0}" Width="120"/>
-                    <DataGridTextColumn Header="سُوّي" Binding="{Binding Settled, StringFormat=N0}" Width="80"/>
-                    <DataGridTextColumn Header="المتبقي" Binding="{Binding Open, StringFormat=N0}" Width="80"/>
+                    <DataGridTextColumn Header="المباع فوق الرصيد" Binding="{Binding QuantityText}" Width="170"/>
+                    <DataGridTextColumn Header="سُوّي" Binding="{Binding SettledText}" Width="120"/>
+                    <DataGridTextColumn Header="المتبقي" Binding="{Binding OpenText}" Width="170"/>
                 </DataGrid.Columns>
             </DataGrid>
         </DockPanel>
