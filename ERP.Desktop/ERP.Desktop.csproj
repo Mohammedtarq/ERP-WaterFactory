@@ -6,6 +6,8 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- رقم النسخة: يضبطه البناء (-p:Version=1.0.<رقم التشغيل>) ويقارنه التحديث التلقائي بما نشره السيرفر -->
+    <Version>1.0.0</Version>
     <ApplicationTitle>نظام إدارة الأعمال المتكامل</ApplicationTitle>
     <RootNamespace>ERP.Desktop</RootNamespace>
     <!-- يسمح ببناء المشروع (للتحقق) على أنظمة غير Windows؛ التشغيل على Windows فقط -->

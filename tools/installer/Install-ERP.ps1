@@ -98,6 +98,8 @@ function Install-App {
     }
     Write-Host "  نسخ البرنامج إلى $InstallDir ..."
     New-Item $InstallDir -ItemType Directory -Force | Out-Null
+    # التحديث التلقائي يستبدل الملفات من حساب المستخدم نفسه: صلاحية التعديل لمجموعة Users على مجلد البرنامج (قبل النسخ فترثها الملفات)
+    & icacls $InstallDir /grant '*S-1-5-32-545:(OI)(CI)M' /Q | Out-Null
     & robocopy $source $InstallDir /E /R:3 /W:2 /NFL /NDL /NJH /NJS /NP /XF 'Install-ERP.ps1' '*.cmd' | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "تعذّر نسخ ملفات البرنامج (robocopy $LASTEXITCODE)" }
     $exe = Join-Path $InstallDir 'ERP.Desktop.exe'
@@ -143,6 +145,12 @@ try {
             if ($LASTEXITCODE -ne 0) { Warn "لم تكتمل تهيئة المزامنة (السجل أعلاه). البرنامج يعمل؛ أعد تشغيل المثبّت لاحقًا لإكمالها." }
             else { Ok "المزامنة جاهزة وتُفعَّل وحدها بعد إنشاء النظام (لا خيارات تُحدَّد يدويًا): سجّل هواتف المندوبين فقط" }
         } else { Warn "خدمة المزامنة غير موجودة في الحزمة" }
+    }
+
+    if ($Mode -eq 'Server') {
+        Step "4) التحديث التلقائي: نشر هذه النسخة على السيرفر لتأخذ منها بقية الأجهزة التحديثات"
+        try { & (Join-Path $source 'Publish-Update.ps1') -Source $source -UpdatesDir (Join-Path $env:ProgramData 'ERP-WaterFactory\Updates'); Ok "الأجهزة الأخرى تتحدث وحدها من هذا السيرفر عند فتح البرنامج" }
+        catch { Warn "تعذّر تجهيز التحديث التلقائي: $($_.Exception.Message). البرنامج يعمل؛ شغّل «نشر تحديث.cmd» لاحقًا." }
     }
 
     Step "التشغيل الأول"

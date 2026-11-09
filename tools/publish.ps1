@@ -4,7 +4,9 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 $out = "dist\ERP-WaterFactory-win-x64"
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }
-dotnet publish ERP.Desktop\ERP.Desktop.csproj -c Release -r win-x64 --self-contained true -p:DebugType=none -o $out
+# رقم النسخة (للتحديث التلقائي): 1.0.<رقم تشغيل البناء> على GitHub، أو متغير ERP_VERSION_BUILD يدويًا، وإلا 1.0.0
+$build = if ($env:ERP_VERSION_BUILD) { $env:ERP_VERSION_BUILD } elseif ($env:GITHUB_RUN_NUMBER) { $env:GITHUB_RUN_NUMBER } else { '0' }
+dotnet publish ERP.Desktop\ERP.Desktop.csproj -c Release -r win-x64 --self-contained true -p:DebugType=none -p:Version="1.0.$build" -o $out
 # خدمة المزامنة (ملف واحد) لحاسبة السيرفر — يثبّتها المثبّت بوضع «السيرفر» تلقائيًا
 dotnet publish ERP.SyncAgent\ERP.SyncAgent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o "$out\SyncAgent"

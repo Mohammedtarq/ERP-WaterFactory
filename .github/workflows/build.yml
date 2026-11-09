@@ -220,6 +220,40 @@ jobs:
           if (-not (Test-Path "$env:RUNNER_TEMP\erp-install\ERP.Desktop.exe")) { throw "المثبّت لم ينسخ البرنامج" }
           if (Test-Path "$env:RUNNER_TEMP\erp-install\Install-ERP.ps1") { throw "المثبّت نسخ نفسه مع البرنامج" }
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'نظام معمل المياه.lnk'))) { throw "لا اختصار على سطح المكتب" }
+      - name: تجربة التحديث التلقائي (نشر ثم تطبيق على نسخة قديمة، وفشل التنزيل لا يمس النسخة)
+        shell: pwsh
+        run: |
+          $pkg = (Resolve-Path dist/ERP-WaterFactory-win-x64).Path
+          $upd = Join-Path $env:RUNNER_TEMP 'upd'
+          & "$pkg\Publish-Update.ps1" -Source $pkg -UpdatesDir $upd
+          $offer = Get-Content "$upd\current\version.json" -Raw | ConvertFrom-Json
+          if (-not $offer.mandatory -or -not $offer.version) { throw "version.json غير صالح" }
+          # نسخة «قديمة»: ملف معدّل وآخر مفقود
+          $inst = Join-Path $env:RUNNER_TEMP 'old-install'
+          Copy-Item $pkg $inst -Recurse
+          $orig = (Get-FileHash "$inst\appsettings.json").Hash
+          Set-Content "$inst\appsettings.json" 'قديم' -Encoding UTF8
+          Remove-Item "$inst\ERP.Presentation.dll" -Force
+          $web = Start-Process python -ArgumentList '-m', 'http.server', '8099', '--directory', "$upd\current" -PassThru -WindowStyle Hidden
+          Start-Sleep 3
+          try {
+            # فشل: بصمة خاطئة في البيان ← لا يُمس شيء
+            $m = Get-Content "$upd\current\manifest.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+            $good = ($m | Where-Object path -eq 'appsettings.json').sha256
+            ($m | Where-Object path -eq 'appsettings.json').sha256 = ('0' * 64)
+            [IO.File]::WriteAllText("$upd\current\manifest.json", (ConvertTo-Json -InputObject @($m) -Compress), (New-Object Text.UTF8Encoding($false)))
+            powershell -NoProfile -ExecutionPolicy Bypass -File "$upd\current\Apply-Update.ps1" -BaseUrl http://localhost:8099/ -InstallDir $inst -NoLaunch
+            if ($LASTEXITCODE -eq 0) { throw "كان يجب أن يفشل التحديث ببصمة خاطئة" }
+            if ((Get-Content "$inst\appsettings.json" -Raw).Trim() -ne 'قديم' -or (Test-Path "$inst\ERP.Presentation.dll")) { throw "التحديث الفاشل غيّر النسخة القديمة" }
+            # نجاح: يعود الملفان
+            ($m | Where-Object path -eq 'appsettings.json').sha256 = $good
+            [IO.File]::WriteAllText("$upd\current\manifest.json", (ConvertTo-Json -InputObject @($m) -Compress), (New-Object Text.UTF8Encoding($false)))
+            powershell -NoProfile -ExecutionPolicy Bypass -File "$upd\current\Apply-Update.ps1" -BaseUrl http://localhost:8099/ -InstallDir $inst -NoLaunch
+            if ($LASTEXITCODE -ne 0) { throw "فشل تطبيق التحديث" }
+            if ((Get-FileHash "$inst\appsettings.json").Hash -ne $orig) { throw "appsettings.json لم يُحدَّث" }
+            if (-not (Test-Path "$inst\ERP.Presentation.dll")) { throw "الملف المفقود لم يُنزَّل" }
+            Write-Host "التحديث التلقائي يعمل: تنزيل المتغيّر فقط، تحقق البصمة، وتراجع آمن"
+          } finally { Stop-Process -Id $web.Id -Force -ErrorAction SilentlyContinue }
       - uses: actions/upload-artifact@v4
         with:
           name: ERP-WaterFactory-win-x64

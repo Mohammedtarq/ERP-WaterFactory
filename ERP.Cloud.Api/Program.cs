@@ -49,6 +49,8 @@ using (var scope = app.Services.CreateScope())
 
 app.UseResponseCompression();
 RelayEndpoints.Map(app);
+UpdateEndpoints.Map(app, builder.Configuration["Relay:UpdatesFolder"]
+                         ?? UpdateEndpoints.DefaultFolder(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)));
 app.Run();
 
 public partial class Program { }

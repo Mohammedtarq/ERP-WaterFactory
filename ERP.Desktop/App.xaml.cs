@@ -46,8 +46,10 @@ public partial class App : Application
 
         // إعداد موجود لكن السيرفر لا يستجيب أو قاعدة التحكم غير مثبّتة ← المعالج مع سبب واضح
         var problem = await CheckControlDatabaseAsync(controlCs);
-        if (problem is not null) navigator.ShowSetup(problem);
-        else navigator.ShowLogin();
+        if (problem is not null) { navigator.ShowSetup(problem); return; }
+        // تحديث البرنامج من السيرفر إن وُجدت نسخة أحدث (لا يمنع الدخول عند أي تعذّر)
+        if (await UpdatePrompt.RunAsync(controlCs, _dialogs)) return;
+        navigator.ShowLogin();
     }
 
     private static async Task<string?> CheckControlDatabaseAsync(string controlCs)
