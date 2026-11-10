@@ -35,10 +35,14 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 Copy-Item (Join-Path $PSScriptRoot 'Check-GitHubUpdate.ps1') (Join-Path $dir 'Check-GitHubUpdate.ps1') -Force
 
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $dir 'Check-GitHubUpdate.ps1')`""
-# المدة صريحة: بدونها لا يتكرر المشغّل على بعض إصدارات Windows فيعمل المرة الأولى فقط
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $EveryMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
+# ثلاثة مشغّلات: كل بضع دقائق (بمدة صريحة وإلا لا يتكرر على بعض إصدارات Windows)، وعند تشغيل الجهاز، وعند دخول المستخدم
+# (بعد دقيقة) — فلا يفوتها شيء بعد إغلاق الجهاز أو سكونه ليلًا. والمهمة توقظ الجهاز من السكون إن أمكن.
+$tRepeat = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes $EveryMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
+$tBoot = New-ScheduledTaskTrigger -AtStartup; $tBoot.Delay = 'PT1M'
+$tLogon = New-ScheduledTaskTrigger -AtLogOn; $tLogon.Delay = 'PT1M'
+$trigger = @($tRepeat, $tBoot, $tLogon)
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 Register-ScheduledTask -TaskName 'ERP-AutoPublish' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 Write-Host "تم: يفحص السيرفر GitHub كل $EveryMinutes دقيقة وينشر آخر بناء ناجح وحده." -ForegroundColor Green
 
