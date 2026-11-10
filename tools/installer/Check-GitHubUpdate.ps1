@@ -38,20 +38,27 @@ try {
 
     Log "بناء جديد ناجح رقم $($run.run_number): تنزيل الحزمة..."
     # الرابط يحوّل لمخزن مؤقت موقّع: نأخذ العنوان بالمفتاح ثم ننزّل بدونه
-    $req = [Net.HttpWebRequest]::Create($art.archive_download_url)
-    $req.AllowAutoRedirect = $false
-    $req.UserAgent = 'ERP-AutoPublish'
-    $req.Headers.Add('Authorization', "Bearer $token")
-    $resp = $req.GetResponse()
-    $location = $resp.Headers['Location']
-    $resp.Close()
-    if (-not $location) { throw "لم يُعطَ رابط تنزيل الحزمة (تحقق من صلاحية المفتاح: Actions قراءة)" }
+    # مهلة طويلة + ثلاث محاولات (انقطاع الاتصال المؤقت لا يُفشل الفحص)
+    $location = $null
+    for ($try = 1; $try -le 3 -and -not $location; $try++) {
+        try {
+            $req = [Net.HttpWebRequest]::Create($art.archive_download_url)
+            $req.AllowAutoRedirect = $false
+            $req.Timeout = 300000
+            $req.UserAgent = 'ERP-AutoPublish'
+            $req.Headers.Add('Authorization', "Bearer $token")
+            $resp = $req.GetResponse()
+            $location = $resp.Headers['Location']
+            $resp.Close()
+        } catch { Log "محاولة $try تعذّرت: $($_.Exception.Message)"; if ($try -lt 3) { Start-Sleep -Seconds (10 * $try) } }
+    }
+    if (-not $location) { throw "لم يُعطَ رابط تنزيل الحزمة (انقطاع اتصال أو صلاحية المفتاح: Actions قراءة)" }
 
     $work = Join-Path $env:TEMP ('erp-autopublish-' + $run.id)
     if (Test-Path $work) { Remove-Item $work -Recurse -Force }
     New-Item $work -ItemType Directory -Force | Out-Null
     $zip = Join-Path $work 'pkg.zip'
-    Invoke-WebRequest -Uri $location -OutFile $zip -UseBasicParsing
+    Invoke-WebRequest -Uri $location -OutFile $zip -UseBasicParsing -TimeoutSec 1200
     Expand-Archive -Path $zip -DestinationPath (Join-Path $work 'pkg') -Force
     $exe = Get-ChildItem (Join-Path $work 'pkg') -Recurse -Filter 'ERP.Desktop.exe' | Select-Object -First 1
     if (-not $exe) { throw "الحزمة المنزّلة لا تحوي ERP.Desktop.exe" }
@@ -63,6 +70,8 @@ try {
     $updates = Join-Path $dir 'Updates'
     if ($optional) { & $publish -Source $source -UpdatesDir $updates -Optional } else { & $publish -Source $source -UpdatesDir $updates }
 
+    # يُحدِّث السكربت نفسه من الحزمة المنشورة (كي تصل إصلاحاته دون تدخل يدوي)
+    try { $self = Join-Path $source 'Check-GitHubUpdate.ps1'; if (Test-Path $self) { Copy-Item $self (Join-Path $dir 'Check-GitHubUpdate.ps1') -Force } } catch { }
     [IO.File]::WriteAllText($statePath, (ConvertTo-Json @{ runId = $run.id; runNumber = $run.run_number; publishedAt = (Get-Date).ToString('s') } -Compress))
     Log "نُشر التحديث (بناء $($run.run_number)) $(if ($optional) { 'اختياريًا' } else { 'إجباريًا' }) — تتحدث الأجهزة عند فتح البرنامج"
 }
