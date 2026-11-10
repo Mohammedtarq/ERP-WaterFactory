@@ -89,7 +89,7 @@ public class SidebarGroupsTests
         hr.OpenGroupCommand.Execute(attendance);
         await hr.LastActivation;
         Assert.Same(attendance.Items[0], hr.SelectedTab);
-        Assert.IsType<AttendanceSectionViewModel>(hr.SelectedTab);
+        Assert.IsType<AttendanceHubSectionViewModel>(hr.SelectedTab);
         Assert.True(attendance.IsOpen);
         Assert.Equal(1, hr.Groups.Count(g => g.IsOpen));
 

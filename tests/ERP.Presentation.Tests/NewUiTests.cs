@@ -105,10 +105,10 @@ public class NewUiTests
             shell.SearchText = "مظهر";
             Assert.Contains(shell.SearchResults, r => r.Key == "Appearance");
             shell.SearchText = "الرواتب";
-            Assert.Equal("Payroll", shell.SearchResults.First().Key);
+            Assert.Equal("PayrollHub", shell.SearchResults.First().Key);
             shell.OpenFirstResultCommand.Execute(null);
             Assert.False(shell.IsSearchOpen);
-            Assert.Equal("Payroll", SectionCatalog.KeyOf((SectionViewModel)((ModuleViewModel)shell.CurrentModule!).SelectedTab!));
+            Assert.Equal("PayrollHub", SectionCatalog.KeyOf((SectionViewModel)((ModuleViewModel)shell.CurrentModule!).SelectedTab!));
 
             // ---- قسم «المظهر» في الإعدادات ----
             var settings = shell.Open<SettingsModuleViewModel>(ModuleCode.SystemSettings);

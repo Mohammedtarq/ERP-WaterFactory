@@ -269,6 +269,12 @@
     <DataTemplate DataType="{x:Type vmFinance:DailyCashSectionViewModel}"><vFinance:DailyCashSectionView/></DataTemplate>
 
     <!-- HR -->
+    <DataTemplate DataType="{x:Type vmHR:EmployeesHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:AttendanceHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:LeavesHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:RaisesHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:IncentivesHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmHR:PayrollHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:AttendanceSectionViewModel}"><vHR:AttendanceSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:MonthlyIncentiveSectionViewModel}"><vHR:MonthlyIncentiveSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:PayrollSectionViewModel}"><vHR:PayrollSectionView/></DataTemplate>

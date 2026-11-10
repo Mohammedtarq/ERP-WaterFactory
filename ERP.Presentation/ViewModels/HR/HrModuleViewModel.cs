@@ -15,27 +15,45 @@ public class HrModuleViewModel : ModuleViewModel
         : base("الموارد البشرية", Icons.HR, ModuleColors.HR)
     {
         UseDashboard(s, d, ModuleCode.HR, ModuleDashboardViewModel.Hr);
-        Attendance = Add(new AttendanceSectionViewModel(s, d));
-        Fingerprint = Add(new FingerprintImportSectionViewModel(s, d));
-        Leaves = Add(new LeavesSectionViewModel(s, d));
-        LeaveSettings = Add(new LeaveSettingsSectionViewModel(s, d));
-        Overtime = Add(new OvertimeSectionViewModel(s, d));
-        Incentives = Add(new MonthlyIncentiveSectionViewModel(s, d));
-        Payroll = Add(new PayrollSectionViewModel(s, d));
-        Deductions = Add(new EmployeeDeductionsSectionViewModel(s, d));
-        TempWorkers = Add(new TempWorkersSectionViewModel(s, d));
-        Add(new PromotionsSectionViewModel(s, d));
-        AnnualRaises = Add(new AnnualRaisesSectionViewModel(s, d));
-        Add(new EmployeesSectionViewModel(s, d));
-        Add(new ShiftsSectionViewModel(s, d));
-        Add(new ShiftOverridesSectionViewModel(s, d));
-        Add(new DepartmentsSectionViewModel(s, d));
-        Add(new RaiseGradesSectionViewModel(s, d));
-        Add(new IncentiveSettingsSectionViewModel(s, d));
-        Add(new RepIncentiveRatesSectionViewModel(s, d));
-        Add(new ManagerTiersSectionViewModel(s, d));
+        // ست صفحات بتبويبات ملوّنة تضم الشاشات العشرين الأصلية؛ تبقى الشاشات نفسها مخفية من القائمة
+        // (ShowSeparateScreens) ويمكن إعادتها منفصلة. الخصائص أدناه تشير إلى الشاشات داخل الصفحات.
+        var employees = new EmployeesHubSectionViewModel(s, d);
+        var attendance = new AttendanceHubSectionViewModel(s, d);
+        var leaves = new LeavesHubSectionViewModel(s, d);
+        var raises = new RaisesHubSectionViewModel(s, d);
+        var incentives = new IncentivesHubSectionViewModel(s, d);
+        var payroll = new PayrollHubSectionViewModel(s, d);
+        Hubs = new HubSectionViewModel[] { employees, attendance, leaves, raises, incentives, payroll };
+        Attendance = attendance.Child<AttendanceSectionViewModel>();
+        Fingerprint = attendance.Child<FingerprintImportSectionViewModel>();
+        Leaves = leaves.Child<LeavesSectionViewModel>();
+        LeaveSettings = leaves.Child<LeaveSettingsSectionViewModel>();
+        Overtime = attendance.Child<OvertimeSectionViewModel>();
+        Incentives = incentives.Child<MonthlyIncentiveSectionViewModel>();
+        Payroll = payroll.Child<PayrollSectionViewModel>();
+        Deductions = payroll.Child<EmployeeDeductionsSectionViewModel>();
+        TempWorkers = employees.Child<TempWorkersSectionViewModel>();
+        AnnualRaises = raises.Child<AnnualRaisesSectionViewModel>();
+        foreach (var h in Hubs) Add(h);
+        if (ShowSeparateScreens)
+            foreach (var h in Hubs)
+                foreach (var tab in h.Tabs) Add(tab.Child);
         Add(new Shell.HrReportsSectionViewModel(s, d));
     }
+
+    /// <summary>الصفحات الست المدموجة (الموظفون، الحضور، الإجازات، الترقيات والعلاوات، الحوافز، الرواتب).</summary>
+    public IReadOnlyList<HubSectionViewModel> Hubs { get; }
+    /// <summary>إظهار الشاشات العشرين منفصلة إلى جانب الصفحات المدموجة؛ مخفية افتراضيًا.</summary>
+    public static bool ShowSeparateScreens { get; set; }
+
+    public static readonly HashSet<Type> MergedScreens = new()
+    {
+        typeof(EmployeesSectionViewModel), typeof(DepartmentsSectionViewModel), typeof(ShiftsSectionViewModel), typeof(ShiftOverridesSectionViewModel),
+        typeof(TempWorkersSectionViewModel), typeof(AttendanceSectionViewModel), typeof(FingerprintImportSectionViewModel), typeof(OvertimeSectionViewModel),
+        typeof(LeavesSectionViewModel), typeof(LeaveSettingsSectionViewModel), typeof(PromotionsSectionViewModel), typeof(AnnualRaisesSectionViewModel),
+        typeof(RaiseGradesSectionViewModel), typeof(MonthlyIncentiveSectionViewModel), typeof(IncentiveSettingsSectionViewModel),
+        typeof(RepIncentiveRatesSectionViewModel), typeof(ManagerTiersSectionViewModel), typeof(PayrollSectionViewModel), typeof(EmployeeDeductionsSectionViewModel),
+    };
 
     public AttendanceSectionViewModel Attendance { get; }
     /// <summary>المستحقون للعلاوة السنوية (يفتحها تنبيه الجرس).</summary>

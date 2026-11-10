@@ -325,6 +325,23 @@ public class MainShellViewModel : ViewModelBase
         Background(Task.Delay(2500, cts.Token).ContinueWith(t => { if (!t.IsCanceled) FavoriteNotice = null; }, TaskScheduler.Default));
     }
 
+    /// <summary>
+    /// يفتح الشاشة المطلوبة في الوحدة؛ وإن كانت داخل صفحة مدموجة بتبويبات (الموارد البشرية) فتُفتح الصفحة على تبويبها.
+    /// </summary>
+    private static SectionViewModel? FindSection(ModuleViewModel m, Func<SectionViewModel, bool> match)
+    {
+        var tabs = m.TabsSnapshot().OfType<SectionViewModel>().ToList();
+        if (tabs.FirstOrDefault(match) is { } direct) { m.SelectedTab = direct; return direct; }
+        foreach (var hub in tabs.OfType<HubSectionViewModel>())
+            if (hub.Contains(match))
+            {
+                m.SelectedTab = hub;
+                hub.Select(match);
+                return hub;
+            }
+        return null;
+    }
+
     /// <summary>فتح شاشة بمفتاحها: في وحدتها الأصلية، وإلا حيث نقلتها الإدارة.</summary>
     public SectionViewModel? OpenEntry(QuickEntry entry)
     {
@@ -333,11 +350,8 @@ public class MainShellViewModel : ViewModelBase
                                     .OrderBy(n => n.ModuleCode == entry.HomeModule ? 0 : _modules.ContainsKey(n.ModuleCode) ? 1 : 2))
         {
             SelectedItem = nav;
-            if (CurrentModule is ModuleViewModel m && m.TabsSnapshot().OfType<SectionViewModel>().FirstOrDefault(t => SectionCatalog.KeyOf(t) == entry.Key) is { } section)
-            {
-                m.SelectedTab = section;
+            if (CurrentModule is ModuleViewModel m && FindSection(m, t => SectionCatalog.KeyOf(t) == entry.Key) is { } section)
                 return section;
-            }
         }
         return null;
     }
@@ -539,11 +553,8 @@ public class MainShellViewModel : ViewModelBase
             if (nav.ModuleCode != alert.ModuleCode && !_modules.ContainsKey(nav.ModuleCode)) continue;
             SelectedItem = nav;
             // نسخة من التبويبات: وحدة المخازن قد تُحدّث تبويبات مخازنها في الخلفية لحظة فتحها
-            if (CurrentModule is ModuleViewModel m && m.TabsSnapshot().OfType<SectionViewModel>().FirstOrDefault(t => t.GetType().Name == alert.Section) is { } section)
-            {
-                m.SelectedTab = section;
+            if (CurrentModule is ModuleViewModel m && FindSection(m, t => t.GetType().Name == alert.Section) is { } section)
                 return section;
-            }
         }
         _dialogs.Info($"{alert.Title}\n{alert.Detail}");
         return null;

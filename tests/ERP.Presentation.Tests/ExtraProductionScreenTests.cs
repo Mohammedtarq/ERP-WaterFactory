@@ -2,6 +2,7 @@ using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
 using ERP.Presentation.ViewModels.Production;
 using Finance = ERP.Presentation.ViewModels.Finance;
+using HR = ERP.Presentation.ViewModels.HR;
 using ERP.Presentation.ViewModels.Shell;
 using ERP.Presentation.ViewModels.Warehouse;
 using Microsoft.EntityFrameworkCore;
@@ -290,6 +291,39 @@ public class ExtraProductionScreenTests
         await page.IdleAsync(); await page.Surplus.IdleAsync();
         Assert.Same(page.Surplus, page.SelectedChild);
         Assert.NotNull(page.Surplus.Snapshot);                          // مؤشر الفائض يُحمَّل عند فتح تبويبه
+        Assert.Empty(dialogs.Errors);
+        Assert.Empty(_f.Unhandled);
+    }
+
+    [Fact]
+    public async Task Hr_hubs_merge_the_twenty_screens_into_six_pages_and_navigation_finds_the_tab()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        HR.HrModuleViewModel.ShowSeparateScreens = false;
+        try
+        {
+            var module = new HR.HrModuleViewModel(shell.Session, dialogs);
+            // 6 صفحات + التقارير فقط في القائمة؛ والشاشات الأصلية مخفية ومتاحة داخل التبويبات
+            Assert.Equal(6, module.Hubs.Count);
+            Assert.All(module.Hubs, h => Assert.Contains(h, module.Tabs));
+            Assert.Contains(module.Tabs, t => t is ERP.Presentation.ViewModels.Shell.HrReportsSectionViewModel);
+            Assert.Equal(19, module.Hubs.Sum(h => h.Tabs.Count));
+            Assert.DoesNotContain(module.Tabs, t => HR.HrModuleViewModel.MergedScreens.Contains(t.GetType()));
+            Assert.Equal(new[] { "#3B82F6", "#10B981", "#F59E0B", "#EC4899", "#8B5CF6" }, module.Hubs[0].Tabs.Select(t => t.Color));
+            var keys = SectionCatalog.QuickEntries(shell.Session, dialogs).Select(e => e.Key).ToList();
+            Assert.DoesNotContain("Payroll", keys);
+            Assert.Contains("PayrollHub", keys);
+        }
+        finally { HR.HrModuleViewModel.ShowSeparateScreens = true; }
+
+        // التنقل: تبويب ملوّن يغيّر لون الإطار، وفتح شاشة قديمة (تنبيه الجرس) يفتح صفحتها على تبويبها
+        var hr = shell.Open<HR.HrModuleViewModel>(ModuleCode.HR);
+        var raises = hr.Hubs.OfType<HR.RaisesHubSectionViewModel>().Single();
+        raises.SelectedIndex = 2;
+        Assert.Equal(raises.Tabs[2].Color, raises.SelectedColor);
+        Assert.Same(raises.Tabs[2].Child, raises.SelectedChild);
+        Assert.True(raises.Select(c => c is HR.AnnualRaisesSectionViewModel));
+        Assert.Same(hr.AnnualRaises, raises.SelectedChild);
         Assert.Empty(dialogs.Errors);
         Assert.Empty(_f.Unhandled);
     }

@@ -37,7 +37,8 @@ public static class SectionCatalog
     public static bool IsRetired(Type type) =>
         (type == typeof(Production.DailyProductionSectionViewModel) && !Production.ProductionModuleViewModel.ShowDailyProduction)
         || ((type == typeof(Finance.ReconciliationSectionViewModel) || type == typeof(Finance.PartnersSectionViewModel) || type == typeof(Finance.WorkingCapitalSectionViewModel))
-            && !Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens);
+            && !Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens)
+        || (HR.HrModuleViewModel.MergedScreens.Contains(type) && !HR.HrModuleViewModel.ShowSeparateScreens);
 
     public static bool IsConfigurable(string homeModule) => homeModule is not (ModuleCode.SystemSettings or ModuleCode.Dashboard);
 

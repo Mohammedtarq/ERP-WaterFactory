@@ -97,6 +97,9 @@ public abstract class SectionViewModel : SessionViewModel
     /// </summary>
     protected virtual bool HasPendingInput => false;
 
+    /// <summary>للصفحات المدموجة: هل في إحدى شاشاتها إدخال غير محفوظ.</summary>
+    internal bool HasPendingInputNow => HasPendingInput;
+
     /// <summary>
     /// يُحمَّل عند أول فتح، ثم يُحدَّث تلقائيًا عند الفتح إن حُفظت أي عملية في أي شاشة منذ آخر تحميل
     /// (ودائمًا للأقسام التي تطلب ذلك) — بلا زر تحديث وبلا استعلامات زائدة إن لم يتغير شيء.

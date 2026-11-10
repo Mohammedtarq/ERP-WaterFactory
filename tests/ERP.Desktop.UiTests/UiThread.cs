@@ -34,6 +34,7 @@ public static class UiThread
             // «إنتاج اليوم» مخفية افتراضيًا في البرنامج؛ جولات الشاشات تصوّرها
             ERP.Presentation.ViewModels.Production.ProductionModuleViewModel.ShowDailyProduction = true;
             ERP.Presentation.ViewModels.Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens = true;
+            ERP.Presentation.ViewModels.HR.HrModuleViewModel.ShowSeparateScreens = true;
 
             PresentationTraceSources.Refresh();
             PresentationTraceSources.DataBindingSource.Listeners.Add(new Collector());
