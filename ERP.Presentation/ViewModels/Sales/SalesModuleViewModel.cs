@@ -404,6 +404,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     // ---------------- نوع البيع وتصفية الأصناف ----------------
     private readonly List<Data.ProjectDb.Entities.Warehouse> _allWarehouses = new();
     private readonly List<Item> _allItems = new();
+    private List<PendingProductionService.InProduction> _inProduction = new();
     private Dictionary<(int wh, int item), decimal> _stock = new();
     private Dictionary<int, HashSet<string>> _itemLevels = new();
     private Dictionary<int, decimal> _topPack = new();   // قطع العبوة الكبرى لكل صنف (لعرض المتوفر بعددها)
@@ -463,7 +464,8 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             foreach (var i in _allItems)
             {
                 var inStock = _stock.GetValueOrDefault((Warehouse.Id, i.Id)) > 0;
-                if (!inStock && !(pending && i.SourcingMethod == SourcingMethod.Manufactured)) continue;
+                var inProduction = Mode == SaleMode.Direct && _inProduction.Any(x => x.ItemId == i.Id);
+                if (!inStock && !inProduction && !(pending && i.SourcingMethod == SourcingMethod.Manufactured)) continue;
                 if (PackFilter != AllPacks && !(_itemLevels.TryGetValue(i.Id, out var lv) && lv.Contains(PackFilter))) continue;
                 (i.StockHint, i.StockState) = StockHint.Of(_stock.GetValueOrDefault((Warehouse.Id, i.Id)), _topPack.GetValueOrDefault(i.Id, 1), i.MinStockAlertLevel);
                 ItemsLookup.Add(i);
@@ -554,6 +556,19 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     /// <summary>السعر المقترح من الخدمة (قابل للتعديل قبل الإضافة).</summary>
     public decimal LinePrice { get => _linePrice; set => SetProperty(ref _linePrice, value); }
     public decimal? LineAvailable { get => _lineAvailable; private set { if (SetProperty(ref _lineAvailable, value)) OnPropertyChanged(nameof(LineAvailableText)); } }
+    /// <summary>«قيد الإنتاج 12 شرنك · مباع منها مقدمًا 4 · المتاح للبيع من الإنتاج 8» للصنف/المتغير المختار.</summary>
+    public string LineProductionText
+    {
+        get
+        {
+            if (LineItem is null || Mode != SaleMode.Direct) return "";
+            var x = _inProduction.FirstOrDefault(p => p.ItemId == LineItem.Id && p.RecipeId == LineBatch?.RecipeId);
+            if (x is null) return "";
+            string F(decimal v) => PendingProductionService.FormatPacks(v, LineLevel?.LevelName, LineLevel?.EquivalentBaseUnits ?? 1);
+            return $"قيد الإنتاج: {F(x.Planned)} · مباع منها مقدمًا {F(x.SoldAhead)} · المتاح للبيع من الإنتاج: {F(x.Available)}";
+        }
+    }
+    public bool HasLineProduction => LineProductionText.Length > 0;
     public string LineAvailableText => LineAvailable is null ? "" :
         LineLevel is { EquivalentBaseUnits: > 1 } lv
             ? $"المتاح للبيع: {LineAvailable:N0} قطعة = {Math.Floor(LineAvailable.Value / lv.EquivalentBaseUnits):N0} {lv.LevelName}"
@@ -626,6 +641,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         _itemLevels = (await db.ItemPackagingLevels.AsNoTracking().Where(l => l.IsSellableUnit && l.EquivalentBaseUnits > 1)
                 .Select(l => new { l.ItemId, l.LevelName }).ToListAsync())
             .GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.Select(l => l.LevelName.Trim()).ToHashSet());
+
+        // ما هو قيد الإنتاج (أوامر مفتوحة): يظهر في قائمة البيع حتى برصيد صفر، مع المتاح للبيع منه
+        _inProduction = await new PendingProductionService(db).InProductionAsync();
 
         var keepFilter = PackFilter;
         PackFilters.Clear();
@@ -706,6 +724,14 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
                     Label = $"{b.BatchNumber}{(b.Recipe is null ? "" : $" — {b.Recipe}")} — ينتهي {b.ExpiryDate:yyyy/MM/dd} — {b.Qty:N0} قطعة"
                 });
         }
+        // متغيرات قيد الإنتاج (أوامر مفتوحة) ولا رصيد لها بعد: تُعرض للبيع بانتظار الإنتاج بالاسم
+        if (Mode == SaleMode.Direct)
+            foreach (var x in _inProduction.Where(x => x.ItemId == LineItem.Id && x.RecipeId != null && !BatchOptions.Any(b => b.BatchId == null && b.RecipeId == x.RecipeId)))
+                BatchOptions.Add(new BatchOption
+                {
+                    RecipeId = x.RecipeId, PriceRecipeId = x.RecipeId, ShortLabel = $"تلقائي — {x.RecipeName}",
+                    Label = $"قيد الإنتاج — {x.RecipeName} — المتاح من الإنتاج {PendingProductionService.FormatPacks(x.Available, LevelOptions.FirstOrDefault()?.LevelName, LevelOptions.FirstOrDefault()?.EquivalentBaseUnits ?? 1)}"
+                });
         LineBatch = BatchOptions[0];
         LineLevel = LevelOptions.FirstOrDefault();
         await RefreshLineStockAsync();
@@ -727,11 +753,12 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
     private async Task RefreshLineStockAsync()
     {
-        if (LineItem is null || Warehouse is null) { LineAvailable = null; return; }
+        if (LineItem is null || Warehouse is null) { LineAvailable = null; OnPropertyChanged(nameof(LineProductionText)); OnPropertyChanged(nameof(HasLineProduction)); return; }
         await using var db = Session.NewDb();
         // المتاح لهذا العميل: محجوز غيره لا يُحسب إلا بالصلاحية، والمناسبات تُطلب بالاسم
         var scope = Customer is null ? null : BatchScope.ForCustomer(Customer.Id, LineBatch?.RecipeId, Has(SpecialPermission.ReservedStock));
         LineAvailable = await new SalesService(db).GetAvailableQuantityAsync(LineItem.Id, Warehouse.Id, LineBatch?.BatchId, scope);
+        OnPropertyChanged(nameof(LineProductionText)); OnPropertyChanged(nameof(HasLineProduction));
     }
 
     /// <summary>عند تغيير العميل أو خيار تسعير الوكيل: إعادة تسعير السطور غير المعدّلة يدويًا.</summary>

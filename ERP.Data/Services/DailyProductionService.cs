@@ -361,6 +361,23 @@ public class PendingProductionService
         }).OrderBy(x => x.ItemName).ThenBy(x => x.RecipeName).ToList();
     }
 
+    /// <summary>ما في أوامر الإنتاج المفتوحة (مسودة أو جارية) لصنف/متغير، وما بيع منه مقدمًا، والمتاح للبيع من الإنتاج (بالقطعة).</summary>
+    public record InProduction(int ItemId, int? RecipeId, string? RecipeName, decimal Planned, decimal SoldAhead)
+    {
+        public decimal Available => Math.Max(0, Planned - SoldAhead);
+    }
+
+    public async Task<List<InProduction>> InProductionAsync()
+    {
+        var planned = await _db.ProductionOrderLines.AsNoTracking()
+            .Where(l => l.ProductionOrder.Status == ProductionOrderStatus.Draft || l.ProductionOrder.Status == ProductionOrderStatus.InProgress)
+            .GroupBy(l => new { l.FinishedItemId, l.CustomRecipeId, Recipe = l.CustomRecipe != null ? l.CustomRecipe.Name : null })
+            .Select(g => new { g.Key.FinishedItemId, g.Key.CustomRecipeId, g.Key.Recipe, Qty = g.Sum(l => l.QuantityToProduce) }).ToListAsync();
+        if (planned.Count == 0) return new();
+        var sold = (await OpenAsync()).GroupBy(r => (r.ItemId, r.RecipeId)).ToDictionary(g => g.Key, g => g.Sum(r => r.Open));
+        return planned.Select(p => new InProduction(p.FinishedItemId, p.CustomRecipeId, p.Recipe, p.Qty, sold.GetValueOrDefault((p.FinishedItemId, p.CustomRecipeId)))).ToList();
+    }
+
     /// <summary>تقريب الكمية لأعلى إلى عدد صحيح من وحدة البيع (الإنتاج بعبوات كاملة؛ الزيادة تذهب للمخزن).</summary>
     public static decimal CeilToLevel(decimal pieces, decimal perLevel) => perLevel > 1 ? Math.Ceiling(pieces / perLevel) * perLevel : pieces;
 

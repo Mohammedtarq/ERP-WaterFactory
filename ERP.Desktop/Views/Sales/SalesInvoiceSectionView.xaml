@@ -267,6 +267,9 @@
                     </Grid>
                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                         <TextBlock Text="{Binding LineAvailableText}" Style="{StaticResource Muted}" Margin="0,0,16,0"/>
+                        <Border Background="#EFF6FF" CornerRadius="6" Padding="8,2" Margin="0,0,16,0" Visibility="{Binding HasLineProduction, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{Binding LineProductionText}" FontSize="12" Foreground="#1E40AF"/>
+                        </Border>
                         <TextBlock Text="{Binding LineBaseUnitsText}" Style="{StaticResource Muted}"/>
                     </StackPanel>
                 </StackPanel>

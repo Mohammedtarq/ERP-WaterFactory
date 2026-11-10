@@ -1,6 +1,7 @@
 using ERP.Data.ProjectDb.Entities;
 using ERP.Data.Services;
 using ERP.Presentation.ViewModels.Production;
+using ERP.Presentation.ViewModels.Sales;
 using ERP.Presentation.ViewModels.Shell;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -109,5 +110,65 @@ public class SoldAheadDraftTests
         Assert.False(enough.IsShort);
         Assert.Equal("للمخزن بعد التسوية: 1 شرنك (20 قطعة)", enough.ToStockText);
         Assert.False(new OrderLineDraft { Quantity = 5 }.HasSoldAhead);
+    }
+
+    [Fact]
+    public async Task Sales_list_shows_variants_in_production_with_what_is_available_to_sell()
+    {
+        int waterId, recipeId, rawWh, machineId;
+        await using (var db = _f.NewDb())
+        {
+            var branch = await db.Branches.FirstAsync();
+            var raw = await db.Warehouses.FirstOrDefaultAsync(w => w.WarehouseType == WarehouseType.RawMaterial);
+            if (raw is null) db.Warehouses.Add(raw = new Warehouse { BranchId = branch.Id, Name = "مخزن المواد SB", WarehouseType = WarehouseType.RawMaterial, IsSellableStock = false });
+            var wip = new Warehouse { BranchId = branch.Id, Name = "تحت التصنيع SB", WarehouseType = WarehouseType.WorkInProcess, IsSellableStock = false };
+            db.Warehouses.Add(wip);
+            var admin = await db.Users.FirstAsync(u => u.Username == AppFixture.AdminUser);
+            var pre = new Item { ItemCode = "SB-PRE", ItemName = "امبولة SB", SourcingMethod = SourcingMethod.Purchased, CostPrice = 10 };
+            var water = new Item { ItemCode = "SB-W", ItemName = "ماء SB", SalePrice = 250 };
+            db.Items.AddRange(pre, water);
+            await db.SaveChangesAsync();
+            db.ItemPackagingLevels.Add(new ItemPackagingLevel { ItemId = pre.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 });
+            db.StockTransactions.Add(new StockTransaction { ItemId = pre.Id, WarehouseId = raw.Id, QuantityBaseUnits = 5_000, UnitCost = 10, TransactionType = StockTransactionType.Receipt, CreatedByUserId = admin.Id });
+            db.ItemPackagingLevels.AddRange(new ItemPackagingLevel { ItemId = water.Id, LevelName = "قطعة", EquivalentBaseUnits = 1 },
+                                            new ItemPackagingLevel { ItemId = water.Id, LevelName = "شرنك", ContainsQuantity = 20, EquivalentBaseUnits = 20, IsSellableUnit = true });
+            var bom = new BillOfMaterials { FinishedItemId = water.Id };
+            bom.Lines.Add(new BOMLine { RawMaterialItemId = pre.Id, QuantityPerUnit = 1, ComponentRole = "امبولة" });
+            db.BillOfMaterials.Add(bom);
+            var machine = new Machine { Name = "ماكينة SB", MachineType = "تعبئة", WipWarehouseId = wip.Id };
+            var recipe = new CustomRecipe { FinishedItemId = water.Id, Name = "صباح العربي" };
+            db.AddRange(machine, recipe);
+            await db.SaveChangesAsync();
+            var (r, _) = await new ProductionService(db).CreateOrderAsync(new[] { new ProductionLineInput(water.Id, 100, recipe.Id, "9100") }, raw.Id, machine.Id, admin.Id);
+            Assert.True(r.Success, r.ErrorMessage);   // مسودة أمر إنتاج للمتغير (100 قطعة = 5 شرنك)
+            waterId = water.Id; recipeId = recipe.Id; rawWh = raw.Id; machineId = machine.Id;
+        }
+
+        await using (var db = _f.NewDb())
+        {
+            var x = Assert.Single(await new PendingProductionService(db).InProductionAsync(), a => a.ItemId == waterId && a.RecipeId == recipeId);
+            Assert.Equal((100m, 0m, 100m), (x.Planned, x.SoldAhead, x.Available));
+        }
+
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var sales = shell.Open<SalesModuleViewModel>(ModuleCode.Sales);
+        var inv = sales.Invoice;
+        sales.SelectedTab = inv;
+        await sales.IdleAsync(); await inv.IdleAsync();
+        inv.Warehouse = inv.Warehouses.First();
+        inv.LineItem = inv.ItemsLookup.Single(i => i.Id == waterId);
+        await inv.IdleAsync();
+        // المتغير قيد الإنتاج يظهر في قائمة التشغيلة/المتغير بالاسم مع المتاح من الإنتاج، ولا رصيد له
+        var option = Assert.Single(inv.BatchOptions, b => b.RecipeId == recipeId);
+        Assert.Contains("قيد الإنتاج", option.Label);
+        Assert.Contains("صباح العربي", option.Label);
+        Assert.Contains("5 شرنك (100 قطعة)", option.Label);
+        inv.LineBatch = option;
+        await inv.IdleAsync();
+        Assert.Contains("قيد الإنتاج: 5 شرنك (100 قطعة)", inv.LineProductionText);
+        Assert.Contains("المتاح للبيع من الإنتاج: 5 شرنك (100 قطعة)", inv.LineProductionText);
+        Assert.True(inv.HasLineProduction);
+        Assert.Empty(dialogs.Errors);
+        Assert.Empty(_f.Unhandled);
     }
 }
