@@ -18,8 +18,8 @@ public class EmployeesHubSectionViewModel : HubSectionViewModel
         "الموظفون وأقسامهم وورديات الدوام والعمال المؤقتون — في صفحة واحدة",
         new HubTab("الموظفون", HubColors.Blue, new EmployeesSectionViewModel(s, d)),
         new HubTab("الأقسام", HubColors.Green, new DepartmentsSectionViewModel(s, d)),
-        new HubTab("الورديات", HubColors.Amber, new ShiftsSectionViewModel(s, d)),
-        new HubTab("استثناءات الوردية", HubColors.Pink, new ShiftOverridesSectionViewModel(s, d)),
+        new HubTab("شفتات العمل", HubColors.Amber, new ShiftsSectionViewModel(s, d)),
+        new HubTab("استثناء الشفتات", HubColors.Pink, new ShiftOverridesSectionViewModel(s, d)),
         new HubTab("العمال المؤقتون", HubColors.Purple, new TempWorkersSectionViewModel(s, d))) { }
 }
 
@@ -59,8 +59,8 @@ public class IncentivesHubSectionViewModel : HubSectionViewModel
         "الحافز الشهري وإعداداته ونسب المندوبين وشرائح المدراء — في صفحة واحدة",
         new HubTab("الحافز الشهري", HubColors.Amber, new MonthlyIncentiveSectionViewModel(s, d)),
         new HubTab("إعدادات الحوافز", HubColors.Blue, new IncentiveSettingsSectionViewModel(s, d)),
-        new HubTab("نسب المندوبين", HubColors.Green, new RepIncentiveRatesSectionViewModel(s, d)),
-        new HubTab("شرائح المدراء", HubColors.Pink, new ManagerTiersSectionViewModel(s, d))) { }
+        new HubTab("حوافز المندوبين", HubColors.Green, new RepIncentiveRatesSectionViewModel(s, d)),
+        new HubTab("حافز مدير المبيعات", HubColors.Pink, new ManagerTiersSectionViewModel(s, d))) { }
 }
 
 /// <summary>الرواتب: كشف الرواتب والاستقطاعات.</summary>
