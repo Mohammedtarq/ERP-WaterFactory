@@ -10,7 +10,7 @@ New-Item $Root -ItemType Directory -Force | Out-Null
 $logFile = Join-Path $Root 'backup.log'
 function Log($m) { $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $m"; Add-Content -Path $logFile -Value $line -Encoding UTF8; Write-Host $line }
 
-$names = & sqlcmd -S $Instance -E -h -1 -W -Q "SET NOCOUNT ON; SELECT name FROM sys.databases WHERE name LIKE 'ERP[_]%' AND state_desc = 'ONLINE'"
+$names = & sqlcmd -S $Instance -C -E -h -1 -W -Q "SET NOCOUNT ON; SELECT name FROM sys.databases WHERE name LIKE 'ERP[_]%' AND state_desc = 'ONLINE'"
 if ($LASTEXITCODE -ne 0) { Log "FAIL: cannot read databases from $Instance"; exit 1 }
 $dbs = @($names | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
 if ($dbs.Count -eq 0) { Log "FAIL: no ERP_* databases found on $Instance"; exit 1 }
@@ -21,13 +21,13 @@ $stamp = Get-Date -Format 'HHmm'
 $failed = 0
 foreach ($db in $dbs) {
     $file = Join-Path $day "$db`_$stamp.bak"
-    & sqlcmd -S $Instance -E -b -Q "BACKUP DATABASE [$db] TO DISK = N'$file' WITH INIT, CHECKSUM, COMPRESSION, NAME = N'$db'" | Out-Null
+    & sqlcmd -S $Instance -C -E -b -Q "BACKUP DATABASE [$db] TO DISK = N'$file' WITH INIT, CHECKSUM, COMPRESSION, NAME = N'$db'" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         # بعض الإصدارات لا تدعم الضغط: نعيد بلا ضغط
-        & sqlcmd -S $Instance -E -b -Q "BACKUP DATABASE [$db] TO DISK = N'$file' WITH INIT, CHECKSUM, NAME = N'$db'" | Out-Null
+        & sqlcmd -S $Instance -C -E -b -Q "BACKUP DATABASE [$db] TO DISK = N'$file' WITH INIT, CHECKSUM, NAME = N'$db'" | Out-Null
     }
     if ($LASTEXITCODE -ne 0) { $failed++; Log "FAIL: backup of $db"; continue }
-    & sqlcmd -S $Instance -E -b -Q "RESTORE VERIFYONLY FROM DISK = N'$file' WITH CHECKSUM" | Out-Null
+    & sqlcmd -S $Instance -C -E -b -Q "RESTORE VERIFYONLY FROM DISK = N'$file' WITH CHECKSUM" | Out-Null
     if ($LASTEXITCODE -ne 0) { $failed++; Log "FAIL: verify of $db"; continue }
     Log ("OK: {0} ({1:N1} MB)" -f $db, ((Get-Item $file).Length / 1MB))
 }

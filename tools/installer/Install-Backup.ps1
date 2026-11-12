@@ -21,7 +21,7 @@ $svc = 'NT SERVICE\MSSQL$' + ($Instance -replace '^.*\\', '')
 & icacls $Root /inheritance:r /grant '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' "${svc}:(OI)(CI)M" | Out-Null
 
 # حساب SYSTEM (الذي يشغّل المهمة) يحتاج صلاحية على SQL للنسخ
-& sqlcmd -S $Instance -E -b -Q "IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'NT AUTHORITY\SYSTEM') CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS; ALTER SERVER ROLE sysadmin ADD MEMBER [NT AUTHORITY\SYSTEM];"
+& sqlcmd -S $Instance -C -E -b -Q "IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'NT AUTHORITY\SYSTEM') CREATE LOGIN [NT AUTHORITY\SYSTEM] FROM WINDOWS; ALTER SERVER ROLE sysadmin ADD MEMBER [NT AUTHORITY\SYSTEM];"
 if ($LASTEXITCODE -ne 0) { throw 'تعذّر منح صلاحية النسخ للمهمة على SQL Server' }
 
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $dir 'Backup-ERP.ps1')`" -Instance `"$Instance`" -Root `"$Root`" -KeepDays $KeepDays"
