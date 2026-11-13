@@ -8,8 +8,8 @@
              x:Name="Root">
     <Border Style="{StaticResource Card}">
         <DockPanel>
-            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+            <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <WrapPanel Margin="0,0,0,8">
                     <Button Style="{StaticResource PrimaryButton}" Command="{Binding GenerateCommand}"
                             IsEnabled="{Binding IsApproved, Converter={StaticResource InverseBool}}">
                         <StackPanel Orientation="Horizontal">
@@ -46,7 +46,7 @@
                             <TextBlock Text="طباعة كشف الرواتب"/>
                         </StackPanel>
                     </Button>
-                </StackPanel>
+                </WrapPanel>
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="الشهر:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <ComboBox ItemsSource="{Binding Months}" SelectedItem="{Binding Month}" Width="70" Margin="0,0,12,0"/>
@@ -58,7 +58,7 @@
                         <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold"/>
                     </Border>
                 </StackPanel>
-            </DockPanel>
+            </StackPanel>
             <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="14,10" Margin="0,10,0,0"
                     Visibility="{Binding Summary, Converter={StaticResource NullToCollapsed}}">
                 <WrapPanel>
@@ -88,7 +88,7 @@
                     <TextBlock Text="الاستقطاعات" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
             </Grid>
-            <DataGrid x:Name="PayrollGrid" ItemsSource="{Binding VisibleRows}" IsReadOnly="True"
+            <DataGrid x:Name="PayrollGrid" FrozenColumnCount="2" ItemsSource="{Binding VisibleRows}" IsReadOnly="True"
                       ToolTip="اضغط على الموظف ضغطتين لقصاصة راتبه (معاينة وطباعة)">
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">

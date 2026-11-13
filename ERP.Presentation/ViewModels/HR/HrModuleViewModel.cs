@@ -505,7 +505,7 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
         get => _department;
         set { if (SetProperty(ref _department, value ?? DepartmentChoice.All)) { OnPropertyChanged(nameof(VisibleRows)); OnPropertyChanged(nameof(DepartmentTotalText)); } }
     }
-    public IList<PayrollRow> VisibleRows => Rows.Where(r => Department.Matches(r.DepartmentId)).ToList();
+    public IList<PayrollRow> VisibleRows => Rows.Where(r => Department.Matches(r.DepartmentId)).OrderBy(r => r.DepartmentName, StringComparer.CurrentCulture).ThenBy(r => r.EmployeeName, StringComparer.CurrentCulture).ToList();
     /// <summary>صافي رواتب القسم المختار (بعملته).</summary>
     public string DepartmentTotalText => Department.IsAll || Rows.Count == 0 ? ""
         : string.Join(" + ", VisibleRows.GroupBy(r => r.Currency).Select(g => $"{g.Sum(r => r.NetSalary):N0} {g.Key}")) is { Length: > 0 } t ? $"صافي قسم {Department.Name}: {t}" : $"لا موظفين في قسم {Department.Name}";
