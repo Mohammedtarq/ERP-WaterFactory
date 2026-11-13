@@ -49,7 +49,7 @@ public class HrScreenTests
     {
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
         var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
-        Assert.Equal(26, hr.Home.Sections.Count());                  // + نقل الشفت + الإجازات + أنواع الإجازات والعطل + العمل الإضافي + التقارير + المستحقون للعلاوة + درجات العلاوة
+        Assert.Equal(27, hr.Home.Sections.Count());                  // + نقل الشفت + الإجازات + أنواع الإجازات والعطل + العمل الإضافي + التقارير + المستحقون للعلاوة + درجات العلاوة
 
         // 1) شفت صباحي
         var shifts = hr.Section<ShiftsSectionViewModel>();
@@ -298,5 +298,27 @@ public class HrScreenTests
             await db.SaveChangesAsync();
         }
         Assert.Empty(_f.Unhandled);
+    }
+
+    [Fact]
+    public async Task Late_rules_tab_saves_tiers_once_and_previews_amounts()
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
+        var rules = hr.Hubs.SelectMany(h => h.Tabs).Select(t => t.Child).OfType<LateRulesSectionViewModel>().Single();
+        await rules.LoadAsync();
+        rules.SingleTierCommand.Execute(null);
+        Assert.Single(rules.Tiers);
+        rules.SampleSalary = 500_000;
+        Assert.Equal($"{500_000m / 30m * 0.25m:N0}", rules.Tiers[0].Preview);   // ربع أجر اليوم
+        rules.Enabled = true;
+        rules.FromMonth = 1; rules.FromYear = 2090;
+        await rules.SaveCommand.ExecuteAsync();
+        await rules.LoadAsync();
+        Assert.True(rules.Enabled);
+        Assert.Equal(2090, rules.FromYear);
+        Assert.Single(rules.Tiers);
+        rules.Enabled = false;                       // لا نترك الخصم مفعّلًا لبقية الاختبارات
+        await rules.SaveCommand.ExecuteAsync();
     }
 }

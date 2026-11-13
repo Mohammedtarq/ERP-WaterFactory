@@ -31,7 +31,23 @@
             <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,8" FontSize="12"
                        Text="اكتب وقت الدخول والخروج بصيغة 08:30 لمن تريد فقط — يُحفظ ما عدّلته وحده، ومن لم تلمسه لا يُسجَّل له شيء. الحالة تُحسب من الشفت (حاضر/متأخر)؛ وللغياب أو الإجازة اختر من «حالة خاصة»."/>
             <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
-            <DataGrid ItemsSource="{Binding VisibleRows}" IsReadOnly="False" CanUserAddRows="False">
+            <!-- مسامحة التأخير: اختر موظفًا متأخرًا، اكتب السبب (إلزامي) ثم مسامحة كاملة أو بعدد دقائق -->
+            <Border DockPanel.Dock="Bottom" Background="#F8FAFC" CornerRadius="8" Padding="12,8" Margin="0,8,0,0" BorderBrush="#E2E8F0" BorderThickness="1"
+                    Visibility="{Binding CanForgive, Converter={StaticResource BoolToVisibility}}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding ForgiveSummary}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="الدقائق:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding ForgiveMinutes, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,12,0" ToolTip="للمسامحة الجزئية: كم دقيقة تُسقط من التأخير"/>
+                        <TextBlock Text="السبب (إلزامي):" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding ForgiveReason, UpdateSourceTrigger=PropertyChanged}" Width="260" Margin="0,0,12,0"/>
+                        <Button Content="مسامحة كاملة" Style="{StaticResource SuccessButton}" Command="{Binding ForgiveFullCommand}"/>
+                        <Button Content="مسامحة بالدقائق المكتوبة" Style="{StaticResource SecondaryButton}" Command="{Binding ForgivePartialCommand}"/>
+                        <Button Content="إلغاء المسامحة" Style="{StaticResource SecondaryButton}" Command="{Binding UndoForgiveCommand}"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+            <DataGrid ItemsSource="{Binding VisibleRows}" SelectedItem="{Binding SelectedRow, Mode=TwoWay}" IsReadOnly="False" CanUserAddRows="False">
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow">
                         <Style.Triggers>
@@ -57,6 +73,7 @@
                     </DataGridTemplateColumn>
                     <DataGridTextColumn Header="الحالة المحفوظة" Binding="{Binding SavedStatus}" Width="120" IsReadOnly="True"/>
                     <DataGridTextColumn Header="تأخير (د)" Binding="{Binding SavedLateMinutes}" Width="80" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الصافي بعد المسامحة" Binding="{Binding NetLateText}" Width="140" IsReadOnly="True"/>
                     <DataGridTemplateColumn Header="" Width="44">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>

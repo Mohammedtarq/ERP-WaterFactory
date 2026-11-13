@@ -48,7 +48,7 @@ public static class SectionGrouping
         [ModuleCode.HR] = new[]
         {
             new GroupDef("الموظفون", Blue, "EmployeesHub", "RaisesHub", "Employees", "Departments", "Shifts", "ShiftOverrides", "Promotions", "AnnualRaises", "RaiseGrades", "TempWorkers"),
-            new GroupDef("الحضور والإجازات", Green, "AttendanceHub", "LeavesHub", "Attendance", "FingerprintImport", "Leaves", "LeaveSettings"),
+            new GroupDef("الحضور والإجازات", Green, "AttendanceHub", "LeavesHub", "Attendance", "FingerprintImport", "LateRules", "Leaves", "LeaveSettings"),
             new GroupDef("الحوافز", Amber, "IncentivesHub", "MonthlyIncentive", "IncentiveSettings", "RepIncentiveRates", "ManagerTiers"),
             new GroupDef("الرواتب", Purple, "PayrollHub", "Payroll", "Overtime", "EmployeeDeductions"),
             new GroupDef("التقارير", Purple, "HrReports"),

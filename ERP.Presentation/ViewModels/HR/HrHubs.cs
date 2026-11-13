@@ -27,10 +27,11 @@ public class EmployeesHubSectionViewModel : HubSectionViewModel
 public class AttendanceHubSectionViewModel : HubSectionViewModel
 {
     public AttendanceHubSectionViewModel(AppSession s, IDialogService d) : base(s, d, ModuleCode.HR, "الحضور", Icons.Calendar, HubColors.Pink,
-        "الحضور اليومي واستيراد البصمة والوقت الإضافي — في صفحة واحدة",
+        "الحضور اليومي واستيراد البصمة والوقت الإضافي وقواعد التأخير — في صفحة واحدة",
         new HubTab("الحضور اليومي", HubColors.Pink, new AttendanceSectionViewModel(s, d)),
         new HubTab("استيراد البصمة", HubColors.Blue, new FingerprintImportSectionViewModel(s, d)),
-        new HubTab("الوقت الإضافي", HubColors.Orange, new OvertimeSectionViewModel(s, d))) { }
+        new HubTab("الوقت الإضافي", HubColors.Orange, new OvertimeSectionViewModel(s, d)),
+        new HubTab("قواعد التأخير", HubColors.Purple, new LateRulesSectionViewModel(s, d))) { }
 }
 
 /// <summary>الإجازات: الإجازات وإعداداتها.</summary>

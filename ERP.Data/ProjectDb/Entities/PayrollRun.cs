@@ -56,6 +56,13 @@ public class PayrollLine
     /// <summary>دقائق التأخير الصافية (بعد المسامحات) المحتسبة في الشهر، وخصمها بعملة الراتب.</summary>
     public int LateMinutes { get; set; }
     public decimal LateDeduction { get; set; }
+
+    /// <summary>مبلغ إضافي الأيام للعرض: المخزَّن، أو للسطور القديمة (قبل الفصل) أيام × أجر اليوم بالمعادلة نفسها وقت التوليد.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public decimal OvertimeDaysAmountShown => OvertimeDaysAmount + OvertimeHoursAmount > 0 || OvertimeAmount == 0
+        ? OvertimeDaysAmount : Math.Min(OvertimeAmount, Math.Round(BaseSalary / 30m * OvertimeDays, 2));
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public decimal OvertimeHoursAmountShown => OvertimeAmount - OvertimeDaysAmountShown;
     /// <summary>أيام إجازة بدون راتب (أو تجاوز الرصيد) وخصمها بالأجر اليومي.</summary>
     public decimal UnpaidLeaveDays { get; set; }
     public decimal UnpaidLeaveDeduction { get; set; }

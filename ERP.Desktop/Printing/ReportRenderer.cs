@@ -81,11 +81,79 @@ public static class ReportRenderer
         var footerSample = BuildFooter(r, b, contentWidth, 1, 1);
         var bodyHeight = size.Height - PageMargin.Top - PageMargin.Bottom - header.DesiredSize.Height - footerSample.DesiredSize.Height - 16;
 
-        var body = BuildBody(r, b, contentWidth, bodyHeight);
+        var body = BuildBody(r, b, contentWidth, bodyHeight, out var table);
+        // ترويسة الجدول (بمجموعاتها الملوّنة) تتكرر أعلى كل صفحة يمتد إليها الجدول: يحجز لها ارتفاعها من كل صفحة
+        // ثم تُزاح الصفحات التابعة لتحتها — FlowDocument لا يكرر رأس الجدول بنفسه
+        FrameworkElement? repeat = null;
+        double repeatHeight = 0;
+        if (table is not null && r.Columns.Count > 0)
+        {
+            repeat = BuildRepeatHeader(r, b, contentWidth);
+            repeat.Measure(new Size(contentWidth, double.PositiveInfinity));
+            repeatHeight = Math.Ceiling(repeat.DesiredSize.Height);
+        }
         var inner = ((IDocumentPaginatorSource)body).DocumentPaginator;
-        inner.PageSize = new Size(contentWidth, bodyHeight);
+        inner.PageSize = new Size(contentWidth, Math.Max(100, bodyHeight - repeatHeight));
+        HashSet<int> continuing = new();
+        if (repeat is not null && inner is DynamicDocumentPaginator dyn && table!.RowGroups.Count > 1 && table.RowGroups[1].Rows.Count > 0)
+        {
+            inner.ComputePageCount();
+            var first = dyn.GetPageNumber(table.ContentStart);
+            var last = dyn.GetPageNumber(table.RowGroups[1].Rows[^1].ContentStart);
+            for (var pg = first + 1; pg <= last; pg++) continuing.Add(pg);
+        }
         return new BrandedPaginator(inner, size, PageMargin, header.DesiredSize.Height + 10, footerSample.DesiredSize.Height,
-            () => BuildHeader(r, b, contentWidth), (page, total) => BuildFooter(r, b, contentWidth, page, total), BrandColor(b));
+            () => BuildHeader(r, b, contentWidth), (page, total) => BuildFooter(r, b, contentWidth, page, total), BrandColor(b),
+            continuing.Count == 0 ? null : () => BuildRepeatHeader(r, b, contentWidth), repeatHeight, continuing);
+    }
+
+    /// <summary>أوزان الأعمدة النسبية (نفسها في جدول المحتوى وترويسته المكررة كي تتطابق).</summary>
+    private static double[] ColumnWeights(ReportDocument r) =>
+        r.Columns.Select((c, i) => c == "#" ? 0.45 : ColumnWeight(r, i)).ToArray();
+
+    private static Color ColorOf(string hex, Color fallback)
+    {
+        try { return (Color)ColorConverter.ConvertFromString(hex); } catch (FormatException) { return fallback; }
+    }
+
+    /// <summary>ترويسة الجدول المكررة أعلى الصفحات التابعة: شريط مجموعات الأعمدة (إن وُجد) ثم عناوين الأعمدة.</summary>
+    public static FrameworkElement BuildRepeatHeader(ReportDocument r, ReportBranding b, double width)
+    {
+        var brandColor = BrandColor(b);
+        var brand = new SolidColorBrush(brandColor);
+        var grid = new Grid { Width = width, FlowDirection = FlowDirection.RightToLeft, SnapsToDevicePixels = true };
+        foreach (var w in ColumnWeights(r)) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w, GridUnitType.Star) });
+        var row = 0;
+        if (r.ColumnGroups.Count > 0)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            foreach (var g in r.ColumnGroups)
+            {
+                var c = ColorOf(g.Color, brandColor);
+                var cell = new Border { Background = new SolidColorBrush(c), Margin = new Thickness(0.5, 0, 0.5, 0), Padding = new Thickness(6, 3, 6, 3), Child = new TextBlock
+                    { Text = g.Title, Foreground = Brushes.White, FontWeight = FontWeights.Bold, FontSize = 10.5, TextAlignment = TextAlignment.Center, FontFamily = new FontFamily(Font) } };
+                Grid.SetRow(cell, 0); Grid.SetColumn(cell, g.From); Grid.SetColumnSpan(cell, g.Count);
+                grid.Children.Add(cell);
+            }
+            row = 1;
+        }
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var bar = new Border
+        {
+            Background = new LinearGradientBrush(Color.FromArgb(0x38, brandColor.R, brandColor.G, brandColor.B), Color.FromArgb(0x12, brandColor.R, brandColor.G, brandColor.B), 90),
+            BorderBrush = brand, BorderThickness = new Thickness(0, 0, 0, 1.2)
+        };
+        Grid.SetRow(bar, row); Grid.SetColumn(bar, 0); Grid.SetColumnSpan(bar, r.Columns.Count);
+        grid.Children.Add(bar);
+        for (var i = 0; i < r.Columns.Count; i++)
+        {
+            var tb = new TextBlock { Text = r.Columns[i], FontWeight = FontWeights.Bold, FontSize = 10.5, Margin = new Thickness(6, 5, 6, 5), Foreground = Ink, FontFamily = new FontFamily(Font),
+                                     TextWrapping = TextWrapping.Wrap };
+            Grid.SetRow(tb, row); Grid.SetColumn(tb, i);
+            grid.Children.Add(tb);
+        }
+        // «تابع…» صغير أسفل الشريط يوضح أن الجدول مستمر من الصفحة السابقة
+        return new Border { Child = grid, Width = width, Margin = new Thickness(0, 0, 0, 0) };
     }
 
     /// <summary>
@@ -202,8 +270,11 @@ public static class ReportRenderer
     }
 
     /// <summary>محتوى المستند (يُقسَّم صفحات): حقول الرأس، الجدول، الإجماليات، الملاحظات، التواقيع.</summary>
-    public static FlowDocument BuildBody(ReportDocument r, ReportBranding b, double width, double pageHeight)
+    public static FlowDocument BuildBody(ReportDocument r, ReportBranding b, double width, double pageHeight) => BuildBody(r, b, width, pageHeight, out _);
+
+    public static FlowDocument BuildBody(ReportDocument r, ReportBranding b, double width, double pageHeight, out Table? mainTable)
     {
+        mainTable = null;
         var brandColor = BrandColor(b);
         var brand = new SolidColorBrush(brandColor);
         var tint = new SolidColorBrush(Color.FromArgb(0x1F, brandColor.R, brandColor.G, brandColor.B));
@@ -253,11 +324,25 @@ public static class ReportRenderer
         if (r.Columns.Count > 0)
         {
             var t = new Table { CellSpacing = 0 };
-            foreach (var (c, i) in r.Columns.Select((c, i) => (c, i)))
-                // كل الأعمدة نسبية: خلط عرض ثابت (بكسل) مع النسبي في جدول FlowDocument باتجاه RTL يجعل العمود الثابت
-                // يبتلع العرض كله فتنضغط بقية الأعمدة وتتكدّس حروفها عموديًا
-                t.Columns.Add(new TableColumn { Width = new GridLength(c == "#" ? 0.45 : ColumnWeight(r, i), GridUnitType.Star) });
+            // كل الأعمدة نسبية: خلط عرض ثابت (بكسل) مع النسبي في جدول FlowDocument باتجاه RTL يجعل العمود الثابت
+            // يبتلع العرض كله فتنضغط بقية الأعمدة وتتكدّس حروفها عموديًا
+            foreach (var w in ColumnWeights(r)) t.Columns.Add(new TableColumn { Width = new GridLength(w, GridUnitType.Star) });
+            mainTable = t;
             var head = new TableRowGroup();
+            if (r.ColumnGroups.Count > 0)
+            {
+                // شريط المجموعات الملوّن فوق عناوين الأعمدة (المستحقات / الاستقطاعات ...)
+                var band = new TableRow();
+                for (var i = 0; i < r.Columns.Count;)
+                {
+                    var grp = r.ColumnGroups.FirstOrDefault(x => x.From == i);
+                    if (grp is null) { band.Cells.Add(new TableCell(new Paragraph()) { Padding = new Thickness(0) }); i++; continue; }
+                    band.Cells.Add(new TableCell(new Paragraph(new Run(grp.Title)) { Margin = new Thickness(0), FontWeight = FontWeights.Bold, FontSize = 10.5, Foreground = Brushes.White, TextAlignment = TextAlignment.Center })
+                    { ColumnSpan = Math.Max(1, grp.Count), Background = new SolidColorBrush(ColorOf(grp.Color, brandColor)), Padding = new Thickness(6, 3, 6, 3), BorderBrush = Brushes.White, BorderThickness = new Thickness(0.5, 0, 0.5, 0) });
+                    i += Math.Max(1, grp.Count);
+                }
+                head.Rows.Add(band);
+            }
             var hr = new TableRow
             {
                 Background = new LinearGradientBrush(Color.FromArgb(0x38, brandColor.R, brandColor.G, brandColor.B),
@@ -273,10 +358,11 @@ public static class ReportRenderer
             var n = 0;
             foreach (var rowValues in r.Rows)
             {
-                var row = new TableRow { Background = n++ % 2 == 1 ? zebra : Brushes.Transparent };
+                var strong = r.StrongRows.Contains(rowValues);   // صف مجموع (قسم): عريض بخلفية خفيفة وخط علوي بلون العلامة
+                var row = new TableRow { Background = strong ? tint : n++ % 2 == 1 ? zebra : Brushes.Transparent };
                 foreach (var v in rowValues)
-                    row.Cells.Add(new TableCell(new Paragraph(new Run(v)) { Margin = new Thickness(0), FontSize = 10.5 })
-                    { Padding = new Thickness(6, 4, 6, 4), BorderBrush = Rule, BorderThickness = new Thickness(0, 0, 0, 0.75) });
+                    row.Cells.Add(new TableCell(new Paragraph(new Run(v)) { Margin = new Thickness(0), FontSize = 10.5, FontWeight = strong ? FontWeights.Bold : FontWeights.Normal })
+                    { Padding = new Thickness(6, 4, 6, 4), BorderBrush = strong ? brand : Rule, BorderThickness = strong ? new Thickness(0, 1, 0, 1) : new Thickness(0, 0, 0, 0.75) });
                 g.Rows.Add(row);
             }
             if (r.Rows.Count == 0)
@@ -466,10 +552,17 @@ public sealed class BrandedPaginator : DocumentPaginator
     private readonly Func<int, int, FrameworkElement> _footer;
     private Size _pageSize;
     private readonly Color? _frame;
+    private readonly Func<FrameworkElement>? _repeat;
+    private readonly double _repeatHeight;
+    private readonly ISet<int> _continuing;
 
     public BrandedPaginator(DocumentPaginator inner, Size pageSize, Thickness margin, double headerHeight, double footerHeight,
-                            Func<FrameworkElement> header, Func<int, int, FrameworkElement> footer, Color? frame = null)
+                            Func<FrameworkElement> header, Func<int, int, FrameworkElement> footer, Color? frame = null,
+                            Func<FrameworkElement>? repeatHeader = null, double repeatHeight = 0, ISet<int>? continuingPages = null)
     {
+        _repeat = repeatHeader;
+        _repeatHeight = repeatHeight;
+        _continuing = continuingPages ?? new HashSet<int>();
         _frame = frame;
         _inner = inner;
         _pageSize = pageSize;
@@ -497,7 +590,10 @@ public sealed class BrandedPaginator : DocumentPaginator
         }
 
         root.Children.Add(Place(_header(), _margin.Left, _margin.Top));
-        var body = new ContainerVisual { Transform = new TranslateTransform(_margin.Left, _margin.Top + _headerHeight) };
+        // صفحة يتابع فيها الجدول: ترويسته المكررة في أعلاها والمحتوى تحتها
+        var continues = _repeat is not null && _continuing.Contains(pageNumber);
+        if (continues) root.Children.Add(Place(_repeat!(), _margin.Left, _margin.Top + _headerHeight));
+        var body = new ContainerVisual { Transform = new TranslateTransform(_margin.Left, _margin.Top + _headerHeight + (continues ? _repeatHeight : 0)) };
         body.Children.Add(page.Visual);
         root.Children.Add(body);
         root.Children.Add(Place(_footer(pageNumber + 1, PageCount), _margin.Left, _pageSize.Height - _margin.Bottom - _footerHeight));

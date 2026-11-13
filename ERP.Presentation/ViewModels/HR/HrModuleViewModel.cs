@@ -49,7 +49,7 @@ public class HrModuleViewModel : ModuleViewModel
     public static readonly HashSet<Type> MergedScreens = new()
     {
         typeof(EmployeesSectionViewModel), typeof(DepartmentsSectionViewModel), typeof(ShiftsSectionViewModel), typeof(ShiftOverridesSectionViewModel),
-        typeof(TempWorkersSectionViewModel), typeof(AttendanceSectionViewModel), typeof(FingerprintImportSectionViewModel), typeof(OvertimeSectionViewModel),
+        typeof(TempWorkersSectionViewModel), typeof(AttendanceSectionViewModel), typeof(FingerprintImportSectionViewModel), typeof(OvertimeSectionViewModel), typeof(LateRulesSectionViewModel),
         typeof(LeavesSectionViewModel), typeof(LeaveSettingsSectionViewModel), typeof(PromotionsSectionViewModel), typeof(AnnualRaisesSectionViewModel),
         typeof(RaiseGradesSectionViewModel), typeof(MonthlyIncentiveSectionViewModel), typeof(IncentiveSettingsSectionViewModel),
         typeof(RepIncentiveRatesSectionViewModel), typeof(ManagerTiersSectionViewModel), typeof(PayrollSectionViewModel), typeof(EmployeeDeductionsSectionViewModel),
@@ -123,6 +123,11 @@ public class AttendanceRow : ObservableObject
     public string CheckOut { get => _checkOut; set { if (SetProperty(ref _checkOut, value ?? "")) OnPropertyChanged(nameof(IsChanged)); } }
     public string SavedStatus { get; set; } = "";
     public int SavedLateMinutes { get; set; }
+    /// <summary>دقائق سُومح بها يدويًا وسببها، والصافي بعدها (يعتمده خصم التأخير).</summary>
+    public int SavedForgivenMinutes { get; set; }
+    public string? SavedForgiveReason { get; set; }
+    public int NetLateMinutes => Math.Max(0, SavedLateMinutes - SavedForgivenMinutes);
+    public string NetLateText => SavedLateMinutes == 0 ? "" : SavedForgivenMinutes == 0 ? SavedLateMinutes.ToString() : $"{NetLateMinutes} (سُومح {SavedForgivenMinutes})";
 
     // ما حُمّل من القاعدة: يُحفظ ما تغيّر فقط، فلا يُسجَّل غياب لموظف لم يُلمس سطره
     private (AttendanceStatus? Forced, string In, string Out) _original;
@@ -147,9 +152,56 @@ public class AttendanceSectionViewModel : SectionViewModel
             foreach (var r in VisibleRows.Where(r => r.CheckIn.Length == 0 && r.Forced is null)) r.CheckIn = r.ShiftText.Split(' ')[0] is { Length: 5 } t ? t : "08:00";
         });
         ClearDayCommand = new AsyncRelayCommand(p => p is AttendanceRow r ? ClearDayAsync(r) : Task.CompletedTask);
+        ForgiveFullCommand = new AsyncRelayCommand(() => SelectedRow is { } r ? ForgiveAsync(r.SavedLateMinutes) : Task.CompletedTask);
+        ForgivePartialCommand = new AsyncRelayCommand(() => ForgiveAsync(ForgiveMinutes));
+        UndoForgiveCommand = new AsyncRelayCommand(() => ForgiveAsync(0));
     }
 
     public AsyncRelayCommand ClearDayCommand { get; }
+
+    // ---- مسامحة التأخير (بصلاحية وسبب): تُسقط دقائق من تأخير اليوم قبل حساب الخصم ----
+    private AttendanceRow? _selectedRow;
+    private int _forgiveMinutes;
+    private string? _forgiveReason;
+    public AttendanceRow? SelectedRow
+    {
+        get => _selectedRow;
+        set
+        {
+            if (!SetProperty(ref _selectedRow, value)) return;
+            ForgiveMinutes = value?.SavedForgivenMinutes ?? 0;
+            ForgiveReason = value?.SavedForgiveReason;
+            OnPropertyChanged(nameof(CanForgive)); OnPropertyChanged(nameof(ForgiveSummary));
+        }
+    }
+    public int ForgiveMinutes { get => _forgiveMinutes; set => SetProperty(ref _forgiveMinutes, value); }
+    public string? ForgiveReason { get => _forgiveReason; set => SetProperty(ref _forgiveReason, value); }
+    /// <summary>الصلاحية موجودة والسطر المختار فيه تأخير مسجّل.</summary>
+    public bool CanForgive => Has(SpecialPermission.LateForgive) && SelectedRow is { SavedLateMinutes: > 0 };
+    public string ForgiveSummary => SelectedRow is { SavedLateMinutes: > 0 } r
+        ? $"{r.EmployeeName}: تأخير {r.SavedLateMinutes} دقيقة" + (r.SavedForgivenMinutes > 0 ? $" — سُومح {r.SavedForgivenMinutes} ({r.SavedForgiveReason})" : "")
+        : "اختر موظفًا متأخرًا من الجدول لمسامحته";
+    public AsyncRelayCommand ForgiveFullCommand { get; }
+    public AsyncRelayCommand ForgivePartialCommand { get; }
+    public AsyncRelayCommand UndoForgiveCommand { get; }
+
+    private async Task ForgiveAsync(int minutes)
+    {
+        if (SelectedRow is not { SavedLateMinutes: > 0 } row) { Dialogs.Error("اختر موظفًا له تأخير مسجّل"); return; }
+        if (!Has(SpecialPermission.LateForgive)) { Dialogs.Error($"المسامحة تحتاج صلاحية «{SpecialPermission.NameOf(SpecialPermission.LateForgive)}»"); return; }
+        var others = Rows.Count(r => r.IsChanged);
+        if (others > 0 && !Dialogs.Confirm($"{others} سطر معدَّل لم يُحفظ سيُعاد تحميله بعد المسامحة — احفظه أولًا إن أردته. متابعة؟")) return;
+        await using var db = Session.NewDb();
+        var name = row.EmployeeName;
+        if (await RunOperationAsync(() => new LateDeductionService(db).ForgiveDayAsync(row.EmployeeId, Date, minutes, ForgiveReason, Session.UserId),
+                                    minutes == 0 ? $"أُلغيت مسامحة {name}" : $"سومح {name} بـ {minutes} دقيقة من تأخيره"))
+        {
+            var message = StatusMessage;
+            await LoadAsync();
+            SelectedRow = Rows.FirstOrDefault(r => r.EmployeeName == name);
+            StatusMessage = message;
+        }
+    }
 
     /// <summary>مسح تسجيل اليوم لموظف (دخول بالخطأ): يعود «غير مسجّل»، قبل اعتماد رواتب الشهر فقط.</summary>
     private async Task ClearDayAsync(AttendanceRow row)
@@ -218,7 +270,8 @@ public class AttendanceSectionViewModel : SectionViewModel
                 SavedStatus = leaveTexts.TryGetValue(e.Id, out var leave)
                     ? rec is null || rec.Status == AttendanceStatus.ApprovedLeave ? leave : $"{ArabicLabels.Of(rec.Status)} — {leave}"
                     : rec is null ? "غير مسجّل" : ArabicLabels.Of(rec.Status),
-                SavedLateMinutes = rec?.LateMinutes ?? 0
+                SavedLateMinutes = rec?.LateMinutes ?? 0,
+                SavedForgivenMinutes = rec?.ForgivenMinutes ?? 0, SavedForgiveReason = rec?.ForgiveReason
             };
             row.MarkLoaded();
             row.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(AttendanceRow.IsChanged)) OnPropertyChanged(nameof(ChangedCount)); };
@@ -363,6 +416,8 @@ public class MonthlyIncentiveSectionViewModel : PeriodSectionViewModel
 // ============================ تشغيل الرواتب ============================
 public class PayrollRow
 {
+    /// <summary>رقم سطر الراتب (لقصاصة الموظف).</summary>
+    public int LineId { get; init; }
     public string EmployeeName { get; init; } = "";
     public int? DepartmentId { get; init; }
     public string DepartmentName { get; init; } = DepartmentChoice.NoDepartment;
@@ -380,6 +435,15 @@ public class PayrollRow
     public decimal SocialSolidarity { get; init; }
     public decimal OvertimeAmount { get; init; }
     public string OvertimeHint { get; init; } = "";
+    /// <summary>العمل الإضافي مفصولًا: أيام ومبلغها، وساعات ومبلغها (إجماليها OvertimeAmount).</summary>
+    public decimal OvertimeDays { get; init; }
+    public decimal OvertimeDaysAmount { get; init; }
+    public decimal OvertimeHours { get; init; }
+    public decimal OvertimeHoursAmount { get; init; }
+    /// <summary>خصم التأخير بالشرائح ودقائقه الصافية (بعد المسامحات).</summary>
+    public decimal LateDeduction { get; init; }
+    public int LateMinutes { get; init; }
+    public string LateHint { get; init; } = "";
     public decimal UnpaidLeaveDeduction { get; init; }
     public string UnpaidLeaveHint { get; init; } = "";
     public decimal NetSalary { get; init; }
@@ -388,7 +452,7 @@ public class PayrollRow
     public decimal Incentives => RepIncentive + ManagerIncentive + MonthlyIncentive;
     public string IncentivesHint => Incentives == 0 ? "" : $"المندوب {RepIncentive:N0} · المدير {ManagerIncentive:N0} · الشهري {MonthlyIncentive:N0}";
     public decimal TotalEarnings => BaseSalary + Allowances + OvertimeAmount + Incentives;
-    public decimal TotalDeductions => AbsenceDeduction + UnpaidLeaveDeduction + LoanDeduction + WithdrawalDeduction + PenaltyDeduction + SocialSecurity + SocialSolidarity;
+    public decimal TotalDeductions => AbsenceDeduction + UnpaidLeaveDeduction + LateDeduction + LoanDeduction + WithdrawalDeduction + PenaltyDeduction + SocialSecurity + SocialSolidarity;
 }
 
 public class PayrollSectionViewModel : PeriodSectionViewModel
@@ -403,7 +467,9 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
         GenerateCommand = new AsyncRelayCommand(GenerateAsync);
         ApproveCommand = new AsyncRelayCommand(ApproveAsync);
         RequestPayoutCommand = new AsyncRelayCommand(RequestPayoutAsync);
-        PrintCommand = new AsyncRelayCommand(() => RunId is int id ? PrintAsync(db => DocumentReports.PayrollAsync(Session, db, id)) : Error("ولّد رواتب الشهر أولًا"));
+        // الكشف المطبوع يتبع القسم المختار (كل الأقسام بمجموع لكل قسم، أو قسم واحد بمجموعه)
+        PrintCommand = new AsyncRelayCommand(() => RunId is int id ? PrintAsync(db => DocumentReports.PayrollAsync(Session, db, id, Department)) : Error("ولّد رواتب الشهر أولًا"));
+        PrintPayslipCommand = new AsyncRelayCommand(p => p is PayrollRow { LineId: > 0 } row ? PrintAsync(db => DocumentReports.PayslipAsync(Session, db, row.LineId)) : Task.CompletedTask);
         ReopenCommand = new AsyncRelayCommand(ReopenAsync);
     }
 
@@ -451,6 +517,8 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
     public AsyncRelayCommand GenerateCommand { get; }
     public AsyncRelayCommand ApproveCommand { get; }
     public AsyncRelayCommand PrintCommand { get; }
+    /// <summary>قصاصة راتب الموظف (الضغط المزدوج على سطره): معاينة وطباعة وPDF.</summary>
+    public AsyncRelayCommand PrintPayslipCommand { get; }
 
     // ---- صرف الرواتب من الصندوق بعد الاعتماد: طلب لموافقة المالية ----
     private bool _isPaid;
@@ -503,12 +571,14 @@ public class PayrollSectionViewModel : PeriodSectionViewModel
         foreach (var l in lines)
             Rows.Add(new PayrollRow
             {
-                EmployeeName = l.Employee.FullName, Currency = l.Currency,
+                LineId = l.Id, EmployeeName = l.Employee.FullName, Currency = l.Currency,
                 DepartmentId = l.Employee.DepartmentId, DepartmentName = l.Employee.Department?.Name ?? DepartmentChoice.NoDepartment, BaseSalary = l.BaseSalary, Allowances = l.Allowances,
                 AbsenceDeduction = l.AbsenceDeduction, RepIncentive = l.RepIncentiveAmount, ManagerIncentive = l.SalesManagerIncentiveAmount,
                 MonthlyIncentive = l.MonthlyIncentiveAmount, LoanDeduction = l.LoanDeduction, WithdrawalDeduction = l.WithdrawalDeduction,
                 PenaltyDeduction = l.PenaltyDeduction, SocialSecurity = l.SocialSecurityDeduction, SocialSolidarity = l.SocialSolidarityDeduction,
                 OvertimeAmount = l.OvertimeAmount, OvertimeHint = l.OvertimeAmount == 0 ? "" : $"{l.OvertimeDays:0.##} يوم + {l.OvertimeHours:0.##} ساعة",
+                OvertimeDays = l.OvertimeDays, OvertimeDaysAmount = l.OvertimeDaysAmountShown, OvertimeHours = l.OvertimeHours, OvertimeHoursAmount = l.OvertimeHoursAmountShown,
+                LateDeduction = l.LateDeduction, LateMinutes = l.LateMinutes, LateHint = l.LateMinutes == 0 ? "" : $"{l.LateMinutes} دقيقة تأخير صافية (بعد المسامحات)",
                 UnpaidLeaveDeduction = l.UnpaidLeaveDeduction, UnpaidLeaveHint = l.UnpaidLeaveDays == 0 ? "" : $"{l.UnpaidLeaveDays:0.##} يوم بدون راتب",
                 NetSalary = l.NetSalary
             });

@@ -307,7 +307,7 @@ public class ExtraProductionScreenTests
             Assert.Equal(6, module.Hubs.Count);
             Assert.All(module.Hubs, h => Assert.Contains(h, module.Tabs));
             Assert.Contains(module.Tabs, t => t is ERP.Presentation.ViewModels.Shell.HrReportsSectionViewModel);
-            Assert.Equal(19, module.Hubs.Sum(h => h.Tabs.Count));
+            Assert.Equal(20, module.Hubs.Sum(h => h.Tabs.Count));
             Assert.DoesNotContain(module.Tabs, t => HR.HrModuleViewModel.MergedScreens.Contains(t.GetType()));
             Assert.Equal(new[] { "#3B82F6", "#10B981", "#F59E0B", "#EC4899", "#8B5CF6" }, module.Hubs[0].Tabs.Select(t => t.Color));
             var keys = SectionCatalog.QuickEntries(shell.Session, dialogs).Select(e => e.Key).ToList();

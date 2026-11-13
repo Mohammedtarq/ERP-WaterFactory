@@ -334,24 +334,124 @@ public static class DocumentReports
 
     // ============================ الرواتب ============================
 
-    public static async Task<ReportDocument?> PayrollAsync(AppSession s, ProjectDbContext db, int runId)
+    /// <summary>
+    /// كشف الرواتب المطبوع. dept = قسم محدد (أو null = كل الأقسام). الأعمدة تحت «المستحقات» و«الاستقطاعات» وتتكرر ترويستها في كل صفحة،
+    /// والترقيم متتابع عبر الصفحات، والمجموع بعد كل قسم (لكل عملة) ثم الكلي في نهاية القائمة.
+    /// </summary>
+    public static async Task<ReportDocument?> PayrollAsync(AppSession s, ProjectDbContext db, int runId, ViewModels.HR.DepartmentChoice? dept = null)
     {
-        var run = await db.PayrollRuns.AsNoTracking().Include(x => x.ApprovedByUser).Include(x => x.Lines).ThenInclude(l => l.Employee)
+        var run = await db.PayrollRuns.AsNoTracking().Include(x => x.ApprovedByUser).Include(x => x.Lines).ThenInclude(l => l.Employee).ThenInclude(e => e.Department)
             .FirstOrDefaultAsync(x => x.Id == runId);
         if (run is null) return null;
-        var r = New(s, $"كشف رواتب {run.PeriodMonth:00}/{run.PeriodYear}", run.Status == PayrollRunStatus.Draft ? "مسودة — غير معتمد" : null);
+        var filtered = dept is { IsAll: false };
+        var lines = run.Lines.Where(l => !filtered || dept!.Matches(l.Employee.DepartmentId)).ToList();
+        var r = New(s, $"كشف رواتب {run.PeriodMonth:00}/{run.PeriodYear}" + (filtered ? $" — قسم {dept!.Name}" : ""),
+                    run.Status == PayrollRunStatus.Draft ? "مسودة — غير معتمد" : null);
         r.Field("الشهر", $"{run.PeriodMonth:00}/{run.PeriodYear}").Field("الحالة", ArabicLabels.Of(run.Status)).Field("اعتمده", run.ApprovedByUser?.Username)
-         .Field("عدد الموظفين", run.Lines.Count.ToString());
-        r.Columns.AddRange(new[] { "#", "الموظف", "العملة", "الأساسي", "خصم الغياب", "بدون راتب", "الإضافي", "مخصصات", "حوافز", "قسط السلفة", "المسحوبات", "العقوبات", "الضمان", "التكافل", "الصافي", "التوقيع" });
+         .Field("القسم", filtered ? dept!.Name : "كل الأقسام").Field("عدد الموظفين", lines.Count.ToString());
+
+        // (العنوان، المجموعة، النص، الرقم للجمع)
+        var cols = new List<(string Header, int Group, Func<PayrollLine, string> Text, Func<PayrollLine, decimal>? Num)>
+        {
+            ("الأساسي", 1, l => N(l.BaseSalary), l => l.BaseSalary),
+            ("إضافي أيام", 1, l => l.OvertimeDays == 0 ? "0" : $"{l.OvertimeDays:0.##}", l => l.OvertimeDays),
+            ("مبلغ الأيام", 1, l => N(l.OvertimeDaysAmountShown), l => l.OvertimeDaysAmountShown),
+            ("إضافي ساعات", 1, l => l.OvertimeHours == 0 ? "0" : $"{l.OvertimeHours:0.##}", l => l.OvertimeHours),
+            ("مبلغ الساعات", 1, l => N(l.OvertimeHoursAmountShown), l => l.OvertimeHoursAmountShown),
+            ("مخصصات", 1, l => N(l.Allowances), l => l.Allowances),
+            ("حوافز", 1, l => N(l.MonthlyIncentiveAmount + l.RepIncentiveAmount + l.SalesManagerIncentiveAmount), l => l.MonthlyIncentiveAmount + l.RepIncentiveAmount + l.SalesManagerIncentiveAmount),
+            ("خصم الغياب", 2, l => N(l.AbsenceDeduction), l => l.AbsenceDeduction),
+            ("بدون راتب", 2, l => N(l.UnpaidLeaveDeduction), l => l.UnpaidLeaveDeduction),
+            ("التأخير", 2, l => N(l.LateDeduction), l => l.LateDeduction),
+            ("قسط السلفة", 2, l => N(l.LoanDeduction), l => l.LoanDeduction),
+            ("المسحوبات", 2, l => N(l.WithdrawalDeduction), l => l.WithdrawalDeduction),
+            ("العقوبات", 2, l => N(l.PenaltyDeduction), l => l.PenaltyDeduction),
+            ("الضمان", 2, l => N(l.SocialSecurityDeduction), l => l.SocialSecurityDeduction),
+            ("التكافل", 2, l => N(l.SocialSolidarityDeduction), l => l.SocialSolidarityDeduction),
+            ("الصافي", 3, l => N(l.NetSalary), l => l.NetSalary),
+        };
+        r.Columns.AddRange(new[] { "#", "الموظف", "القسم", "العملة" });
+        r.Columns.AddRange(cols.Select(c => c.Header));
+        r.Columns.Add("التوقيع");
+        const int lead = 4;
+        var earn = cols.Count(c => c.Group == 1); var ded = cols.Count(c => c.Group == 2);
+        r.ColumnGroups.Add(new ReportColumnGroup("المستحقات", lead, earn, "#0E7A55"));
+        r.ColumnGroups.Add(new ReportColumnGroup("الاستقطاعات", lead + earn, ded, "#B42318"));
+
+        string[] SumRow(string label, string currency, IReadOnlyCollection<PayrollLine> set)
+        {
+            var row = new string[r.Columns.Count];
+            Array.Fill(row, "");
+            row[1] = label; row[3] = currency;
+            for (var i = 0; i < cols.Count; i++)
+                row[lead + i] = cols[i].Num is { } num ? (cols[i].Header.StartsWith("إضافي") ? $"{set.Sum(num):0.##}" : N(set.Sum(num))) : "";
+            return row;
+        }
+
         var i = 0;
-        foreach (var l in run.Lines.OrderBy(l => l.Employee.FullName))
-            r.Rows.Add(new[] { (++i).ToString(), l.Employee.FullName, l.Currency, N(l.BaseSalary), N(l.AbsenceDeduction), N(l.UnpaidLeaveDeduction), N(l.OvertimeAmount), N(l.Allowances),
-                               N(l.MonthlyIncentiveAmount + l.RepIncentiveAmount + l.SalesManagerIncentiveAmount),
-                               N(l.LoanDeduction), N(l.WithdrawalDeduction), N(l.PenaltyDeduction), N(l.SocialSecurityDeduction), N(l.SocialSolidarityDeduction),
-                               N(l.NetSalary), "" });
-        foreach (var g in run.Lines.GroupBy(l => l.Currency))
+        var byDepartment = lines.GroupBy(l => l.Employee.Department?.Name ?? ViewModels.HR.DepartmentChoice.NoDepartment).OrderBy(g => g.Key).ToList();
+        foreach (var g in byDepartment)
+        {
+            foreach (var l in g.OrderBy(l => l.Employee.FullName))
+            {
+                var row = new List<string> { (++i).ToString(), l.Employee.FullName, g.Key, l.Currency };
+                row.AddRange(cols.Select(c => c.Text(l)));
+                row.Add("");
+                r.AddRow(row);
+            }
+            // مجموع القسم لكل عملة بعد موظفيه (في كشف قسم واحد هو المجموع النهائي)
+            foreach (var c in g.GroupBy(l => l.Currency))
+                r.AddRow(SumRow($"مجموع قسم {g.Key} ({c.Count()} موظفًا)", c.Key, c.ToList()), strong: true);
+        }
+        if (byDepartment.Count > 1)
+            foreach (var c in lines.GroupBy(l => l.Currency))
+                r.AddRow(SumRow($"المجموع الكلي لكل الأقسام ({c.Count()} موظفًا)", c.Key, c.ToList()), strong: true);
+        foreach (var g in lines.GroupBy(l => l.Currency))
             r.Total($"صافي الرواتب ({g.Key})", N(g.Sum(l => l.NetSalary)), g.Key == "IQD");
         r.Signatures.AddRange(new[] { "مسؤول الموارد البشرية", "المحاسب", "المدير" });
+        return r;
+    }
+
+    /// <summary>قصاصة راتب موظف واحد (سطره في رواتب الشهر): المستحقات والاستقطاعات جنبًا إلى جنب والصافي والتوقيعات.</summary>
+    public static async Task<ReportDocument?> PayslipAsync(AppSession s, ProjectDbContext db, int lineId)
+    {
+        var l = await db.PayrollLines.AsNoTracking().Include(x => x.PayrollRun).Include(x => x.Employee).ThenInclude(e => e.Department).FirstOrDefaultAsync(x => x.Id == lineId);
+        if (l is null) return null;
+        var run = l.PayrollRun;
+        var r = New(s, $"قصاصة راتب — {l.Employee.FullName} {run.PeriodMonth:00}/{run.PeriodYear}", run.Status == PayrollRunStatus.Draft ? "مسودة — غير معتمد" : null);
+        r.Field("الموظف", l.Employee.FullName).Field("القسم", l.Employee.Department?.Name).Field("الوظيفة", l.Employee.JobTitle)
+         .Field("الشهر", $"{run.PeriodMonth:00}/{run.PeriodYear}").Field("العملة", l.Currency).Field("الحالة", ArabicLabels.Of(run.Status));
+        var incentives = l.MonthlyIncentiveAmount + l.RepIncentiveAmount + l.SalesManagerIncentiveAmount;
+        var earnings = new List<(string, decimal)>
+        {
+            ("الراتب الأساسي", l.BaseSalary),
+            (l.OvertimeDays > 0 ? $"إضافي أيام ({l.OvertimeDays:0.##} يوم)" : "إضافي أيام", l.OvertimeDaysAmountShown),
+            (l.OvertimeHours > 0 ? $"إضافي ساعات ({l.OvertimeHours:0.##} ساعة)" : "إضافي ساعات", l.OvertimeHoursAmountShown),
+            ("مخصصات ومكافآت", l.Allowances),
+            ("الحوافز", incentives),
+        };
+        var deductions = new List<(string, decimal)>
+        {
+            ("خصم الغياب", l.AbsenceDeduction),
+            (l.UnpaidLeaveDays > 0 ? $"إجازة بدون راتب ({l.UnpaidLeaveDays:0.##} يوم)" : "إجازة بدون راتب", l.UnpaidLeaveDeduction),
+            (l.LateMinutes > 0 ? $"خصم التأخير ({l.LateMinutes} دقيقة)" : "خصم التأخير", l.LateDeduction),
+            ("قسط السلفة", l.LoanDeduction), ("المسحوبات", l.WithdrawalDeduction), ("العقوبات", l.PenaltyDeduction),
+            ("الضمان الاجتماعي", l.SocialSecurityDeduction), ("التكافل الاجتماعي", l.SocialSolidarityDeduction),
+        };
+        r.Columns.AddRange(new[] { "المستحقات", "المبلغ", "الاستقطاعات", "المبلغ" });
+        r.ColumnGroups.Add(new ReportColumnGroup("المستحقات", 0, 2, "#0E7A55"));
+        r.ColumnGroups.Add(new ReportColumnGroup("الاستقطاعات", 2, 2, "#B42318"));
+        var cur = l.Currency == "USD" ? "$" : "د.ع";
+        string M(decimal v) => l.Currency == "USD" ? $"{v:N2}" : N(v);
+        for (var k = 0; k < Math.Max(earnings.Count, deductions.Count); k++)
+            r.AddRow(new[]
+            {
+                k < earnings.Count ? earnings[k].Item1 : "", k < earnings.Count ? M(earnings[k].Item2) : "",
+                k < deductions.Count ? deductions[k].Item1 : "", k < deductions.Count ? M(deductions[k].Item2) : ""
+            });
+        r.AddRow(new[] { "إجمالي المستحقات", M(earnings.Sum(e => e.Item2)), "إجمالي الاستقطاعات", M(deductions.Sum(d => d.Item2)) }, strong: true);
+        r.Total("الصافي", $"{M(l.NetSalary)} {cur}", true);
+        r.Signatures.AddRange(new[] { "الموظف", "المحاسب" });
         return r;
     }
 

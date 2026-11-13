@@ -13,6 +13,18 @@ public class ReportDocument
     public List<ReportField> HeaderFields { get; } = new();
     public List<string> Columns { get; } = new();
     public List<IReadOnlyList<string>> Rows { get; } = new();
+    /// <summary>مجموعات أعمدة تحت عنوان ملوّن فوق ترويسة الجدول (مثل «المستحقات» و«الاستقطاعات»)؛ تتكرر في كل صفحة.</summary>
+    public List<ReportColumnGroup> ColumnGroups { get; } = new();
+    /// <summary>صفوف مجاميع (مجموع قسم...): تُطبع بخط عريض وخلفية خفيفة، ولا تُخفى مع الصفوف الصفرية. المقارنة بالمرجع.</summary>
+    public HashSet<IReadOnlyList<string>> StrongRows { get; } = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>يضيف صفًا؛ strong = صف مجموع.</summary>
+    public ReportDocument AddRow(IReadOnlyList<string> row, bool strong = false)
+    {
+        Rows.Add(row);
+        if (strong) StrongRows.Add(row);
+        return this;
+    }
     public List<ReportField> Totals { get; } = new();
     public string? Notes { get; init; }
     /// <summary>أسماء خانات التوقيع أسفل المستند.</summary>
@@ -53,10 +65,16 @@ public class ReportDocument
         copy.Signatures.AddRange(Signatures);
         var keep = Enumerable.Range(0, Columns.Count).Where(i => !hiddenColumns.Contains(i)).ToList();
         copy.Columns.AddRange(keep.Select(i => Columns[i]));
+        foreach (var g in ColumnGroups)
+        {
+            var visible = keep.Where(i => i >= g.From && i < g.From + g.Count).ToList();
+            if (visible.Count > 0) copy.ColumnGroups.Add(g with { From = keep.IndexOf(visible[0]), Count = visible.Count });
+        }
         foreach (var row in Rows)
         {
-            if (hideZeroRows && IsZeroRow(row)) continue;
-            copy.Rows.Add(keep.Select(i => i < row.Count ? row[i] : "").ToList());
+            var strong = StrongRows.Contains(row);
+            if (!strong && hideZeroRows && IsZeroRow(row)) continue;
+            copy.AddRow(keep.Select(i => i < row.Count ? row[i] : "").ToList(), strong);
         }
         return copy;
     }
@@ -92,3 +110,6 @@ public class ReportDocument
 }
 
 public record ReportField(string Label, string Value, bool Emphasis = false);
+
+/// <summary>مجموعة أعمدة متجاورة بعنوان ولون (سداسي مثل #0E7A55): From فهرس أول عمود وCount عددها.</summary>
+public record ReportColumnGroup(string Title, int From, int Count, string Color);

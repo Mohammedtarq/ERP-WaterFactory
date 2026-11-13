@@ -5,13 +5,20 @@ namespace ERP.Desktop.Views.HR;
 
 public partial class PayrollSectionView : UserControl
 {
-    // أعمدة الجدول: 3 للتعريف، 5 للمستحقات، 8 للاستقطاعات، ثم الصافي
-    private const int IdentityColumns = 3, EarningColumns = 5, DeductionColumns = 8;
+    // أعمدة الجدول: 3 للتعريف، 9 للمستحقات (أساسي، بدلات، إضافي أيام ومبلغها وساعات ومبلغها وإجماليه، حوافز، مجموع)، 9 للاستقطاعات، ثم الصافي
+    private const int IdentityColumns = 3, EarningColumns = 9, DeductionColumns = 9;
 
     public PayrollSectionView()
     {
         InitializeComponent();
         PayrollGrid.LayoutUpdated += (_, _) => SyncGroupBand();
+    }
+
+    /// <summary>ضغطتان على سطر موظف: قصاصة راتبه.</summary>
+    private void OnRowDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is DataGridRow { Item: var row } && DataContext is ERP.Presentation.ViewModels.HR.PayrollSectionViewModel vm && vm.PrintPayslipCommand.CanExecute(row))
+            vm.PrintPayslipCommand.Execute(row);
     }
 
     /// <summary>شريط «المستحقات / الاستقطاعات» فوق الجدول بعرض أعمدة كل مجموعة (يتبع تغيير العرض وتمرير الأعمدة).</summary>

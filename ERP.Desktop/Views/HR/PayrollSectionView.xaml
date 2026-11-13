@@ -88,7 +88,13 @@
                     <TextBlock Text="الاستقطاعات" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
             </Grid>
-            <DataGrid x:Name="PayrollGrid" ItemsSource="{Binding VisibleRows}" IsReadOnly="True">
+            <DataGrid x:Name="PayrollGrid" ItemsSource="{Binding VisibleRows}" IsReadOnly="True"
+                      ToolTip="اضغط على الموظف ضغطتين لقصاصة راتبه (معاينة وطباعة)">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                        <EventSetter Event="MouseDoubleClick" Handler="OnRowDoubleClick"/>
+                    </Style>
+                </DataGrid.RowStyle>
                 <DataGrid.Resources>
                     <Style x:Key="EarnHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
                         <Setter Property="Background" Value="#0E7A55"/>
@@ -114,7 +120,11 @@
                     <!-- المستحقات -->
                     <DataGridTextColumn Header="الأساسي" Binding="{Binding BaseSalary, StringFormat=N0}" Width="90" HeaderStyle="{StaticResource EarnHeader}"/>
                     <DataGridTextColumn Header="البدلات" Binding="{Binding Allowances, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource EarnHeader}"/>
-                    <DataGridTextColumn Header="الإضافي" Binding="{Binding OvertimeAmount, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource EarnHeader}">
+                    <DataGridTextColumn Header="إضافي أيام" Binding="{Binding OvertimeDays, StringFormat=0.##}" Width="70" HeaderStyle="{StaticResource EarnHeader}"/>
+                    <DataGridTextColumn Header="مبلغ الأيام" Binding="{Binding OvertimeDaysAmount, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource EarnHeader}"/>
+                    <DataGridTextColumn Header="إضافي ساعات" Binding="{Binding OvertimeHours, StringFormat=0.##}" Width="80" HeaderStyle="{StaticResource EarnHeader}"/>
+                    <DataGridTextColumn Header="مبلغ الساعات" Binding="{Binding OvertimeHoursAmount, StringFormat=N0}" Width="85" HeaderStyle="{StaticResource EarnHeader}"/>
+                    <DataGridTextColumn Header="إجمالي الإضافي" Binding="{Binding OvertimeAmount, StringFormat=N0}" Width="90" HeaderStyle="{StaticResource EarnHeader}">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding OvertimeHint}"/></Style>
                         </DataGridTextColumn.ElementStyle>
@@ -130,6 +140,11 @@
                     <DataGridTextColumn Header="بدون راتب" Binding="{Binding UnpaidLeaveDeduction, StringFormat=N0}" Width="80" HeaderStyle="{StaticResource DeductHeader}">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding UnpaidLeaveHint}"/></Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Header="التأخير" Binding="{Binding LateDeduction, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock"><Setter Property="ToolTip" Value="{Binding LateHint}"/></Style>
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
                     <DataGridTextColumn Header="السلف" Binding="{Binding LoanDeduction, StringFormat=N0}" Width="75" HeaderStyle="{StaticResource DeductHeader}"/>
