@@ -192,12 +192,13 @@ public class HrServiceTests
         // حافز المندوب: (10 − 2) شرنك × 200 + (5 − 1) كارتون × 350 = 3,000
         Assert.Equal(3_000m, await hr.ComputeRepIncentiveAsync(_f.RepId, HrFixture.Month, HrFixture.Year));
 
-        // حافز المدير: مبيعات آب = 120 + 380 = 500 ← 200×2 + 300×3 = 1,300 × 22 يوم = 28,600
+        // حافز المدير: مبيعات آب = 120 + 380 = 500 ← 200×2 + 300×3 = 1,300 × أيام دوام الشهر للشركة (آب 2026: 31 يومًا − 4 جمع = 27) = 35,100
+        // ولا علاقة له بحضور المدير (كان يُضرب في أيام حضوره الفعلية: 22)
         var mgr = await hr.ComputeSalesManagerIncentiveAsync(_f.ManagerId, HrFixture.Month, HrFixture.Year);
         Assert.Equal(500m, mgr.soldQuantity);
         Assert.Equal(1_300m, mgr.tierSum);
-        Assert.Equal(22, mgr.workedDays);
-        Assert.Equal(28_600m, mgr.amount);
+        Assert.Equal(27, mgr.workedDays);
+        Assert.Equal(35_100m, mgr.amount);
 
         // ------------------ الرواتب ------------------
         var (gr, runId) = await hr.GenerateAsync(HrFixture.Month, HrFixture.Year);
@@ -212,7 +213,7 @@ public class HrServiceTests
         Assert.Equal(1_083_333.33m, a.NetSalary);
 
         Assert.Equal(603_000m, lines[_f.RepId].NetSalary);      // 600,000 + 3,000
-        Assert.Equal(1_228_600m, lines[_f.ManagerId].NetSalary);// 1,200,000 + 28,600
+        Assert.Equal(1_235_100m, lines[_f.ManagerId].NetSalary);// 1,200,000 + 35,100
         var u = lines[_f.UsdId];
         Assert.Equal("USD", u.Currency);
         Assert.Equal(1_000m, u.NetSalary);

@@ -230,7 +230,8 @@ public class HrService
         await PostedSalesLines(month, year).SumAsync(l => (decimal?)l.QuantityBaseUnits) ?? 0;
 
     /// <summary>
-    /// حافز مدير المبيعات = Σ (الكمية الواقعة في كل شريحة × معدلها) × أيام دوامه الفعلية.
+    /// حافز مدير المبيعات = Σ (الكمية الواقعة في كل شريحة × معدلها) × أيام دوام الشهر للشركة
+    /// (أيام الشهر بلا العطلة الأسبوعية والعطل الرسمية)، فلا يتأثر بحضور المدير أو غيابه (كالنظام السابق).
     /// الشريحة تغطي الكميات من FromQuantity إلى ToQuantity (بلا حد أعلى إن كانت فارغة)، تصاعديًا.
     /// </summary>
     public async Task<(decimal amount, decimal soldQuantity, decimal tierSum, int workedDays)> ComputeSalesManagerIncentiveAsync(
@@ -247,8 +248,22 @@ public class HrService
             var inTier = Math.Max(0, upper - t.FromQuantity);
             tierSum += inTier * t.RatePerUnit;
         }
-        var days = await CountWorkedDaysAsync(managerEmployeeId, month, year);
+        var days = await CompanyWorkingDaysAsync(month, year);
         return (Math.Round(tierSum * days, 2), sold, tierSum, days);
+    }
+
+    /// <summary>أيام دوام الشهر للشركة: كل أيام الشهر عدا العطلة الأسبوعية العامة (الجمعة افتراضيًا) والعطل الرسمية.</summary>
+    public async Task<int> CompanyWorkingDaysAsync(int month, int year)
+    {
+        var (start, end) = Period(month, year);
+        var rules = await _db.WorkDayExceptions.AsNoTracking().ToListAsync();
+        var holidays = (await _db.PublicHolidays.AsNoTracking().Where(h => h.HolidayDate >= start && h.HolidayDate <= end)
+            .Select(h => h.HolidayDate).ToListAsync()).Select(d => d.Date).ToHashSet();
+        var general = new Employee();   // بلا قسم: تُطبَّق القواعد العامة فقط
+        var days = 0;
+        for (var d = start.Date; d <= end.Date; d = d.AddDays(1))
+            if (HrCalendar.IsWorkDay(d, general, rules, holidays)) days++;
+        return days;
     }
 
     // ============================ الرواتب ============================

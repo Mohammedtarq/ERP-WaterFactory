@@ -1046,7 +1046,7 @@ public class RepIncentiveRatesSectionViewModel : SectionViewModel
 public class ManagerTiersSectionViewModel : CrudSectionViewModel<SalesManagerIncentiveTier>
 {
     public ManagerTiersSectionViewModel(AppSession s, IDialogService d)
-        : base(s, d, ModuleCode.HR, "حافز مدير المبيعات", Icons.Stock, "#0F766E", "شرائح تصاعدية على إجمالي الكمية المباعة × أيام الدوام") { }
+        : base(s, d, ModuleCode.HR, "حافز مدير المبيعات", Icons.Stock, "#0F766E", "شرائح تصاعدية على إجمالي الكمية المباعة × أيام دوام الشهر") { }
 
     public ObservableCollection<Employee> Managers { get; } = new();
 
