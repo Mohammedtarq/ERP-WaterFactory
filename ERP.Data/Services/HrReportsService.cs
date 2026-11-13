@@ -70,7 +70,7 @@ public class HrReportsService
             });
         var cuts = (await _db.PayrollLines.AsNoTracking().Where(l => ids.Contains(l.EmployeeId)
                         && l.PayrollRun.PeriodYear * 12 + l.PayrollRun.PeriodMonth >= mFrom && l.PayrollRun.PeriodYear * 12 + l.PayrollRun.PeriodMonth <= mTo)
-                .Select(l => new { l.EmployeeId, Cut = l.AbsenceDeduction + l.UnpaidLeaveDeduction }).ToListAsync())
+                .Select(l => new { l.EmployeeId, Cut = l.AbsenceDeduction + l.UnpaidLeaveDeduction + l.LateDeduction }).ToListAsync())
             .GroupBy(l => l.EmployeeId).ToDictionary(g => g.Key, g => g.Sum(x => x.Cut));
         var promotions = (await _db.PromotionsAndRaises.AsNoTracking().Where(p => ids.Contains(p.EmployeeId) && p.EffectiveDate >= from && p.EffectiveDate <= to)
                 .Select(p => p.EmployeeId).ToListAsync())
@@ -145,11 +145,11 @@ public class HrReportsService
                      && e.PeriodYear * 12 + e.PeriodMonth >= mFrom && e.PeriodYear * 12 + e.PeriodMonth <= mTo).ToListAsync())
             events.Add((new DateTime(e.PeriodYear, e.PeriodMonth, 1), "تقييم وحافز شهري",
                         $"الحضور {Num(e.AttendanceScoreAuto)} — الأداء {Num(e.PerformanceScoreManual)} — المهارات {Num(e.SkillsScoreManual)} = {Num(e.TotalScore)}", Money(e.IncentiveAmount)));
-        foreach (var c in await _db.PayrollLines.AsNoTracking().Where(l => l.EmployeeId == id && l.AbsenceDeduction + l.UnpaidLeaveDeduction > 0
+        foreach (var c in await _db.PayrollLines.AsNoTracking().Where(l => l.EmployeeId == id && l.AbsenceDeduction + l.UnpaidLeaveDeduction + l.LateDeduction > 0
                      && l.PayrollRun.PeriodYear * 12 + l.PayrollRun.PeriodMonth >= mFrom && l.PayrollRun.PeriodYear * 12 + l.PayrollRun.PeriodMonth <= mTo)
-                     .Select(l => new { l.PayrollRun.PeriodYear, l.PayrollRun.PeriodMonth, l.AbsenceDeduction, l.UnpaidLeaveDeduction }).ToListAsync())
-            events.Add((new DateTime(c.PeriodYear, c.PeriodMonth, 1), "قطع راتب", $"راتب {c.PeriodMonth}/{c.PeriodYear}: غياب {Money(c.AbsenceDeduction)} + إجازات بدون راتب {Money(c.UnpaidLeaveDeduction)}",
-                        Money(c.AbsenceDeduction + c.UnpaidLeaveDeduction)));
+                     .Select(l => new { l.PayrollRun.PeriodYear, l.PayrollRun.PeriodMonth, l.AbsenceDeduction, l.UnpaidLeaveDeduction, l.LateDeduction }).ToListAsync())
+            events.Add((new DateTime(c.PeriodYear, c.PeriodMonth, 1), "قطع راتب", $"راتب {c.PeriodMonth}/{c.PeriodYear}: غياب {Money(c.AbsenceDeduction)} + إجازات بدون راتب {Money(c.UnpaidLeaveDeduction)}{(c.LateDeduction > 0 ? $" + تأخير {Money(c.LateDeduction)}" : "")}",
+                        Money(c.AbsenceDeduction + c.UnpaidLeaveDeduction + c.LateDeduction)));
 
         var t = new ReportTable
         {

@@ -50,6 +50,12 @@ public class PayrollLine
     public decimal OvertimeDays { get; set; }
     public decimal OvertimeHours { get; set; }
     public decimal OvertimeAmount { get; set; }
+    /// <summary>فصل مبلغ الإضافي: أيام × أجر اليوم، وساعات × سعر الساعة (82_hr_late_deduction.sql). الصفوف القديمة صفر مع إجمالي OvertimeAmount.</summary>
+    public decimal OvertimeDaysAmount { get; set; }
+    public decimal OvertimeHoursAmount { get; set; }
+    /// <summary>دقائق التأخير الصافية (بعد المسامحات) المحتسبة في الشهر، وخصمها بعملة الراتب.</summary>
+    public int LateMinutes { get; set; }
+    public decimal LateDeduction { get; set; }
     /// <summary>أيام إجازة بدون راتب (أو تجاوز الرصيد) وخصمها بالأجر اليومي.</summary>
     public decimal UnpaidLeaveDays { get; set; }
     public decimal UnpaidLeaveDeduction { get; set; }

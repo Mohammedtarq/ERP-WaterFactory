@@ -79,4 +79,7 @@ public class HrPolicy
     public int Id { get; set; } = 1;
     public decimal OvertimeHourlyRate { get; set; }
     public int FreeHourlyLeavesPerMonth { get; set; } = 2;
+    /// <summary>خصم التأخير بالشرائح: معطّل افتراضيًا، ويسري من أول يوم من الشهر المحدد.</summary>
+    public bool LateDeductionEnabled { get; set; }
+    public DateTime? LateDeductionFrom { get; set; }
 }

@@ -119,6 +119,7 @@ public class LeaveOvertimeTests
         Assert.True(gen.Success, gen.ErrorMessage);
         var line = await db.PayrollLines.AsNoTracking().SingleAsync(l => l.PayrollRunId == runId && l.EmployeeId == emp.Id);
         Assert.Equal((1m, 4m, 58_000m), (line.OvertimeDays, line.OvertimeHours, line.OvertimeAmount));
+        Assert.Equal((30_000m, 28_000m), (line.OvertimeDaysAmount, line.OvertimeHoursAmount));            // فصل المبلغ: يوم × 30,000 + 4 ساعات × 7,000
         Assert.Equal((3m, 90_000m), (line.UnpaidLeaveDays, line.UnpaidLeaveDeduction));               // 2 من اليومية + 1 الزمنية الثالثة
         Assert.Equal(30_000m, line.AbsenceDeduction);                                                   // غياب 11 آذار
         Assert.Equal(900_000m + 58_000m - 90_000m - 30_000m, line.NetSalary);

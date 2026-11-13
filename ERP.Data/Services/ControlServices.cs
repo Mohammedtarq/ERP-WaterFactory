@@ -28,6 +28,7 @@ public static class SpecialPermission
     public const string Custody = "Special:Custody";
     public const string HomeBox = "Special:HomeBox";
     public const string CashAdjust = "Special:CashAdjust";
+    public const string LateForgive = "Special:LateForgive";
 
     public static readonly (string Code, string Name, string Hint)[] All =
     {
@@ -47,6 +48,7 @@ public static class SpecialPermission
         (Custody, "إدارة العهد", "صرف عهدة نقدية لموظف من الصندوق وتجديدها وتعديل حركاتها وإلغائها وتسويتها وطباعتها"),
         (HomeBox, "صندوق المنزل وقروضه", "الصرف من صندوق المنزل (الخمس، مساعدات، أصول)، وإقراض صناديق العمل منه وتسجيل السداد، وعرض سجله وطباعته"),
         (CashAdjust, "تسوية أرصدة الصناديق", "تسوية رصيد صندوق بالجرد الفعلي بقيد مستقل، وتعديل حركاته اليدوية وإلغاؤها بقيد تصحيحي بسبب مكتوب"),
+        (LateForgive, "مسامحة التأخير", "مسامحة دقائق تأخير موظف (كاملة أو جزئية) بسبب مكتوب، وضبط رصيد المسامحة الشهري واستثناءات خصم التأخير"),
         (SettlementConfirm, "تأكيد تسوية المندوب (المخازن)", "عدّ مرتجع المندوب وتأكيد الجانب المخزني من تسويته: المرتجع والتالف والمجاني وفاتورة المتبقي"),
     };
 

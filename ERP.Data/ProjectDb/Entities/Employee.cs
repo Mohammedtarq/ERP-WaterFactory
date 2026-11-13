@@ -49,6 +49,10 @@ public class Employee
     public decimal? DailyWage { get; set; }
     /// <summary>معفى من البصمة بقرار الإدارة: لا يُخصم غيابه من الراتب.</summary>
     public bool AttendanceExempt { get; set; }
+    /// <summary>معفى من خصم التأخير بقرار الإدارة (يبقى تأخيره مسجّلًا).</summary>
+    public bool LateDeductionExempt { get; set; }
+    /// <summary>سماح خاص بالدقائق لخصم التأخير فقط (بدل سماح الشفت): تأخير ضمنه لا يُخصم.</summary>
+    public int? LateGraceOverride { get; set; }
     public DateTime? EndOfServiceDate { get; set; }
 
     /// <summary>رقم الموظف في جهاز البصمة (ZKTeco) لربط ملف الحضور ببطاقته (33_fingerprint.sql).</summary>

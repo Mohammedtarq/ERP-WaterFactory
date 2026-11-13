@@ -278,10 +278,10 @@ public class HrService
     /// يولّد (أو يعيد توليد) مسودة رواتب الشهر لكل الموظفين الفعّالين:
     /// الأساسي = الراتب + كل الزيادات الدائمة السارية حتى نهاية الشهر،
     /// البدلات = المبالغ لمرة واحدة السارية داخل الشهر،
-    /// الخصم = (الأساسي ÷ 30) × أيام الغياب،
+    /// الخصم = (الأساسي ÷ 30) × أيام الغياب، وخصم التأخير بالشرائح إن فُعّل (LateDeductionService)،
     /// الحوافز (مندوب + مدير مبيعات + شهري) بالدينار، وتُحوَّل للدولار لموظفي الدولار بسعر الصرف،
     /// الاستقطاعات (قسط السلفة، المسحوبات، العقوبات) بالدينار وتُحوَّل لموظفي الدولار،
-    /// الصافي = الأساسي + البدلات + الحوافز − خصم الغياب − الاستقطاعات.
+    /// الصافي = الأساسي + البدلات + الإضافي + الحوافز − خصم الغياب − خصم التأخير − الاستقطاعات.
     /// </summary>
     public async Task<(FinanceOperationResult result, int? runId)> GenerateAsync(int month, int year)
     {
@@ -313,6 +313,8 @@ public class HrService
             .GroupBy(a => a.EmployeeId).Select(g => new { g.Key, Days = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Days);
         // الإجازات بدون راتب (أو ما تجاوز الرصيد)، والعمل الإضافي (أيام بالأجر اليومي وساعات بسعر الساعة الخاص أو العام)
         var unpaidLeave = await new HrLeaveService(_db).UnpaidDaysAsync(month, year);
+        // خصم التأخير بالشرائح (معطّل افتراضيًا): يُحمَّل مرة للشهر ويُطبَّق على كل موظف بأجره اليومي
+        var lateFor = await new LateDeductionService(_db).LoadMonthAsync(month, year);
         var overtime = (await new OvertimeService(_db).SummaryAsync(month, year)).ToDictionary(o => o.EmployeeId);
 
         if (run is null)
@@ -356,7 +358,10 @@ public class HrService
             var unpaidDeduction = Math.Round(dailyWage * unpaidDays, 2);
             var ot = overtime.GetValueOrDefault(e.Id);
             // سعر الساعة يُضبط بالدينار؛ موظف الدولار يستلمه محوّلًا، والأيام بأجره اليومي بعملة راتبه
-            var overtimeAmount = ot is null ? 0 : Math.Round(dailyWage * ot.Days, 2) + Fx(Math.Round(ot.Hours * ot.HourlyRate, 2));
+            var overtimeDaysAmount = ot is null ? 0 : Math.Round(dailyWage * ot.Days, 2);
+            var overtimeHoursAmount = ot is null ? 0 : Fx(Math.Round(ot.Hours * ot.HourlyRate, 2));
+            var overtimeAmount = overtimeDaysAmount + overtimeHoursAmount;
+            var late = lateFor(e, dailyWage, Fx);
 
             run.Lines.Add(new PayrollLine
             {
@@ -376,9 +381,13 @@ public class HrService
                 OvertimeDays = ot?.Days ?? 0,
                 OvertimeHours = ot?.Hours ?? 0,
                 OvertimeAmount = overtimeAmount,
+                OvertimeDaysAmount = overtimeDaysAmount,
+                OvertimeHoursAmount = overtimeHoursAmount,
+                LateMinutes = late.NetMinutes,
+                LateDeduction = late.Deduction,
                 UnpaidLeaveDays = unpaidDays,
                 UnpaidLeaveDeduction = unpaidDeduction,
-                NetSalary = baseSalary + allowances + rep + manager + monthly + overtimeAmount - deduction - unpaidDeduction - loan - withdrawal - penalty - social - solidarity
+                NetSalary = baseSalary + allowances + rep + manager + monthly + overtimeAmount - deduction - unpaidDeduction - late.Deduction - loan - withdrawal - penalty - social - solidarity
             });
         }
         foreach (var (d, amount) in deductionPlan)

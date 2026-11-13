@@ -171,6 +171,8 @@ public partial class ProjectDbContext : DbContext
     public DbSet<PublicHoliday> PublicHolidays => Set<PublicHoliday>();
     public DbSet<OvertimeEntry> OvertimeEntries => Set<OvertimeEntry>();
     public DbSet<HrPolicy> HrPolicies => Set<HrPolicy>();
+    public DbSet<LateDeductionTier> LateDeductionTiers => Set<LateDeductionTier>();
+    public DbSet<LateMonthlyForgiveness> LateMonthlyForgivenesses => Set<LateMonthlyForgiveness>();
 
     // ---- صور الموظفين والمستخدمين (45_photos.sql) ----
     public DbSet<EmployeePhoto> EmployeePhotos => Set<EmployeePhoto>();
@@ -201,6 +203,21 @@ public partial class ProjectDbContext : DbContext
             l.Property(x => x.OvertimeAmount).HasPrecision(18, 2);
             l.Property(x => x.UnpaidLeaveDays).HasPrecision(6, 2);
             l.Property(x => x.UnpaidLeaveDeduction).HasPrecision(18, 2);
+            l.Property(x => x.OvertimeDaysAmount).HasPrecision(18, 2);
+            l.Property(x => x.OvertimeHoursAmount).HasPrecision(18, 2);
+            l.Property(x => x.LateDeduction).HasPrecision(18, 2);
+        });
+        modelBuilder.Entity<LateDeductionTier>(e =>
+        {
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.Value).HasPrecision(18, 4);
+        });
+        modelBuilder.Entity<LateMonthlyForgiveness>(e =>
+        {
+            e.ToTable("LateMonthlyForgiveness");
+            e.Property(x => x.Reason).HasMaxLength(250);
+            e.HasIndex(x => new { x.EmployeeId, x.PeriodMonth, x.PeriodYear }).IsUnique();
+            e.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<LeaveType>(e =>
         {
@@ -249,6 +266,7 @@ public partial class ProjectDbContext : DbContext
         {
             e.Property(x => x.Id).ValueGeneratedNever();
             e.Property(x => x.OvertimeHourlyRate).HasPrecision(18, 2);
+            e.Property(x => x.LateDeductionFrom).HasColumnType("date");
         });
         modelBuilder.Entity<Employee>()
             .Property(e => e.SalaryCurrency)
