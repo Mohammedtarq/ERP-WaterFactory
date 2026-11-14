@@ -49,6 +49,12 @@ $offer = [ordered]@{ version = $version; mandatory = (-not $Optional); published
 # version.json آخرًا: هو ما يفحصه البرنامج، فلا يرى أحد نشرًا ناقصًا
 [IO.File]::WriteAllText((Join-Path $next 'version.json'), (ConvertTo-Json -InputObject $offer -Compress), $utf8)
 
+# النشر اليدوي يُحدّث أيضًا سكربت التحديث التلقائي إن كان مفعّلًا على هذا الجهاز (كي تصله إصلاحاته بلا خطوة إضافية)
+try {
+    $autoDir = Join-Path $env:ProgramData 'ERP-WaterFactory'
+    $selfCheck = Join-Path $Source 'Check-GitHubUpdate.ps1'
+    if ((Test-Path (Join-Path $autoDir 'autopublish.json')) -and (Test-Path $selfCheck)) { Copy-Item $selfCheck (Join-Path $autoDir 'Check-GitHubUpdate.ps1') -Force }
+} catch { }
 if (Test-Path $current) { Rename-Item $current 'old' }
 Rename-Item $next 'current'
 if (Test-Path $old) { Remove-Item $old -Recurse -Force -ErrorAction SilentlyContinue }

@@ -58,7 +58,19 @@ try {
     if (Test-Path $work) { Remove-Item $work -Recurse -Force }
     New-Item $work -ItemType Directory -Force | Out-Null
     $zip = Join-Path $work 'pkg.zip'
-    Invoke-WebRequest -Uri $location -OutFile $zip -UseBasicParsing -TimeoutSec 1200
+    # الحزمة نحو 180 ميغابايت: عند انقطاع الاتصال يُستأنف التنزيل من حيث توقف (curl.exe مضمّن في ويندوز) بدل البدء من الصفر
+    $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+    if (Test-Path $curl) {
+        for ($try = 1; $try -le 40; $try++) {
+            & $curl -L --silent --show-error --fail --connect-timeout 30 --speed-limit 1000 --speed-time 60 -C - -o $zip $location 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { break }
+            Log "انقطع التنزيل (محاولة $try)، يُستأنف..."
+            if ($try -eq 40) { throw "تعذّر إكمال تنزيل الحزمة بعد 40 محاولة (إنترنت ضعيف)" }
+            Start-Sleep -Seconds 15
+        }
+    } else {
+        Invoke-WebRequest -Uri $location -OutFile $zip -UseBasicParsing -TimeoutSec 1200
+    }
     Expand-Archive -Path $zip -DestinationPath (Join-Path $work 'pkg') -Force
     $exe = Get-ChildItem (Join-Path $work 'pkg') -Recurse -Filter 'ERP.Desktop.exe' | Select-Object -First 1
     if (-not $exe) { throw "الحزمة المنزّلة لا تحوي ERP.Desktop.exe" }
