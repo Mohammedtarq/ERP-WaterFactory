@@ -100,6 +100,8 @@ public static class ReportRenderer
             inner.ComputePageCount();
             var first = dyn.GetPageNumber(table.ContentStart);
             var last = dyn.GetPageNumber(table.RowGroups[1].Rows[^1].ContentStart);
+            // إن لم يُحدَّد موضع الجدول بدقة (يعيد المقسّم 0) فالجدول يمتد من الصفحة الأولى حتى آخر صفحة
+            if (last <= first && inner.PageCount > 1) { first = 0; last = inner.PageCount - 1; }
             for (var pg = first + 1; pg <= last; pg++) continuing.Add(pg);
         }
         return new BrandedPaginator(inner, size, PageMargin, header.DesiredSize.Height + 10, footerSample.DesiredSize.Height,
@@ -109,7 +111,20 @@ public static class ReportRenderer
 
     /// <summary>أوزان الأعمدة النسبية (نفسها في جدول المحتوى وترويسته المكررة كي تتطابق).</summary>
     private static double[] ColumnWeights(ReportDocument r) =>
-        r.Columns.Select((c, i) => c == "#" ? 0.45 : ColumnWeight(r, i)).ToArray();
+        r.Columns.Select((c, i) => c == "#" ? 0.45 : Dense(r) ? DenseWeight(r, i) : ColumnWeight(r, i)).ToArray();
+
+    /// <summary>جدول عريض (كشف الرواتب): خط أصغر وحشوة أقل كي لا تنكسر الأرقام الكبيرة إلى سطرين.</summary>
+    private static bool Dense(ReportDocument r) => r.Columns.Count > 12;
+    private static double CellFont(ReportDocument r) => Dense(r) ? 9 : 10.5;
+    private static Thickness CellPad(ReportDocument r, double v) => Dense(r) ? new Thickness(3, v, 3, v) : new Thickness(6, v, 6, v);
+
+    /// <summary>وزن العمود بحسب أطول نص فيه (دون صفوف المجاميع التي تُكتب فوق أكثر من عمود)، فلا يضيق عن رقمه الأطول.</summary>
+    private static double DenseWeight(ReportDocument r, int i)
+    {
+        var longest = r.Rows.Take(300).Where(row => !r.StrongRows.Contains(row)).Select(row => i < row.Count ? row[i].Length : 0).Append(0).Max();
+        var header = r.Columns[i].Split(' ').Max(w => w.Length);   // العنوان قد يلتف على كلمتين
+        return Math.Clamp(Math.Max(longest, header) + 1.5, 4, 24) / 4.5;
+    }
 
     private static Color ColorOf(string hex, Color fallback)
     {
@@ -130,7 +145,7 @@ public static class ReportRenderer
             foreach (var g in r.ColumnGroups)
             {
                 var c = ColorOf(g.Color, brandColor);
-                var cell = new Border { Background = new SolidColorBrush(c), Margin = new Thickness(0.5, 0, 0.5, 0), Padding = new Thickness(6, 3, 6, 3), Child = new TextBlock
+                var cell = new Border { Background = new SolidColorBrush(c), Margin = new Thickness(0.5, 0, 0.5, 0), Padding = new Thickness(3, 3, 3, 3), Child = new TextBlock
                     { Text = g.Title, Foreground = Brushes.White, FontWeight = FontWeights.Bold, FontSize = 10.5, TextAlignment = TextAlignment.Center, FontFamily = new FontFamily(Font) } };
                 Grid.SetRow(cell, 0); Grid.SetColumn(cell, g.From); Grid.SetColumnSpan(cell, g.Count);
                 grid.Children.Add(cell);
@@ -147,7 +162,7 @@ public static class ReportRenderer
         grid.Children.Add(bar);
         for (var i = 0; i < r.Columns.Count; i++)
         {
-            var tb = new TextBlock { Text = r.Columns[i], FontWeight = FontWeights.Bold, FontSize = 10.5, Margin = new Thickness(6, 5, 6, 5), Foreground = Ink, FontFamily = new FontFamily(Font),
+            var tb = new TextBlock { Text = r.Columns[i], FontWeight = FontWeights.Bold, FontSize = CellFont(r), Margin = Dense(r) ? new Thickness(3, 5, 3, 5) : new Thickness(6, 5, 6, 5), Foreground = Ink, FontFamily = new FontFamily(Font),
                                      TextWrapping = TextWrapping.Wrap };
             Grid.SetRow(tb, row); Grid.SetColumn(tb, i);
             grid.Children.Add(tb);
@@ -349,8 +364,8 @@ public static class ReportRenderer
                                                      Color.FromArgb(0x12, brandColor.R, brandColor.G, brandColor.B), 90)
             };
             foreach (var c in r.Columns)
-                hr.Cells.Add(new TableCell(new Paragraph(new Run(c)) { Margin = new Thickness(0), FontWeight = FontWeights.Bold, FontSize = 10.5 })
-                { Padding = new Thickness(6, 5, 6, 5), BorderBrush = brand, BorderThickness = new Thickness(0, 0, 0, 1.2) });
+                hr.Cells.Add(new TableCell(new Paragraph(new Run(c)) { Margin = new Thickness(0), FontWeight = FontWeights.Bold, FontSize = CellFont(r) })
+                { Padding = CellPad(r, 5), BorderBrush = brand, BorderThickness = new Thickness(0, 0, 0, 1.2) });
             head.Rows.Add(hr);
             t.RowGroups.Add(head);
             var g = new TableRowGroup();
@@ -361,8 +376,8 @@ public static class ReportRenderer
                 var strong = r.StrongRows.Contains(rowValues);   // صف مجموع (قسم): عريض بخلفية خفيفة وخط علوي بلون العلامة
                 var row = new TableRow { Background = strong ? tint : n++ % 2 == 1 ? zebra : Brushes.Transparent };
                 foreach (var v in rowValues)
-                    row.Cells.Add(new TableCell(new Paragraph(new Run(v)) { Margin = new Thickness(0), FontSize = 10.5, FontWeight = strong ? FontWeights.Bold : FontWeights.Normal })
-                    { Padding = new Thickness(6, 4, 6, 4), BorderBrush = strong ? brand : Rule, BorderThickness = strong ? new Thickness(0, 1, 0, 1) : new Thickness(0, 0, 0, 0.75) });
+                    row.Cells.Add(new TableCell(new Paragraph(new Run(v)) { Margin = new Thickness(0), FontSize = CellFont(r), KeepTogether = true, FontWeight = strong ? FontWeights.Bold : FontWeights.Normal })
+                    { Padding = CellPad(r, 4), BorderBrush = strong ? brand : Rule, BorderThickness = strong ? new Thickness(0, 1, 0, 1) : new Thickness(0, 0, 0, 0.75) });
                 g.Rows.Add(row);
             }
             if (r.Rows.Count == 0)

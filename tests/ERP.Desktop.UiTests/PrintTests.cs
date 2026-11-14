@@ -183,6 +183,40 @@ public class PrintTests
         });
     }
 
+    /// <summary>كشف رواتب عريض متعدد الصفحات: الترويسة بمجموعاتها تتكرر أعلى كل صفحة تابعة، والأرقام الكبيرة لا تنكسر.</summary>
+    [Fact]
+    public async Task Wide_grouped_payroll_repeats_column_groups_on_continuation_pages()
+    {
+        await UiThread.RunAsync(() =>
+        {
+            var r = new ReportDocument { CompanyName = "مصنع", Title = "كشف رواتب 10/2026", Branding = Branding() };
+            r.Columns.AddRange(new[] { "#", "الموظف", "القسم", "العملة", "الأساسي", "إضافي أيام", "مبلغ الأيام", "إضافي ساعات", "مبلغ الساعات", "مخصصات", "حوافز",
+                                       "خصم الغياب", "بدون راتب", "التأخير", "قسط السلفة", "المسحوبات", "العقوبات", "الضمان", "التكافل", "الصافي", "التوقيع" });
+            r.ColumnGroups.Add(new ReportColumnGroup("المستحقات", 4, 7, "#0E7A55"));
+            r.ColumnGroups.Add(new ReportColumnGroup("الاستقطاعات", 11, 8, "#B42318"));
+            for (var i = 1; i <= 90; i++)
+            {
+                var row = new List<string> { i.ToString(), $"موظف رقم {i} الاسم الثلاثي", i % 2 == 0 ? "الإنتاج" : "الحسابات", "IQD" };
+                row.AddRange(Enumerable.Repeat("1,250,000", 15));
+                row.Add("");
+                r.AddRow(row);
+            }
+            var paginator = ReportRenderer.A4(r, new System.Windows.Size(ReportRenderer.PageHeight, ReportRenderer.PageWidth));
+            Assert.True(paginator.PageCount >= 2);
+            for (var i = 0; i < paginator.PageCount; i++)
+            {
+                var page = paginator.GetPage(i);
+                SavePage(page.Visual, page.Size, Path.Combine(PrintDir, $"Payroll_wide_page{i + 1}.png"));
+                var texts = Find<TextBlock>(page.Visual).Select(t => t.Text).ToList();
+                if (i >= 1 && i < paginator.PageCount - 1)
+                {
+                    Assert.Contains("المستحقات", texts);
+                    Assert.Contains("الاستقطاعات", texts);
+                }
+            }
+        });
+    }
+
     /// <summary>A4 متعدد الصفحات: الترويسة في كل صفحة، "صفحة س من ص" صحيحة، وملف XPS حقيقي للطباعة.</summary>
     [Fact]
     public async Task A4_report_repeats_letterhead_and_page_numbers_on_every_page()
