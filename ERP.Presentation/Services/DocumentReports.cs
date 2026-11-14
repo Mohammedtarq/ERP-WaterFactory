@@ -338,6 +338,9 @@ public static class DocumentReports
     /// كشف الرواتب المطبوع. dept = قسم محدد (أو null = كل الأقسام). الأعمدة تحت «المستحقات» و«الاستقطاعات» وتتكرر ترويستها في كل صفحة،
     /// والترقيم متتابع عبر الصفحات، والمجموع بعد كل قسم (لكل عملة) ثم الكلي في نهاية القائمة.
     /// </summary>
+    /// <summary>عدد الموظفين بصيغته العربية الصحيحة (موظف واحد، موظفان، 3–10 موظفين، 11 فأكثر موظفًا).</summary>
+    private static string Staff(int n) => n switch { 1 => "موظف واحد", 2 => "موظفان", >= 3 and <= 10 => $"{n} موظفين", _ => $"{n} موظفًا" };
+
     public static async Task<ReportDocument?> PayrollAsync(AppSession s, ProjectDbContext db, int runId, ViewModels.HR.DepartmentChoice? dept = null)
     {
         var run = await db.PayrollRuns.AsNoTracking().Include(x => x.ApprovedByUser).Include(x => x.Lines).ThenInclude(l => l.Employee).ThenInclude(e => e.Department)
@@ -401,11 +404,11 @@ public static class DocumentReports
             }
             // مجموع القسم لكل عملة بعد موظفيه (في كشف قسم واحد هو المجموع النهائي)
             foreach (var c in g.GroupBy(l => l.Currency))
-                r.AddRow(SumRow($"مجموع قسم {g.Key} ({c.Count()} موظفًا)", c.Key, c.ToList()), strong: true);
+                r.AddRow(SumRow($"مجموع قسم {g.Key} ({Staff(c.Count())})", c.Key, c.ToList()), strong: true);
         }
         if (byDepartment.Count > 1)
             foreach (var c in lines.GroupBy(l => l.Currency))
-                r.AddRow(SumRow($"المجموع الكلي لكل الأقسام ({c.Count()} موظفًا)", c.Key, c.ToList()), strong: true);
+                r.AddRow(SumRow($"المجموع الكلي لكل الأقسام ({Staff(c.Count())})", c.Key, c.ToList()), strong: true);
         foreach (var g in lines.GroupBy(l => l.Currency))
             r.Total($"صافي الرواتب ({g.Key})", N(g.Sum(l => l.NetSalary)), g.Key == "IQD");
         r.Signatures.AddRange(new[] { "مسؤول الموارد البشرية", "المحاسب", "المدير" });

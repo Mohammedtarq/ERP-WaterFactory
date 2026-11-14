@@ -40,7 +40,7 @@
                 <DataGrid ItemsSource="{Binding Tiers}" CanUserAddRows="False" AutoGenerateColumns="False">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="من (دقيقة)" Binding="{Binding From}" Width="80"/>
-                        <DataGridTextColumn Header="إلى (فارغ = بلا حد)" Binding="{Binding To}" Width="120"/>
+                        <DataGridTextColumn Header="إلى (فارغ=بلا حد)" Binding="{Binding To}" Width="140"/>
                         <DataGridTemplateColumn Header="نوع الخصم" Width="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -77,10 +77,13 @@
                     </StackPanel>
                     <TextBlock Text="{Binding SelectedEmployee.EmployeeName, StringFormat=مسامحة شهرية: {0}, FallbackValue=مسامحة شهرية: اختر موظفًا من الجدول}" FontWeight="SemiBold" Margin="0,6,0,4"/>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <TextBlock Text="الشهر" VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <ComboBox ItemsSource="{Binding Months}" SelectedItem="{Binding ForgiveMonth}" Width="64" Margin="0,0,6,0"/>
-                        <ComboBox ItemsSource="{Binding Years}" SelectedItem="{Binding ForgiveYear}" Width="84" Margin="0,0,6,0"/>
-                        <TextBox Text="{Binding ForgiveMinutes}" Width="70" ToolTip="دقائق المسامحة" Margin="0,0,6,0"/>
-                        <TextBox Text="{Binding ForgiveReason, UpdateSourceTrigger=PropertyChanged}" Width="200" ToolTip="السبب (إلزامي)"/>
+                        <ComboBox ItemsSource="{Binding Years}" SelectedItem="{Binding ForgiveYear}" Width="84" Margin="0,0,10,0"/>
+                        <TextBlock Text="الدقائق" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBox Text="{Binding ForgiveMinutes}" Width="60" ToolTip="دقائق المسامحة" Margin="0,0,10,0"/>
+                        <TextBlock Text="السبب" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBox Text="{Binding ForgiveReason, UpdateSourceTrigger=PropertyChanged}" Width="170" ToolTip="السبب (إلزامي)"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal">
                         <Button Style="{StaticResource PrimaryButton}" Content="مسامحة" Command="{Binding SaveForgivenessCommand}" Margin="0,0,8,0"/>
