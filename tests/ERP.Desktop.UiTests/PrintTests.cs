@@ -207,7 +207,7 @@ public class PrintTests
             {
                 var page = paginator.GetPage(i);
                 SavePage(page.Visual, page.Size, Path.Combine(PrintDir, $"Payroll_wide_page{i + 1}.png"));
-                var texts = Find<TextBlock>(page.Visual).Select(t => t.Text).ToList();
+                var texts = Find<TextBlock>(page.Visual).Where(t => t.ActualWidth > 0 && t.ActualHeight > 0).Select(t => t.Text).ToList();   // مرسومة فعلًا لا مجرد موجودة
                 if (i >= 1 && i < paginator.PageCount - 1)
                 {
                     Assert.Contains("المستحقات", texts);

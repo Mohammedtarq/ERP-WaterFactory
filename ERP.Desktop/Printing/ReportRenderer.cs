@@ -111,7 +111,7 @@ public static class ReportRenderer
 
     /// <summary>أوزان الأعمدة النسبية (نفسها في جدول المحتوى وترويسته المكررة كي تتطابق).</summary>
     private static double[] ColumnWeights(ReportDocument r) =>
-        r.Columns.Select((c, i) => c == "#" ? 0.45 : Dense(r) ? DenseWeight(r, i) : ColumnWeight(r, i)).ToArray();
+        r.Columns.Select((c, i) => c == "#" ? (Dense(r) ? 0.9 : 0.45) : Dense(r) ? DenseWeight(r, i) : ColumnWeight(r, i)).ToArray();
 
     /// <summary>جدول عريض (كشف الرواتب): خط أصغر وحشوة أقل كي لا تنكسر الأرقام الكبيرة إلى سطرين.</summary>
     private static bool Dense(ReportDocument r) => r.Columns.Count > 12;
@@ -168,7 +168,9 @@ public static class ReportRenderer
             grid.Children.Add(tb);
         }
         // «تابع…» صغير أسفل الشريط يوضح أن الجدول مستمر من الصفحة السابقة
-        return new Border { Child = grid, Width = width, Margin = new Thickness(0, 0, 0, 0) };
+        var holder = new Border { Child = grid, Width = width, Margin = new Thickness(0, 0, 0, 0) };
+        Layout(holder, width);   // بلا قياس وترتيب لا تُرسم المرئية داخل صفحة الطباعة
+        return holder;
     }
 
     /// <summary>
