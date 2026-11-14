@@ -1,0 +1,48 @@
+<UserControl x:Class="ERP.Desktop.Views.HR.MonthlyIncentiveSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:MonthlyIncentiveSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <Button DockPanel.Dock="Right" Style="{StaticResource SuccessButton}" Command="{Binding SaveAllCommand}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8EF;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                        <TextBlock Text="احسب واحفظ التقييم"/>
+                    </StackPanel>
+                </Button>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="الشهر:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Months}" SelectedItem="{Binding Month}" Width="70" Margin="0,0,12,0"/>
+                    <TextBlock Text="السنة:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Years}" SelectedItem="{Binding Year}" Width="90" Margin="0,0,16,0"/>
+                    <TextBlock Text="القسم:" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Departments}" SelectedItem="{Binding Department}" DisplayMemberPath="Name" Width="160" Margin="0,0,16,0"/>
+                </StackPanel>
+            </DockPanel>
+            <Border DockPanel.Dock="Top" Background="#FFFBEB" CornerRadius="6" Padding="10,8" Margin="0,0,0,10">
+                <TextBlock Text="{Binding WeightsText}" Foreground="#92400E" TextWrapping="Wrap"/>
+            </Border>
+            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
+                <TextBlock Text="{Binding TotalAmount, StringFormat='إجمالي حوافز الظاهر: {0:N0} د.ع'}" FontWeight="Bold" Margin="0,0,24,0"/>
+                <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource SuccessBrush}"/>
+            </StackPanel>
+            <DataGrid ItemsSource="{Binding VisibleRows}" IsReadOnly="False" CanUserAddRows="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الموظف" Binding="{Binding EmployeeName}" Width="*" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="القسم" Binding="{Binding DepartmentName}" Width="120" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الانضباط (تلقائي)" Binding="{Binding AttendanceScore, StringFormat=N2}" Width="120" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الأداء ✎ (0–100)" Binding="{Binding Performance, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
+                    <DataGridTextColumn Header="المهارات ✎ (0–100)" Binding="{Binding Skills, UpdateSourceTrigger=PropertyChanged}" Width="130"/>
+                    <DataGridTextColumn Header="المجموع" Binding="{Binding TotalScore, StringFormat=N2}" Width="90" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الحافز (د.ع)" Binding="{Binding Amount, StringFormat=N0}" Width="110" IsReadOnly="True"/>
+                    <DataGridCheckBoxColumn Header="محفوظ" Binding="{Binding IsSaved, Mode=OneWay}" Width="60" IsReadOnly="True"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

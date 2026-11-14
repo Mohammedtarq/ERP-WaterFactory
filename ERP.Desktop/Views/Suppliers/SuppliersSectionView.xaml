@@ -1,0 +1,91 @@
+<UserControl x:Class="ERP.Desktop.Views.Suppliers.SuppliersSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Suppliers;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:SuppliersSectionViewModel}"
+             x:Name="Root">
+    <!-- مُولَّد بنمط CRUD الموحّد: الجدول يمينًا، ونموذج الإضافة/التعديل يسارًا عند الفتح -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Style="{StaticResource PrimaryButton}" Command="{Binding NewCommand}" IsEnabled="{Binding CanAdd}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="إضافة"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,8,0"/>
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="260" ToolTip="بحث"/>
+                    </StackPanel>
+                </DockPanel>
+
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+
+                <DataGrid ItemsSource="{Binding Items}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="المورد" Binding="{Binding Name}" Width="*"/>
+                        <DataGridTextColumn Header="الهاتف" Binding="{Binding Phone}" Width="130"/>
+                        <DataGridTextColumn Header="العنوان" Binding="{Binding Address}" Width="200"/>
+                        <DataGridTextColumn Header="شروط الدفع" Binding="{Binding DefaultPaymentTerms, Converter={StaticResource EnumArabicConverter}}" Width="140"/>
+                        <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="50"/>
+                        <DataGridTemplateColumn Header="" Width="84">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Content="&#xE70F;" ToolTip="تعديل" Style="{StaticResource RowIconButton}" Tag="#0EA5E9"
+                                                Command="{Binding DataContext.EditCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Button Content="&#xE74D;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                Command="{Binding DataContext.DeleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <!-- نموذج الإضافة/التعديل -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="340" Margin="12,0,0,0"
+                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding EditorTitle}" Style="{StaticResource SectionTitle}"/>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="حفظ"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CancelCommand}"/>
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="اسم المورد" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.Name}"/>
+                        <TextBlock Text="الهاتف" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.Phone}" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="العنوان" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.Address}"/>
+                        <TextBlock Text="شروط الدفع الافتراضية" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding TermsOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Editor.DefaultPaymentTerms}"/>
+                        <CheckBox Content="فعّال" IsChecked="{Binding Editor.IsActive}"/>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

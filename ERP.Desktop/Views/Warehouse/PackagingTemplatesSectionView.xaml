@@ -1,0 +1,96 @@
+<UserControl x:Class="ERP.Desktop.Views.Warehouse.PackagingTemplatesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Warehouse;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:PackagingTemplatesSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Command="{Binding NewCommand}" IsEnabled="{Binding CanAdd}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="قالب جديد"/>
+                        </StackPanel>
+                    </Button>
+                    <TextBlock Text="القالب يحدد أدوار المكونات ونسبها (كارتون 1 لكل 40، امبولة 1 لكل 1، لاصق 2 لكل 1). طبّقه على صنف من شاشة إعداد قوائم المواد."
+                               Style="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <ItemsControl ItemsSource="{Binding Templates}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Left" Content="&#xE70F;" ToolTip="تعديل" Style="{StaticResource RowIconButton}" Tag="#0EA5E9" VerticalAlignment="Top"
+                                            Command="{Binding DataContext.EditCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/>
+                                        <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}"/>
+                                        <ItemsControl ItemsSource="{Binding Lines}" Margin="0,6,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock>
+                                                        <Run Text="•"/>
+                                                        <Run Text="{Binding ComponentRole, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                        <Run Text=": "/>
+                                                        <Run Text="{Binding RatioText, Mode=OneWay}"/>
+                                                        <Run Text=" — "/>
+                                                        <Run Text="{Binding DefaultItem.ItemName, Mode=OneWay, TargetNullValue='بلا مادة افتراضية'}" Foreground="{StaticResource MutedTextBrush}"/>
+                                                    </TextBlock>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </Border>
+
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="520" Margin="12,0,0,0"
+                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="قالب تعبئة" Style="{StaticResource SectionTitle}"/>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="اسم القالب (مثل 330×40 كارتون)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Name}"/>
+                    <TextBlock Text="وصف" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding TemplateDescription}"/>
+                    <TextBlock Text="المكونات: الدور — المادة الافتراضية — عدد — لكل" Style="{StaticResource FieldLabel}" Margin="0,12,0,4"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button Content="حفظ" Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}"/>
+                    <Button Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CancelCommand}"/>
+                    <Button Content="+ مكوّن" Style="{StaticResource SecondaryButton}" Command="{Binding AddLineCommand}"/>
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Lines}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="0,2">
+                                    <TextBox Text="{Binding Role}" Width="100" ToolTip="الدور"/>
+                                    <ComboBox ItemsSource="{Binding DataContext.RawItems, ElementName=Root}" SelectedItem="{Binding DefaultItem}" DisplayMemberPath="ItemName" Width="190" Margin="4,0"/>
+                                    <TextBox Text="{Binding ComponentQuantity}" Width="60" FlowDirection="LeftToRight" ToolTip="عدد المكوّن"/>
+                                    <TextBlock Text="لكل" VerticalAlignment="Center" Margin="4,0"/>
+                                    <TextBox Text="{Binding PerUnits}" Width="60" FlowDirection="LeftToRight" ToolTip="لكل هذا العدد من المنتج"/>
+                                    <Button Content="&#xE711;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

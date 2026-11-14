@@ -1,0 +1,56 @@
+<UserControl x:Class="ERP.Desktop.Views.Settings.ProjectsSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ProjectsSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="380"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    <TextBlock Text="المشاريع المسجّلة في قاعدة التحكم" Style="{StaticResource SectionTitle}" Margin="0"/>
+                </DockPanel>
+                <DataGrid ItemsSource="{Binding Projects}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="المشروع" Binding="{Binding ProjectName}" Width="*"/>
+                        <DataGridTextColumn Header="قاعدة البيانات" Binding="{Binding DatabaseName}" Width="200"/>
+                        <DataGridTextColumn Header="السيرفر" Binding="{Binding ServerAddress}" Width="140"/>
+                        <DataGridTextColumn Header="المستخدمون" Binding="{Binding UsersCount}" Width="90"/>
+                        <DataGridCheckBoxColumn Header="المفتوح حاليًا" Binding="{Binding IsCurrent, Mode=OneWay}" Width="90"/>
+                        <DataGridCheckBoxColumn Header="فعّال" Binding="{Binding IsActive, Mode=OneWay}" Width="55"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="مشروع / شركة جديدة" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Style="{StaticResource Muted}" FontSize="12"
+                               Text="يُنشئ قاعدة بيانات مستقلة تمامًا بكل الوحدات والإعدادات الأساسية، ويمنحك دور المدير فيها."/>
+                    <TextBlock Text="اسم المشروع" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding NewProjectName, UpdateSourceTrigger=PropertyChanged}"/>
+                    <TextBlock Text="اسم قاعدة البيانات (أحرف إنجليزية)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding NewDatabaseName, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                    <CheckBox Content="إضافة بيانات تجريبية" IsChecked="{Binding DemoData}"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding CreateCommand}" Margin="0,14,0,0" HorizontalAlignment="Left" Content="إنشاء المشروع"/>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding Log}" Margin="0,10,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Style="{StaticResource Muted}" FontSize="12"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

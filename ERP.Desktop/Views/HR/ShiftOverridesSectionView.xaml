@@ -1,0 +1,98 @@
+<UserControl x:Class="ERP.Desktop.Views.HR.ShiftOverridesSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.HR;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ShiftOverridesSectionViewModel}"
+             x:Name="Root">
+    <!-- استثناء مؤقت من الشفت: الجدول يمينًا، والنموذج يسارًا عند الفتح -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button Style="{StaticResource PrimaryButton}" Command="{Binding NewCommand}" IsEnabled="{Binding CanAdd}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                                <TextBlock Text="نقل أو وقت دخول خاص"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Foreground="{StaticResource MutedTextBrush}" Margin="0,0,8,0"/>
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="260" ToolTip="بحث بالموظف أو الشفت أو السبب"/>
+                    </StackPanel>
+                </DockPanel>
+
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"
+                           Text="خلال المدة يُحسب الحضور والبصمة على الشفت أو وقت الدخول المكتوب هنا، وبعدها يعود شفت الموظف الأصلي تلقائيًا. الحضور المسجّل في المدة يُعاد حساب تأخيره عند الحفظ."/>
+
+                <DataGrid ItemsSource="{Binding Items}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الموظف" Binding="{Binding Employee.FullName}" Width="*" MinWidth="140"/>
+                        <DataGridTextColumn Header="شفته الأصلي" Binding="{Binding Employee.Shift.Name, TargetNullValue=—}" Width="110"/>
+                        <DataGridTextColumn Header="من" Binding="{Binding FromDate, StringFormat=yyyy/MM/dd}" Width="95"/>
+                        <DataGridTextColumn Header="إلى" Binding="{Binding ToDate, StringFormat=yyyy/MM/dd}" Width="95"/>
+                        <DataGridTextColumn Header="الشفت خلال المدة" Binding="{Binding Shift.Name, TargetNullValue='شفته نفسه'}" Width="120"/>
+                        <DataGridTextColumn Header="دخول خاص" Binding="{Binding CheckInTime, StringFormat=hh\\:mm, TargetNullValue=—}" Width="80"/>
+                        <DataGridTextColumn Header="السبب" Binding="{Binding Reason}" Width="1.2*" MinWidth="120"/>
+                        <DataGridTemplateColumn Header="" Width="84">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Content="&#xE70F;" ToolTip="تعديل" Style="{StaticResource RowIconButton}" Tag="#0EA5E9"
+                                                Command="{Binding DataContext.EditCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                        <Button Content="&#xE74D;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                Command="{Binding DataContext.DeleteCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <Border Grid.Column="1" Style="{StaticResource Card}" Width="340" Margin="12,0,0,0"
+                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding EditorTitle}" Style="{StaticResource SectionTitle}"/>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,14,0,0">
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="حفظ"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Content="إلغاء" Style="{StaticResource SecondaryButton}" Command="{Binding CancelCommand}"/>
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Text="الموظف" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding Employees}" DisplayMemberPath="FullName" SelectedValuePath="Id" SelectedValue="{Binding Editor.EmployeeId}"/>
+                        <TextBlock Text="من تاريخ" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker SelectedDate="{Binding Editor.FromDate}"/>
+                        <TextBlock Text="إلى تاريخ" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker SelectedDate="{Binding Editor.ToDate}"/>
+                        <TextBlock Text="النقل إلى شفت (اختياري)" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding Shifts}" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding Editor.ShiftId}"/>
+                        <TextBlock Text="وقت دخول خاص (اختياري، مثل 07:00)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.CheckInTime, TargetNullValue=''}" FlowDirection="LeftToRight"/>
+                        <TextBlock Text="السبب" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Editor.Reason}" TextWrapping="Wrap" MinHeight="50"/>
+                        <TextBlock Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Text="اختر شفتًا آخر للنقل المؤقت، أو اكتب وقت دخول خاص مع بقاء شفته، أو الاثنين. ولا تتداخل مدتان للموظف نفسه."/>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>
