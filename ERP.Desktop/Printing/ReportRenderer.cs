@@ -93,7 +93,7 @@ public static class ReportRenderer
             repeatHeight = Math.Ceiling(repeat.DesiredSize.Height);
         }
         var inner = ((IDocumentPaginatorSource)body).DocumentPaginator;
-        inner.PageSize = new Size(contentWidth, Math.Max(100, bodyHeight - repeatHeight));
+        inner.PageSize = new Size(contentWidth, Math.Max(100, bodyHeight - repeatHeight - (repeat is null ? 0 : 16)));   // هامش أمان: آخر صف لا يلامس التذييل
         HashSet<int> continuing = new();
         if (repeat is not null && inner is DynamicDocumentPaginator dyn && table!.RowGroups.Count > 1 && table.RowGroups[1].Rows.Count > 0)
         {
