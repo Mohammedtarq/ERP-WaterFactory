@@ -57,19 +57,31 @@ try {
     $work = Join-Path $env:TEMP ('erp-autopublish-' + $run.id)
     if (Test-Path $work) { Remove-Item $work -Recurse -Force }
     New-Item $work -ItemType Directory -Force | Out-Null
-    $zip = Join-Path $work 'pkg.zip'
-    # الحزمة نحو 180 ميغابايت: عند انقطاع الاتصال يُستأنف التنزيل من حيث توقف (curl.exe مضمّن في ويندوز) بدل البدء من الصفر
-    $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
-    if (Test-Path $curl) {
-        for ($try = 1; $try -le 40; $try++) {
-            & $curl -L --silent --show-error --fail --connect-timeout 30 --speed-limit 1000 --speed-time 60 -C - -o $zip $location 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) { break }
-            Log "انقطع التنزيل (محاولة $try)، يُستأنف..."
-            if ($try -eq 40) { throw "تعذّر إكمال تنزيل الحزمة بعد 40 محاولة (إنترنت ضعيف)" }
-            Start-Sleep -Seconds 15
+    # الملف الجزئي يبقى بين المحاولات (مجلد ثابت): إن انقطع الإنترنت يُكمَل التنزيل في المحاولة التالية (كل 15 دقيقة، وعند تشغيل الجهاز)
+    # من حيث توقف، ولو كان رابط التنزيل المؤقت قد انتهى فيؤخذ رابط جديد للملف نفسه
+    $dl = Join-Path $dir 'download'
+    New-Item $dl -ItemType Directory -Force | Out-Null
+    Get-ChildItem $dl -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "run-$($run.id).*" } | Remove-Item -Force -ErrorAction SilentlyContinue
+    $part = Join-Path $dl "run-$($run.id).zip.part"
+    $zip = Join-Path $dl "run-$($run.id).zip"
+    if (-not (Test-Path $zip)) {
+        $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
+        if (Test-Path $curl) {
+            $done = $false
+            for ($try = 1; $try -le 12 -and -not $done; $try++) {
+                & $curl -L --silent --show-error --fail --connect-timeout 30 --speed-limit 1000 --speed-time 60 -C - -o $part $location 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) { $done = $true } else { Log "انقطع التنزيل (محاولة $try) — حُفظ ما نُزّل وسيُستأنف"; Start-Sleep -Seconds 20 }
+            }
+            if (-not $done) { throw "لم يكتمل التنزيل بعد؛ سيُستأنف تلقائيًا في الفحص القادم ($([math]::Round((Get-Item $part -ErrorAction SilentlyContinue).Length / 1MB)) م.ب منزّلة)" }
+        } else {
+            Invoke-WebRequest -Uri $location -OutFile $part -UseBasicParsing -TimeoutSec 1200
         }
-    } else {
-        Invoke-WebRequest -Uri $location -OutFile $zip -UseBasicParsing -TimeoutSec 1200
+        # تحقق من سلامة الملف ببصمة GitHub قبل الاعتماد عليه؛ الملف التالف يُحذف ويُعاد من الصفر
+        if ("$($art.digest)" -like 'sha256:*') {
+            $want = "$($art.digest)".Substring(7)
+            if ((Get-FileHash $part -Algorithm SHA256).Hash -ne $want.ToUpperInvariant()) { Remove-Item $part -Force; throw "بصمة الحزمة المنزّلة لا تطابق بصمة GitHub (ملف ناقص أو تالف) — سيُعاد التنزيل" }
+        }
+        Move-Item $part $zip -Force
     }
     Expand-Archive -Path $zip -DestinationPath (Join-Path $work 'pkg') -Force
     $exe = Get-ChildItem (Join-Path $work 'pkg') -Recurse -Filter 'ERP.Desktop.exe' | Select-Object -First 1
@@ -85,6 +97,7 @@ try {
     # يُحدِّث السكربت نفسه من الحزمة المنشورة (كي تصل إصلاحاته دون تدخل يدوي)
     try { $self = Join-Path $source 'Check-GitHubUpdate.ps1'; if (Test-Path $self) { Copy-Item $self (Join-Path $dir 'Check-GitHubUpdate.ps1') -Force } } catch { }
     [IO.File]::WriteAllText($statePath, (ConvertTo-Json @{ runId = $run.id; runNumber = $run.run_number; publishedAt = (Get-Date).ToString('s') } -Compress))
+    Remove-Item $zip -Force -ErrorAction SilentlyContinue
     Log "نُشر التحديث (بناء $($run.run_number)) $(if ($optional) { 'اختياريًا' } else { 'إجباريًا' }) — تتحدث الأجهزة عند فتح البرنامج"
 }
 catch { Log "تعذّر الفحص/النشر: $($_.Exception.Message)" }
