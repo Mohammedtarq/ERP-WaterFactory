@@ -25,7 +25,10 @@ $svc = 'NT SERVICE\MSSQL$' + ($Instance -replace '^.*\\', '')
 if ($LASTEXITCODE -ne 0) { throw 'تعذّر منح صلاحية النسخ للمهمة على SQL Server' }
 
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$(Join-Path $dir 'Backup-ERP.ps1')`" -Instance `"$Instance`" -Root `"$Root`" -KeepDays $KeepDays"
-$trigger = New-ScheduledTaskTrigger -Daily -At $At
+# يومي في الموعد، وأيضًا بعد تشغيل الجهاز بعشر دقائق: لو كان الجهاز مطفأ أو نائمًا وقت الموعد (كما في البيت) لا يفوت يوم بلا نسخة
+$tDaily = New-ScheduledTaskTrigger -Daily -At $At
+$tBoot = New-ScheduledTaskTrigger -AtStartup; $tBoot.Delay = 'PT10M'
+$trigger = @($tDaily, $tBoot)
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 Register-ScheduledTask -TaskName 'ERP-DailyBackup' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
