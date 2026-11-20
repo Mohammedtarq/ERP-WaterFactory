@@ -39,6 +39,8 @@ public class RahmaUpdateSectionViewModel : SectionViewModel
     private string _sourceMessage = "";
     private string? _undoReason;
     private string _lastRunText = "";
+    private string _restoreFile = "";
+    private string _restoreMessage = "";
 
     public RahmaUpdateSectionViewModel(AppSession s, IDialogService d)
         : base(s, d, ModuleCode.SystemSettings, "تحديث من الرحمة", Icons.Import, "#B45309",
@@ -47,6 +49,11 @@ public class RahmaUpdateSectionViewModel : SectionViewModel
         PreviewCommand = new AsyncRelayCommand(PreviewAsync);
         ApplyCommand = new AsyncRelayCommand(ApplyAsync);
         UndoCommand = new AsyncRelayCommand(UndoAsync);
+        BrowseCommand = new RelayCommand(() =>
+        {
+            if (Dialogs.PickFile("اختر ملف نسخة الرحمة الاحتياطية (.bak)", "نسخ SQL Server (*.bak)|*.bak|كل الملفات (*.*)|*.*") is { } path) RestoreFile = path;
+        });
+        RestoreCommand = new AsyncRelayCommand(RestoreAsync);
     }
 
     protected override bool HasPendingInput => Preview is not null;
@@ -61,6 +68,12 @@ public class RahmaUpdateSectionViewModel : SectionViewModel
     public AsyncRelayCommand PreviewCommand { get; }
     public AsyncRelayCommand ApplyCommand { get; }
     public AsyncRelayCommand UndoCommand { get; }
+    public RelayCommand BrowseCommand { get; }
+    public AsyncRelayCommand RestoreCommand { get; }
+
+    /// <summary>ملف نسخة الرحمة (.bak) على جهاز السيرفر: SQL Server هو من يقرأه.</summary>
+    public string RestoreFile { get => _restoreFile; set => SetProperty(ref _restoreFile, value ?? ""); }
+    public string RestoreMessage { get => _restoreMessage; private set => SetProperty(ref _restoreMessage, value); }
 
     public RahmaDatabaseCandidate? Source { get => _source; set { if (SetProperty(ref _source, value)) Preview = null; } }
     public string SourceMessage { get => _sourceMessage; private set => SetProperty(ref _sourceMessage, value); }
@@ -120,6 +133,23 @@ public class RahmaUpdateSectionViewModel : SectionViewModel
                             r.UndoneAt is null ? "مُطبَّق" : $"أُلغي ({r.UndoReason})"));
         var last = await svc.LastActiveRunAsync();
         LastRunText = last is null ? "" : $"آخر تحديث: {last.AppliedAt.ToLocalTime():yyyy/MM/dd HH:mm} — {last.Summary}";
+    }
+
+    private async Task RestoreAsync()
+    {
+        if (!Require(CanEdit, "استعادة نسخة الرحمة")) return;
+        if (string.IsNullOrWhiteSpace(RestoreFile)) { Dialogs.Error("اختر ملف نسخة الرحمة (.bak) أو اكتب مساره على جهاز السيرفر"); return; }
+        if (!Dialogs.Confirm("استعادة نسخة الرحمة كقاعدة منفصلة جديدة على السيرفر؟\nلن تتغير قاعدة النظام ولا قاعدة الرحمة الأصلية. قد تستغرق دقيقة أو أكثر.")) return;
+        IsBusy = true;
+        try
+        {
+            var r = await RahmaRestoreService.RestoreAsync(Session.ConnectionString, RestoreFile);
+            if (!r.Success) { RestoreMessage = ""; Dialogs.Error(r.Error ?? "تعذّرت الاستعادة"); return; }
+            RestoreMessage = $"✓ استُعيدت النسخة باسم {r.DatabaseName} ({r.SizeMb:N0} م.ب) وظهرت في القائمة أدناه.";
+            await LoadAsync();
+            Source = Candidates.FirstOrDefault(c => c.Name == r.DatabaseName) ?? Source;
+        }
+        finally { IsBusy = false; }
     }
 
     private async Task PreviewAsync()

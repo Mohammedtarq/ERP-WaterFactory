@@ -119,3 +119,82 @@ public class RahmaUpdateTests
         finally { await f.DisposeAsync(); }
     }
 }
+
+/// <summary>«استعادة نسخة الرحمة»: ملف .bak يُستعاد كقاعدة منفصلة جديدة، وملف غير الرحمة يُرفض ولا يبقى منه شيء.</summary>
+public class RahmaRestoreTests
+{
+    [Fact]
+    public void Suggested_name_comes_from_the_backup_file_name_or_the_date()
+    {
+        Assert.Equal("ALRAHMA_2026_11_15_1607", RahmaRestoreService.SuggestName(@"F:\Rahma\ALRAHMA2026-11-15-1607.bak", DateTime.Now));
+        Assert.Equal("ALRAHMA_2026_11_20_1015", RahmaRestoreService.SuggestName("/x/other.bak", new DateTime(2026, 11, 20, 10, 15, 0)));
+    }
+
+    private static async Task<bool> DbExistsAsync(string master, string name)
+    {
+        await using var conn = new SqlConnection(master);
+        await conn.OpenAsync();
+        await using var cmd = new SqlCommand("SELECT DB_ID(@n)", conn);
+        cmd.Parameters.AddWithValue("@n", name);
+        return await cmd.ExecuteScalarAsync() is not (null or DBNull);
+    }
+
+    [Fact]
+    public async Task Restore_makes_a_separate_database_rejects_non_rahma_files_and_never_overwrites()
+    {
+        var f = new RahmaFixture();
+        await f.InitializeAsync();
+        var restored = new List<string>();
+        var master = new SqlConnectionStringBuilder(f.LegacyCs) { InitialCatalog = "master" }.ConnectionString;
+        try
+        {
+            var backup = new ERP.Data.Services.BackupService(master);
+            var folder = await backup.GetDefaultFolderAsync();
+            Assert.False(string.IsNullOrEmpty(folder));
+            var rahmaBak = await backup.BackupAsync(f.LegacyDb, folder!, "rahma");
+            var systemBak = await backup.BackupAsync($"ERP_Rahma_{f.Suffix}", folder!, "system");
+
+            // نسخة رحمة صحيحة: قاعدة جديدة بجداول الرحمة، تظهر في قائمة المصادر، ويمكن تحليلها
+            var ok = await RahmaRestoreService.RestoreAsync(master, rahmaBak);
+            Assert.True(ok.Success, ok.Error);
+            restored.Add(ok.DatabaseName);
+            Assert.StartsWith("ALRAHMA_", ok.DatabaseName);
+            Assert.Contains(await RahmaLegacyReader.FindCandidatesAsync(master), c => c.Name == ok.DatabaseName);
+            var plan = await RahmaLegacyReader.AnalyzeAsync(new SqlConnectionStringBuilder(master) { InitialCatalog = ok.DatabaseName }.ConnectionString);
+            Assert.Equal(5, plan.Customers.Count);
+
+            // الاستعادة مرة ثانية لا تستبدل الأولى: اسم جديد
+            var again = await RahmaRestoreService.RestoreAsync(master, rahmaBak);
+            Assert.True(again.Success, again.Error);
+            restored.Add(again.DatabaseName);
+            Assert.NotEqual(ok.DatabaseName, again.DatabaseName);
+
+            // قاعدة النظام الأصلية لم تُمس
+            Assert.True(await DbExistsAsync(master, f.LegacyDb));
+            Assert.True(await DbExistsAsync(master, $"ERP_Rahma_{f.Suffix}"));
+
+            // نسخة قاعدة النظام (ليست الرحمة): ترفض ولا تترك قاعدة مستعادة
+            var before = (await RahmaLegacyReader.FindCandidatesAsync(master)).Count;
+            var bad = await RahmaRestoreService.RestoreAsync(master, systemBak);
+            Assert.False(bad.Success);
+            Assert.Contains("ليس نسخة من نظام الرحمة", bad.Error);
+            Assert.Equal(before, (await RahmaLegacyReader.FindCandidatesAsync(master)).Count);
+
+            // ملف غير موجود / ليس .bak / فارغ
+            Assert.Contains("SQL Server", (await RahmaRestoreService.RestoreAsync(master, folder!.TrimEnd('/', '\\') + "/no-such-file.bak")).Error);
+            Assert.Contains(".bak", (await RahmaRestoreService.RestoreAsync(master, "x.txt")).Error);
+            Assert.Contains("اختر", (await RahmaRestoreService.RestoreAsync(master, " ")).Error);
+        }
+        finally
+        {
+            await using var conn = new SqlConnection(master);
+            await conn.OpenAsync();
+            foreach (var db in restored)
+            {
+                await using var cmd = new SqlCommand($"IF DB_ID('{db}') IS NOT NULL BEGIN ALTER DATABASE [{db}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{db}]; END", conn);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            await f.DisposeAsync();
+        }
+    }
+}
