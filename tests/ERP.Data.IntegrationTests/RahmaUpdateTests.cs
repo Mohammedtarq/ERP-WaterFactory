@@ -174,11 +174,13 @@ public class RahmaRestoreTests
             Assert.True(await DbExistsAsync(master, $"ERP_Rahma_{f.Suffix}"));
 
             // نسخة قاعدة النظام (ليست الرحمة): ترفض ولا تترك قاعدة مستعادة
-            var before = (await RahmaLegacyReader.FindCandidatesAsync(master)).Count;
+            // نعدّ القواعد المستعادة بهذه الخاصية فقط (ALRAHMA_20..)؛ اختبارات أخرى تعمل بالتوازي وتنشئ/تحذف قواعدها (ALRAHMA_T..)
+            static async Task<int> RestoredCountAsync(string m) => (await RahmaLegacyReader.FindCandidatesAsync(m)).Count(c => c.Name.StartsWith("ALRAHMA_20"));
+            var before = await RestoredCountAsync(master);
             var bad = await RahmaRestoreService.RestoreAsync(master, systemBak);
             Assert.False(bad.Success);
             Assert.Contains("ليس نسخة من نظام الرحمة", bad.Error);
-            Assert.Equal(before, (await RahmaLegacyReader.FindCandidatesAsync(master)).Count);
+            Assert.Equal(before, await RestoredCountAsync(master));
 
             // ملف غير موجود / ليس .bak / فارغ
             Assert.Contains("SQL Server", (await RahmaRestoreService.RestoreAsync(master, folder!.TrimEnd('/', '\\') + "/no-such-file.bak")).Error);
