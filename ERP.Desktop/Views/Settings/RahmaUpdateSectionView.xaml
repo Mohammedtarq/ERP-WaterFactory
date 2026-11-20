@@ -6,10 +6,12 @@
              xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:RahmaUpdateSectionViewModel}"
              x:Name="Root">
+    <!-- الصفحة تُمرَّر عموديًا كي يبقى جدول التقرير بارتفاع مريح مهما صغرت الشاشة -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -66,7 +68,7 @@
                         <DataTemplate><TextBlock Text="{Binding}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,2"/></DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True" AutoGenerateColumns="False">
+                <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True" AutoGenerateColumns="False" Height="300">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="النوع" Binding="{Binding Section}" Width="130"/>
                         <DataGridTextColumn Header="الاسم" Binding="{Binding Name}" Width="220"/>
@@ -103,4 +105,5 @@
             </StackPanel>
         </Border>
     </Grid>
+    </ScrollViewer>
 </UserControl>
