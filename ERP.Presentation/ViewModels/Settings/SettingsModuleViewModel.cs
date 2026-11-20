@@ -29,7 +29,7 @@ public class SettingsModuleViewModel : ModuleViewModel
         Add(new CloudSyncSectionViewModel(s, d));
         Add(new BrandingSectionViewModel(s, d));
         Add(new AppearanceSectionViewModel(s, d));
-        Add(new RahmaImportSectionViewModel(s, d));
+        Add(new RahmaHubSectionViewModel(s, d));
         if (s.Permissions.Has(SpecialPermission.AuditLog)) Add(new Controls.AuditLogSectionViewModel(s, d));
     }
 }

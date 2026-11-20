@@ -47,6 +47,12 @@ public class UpdateServiceTests
         Assert.Null(await UpdateService.CheckAsync(same, baseUri, new Version(1, 0, 450, 0)));
         using var older = new HttpClient(new Fake(() => Json("1.0.449.0")));
         Assert.Null(await UpdateService.CheckAsync(older, baseUri, new Version(1, 0, 450, 0)));
+        // نسخة «تراجع» منشورة: تُعرض لمن نسخته أحدث منها، ولا تُعرض لمن عنده النسخة نفسها
+        using var rollback = new HttpClient(new Fake(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"version":"1.0.449.0","mandatory":true,"rollback":true}""") }));
+        var back = await UpdateService.CheckAsync(rollback, baseUri, new Version(1, 0, 450, 0));
+        Assert.True(back!.Rollback);
+        Assert.Equal(new Version(1, 0, 449, 0), back.Version);
+        Assert.Null(await UpdateService.CheckAsync(rollback, baseUri, new Version(1, 0, 449, 0)));
         using var missing = new HttpClient(new Fake(() => new HttpResponseMessage(HttpStatusCode.NotFound)));
         Assert.Null(await UpdateService.CheckAsync(missing, baseUri, new Version(1, 0, 450, 0)));
         using var down = new HttpClient(new Fake(() => throw new HttpRequestException("no route")));

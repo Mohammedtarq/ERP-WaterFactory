@@ -23,3 +23,34 @@ public class LegacyImportMapEntry
     public string LegacyKey { get; set; } = "";
     public int NewId { get; set; }
 }
+
+/// <summary>تحديث واحد من الرحمة (بيانات أساسية): يُسجَّل بتغييراته ليمكن التراجع عنه.</summary>
+public class LegacyUpdateRun
+{
+    public int Id { get; set; }
+    public string SourceDatabase { get; set; } = "";
+    public DateTime AppliedAt { get; set; } = DateTime.UtcNow;
+    public int AppliedByUserId { get; set; }
+    public string? Summary { get; set; }
+    public string? PreBackupPath { get; set; }
+    public DateTime? UndoneAt { get; set; }
+    public int? UndoneByUserId { get; set; }
+    public string? UndoReason { get; set; }
+    public List<LegacyUpdateChange> Changes { get; set; } = new();
+}
+
+public class LegacyUpdateChange
+{
+    public int Id { get; set; }
+    public int RunId { get; set; }
+    public LegacyUpdateRun Run { get; set; } = null!;
+    /// <summary>Customer / Supplier / ProductPrice.</summary>
+    public string EntityType { get; set; } = "";
+    public int EntityId { get; set; }
+    public string? LegacyKey { get; set; }
+    /// <summary>Created أو Updated.</summary>
+    public string Action { get; set; } = "";
+    public string? Field { get; set; }
+    public string? OldValue { get; set; }
+    public string? NewValue { get; set; }
+}

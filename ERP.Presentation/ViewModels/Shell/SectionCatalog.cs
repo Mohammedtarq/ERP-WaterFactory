@@ -38,7 +38,8 @@ public static class SectionCatalog
         (type == typeof(Production.DailyProductionSectionViewModel) && !Production.ProductionModuleViewModel.ShowDailyProduction)
         || ((type == typeof(Finance.ReconciliationSectionViewModel) || type == typeof(Finance.PartnersSectionViewModel) || type == typeof(Finance.WorkingCapitalSectionViewModel))
             && !Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens)
-        || (HR.HrModuleViewModel.MergedScreens.Contains(type) && !HR.HrModuleViewModel.ShowSeparateScreens);
+        || (HR.HrModuleViewModel.MergedScreens.Contains(type) && !HR.HrModuleViewModel.ShowSeparateScreens)
+        || type == typeof(Settings.RahmaImportSectionViewModel) || type == typeof(Settings.RahmaUpdateSectionViewModel);   // داخل صفحة «الرحمة»
 
     public static bool IsConfigurable(string homeModule) => homeModule is not (ModuleCode.SystemSettings or ModuleCode.Dashboard);
 

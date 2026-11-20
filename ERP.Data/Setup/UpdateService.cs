@@ -4,7 +4,7 @@ using Microsoft.Data.SqlClient;
 namespace ERP.Data.Setup;
 
 /// <summary>ما نشره السيرفر في <c>version.json</c>: رقم النسخة، وهل التحديث إجباري (تغيّرت قاعدة البيانات أو تعارض مع القديم).</summary>
-public record UpdateOffer(Version Version, bool Mandatory);
+public record UpdateOffer(Version Version, bool Mandatory, bool Rollback = false);
 
 /// <summary>
 /// التحديث التلقائي للبرنامج من السيرفر المحلي (نفس الخادم المحلي لتطبيق المندوبين على المنفذ 5080):
@@ -39,7 +39,8 @@ public static class UpdateService
             var root = doc.RootElement;
             if (!root.TryGetProperty("version", out var v) || !Version.TryParse(v.GetString(), out var version)) return null;
             var mandatory = root.TryGetProperty("mandatory", out var m) && m.ValueKind == JsonValueKind.True;
-            return new UpdateOffer(version, mandatory);
+            var rollback = root.TryGetProperty("rollback", out var r) && r.ValueKind == JsonValueKind.True;
+            return new UpdateOffer(version, mandatory, rollback);
         }
         catch (JsonException) { return null; }
     }
@@ -52,7 +53,8 @@ public static class UpdateService
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(4));
             var json = await http.GetStringAsync(new Uri(baseUri, "version.json"), cts.Token);
-            return ParseOffer(json) is { } offer && offer.Version > current ? offer : null;
+            // «تراجع» منشور من السيرفر (rollback): يُعرض لكل من نسخته تختلف عنه (وإلا فلا يُعرض إلا الأحدث)
+            return ParseOffer(json) is { } offer && (offer.Version > current || (offer.Rollback && offer.Version != current)) ? offer : null;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException) { return null; }
     }

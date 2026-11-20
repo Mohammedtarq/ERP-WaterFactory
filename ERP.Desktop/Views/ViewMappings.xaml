@@ -254,6 +254,8 @@
     <DataTemplate DataType="{x:Type vmSettings:BackupSectionViewModel}"><vSettings:BackupSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:CloudSyncSectionViewModel}"><vSettings:CloudSyncSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:RahmaImportSectionViewModel}"><vSettings:RahmaImportSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSettings:RahmaUpdateSectionViewModel}"><vSettings:RahmaUpdateSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmSettings:RahmaHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmSettings:BrandingSectionViewModel}"><vSettings:BrandingSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmControls:AuditLogSectionViewModel}"><vControls:AuditLogSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmControls:PeriodLockSectionViewModel}"><vControls:PeriodLockSectionView/></DataTemplate>

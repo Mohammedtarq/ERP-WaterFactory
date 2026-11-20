@@ -37,9 +37,14 @@ public class RahmaImportScreenTests
         {
             var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
             var settings = shell.Open<SettingsModuleViewModel>(ModuleCode.SystemSettings);
-            var imp = settings.Section<RahmaImportSectionViewModel>();
-            settings.SelectedTab = imp;
+            var hub = settings.Section<RahmaHubSectionViewModel>();          // «الرحمة»: تحديث + النقل الأول
+            settings.SelectedTab = hub;
             await settings.IdleAsync();
+            Assert.Equal(new[] { "تحديث من الرحمة", "النقل الأول" }, hub.Tabs.Select(t => t.Title));
+            Assert.NotNull(hub.Child<RahmaUpdateSectionViewModel>());
+            Assert.True(hub.Select(x => x is RahmaImportSectionViewModel));
+            var imp = hub.Child<RahmaImportSectionViewModel>();
+            await hub.IdleAsync();
             await imp.IdleAsync();
             Assert.False(imp.IsImported);
             Assert.False(imp.HasPlan);

@@ -34,7 +34,7 @@ $files = Join-Path $next 'files'
 New-Item $files -ItemType Directory -Force | Out-Null
 
 Write-Host "  نسخ الحزمة ($version) ..."
-& robocopy $Source $files /E /R:2 /W:2 /NFL /NDL /NJH /NJS /NP /XF 'Install-ERP.ps1' 'Publish-Update.ps1' 'Apply-Update.ps1' '*.cmd' | Out-Null
+& robocopy $Source $files /E /R:2 /W:2 /NFL /NDL /NJH /NJS /NP /XF 'Install-ERP.ps1' 'Publish-Update.ps1' 'Apply-Update.ps1' 'Rollback-Update.ps1' '*.cmd' | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "تعذّر نسخ الحزمة (robocopy $LASTEXITCODE)" }
 Copy-Item $applyScript (Join-Path $next 'Apply-Update.ps1') -Force
 

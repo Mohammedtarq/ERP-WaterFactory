@@ -95,7 +95,7 @@ public static class SectionGrouping
         {
             new GroupDef("الصلاحيات", Blue, "RolesPermissions", "SectionLayout", "Users", "AuditLog"),
             new GroupDef("المشروع", Green, "Branches", "Projects", "Branding", "Appearance"),
-            new GroupDef("النظام", Slate, "Backup", "CloudSync", "RahmaImport"),
+            new GroupDef("النظام", Slate, "Backup", "CloudSync", "RahmaHub", "RahmaImport", "RahmaUpdate"),
         },
     };
 
