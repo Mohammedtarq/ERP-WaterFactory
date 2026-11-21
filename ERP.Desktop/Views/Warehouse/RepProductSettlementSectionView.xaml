@@ -1,0 +1,137 @@
+<UserControl x:Class="ERP.Desktop.Views.Warehouse.RepProductSettlementSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Reps;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:RepProductSettlementSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="520"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Style="{StaticResource Card}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="تسوية منتجات المندوب" Style="{StaticResource SectionTitle}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="سيارة المندوب" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding Vans}" SelectedItem="{Binding Van}" DisplayMemberPath="Name"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                            <TextBlock Text="المرتجع السليم إلى" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding Stores}" SelectedItem="{Binding Store}" DisplayMemberPath="Name"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Margin="8,0,0,0">
+                            <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                            <DatePicker SelectedDate="{Binding Date}"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap">
+                        <Run Text="{Binding RepName, Mode=OneWay}"/>
+                        <Run Text=" — في السيارة: "/><Run Text="{Binding VanText, Mode=OneWay}"/>
+                    </TextBlock>
+
+                    <!-- المرتجع -->
+                    <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,10,0,0">
+                        <StackPanel>
+                            <TextBlock Text="1) المرتجع" FontWeight="SemiBold"/>
+                            <TextBlock Text="الصنف (الاسم الموحد مع المتوفر)" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding LineChoice}" DisplayMemberPath="Display" TextSearch.TextPath="Name" IsTextSearchEnabled="True"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <StackPanel><TextBlock Text="الكمية" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding LineQuantity}" Width="80" FlowDirection="LeftToRight"/></StackPanel>
+                                <CheckBox Content="تالف ميداني" IsChecked="{Binding LineDamaged}" VerticalAlignment="Bottom" Margin="10,0,10,6"/>
+                                <Button Content="إضافة" Style="{StaticResource SecondaryButton}" Command="{Binding AddReturnCommand}" VerticalAlignment="Bottom"/>
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding Returns}" Margin="0,6,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,2">
+                                            <Button DockPanel.Dock="Left" Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                    Command="{Binding DataContext.RemoveReturnCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                            <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"><Run Text="{Binding Name, Mode=OneWay}"/> — <Run Text="{Binding Text, Mode=OneWay}"/></TextBlock>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- المجاني -->
+                    <Border Background="#F8FAFC" CornerRadius="8" Padding="10" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="2) مجاني المندوب (لمن ولماذا)" FontWeight="SemiBold"/>
+                            <TextBlock Text="الصنف (الاسم الموحد مع المتوفر)" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding FreeChoice}" DisplayMemberPath="Display" TextSearch.TextPath="Name" IsTextSearchEnabled="True"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <StackPanel><TextBlock Text="الكمية" Style="{StaticResource FieldLabel}"/><TextBox Text="{Binding FreeQuantity}" Width="80" FlowDirection="LeftToRight"/></StackPanel>
+                                <StackPanel Margin="8,0,0,0"><TextBlock Text="العميل (اختياري)" Style="{StaticResource FieldLabel}"/><ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding FreeCustomer}" DisplayMemberPath="Name" Width="220"/></StackPanel>
+                            </StackPanel>
+                            <TextBlock Text="السبب (هدية افتتاح، تعويض تالف، عينة...)" Style="{StaticResource FieldLabel}"/>
+                            <DockPanel>
+                                <Button DockPanel.Dock="Left" Content="إضافة" Style="{StaticResource SecondaryButton}" Command="{Binding AddFreeCommand}" Margin="6,0,0,0"/>
+                                <TextBox Text="{Binding FreeReason}"/>
+                            </DockPanel>
+                            <ItemsControl ItemsSource="{Binding FreeGoods}" Margin="0,6,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,2">
+                                            <Button DockPanel.Dock="Left" Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                                    Command="{Binding DataContext.RemoveFreeCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                            <TextBlock VerticalAlignment="Center" TextWrapping="Wrap"><Run Text="{Binding Name, Mode=OneWay}"/> — <Run Text="{Binding Text, Mode=OneWay}"/></TextBlock>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ما بقي -->
+                    <Border Background="#F0FDF4" CornerRadius="8" Padding="10" Margin="0,8,0,0">
+                        <StackPanel>
+                            <TextBlock Text="3) ما بقي في السيارة" FontWeight="SemiBold"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <CheckBox Content="فوترة ما بقي في السيارة نقدًا على" IsChecked="{Binding InvoiceRemaining}" VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding Customers}" SelectedItem="{Binding InvoiceCustomer}" DisplayMemberPath="Name" Width="200" Margin="6,0,0,0" IsEnabled="{Binding InvoiceRemaining}"/>
+                            </StackPanel>
+                            <TextBlock Text="النقد والمصاريف تسجّلها المالية بعد ذلك من «تسوية النقد»." Style="{StaticResource Muted}" Margin="0,6,0,0"/>
+                            <TextBlock Text="ملاحظات" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Text="{Binding Notes}"/>
+                        </StackPanel>
+                    </Border>
+                    <Button Content="حفظ تسوية المنتجات" Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}" Margin="0,10,0,0" HorizontalAlignment="Stretch"/>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="آخر التسويات (14 يومًا)" Style="{StaticResource SectionTitle}"/>
+                <DataGrid ItemsSource="{Binding History}" IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الرقم" Binding="{Binding SettlementNumber}" Width="110"/>
+                        <DataGridTextColumn Header="التاريخ" Binding="{Binding SettlementDate, StringFormat=yyyy/MM/dd}" Width="85"/>
+                        <DataGridTextColumn Header="المندوب" Binding="{Binding RepName}" Width="*"/>
+                        <DataGridTextColumn Header="مرتجع (قطعة)" Binding="{Binding ReturnedPieces, StringFormat=N0}" Width="90"/>
+                        <DataGridTextColumn Header="مجاني (قطعة)" Binding="{Binding FreePieces, StringFormat=N0}" Width="90"/>
+                        <DataGridTextColumn Header="فاتورة الباقي" Binding="{Binding InvoiceNumber}" Width="110"/>
+                        <DataGridTextColumn Header="الحالة" Binding="{Binding StatusText}" Width="170"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE749;" ToolTip="طباعة التسوية" Style="{StaticResource RowIconButton}" Tag="#0F766E"
+                                            Command="{Binding DataContext.PrintCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

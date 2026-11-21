@@ -1,0 +1,56 @@
+<UserControl x:Class="ERP.Desktop.Views.Shell.HubSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Shell;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:HubSectionViewModel}">
+    <!-- صفحة مدموجة: تبويبات بلون طبيعي واحد، والتفرقة بحافة ملوّنة في أعلى كل تبويب بلونه (أسمك للمختار)، بلا إطار حول الصفحة -->
+    <TabControl ItemsSource="{Binding Tabs}" SelectedIndex="{Binding SelectedIndex, Mode=TwoWay}"
+                BorderThickness="0,1,0,0" Padding="0,8,0,0" Background="Transparent">
+        <TabControl.ItemContainerStyle>
+            <Style TargetType="TabItem">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TabItem">
+                            <Border x:Name="Bd" Margin="0,0,4,0" Padding="16,8,16,10" CornerRadius="8,8,0,0" Cursor="Hand"
+                                    Background="#E8EDF3" BorderThickness="0,4,0,0"
+                                    BorderBrush="{Binding Color, Converter={StaticResource HexBrush}}">
+                                <ContentPresenter ContentSource="Header" TextElement.FontWeight="SemiBold"
+                                                  TextElement.Foreground="#475569"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="White"/>
+                                    <Setter TargetName="Bd" Property="BorderThickness" Value="0,5,0,0"/>
+                                    <Setter TargetName="Bd" Property="Padding" Value="16,7,16,10"/>
+                                    <Setter TargetName="Bd" Property="TextElement.Foreground" Value="#0F172A"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#DCE3EC"/>
+                                </Trigger>
+                                <MultiTrigger>
+                                    <MultiTrigger.Conditions>
+                                        <Condition Property="IsMouseOver" Value="True"/>
+                                        <Condition Property="IsSelected" Value="True"/>
+                                    </MultiTrigger.Conditions>
+                                    <Setter TargetName="Bd" Property="Background" Value="White"/>
+                                </MultiTrigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </TabControl.ItemContainerStyle>
+        <TabControl.ItemTemplate>
+            <DataTemplate>
+                <TextBlock Text="{Binding Title}"/>
+            </DataTemplate>
+        </TabControl.ItemTemplate>
+        <TabControl.ContentTemplate>
+            <DataTemplate>
+                <ContentControl Content="{Binding Child}" Margin="0,10,0,0"/>
+            </DataTemplate>
+        </TabControl.ContentTemplate>
+    </TabControl>
+</UserControl>

@@ -1,0 +1,55 @@
+<UserControl x:Class="ERP.Desktop.Views.Warehouse.WarehouseAlertsEditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Warehouse;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:WarehouseAlertsEditor}">
+    <!-- حدود التنبيه لمخزن واحد: بحث، والحد بعبوة الصنف، وحفظ -->
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <Button DockPanel.Dock="Left" Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                    <TextBlock Text="حفظ حدود التنبيه"/>
+                </StackPanel>
+            </Button>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#xE721;" Style="{StaticResource Icon}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" Width="240" ToolTip="بحث باسم الصنف أو الكود"/>
+                <TextBlock Text="{Binding LowCount, StringFormat='عند الحد أو أقل: {0}'}" FontWeight="SemiBold" Foreground="{StaticResource DangerBrush}"
+                           VerticalAlignment="Center" Margin="16,0,0,0"/>
+            </StackPanel>
+        </DockPanel>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Muted}" Margin="0,0,0,8" TextWrapping="Wrap"
+                   Text="الحد يُكتب بعبوة الصنف ويُقارن برصيد هذا المخزن وحده. اتركه فارغًا لإلغاء الحد الخاص بالمخزن (يعود حد بطاقة الصنف إن كان هذا مخزنه الرئيسي)."/>
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+        <DataGrid ItemsSource="{Binding VisibleRows}" IsReadOnly="False" CanUserAddRows="False">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsLow}" Value="True">
+                            <Setter Property="Background" Value="#FEF2F2"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="الرمز" Binding="{Binding ItemCode}" Width="100" IsReadOnly="True"/>
+                <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*" MinWidth="160" IsReadOnly="True"/>
+                <DataGridTextColumn Header="الرصيد في المخزن" Binding="{Binding BalanceText}" Width="150" IsReadOnly="True"/>
+                <DataGridTextColumn Header="حد التنبيه ✎" Binding="{Binding Threshold, TargetNullValue='', UpdateSourceTrigger=LostFocus}" Width="110">
+                    <DataGridTextColumn.CellStyle>
+                        <Style TargetType="DataGridCell">
+                            <Setter Property="Background" Value="#FFFBEB"/>
+                            <Setter Property="ToolTip" Value="اكتب الحد بالعبوة الظاهرة بجانبه"/>
+                        </Style>
+                    </DataGridTextColumn.CellStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="العبوة" Binding="{Binding UnitName}" Width="80" IsReadOnly="True"/>
+                <DataGridTextColumn Header="المصدر" Binding="{Binding SourceText}" Width="120" IsReadOnly="True"/>
+                <DataGridCheckBoxColumn Header="منخفض" Binding="{Binding IsLow, Mode=OneWay}" Width="70" IsReadOnly="True"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>

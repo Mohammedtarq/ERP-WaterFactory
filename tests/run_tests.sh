@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# يشغّل كل الاختبارات على SQL Server 2022 حقيقي داخل Docker:
+#   1) ملفات Database/00 → 11 على قاعدة نظيفة + اختبارات SQL (tests/test_sales.sql)
+#   2) بناء كل المشاريع (ومنها ERP.Desktop والخادم السحابي وخدمة المزامنة) + اختبارات تكامل C# + اختبارات الشاشات + المزامنة السحابية من طرف إلى طرف
+# الاستخدام: ./tests/run_tests.sh      (يتطلب Docker فقط)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+ROOT=$(pwd)
+
+SQL_CONTAINER=erp-sql-test
+PASS='Test_Pass123!'
+PORT=${ERP_TEST_SQL_PORT:-14333}
+STAMP=$(date +%s)
+
+if ! docker ps --format '{{.Names}}' | grep -qx "$SQL_CONTAINER"; then
+  docker rm -f "$SQL_CONTAINER" >/dev/null 2>&1 || true
+  docker run -d --name "$SQL_CONTAINER" -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=$PASS" \
+    -p "$PORT:1433" mcr.microsoft.com/mssql/server:2022-latest >/dev/null
+fi
+
+# -I = QUOTED_IDENTIFIER ON (نفس سلوك SSMS)
+sq() { docker exec -i "$SQL_CONTAINER" /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$PASS" -b -I -f 65001 "$@"; }
+
+for _ in $(seq 1 60); do sq -Q "SELECT 1" >/dev/null 2>&1 && break; sleep 2; done
+
+new_project_db() {
+  sq -Q "CREATE DATABASE [$1] COLLATE Arabic_CI_AS" >/dev/null
+  for f in Database/0[1-9]_*.sql Database/[1-9][0-9]_*.sql; do
+    [ -e "$f" ] || continue
+    sq -d "$1" < "$f" >/dev/null
+  done
+}
+
+echo "▶ Database/00_control_db.sql"
+sq -Q "IF DB_ID('ERP_ControlDB') IS NOT NULL BEGIN ALTER DATABASE ERP_ControlDB SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ERP_ControlDB; END" >/dev/null
+sq < Database/00_control_db.sql >/dev/null
+
+status=0
+
+echo "▶ اختبارات SQL"
+SQL_DB="ERP_SqlTest_$STAMP"
+new_project_db "$SQL_DB"
+sq -d "$SQL_DB" < tests/test_sales.sql | grep -E '✓|✗|✅|❌|رسالة' || status=1
+sq -Q "DROP DATABASE [$SQL_DB]" >/dev/null
+
+echo "▶ بناء C# واختبارات التكامل + اختبارات الشاشات"
+NET_DB="ERP_NetTest_$STAMP"
+UI_DB="ERP_UiTest_$STAMP"
+new_project_db "$NET_DB"
+new_project_db "$UI_DB"
+CS_BASE="Server=localhost,$PORT;User Id=sa;Password=$PASS;TrustServerCertificate=True;"
+PROXY_ARGS=()
+if [ -n "${HTTPS_PROXY:-}" ]; then
+  PROXY_ARGS+=(-e "HTTPS_PROXY=$HTTPS_PROXY")
+  [ -f /root/.ccr/ca-bundle.crt ] && PROXY_ARGS+=(-e SSL_CERT_FILE=/ca.crt -v /root/.ccr/ca-bundle.crt:/ca.crt:ro)
+fi
+docker run --rm --network host "${PROXY_ARGS[@]}" \
+  -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 \
+  -e "ERP_TEST_CONNECTION=${CS_BASE}Database=$NET_DB;" \
+  -e "ERP_TEST_MASTER_CONNECTION=${CS_BASE}Database=master;" \
+  -e "ERP_TEST_CONTROL_CONNECTION=${CS_BASE}Database=ERP_ControlDB;" \
+  -e "ERP_TEST_PROJECT_CONNECTION=${CS_BASE}Database=$UI_DB;" \
+  -v "$ROOT":/src -v erp-nuget:/root/.nuget -w /src mcr.microsoft.com/dotnet/sdk:9.0 sh -c '
+    set -e
+    dotnet build ERP.Data/ERP.Data.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
+    dotnet build ERP.Presentation/ERP.Presentation.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
+    dotnet build ERP.SeedTool/ERP.SeedTool.csproj -nologo -v q -p:NuGetAudit=false
+    dotnet build ERP.Cloud.Api/ERP.Cloud.Api.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
+    dotnet build ERP.SyncAgent/ERP.SyncAgent.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
+    dotnet build ERP.RepApp.Core/ERP.RepApp.Core.csproj -nologo -v q -warnaserror -p:NuGetAudit=false
+    dotnet build ERP.Desktop/ERP.Desktop.csproj -nologo -v q -p:EnableWindowsTargeting=true -p:NuGetAudit=false
+    dotnet build tests/ERP.Desktop.UiTests -nologo -v q -p:EnableWindowsTargeting=true -p:NuGetAudit=false
+    dotnet test tests/ERP.Data.IntegrationTests -nologo -v q --logger "console;verbosity=normal"
+    dotnet test tests/ERP.Presentation.Tests -nologo -v q --logger "console;verbosity=normal"
+    dotnet test tests/ERP.Cloud.Tests -nologo -v q --logger "console;verbosity=normal"
+  ' || status=1
+sq -Q "DROP DATABASE [$NET_DB]; DROP DATABASE [$UI_DB]" >/dev/null
+
+[ $status -eq 0 ] && echo "✅ كل الاختبارات نجحت" || echo "❌ يوجد فشل — راجع المخرجات أعلاه"
+exit $status

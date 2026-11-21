@@ -1,0 +1,143 @@
+<UserControl x:Class="ERP.Desktop.Views.Settings.CloudSyncSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Settings;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:CloudSyncSectionViewModel}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="400"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- الحالة: الخادمان معًا -->
+        <StackPanel>
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,10">
+                        <Button DockPanel.Dock="Right" Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0369A1" Command="{Binding RefreshCommand}"/>
+                        <TextBlock Text="حالة المزامنة" Style="{StaticResource SectionTitle}" Margin="0"/>
+                    </DockPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="14" Height="14" Fill="{Binding LevelColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding StateText}" FontSize="15" FontWeight="SemiBold" Margin="10,0,0,0" TextWrapping="Wrap" MaxWidth="560"/>
+                    </StackPanel>
+
+                    <!-- الخادم المحلي -->
+                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,14,0,0">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="10" Height="10" Fill="{Binding LocalColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
+                                <TextBlock Text="الخادم المحلي — واي فاي المعمل" FontWeight="SemiBold" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding LocalText}" TextWrapping="Wrap" Margin="18,4,0,0"/>
+                            <TextBlock Margin="18,4,0,0" FlowDirection="LeftToRight" HorizontalAlignment="Right" Foreground="#1F2937"
+                                       Text="{Binding LocalUrl, StringFormat='العنوان للهواتف: {0}'}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- الخادم السحابي -->
+                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,8,0,0">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="10" Height="10" Fill="{Binding CloudColor, Converter={StaticResource HexBrush}}" VerticalAlignment="Center"/>
+                                <TextBlock Text="الخادم السحابي — الإنترنت" FontWeight="SemiBold" Margin="8,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding CloudText}" TextWrapping="Wrap" Margin="18,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="{Binding Details}" Margin="0,12,0,0" TextWrapping="Wrap" LineHeight="22"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="اختبار الاتصال" Style="{StaticResource SecondaryButton}" Command="{Binding TestCommand}"/>
+                        <Button Content="مزامنة الآن" Style="{StaticResource PrimaryButton}" Command="{Binding SyncNowCommand}" Margin="8,0,0,0"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="كيف تعمل" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock TextWrapping="Wrap" LineHeight="22"
+                               Text="الهاتف يرسل الحركة إلى الخادم المحلي إن كان على واي فاي المعمل، وإلا إلى الخادم السحابي عبر الإنترنت. خدمة المزامنة على حاسبة السيرفر تسحب من الخادمين وترحّل هنا بنفس قواعد النظام، وتعيد النتيجة إلى الخادمين معًا فيعرفها الهاتف أينما اتصل. المثبّت (وضع «السيرفر») يثبّت الخادم المحلي وخدمة المزامنة خدمتين تبدآن مع الحاسبة، ويُكتب عنوان الحاسبة ويصل الهواتف تلقائيًا إن تغيّر. لا ضياع ولا تكرار عند انقطاع أي منهما."/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <!-- الإعداد -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="الإعداد" Style="{StaticResource SectionTitle}"/>
+                <CheckBox Content="تفعيل المزامنة" IsChecked="{Binding IsEnabled}" FontWeight="SemiBold"/>
+                <CheckBox Content="الخادم المحلي على حاسبة السيرفر (واي فاي المعمل)" IsChecked="{Binding LocalEnabled}" Margin="0,10,0,0"/>
+                <TextBlock Text="عنوان الخادم السحابي (اختياري — نطاق https)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                <TextBox Text="{Binding ServerUrl, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                <TextBlock Text="المزامنة كل (ثانية)" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}" Width="80" HorizontalAlignment="Left" FlowDirection="LeftToRight"/>
+                <Button Content="حفظ" Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+
+                <Separator Margin="0,16,0,8"/>
+                <TextBlock Text="الخادم السحابي" Style="{StaticResource SectionTitle}"/>
+                <TextBlock TextWrapping="Wrap" Foreground="#1F2937"
+                           Text="ملفات نشر جاهزة (الخادم ومفتاح المعمل وشهادة https تلقائية): تُرفع إلى أي خادم Linux عليه Docker ثم أمر واحد. التفاصيل في ملف «اقرأني» معها."/>
+                <Button Content="ملفات نشر الخادم السحابي" Style="{StaticResource SecondaryButton}" Command="{Binding CloudFilesCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+
+                <Separator Margin="0,16,0,8"/>
+                <TextBlock Text="لوحة المدير على الهاتف (قراءة فقط)" Style="{StaticResource SectionTitle}"/>
+                <TextBlock TextWrapping="Wrap" Foreground="#1F2937" Text="حساب يفتح لوحة المبيعات والصناديق والمندوبين والمخازن من أي مكان. لا تعديل ولا حذف ولا رواتب فيها."/>
+                <TextBlock Text="{Binding ManagerLinkText}" TextWrapping="Wrap" FlowDirection="LeftToRight" HorizontalAlignment="Left" Margin="0,6,0,0" FontWeight="SemiBold"/>
+                <TextBlock Text="اسم المستخدم (3 أحرف فأكثر)" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding ManagerUsername, UpdateSourceTrigger=PropertyChanged}" FlowDirection="LeftToRight"/>
+                <TextBlock Text="كلمة المرور (8 أحرف فأكثر — اتركها فارغة إن لم تغيّرها)" Style="{StaticResource FieldLabel}" TextWrapping="Wrap"/>
+                <PasswordBox x:Name="ManagerPasswordBox" FlowDirection="LeftToRight" PasswordChanged="ManagerPasswordBox_PasswordChanged"/>
+                <CheckBox Content="هذا حساب شاشة التلفاز (بيانات غير حساسة فقط) وليس حساب المدير" IsChecked="{Binding IsTvAccount}" Margin="0,8,0,0"/>
+                <Button Content="حفظ الحساب" Style="{StaticResource SecondaryButton}" Command="{Binding SaveManagerCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                <ItemsControl ItemsSource="{Binding ManagerAccounts}" Margin="0,8,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,2">
+                                <Button DockPanel.Dock="Left" Content="&#xE74D;" ToolTip="حذف" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                        Command="{Binding DataContext.DeleteManagerCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+                                <Button DockPanel.Dock="Left" Content="&#xE7E8;" ToolTip="إيقاف / تفعيل" Style="{StaticResource RowIconButton}"
+                                        Command="{Binding DataContext.ToggleManagerCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+                                <TextBlock Text="{Binding Username}" FlowDirection="LeftToRight" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Foreground="#0369A1">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="مدير"/>
+                                            <Style.Triggers><DataTrigger Binding="{Binding Kind}" Value="Tv"><Setter Property="Text" Value="تلفاز"/></DataTrigger></Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Margin="8,0" VerticalAlignment="Center" Foreground="#64748B">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="(موقوف)"/>
+                                            <Style.Triggers><DataTrigger Binding="{Binding IsActive}" Value="True"><Setter Property="Text" Value="(مفعّل)"/></DataTrigger></Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Separator Margin="0,16,0,8"/>
+                <TextBlock Text="شاشة التلفاز في المعمل" Style="{StaticResource SectionTitle}"/>
+                <TextBlock TextWrapping="Wrap" Foreground="#1F2937" Text="تعرض المبيعات والإنتاج والمندوبين والمخزون المنخفض وحضور الأقسام بلا أسماء — دون ديون أو صناديق أو رواتب. أنشئ لها حسابًا من الأعلى (علّم خانة التلفاز) وافتح الرابط في متصفح التلفاز."/>
+                <TextBlock Text="{Binding TvLinkText}" TextWrapping="Wrap" FlowDirection="LeftToRight" HorizontalAlignment="Left" Margin="0,6,0,0" FontWeight="SemiBold"/>
+                <TextBlock Text="رسالة ثابتة تظهر على الشاشة (اختياري — حتى 300 حرف)" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding TvMessage, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MaxLength="300" MinHeight="48"/>
+                <Button Content="حفظ الرسالة" Style="{StaticResource SecondaryButton}" Command="{Binding SaveTvMessageCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+
+                <Separator Margin="0,16,0,8"/>
+                <TextBlock Text="مفتاح المعمل" Style="{StaticResource FieldLabel}"/>
+                <TextBox Text="{Binding KeyText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"/>
+                <Button Content="توليد مفتاح جديد" Style="{StaticResource SecondaryButton}" Command="{Binding GenerateKeyCommand}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+    </ScrollViewer>
+</UserControl>

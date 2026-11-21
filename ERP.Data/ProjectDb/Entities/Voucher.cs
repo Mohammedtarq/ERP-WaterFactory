@@ -1,0 +1,53 @@
+namespace ERP.Data.ProjectDb.Entities;
+
+public enum VoucherType { Receipt, Payment }
+public enum VoucherPartyType { Customer, Supplier, Employee, Other }
+/// <summary>Return = مرتجع بضاعة يخفض دين العميل (اشعار دائن، بلا حركة صندوق) — 39_customer_returns.sql</summary>
+public enum PaymentMethod { Cash, Bank, Cheque, Return }
+
+public class Voucher
+{
+    public int Id { get; set; }
+    public string VoucherNumber { get; set; } = string.Empty;
+    public VoucherType VoucherType { get; set; }
+    public VoucherPartyType PartyType { get; set; }
+    public int? PartyId { get; set; }
+    public decimal Amount { get; set; }
+    public string Currency { get; set; } = "IQD";
+    public PaymentMethod PaymentMethod { get; set; }
+    public DateTime VoucherDate { get; set; }
+    public string? Notes { get; set; }
+
+    public int? JournalEntryId { get; set; }
+    public JournalEntry? JournalEntry { get; set; }
+
+    public int CreatedByUserId { get; set; }
+    public User CreatedByUser { get; set; } = null!;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>السند المرحّل لا يُحذف: يُلغى بقيد عكسي ويبقى ظاهرًا (09_sales_logic.sql).</summary>
+    public bool IsVoided { get; set; }
+    public string? VoidReason { get; set; }
+    public int? VoidedByUserId { get; set; }
+    public DateTime? VoidedAt { get; set; }
+}
+
+/// <summary>
+/// "العقل المالي": يحدد الحسابين الافتراضيين (مدين/دائن) لكل نوع عملية، بحيث
+/// يُنشئ السند القيد المحاسبي المقابل تلقائيًا دون تدخل يدوي من غير المحاسب.
+/// </summary>
+public class AccountMappingRule
+{
+    public int Id { get; set; }
+    public string TransactionType { get; set; } = string.Empty;  // مثال: "CashReceiptVoucher"
+
+    /// <summary>الاسم العربي لنوع العملية (للعرض فقط).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string DisplayName => Services.RuleNames.Of(TransactionType);
+
+    public int DebitAccountId { get; set; }
+    public ChartOfAccount DebitAccount { get; set; } = null!;
+
+    public int CreditAccountId { get; set; }
+    public ChartOfAccount CreditAccount { get; set; } = null!;
+}
