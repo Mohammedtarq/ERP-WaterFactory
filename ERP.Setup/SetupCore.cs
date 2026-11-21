@@ -130,6 +130,29 @@ namespace ERP.Setup
             }
         }
 
+        public static void Log(string text)
+        {
+            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "ERP-Setup.log"), DateTime.Now.ToString("s") + " " + text + Environment.NewLine); } catch (Exception) { }
+        }
+
+        /// <summary>يغلق البرنامج إن كان مفتوحًا من مجلد التثبيت (وإلا تُقفل ملفاته فيفشل النسخ). التثبيت فوق نسخة قديمة هو الحالة المعتادة.</summary>
+        public static void CloseRunningApp(string installDir)
+        {
+            foreach (var p in Process.GetProcessesByName("ERP.Desktop"))
+            {
+                try
+                {
+                    var path = p.MainModule != null ? p.MainModule.FileName : "";
+                    if (path.StartsWith(installDir, StringComparison.OrdinalIgnoreCase))
+                    {
+                        p.CloseMainWindow();
+                        if (!p.WaitForExit(5000)) { p.Kill(); p.WaitForExit(5000); }
+                    }
+                }
+                catch (Exception ex) { Log("CloseRunningApp: " + ex.Message); }
+            }
+        }
+
         public static void CopyAll(string stage, string installDir)
         {
             Directory.CreateDirectory(installDir);
@@ -230,8 +253,13 @@ namespace ERP.Setup
                 catch (WebException) { throw new InvalidOperationException("انقطع الاتصال أثناء التنزيل. أعد المحاولة."); }
 
                 progress(92, "تثبيت البرنامج…");
+                CloseRunningApp(o.InstallDir);
                 try { CopyAll(stage, o.InstallDir); }
-                catch (IOException) { throw new InvalidOperationException("تعذّر نسخ الملفات. أغلق البرنامج إن كان مفتوحًا ثم أعد المحاولة."); }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    Log("CopyAll: " + ex);
+                    throw new InvalidOperationException("تعذّر نسخ الملفات. أغلق البرنامج إن كان مفتوحًا ثم أعد المحاولة.\n(" + ex.Message + ")");
+                }
                 var exe = Path.Combine(o.InstallDir, "ERP.Desktop.exe");
                 if (!File.Exists(exe)) throw new InvalidOperationException("الحزمة المنشورة على السيرفر لا تحوي ERP.Desktop.exe");
 

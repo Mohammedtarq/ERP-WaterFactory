@@ -49,10 +49,10 @@ namespace ERP.Setup
             header.Controls.Add(title);
             Controls.Add(header);
 
-            var l1 = new Label { Text = "عنوان السيرفر", AutoSize = true, Location = new Point(300, 104) };
+            var l1 = new Label { Text = "عنوان السيرفر", AutoSize = false, Size = new Size(440, 24), Location = new Point(30, 104), TextAlign = ContentAlignment.MiddleRight };
             _host.Text = o.Host; _host.Width = 440; _host.Location = new Point(30, 130);
             _host.TextAlign = HorizontalAlignment.Left; _host.RightToLeft = RightToLeft.No;
-            var l2 = new Label { Text = "كلمة مرور الاتصال بالسيرفر (تُكتب مرة واحدة)", AutoSize = true, Location = new Point(190, 176) };
+            var l2 = new Label { Text = "كلمة مرور الاتصال بالسيرفر (تُكتب مرة واحدة)", AutoSize = false, Size = new Size(440, 24), Location = new Point(30, 176), TextAlign = ContentAlignment.MiddleRight };
             _pwd.Width = 440; _pwd.Location = new Point(30, 202); _pwd.UseSystemPasswordChar = true;
             _pwd.TextAlign = HorizontalAlignment.Left; _pwd.RightToLeft = RightToLeft.No;
 
@@ -63,7 +63,7 @@ namespace ERP.Setup
             AcceptButton = _go;
 
             _bar.Location = new Point(30, 318); _bar.Width = 440; _bar.Height = 18; _bar.Visible = false;
-            _status.AutoSize = false; _status.Location = new Point(30, 342); _status.Size = new Size(440, 44);
+            _status.AutoSize = false; _status.Location = new Point(30, 342); _status.Size = new Size(440, 52);
             _status.TextAlign = ContentAlignment.TopCenter;
 
             Controls.AddRange(new Control[] { l1, _host, l2, _pwd, _go, _bar, _status });
