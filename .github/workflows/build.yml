@@ -254,6 +254,41 @@ jobs:
             if (-not (Test-Path "$inst\ERP.Presentation.dll")) { throw "الملف المفقود لم يُنزَّل" }
             Write-Host "التحديث التلقائي يعمل: تنزيل المتغيّر فقط، تحقق البصمة، وتراجع آمن"
           } finally { Stop-Process -Id $web.Id -Force -ErrorAction SilentlyContinue }
+      - name: مثبّت الأيقونة الواحدة (ملف exe صغير يُنزّل البرنامج من السيرفر)
+        shell: pwsh
+        run: |
+          $build = if ($env:GITHUB_RUN_NUMBER) { $env:GITHUB_RUN_NUMBER } else { '0' }
+          dotnet publish ERP.Setup/ERP.Setup.csproj -c Release -p:Version="1.0.$build" -o dist/setup-build
+          if ($LASTEXITCODE) { throw "تعذّر بناء المثبّت" }
+          New-Item dist/ERP-Setup -ItemType Directory -Force | Out-Null
+          Copy-Item dist/setup-build/ERP.Setup.exe "dist/ERP-Setup/تثبيت نظام معمل المياه.exe"
+          Copy-Item dist/setup-build/ERP.Setup.exe.config "dist/ERP-Setup/تثبيت نظام معمل المياه.exe.config" -ErrorAction SilentlyContinue
+      - name: تجربة المثبّت الصغير (ينشر السيرفر ثم يثبّت منه بلا واجهة ويتحقق من الملفات والإعداد)
+        shell: pwsh
+        run: |
+          $pkg = (Resolve-Path dist/ERP-WaterFactory-win-x64).Path
+          $upd = Join-Path $env:RUNNER_TEMP 'upd2'
+          & "$pkg\Publish-Update.ps1" -Source $pkg -UpdatesDir $upd
+          $web = Start-Process python -ArgumentList '-m', 'http.server', '8098', '--directory', "$upd\current" -PassThru -WindowStyle Hidden
+          Start-Sleep 3
+          try {
+            $dir = Join-Path $env:RUNNER_TEMP 'setup-install'
+            $cfg = Join-Path $env:RUNNER_TEMP 'setup-cfg\appsettings.json'
+            $env:ERP_SETUP_PASSWORD = 'Test-Pass-123'
+            $p = Start-Process "dist/ERP-Setup/تثبيت نظام معمل المياه.exe" -Wait -PassThru -ArgumentList '--silent','--skip-sql','--no-shortcuts','--no-launch','--host','192.168.0.200','--baseurl','http://localhost:8098/','--installdir',"`"$dir`"",'--config',"`"$cfg`""
+            if ($p.ExitCode -ne 0) { throw "فشل المثبّت الصغير (رمز $($p.ExitCode))" }
+            if (-not (Test-Path "$dir\ERP.Desktop.exe")) { throw "لم يُنسخ البرنامج" }
+            $m = Get-Content "$upd\current\manifest.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($f in $m) { if ((Get-FileHash (Join-Path $dir ($f.path.Replace('/', '\'))) -Algorithm SHA256).Hash -ne $f.sha256) { throw "بصمة غير مطابقة: $($f.path)" } }
+            $conf = Get-Content $cfg -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($conf.ControlDbConnectionString -notmatch 'Data Source=192\.168\.0\.200\\SQLEXPRESS' -or $conf.ControlDbConnectionString -notmatch 'User ID=erp_app') { throw "ملف الإعداد غير صحيح: $($conf.ControlDbConnectionString -replace 'Password=[^;]*','Password=***')" }
+            # كلمة المرور لا تظهر في أي ملف غير ملف الإعداد على هذا الجهاز
+            Write-Host "المثبّت الصغير يعمل: $(@($m).Count) ملفًا مطابقة البصمة، وإعداد الاتصال محفوظ"
+          } finally { Stop-Process -Id $web.Id -Force -ErrorAction SilentlyContinue }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ERP-Setup
+          path: dist/ERP-Setup
       - uses: actions/upload-artifact@v4
         with:
           name: ERP-WaterFactory-win-x64

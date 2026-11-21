@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- مثبّت جهاز المستخدم: ملف exe واحد صغير (.NET Framework 4.8 موجود في Windows 10/11) ينزّل البرنامج من السيرفر.
+       خارج ERP.Solution.sln عمدًا: يُبنى على Windows في خطوة «حزمة Windows». -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>ERP.Setup</AssemblyName>
+    <RootNamespace>ERP.Setup</RootNamespace>
+    <ApplicationIcon>Assets\setup.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>نظام معمل المياه</Product>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <EmbeddedResource Include="Assets\setup.ico" LogicalName="setup.ico" />
+  </ItemGroup>
+</Project>
