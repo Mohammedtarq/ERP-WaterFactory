@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
+using System.ServiceProcess;
 using System.Text;
 using System.Web.Script.Serialization;
 
@@ -130,6 +131,23 @@ namespace ERP.Setup
             }
         }
 
+        /// <summary>جهاز عليه خدمات السيرفر (خادم المندوبين/المزامنة) يقفل ملفاتها فيفشل النسخ؛ لا نوقف خدمة قد يعتمد عليها هاتف مندوب، بل نشرح ونتوقف.</summary>
+        public static void CheckNotAServer()
+        {
+            var running = new List<string>();
+            foreach (var name in new[] { "ERPLocalRelay", "ERPCloudSync" })
+            {
+                try
+                {
+                    using (var sc = new ServiceController(name))
+                        if (sc.Status != ServiceControllerStatus.Stopped) running.Add(name);
+                }
+                catch (InvalidOperationException) { /* الخدمة غير مثبّتة */ }
+            }
+            if (running.Count > 0)
+                throw new InvalidOperationException("هذا الجهاز يعمل كسيرفر (الخدمة: " + string.Join("، ", running) + ") فلا يُثبَّت عليه بهذا الملف، ويتحدّث وحده من السيرفر. استخدم هذا الملف على جهاز مستخدم عادي.");
+        }
+
         public static void Log(string text)
         {
             try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "ERP-Setup.log"), DateTime.Now.ToString("s") + " " + text + Environment.NewLine); } catch (Exception) { }
@@ -253,6 +271,7 @@ namespace ERP.Setup
                 catch (WebException) { throw new InvalidOperationException("انقطع الاتصال أثناء التنزيل. أعد المحاولة."); }
 
                 progress(92, "تثبيت البرنامج…");
+                CheckNotAServer();
                 CloseRunningApp(o.InstallDir);
                 try { CopyAll(stage, o.InstallDir); }
                 catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)

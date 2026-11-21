@@ -19,6 +19,7 @@
   <ItemGroup>
     <Reference Include="System.Web.Extensions" />
     <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.ServiceProcess" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <EmbeddedResource Include="Assets\setup.ico" LogicalName="setup.ico" />
   </ItemGroup>

@@ -24,7 +24,7 @@ namespace ERP.Setup
             RightToLeftLayout = true;
             Text = "تثبيت نظام معمل المياه";
             Font = new Font("Segoe UI", 10.5f);
-            ClientSize = new Size(500, 400);
+            ClientSize = new Size(500, 440);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -63,7 +63,7 @@ namespace ERP.Setup
             AcceptButton = _go;
 
             _bar.Location = new Point(30, 318); _bar.Width = 440; _bar.Height = 18; _bar.Visible = false;
-            _status.AutoSize = false; _status.Location = new Point(30, 342); _status.Size = new Size(440, 52);
+            _status.AutoSize = false; _status.Location = new Point(30, 342); _status.Size = new Size(440, 84);
             _status.TextAlign = ContentAlignment.TopCenter;
 
             Controls.AddRange(new Control[] { l1, _host, l2, _pwd, _go, _bar, _status });
