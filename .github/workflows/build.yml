@@ -285,6 +285,8 @@ jobs:
             # كلمة المرور لا تظهر في أي ملف غير ملف الإعداد على هذا الجهاز
             Write-Host "المثبّت الصغير يعمل: $(@($m).Count) ملفًا مطابقة البصمة، وإعداد الاتصال محفوظ"
           } finally { Stop-Process -Id $web.Id -Force -ErrorAction SilentlyContinue }
+          # robocopy داخل Publish-Update يترك رمز خروج 1 («نُسخت ملفات») فيُفشل الخطوة وهي ناجحة
+          $global:LASTEXITCODE = 0
       - uses: actions/upload-artifact@v4
         with:
           name: ERP-Setup
