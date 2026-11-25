@@ -35,6 +35,7 @@ public static class UiThread
             ERP.Presentation.ViewModels.Production.ProductionModuleViewModel.ShowDailyProduction = true;
             ERP.Presentation.ViewModels.Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens = true;
             ERP.Presentation.ViewModels.HR.HrModuleViewModel.ShowSeparateScreens = true;
+            ERP.Presentation.ViewModels.Warehouse.WarehouseModuleViewModel.ShowSeparateScreens = true;
 
             PresentationTraceSources.Refresh();
             PresentationTraceSources.DataBindingSource.Listeners.Add(new Collector());

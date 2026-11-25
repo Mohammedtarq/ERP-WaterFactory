@@ -271,6 +271,12 @@
     <DataTemplate DataType="{x:Type vmFinance:DailyCashSectionViewModel}"><vFinance:DailyCashSectionView/></DataTemplate>
 
     <!-- HR -->
+    <DataTemplate DataType="{x:Type vmWarehouse:WarehouseRepsHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:StockLossesHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:StockBalancesHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:ManufacturingHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:ItemsPackagingHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
+    <DataTemplate DataType="{x:Type vmWarehouse:WarehouseSetupHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:EmployeesHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:AttendanceHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>
     <DataTemplate DataType="{x:Type vmHR:LeavesHubSectionViewModel}"><vShell:HubSectionView/></DataTemplate>

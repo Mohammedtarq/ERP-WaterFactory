@@ -29,30 +29,45 @@ public class WarehouseModuleViewModel : ModuleViewModel
         UseDashboard(s, d, ModuleCode.Warehouse, ModuleDashboardViewModel.Warehouse);
         _session = s;
         _dialogs = d;
-        Add(new ItemsSectionViewModel(s, d));
-        // سيارات المندوبين في شاشة واحدة (بعد تبويبات المخازن) بدل تبويب لكل سيارة
-        Vans = Add(new WarehouseRepVansSectionViewModel(s, d));
-        PrepareLoads = Add(new PrepareLoadOrdersSectionViewModel(s, d));
-        Add(new SettlementConfirmSectionViewModel(s, d));
-        ProductSettlement = Add(new Reps.RepProductSettlementSectionViewModel(s, d));
-        Add(new WarehousesSectionViewModel(s, d, RefreshWorkspacesAsync));
-        Add(new PackagingSectionViewModel(s, d));
-        Add(new LocationsSectionViewModel(s, d));
-        Add(new CurrentStockSectionViewModel(s, d));
-        Stocktake = Add(new StocktakeSectionViewModel(s, d));
-        Add(new LossesSectionViewModel(s, d));
-        Add(new BeneficiariesSectionViewModel(s, d));
+        // سبع صفحات بتبويبات ملوّنة (WarehouseHubs.cs) تضم الشاشات الأصلية؛ تبقى الشاشات نفسها مخفية من القائمة
+        // (ShowSeparateScreens) ويمكن إعادتها منفصلة. الخصائص أدناه تشير إلى الشاشات داخل الصفحات.
+        var items = new ItemsPackagingHubSectionViewModel(s, d);
+        var reps = new WarehouseRepsHubSectionViewModel(s, d);
+        var setup = new WarehouseSetupHubSectionViewModel(s, d, RefreshWorkspacesAsync);
+        var stock = new StockBalancesHubSectionViewModel(s, d);
+        var losses = new StockLossesHubSectionViewModel(s, d);
+        var manufacturing = new ManufacturingHubSectionViewModel(s, d);
+        Hubs = new HubSectionViewModel[] { items, reps, setup, stock, losses, manufacturing };
+        Vans = reps.Child<WarehouseRepVansSectionViewModel>();
+        PrepareLoads = reps.Child<PrepareLoadOrdersSectionViewModel>();
+        ProductSettlement = reps.Child<Reps.RepProductSettlementSectionViewModel>();
+        Stocktake = losses.Child<StocktakeSectionViewModel>();
+        DamagedSales = losses.Child<DamagedSalesSectionViewModel>();
+        foreach (var h in Hubs) Add(h);
         Add(new Shell.WarehouseReportsSectionViewModel(s, d));
         // شاشة "تسوية المخزون" القديمة مخفية مؤقتًا (حلّت محلها واجهات المخازن). لا تُحذف قبل التأكد من الشاشات الجديدة.
         LegacyAdjustment = new StockAdjustmentSectionViewModel(s, d);
         if (ShowLegacyAdjustment) Add(LegacyAdjustment);
-        Add(new ManufacturingRequirementSectionViewModel(s, d));
-        Add(new BomSectionViewModel(s, d));
-        Add(new PackagingTemplatesSectionViewModel(s, d));
-        Add(new StockAlertsSectionViewModel(s, d));
-        DamagedSales = Add(new DamagedSalesSectionViewModel(s, d));
+        if (ShowSeparateScreens)
+            foreach (var h in Hubs)
+                foreach (var tab in h.Tabs) Add(tab.Child);
         Background(RefreshWorkspacesAsync());
     }
+
+    /// <summary>الصفحات الست المدموجة (الأصناف والتعبئة، المندوبون، المخازن والمواقع، الأرصدة والتنبيهات، الجرد والتالف، احتياجات وقوائم التصنيع).</summary>
+    public IReadOnlyList<HubSectionViewModel> Hubs { get; }
+    /// <summary>إظهار الشاشات منفصلة إلى جانب الصفحات المدموجة؛ مخفية افتراضيًا.</summary>
+    public static bool ShowSeparateScreens { get; set; }
+
+    public static readonly HashSet<Type> MergedScreens = new()
+    {
+        typeof(ItemsSectionViewModel), typeof(PackagingSectionViewModel), typeof(PackagingTemplatesSectionViewModel),
+        typeof(PrepareLoadOrdersSectionViewModel), typeof(Reps.WarehouseRepVansSectionViewModel),
+        typeof(Reps.RepProductSettlementSectionViewModel), typeof(SettlementConfirmSectionViewModel),
+        typeof(WarehousesSectionViewModel), typeof(LocationsSectionViewModel), typeof(CurrentStockSectionViewModel), typeof(StockAlertsSectionViewModel),
+        typeof(StocktakeSectionViewModel), typeof(LossesSectionViewModel), typeof(DamagedSalesSectionViewModel), typeof(BeneficiariesSectionViewModel),
+        typeof(ManufacturingRequirementSectionViewModel), typeof(BomSectionViewModel),
+    };
 
     public DamagedSalesSectionViewModel DamagedSales { get; }
     /// <summary>تسوية منتجات المندوب لأمين المخزن (المرتجع والمجاني)؛ نقدها في المالية.</summary>

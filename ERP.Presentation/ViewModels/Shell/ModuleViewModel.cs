@@ -405,7 +405,13 @@ public abstract class ModuleViewModel : ViewModelBase
     }
 
     // نسخة ثابتة من القائمة: أقسام تُبنى في الخلفية (مساحات المخازن) قد تُضاف أثناء القراءة
-    public T Section<T>() where T : SectionViewModel => TabsSnapshot().OfType<T>().Single();
+    public T Section<T>() where T : SectionViewModel
+    {
+        var tabs = TabsSnapshot();
+        // شاشة داخل صفحة مدموجة تُلتقط بنوعها أيضًا (حيثما وُجدت)
+        return tabs.OfType<T>().SingleOrDefault()
+            ?? tabs.OfType<HubSectionViewModel>().SelectMany(h => h.AllTabs).Select(t => t.Child).OfType<T>().Single();
+    }
 
     /// <summary>
     /// نسخة من الأقسام آمنة من التعديل المتزامن: تطبيق تخطيط الدور قد يضيف/ينقل أقسامًا بينما تُقرأ القائمة

@@ -49,7 +49,8 @@ public static class SectionCatalog
 
     /// <summary>شاشة صارت تبويبًا داخل صفحة مدموجة: لا تُعرض مستقلة في القوائم والبحث، لكنها تُدرج في «توزيع الأقسام» لإخفائها أو نقلها.</summary>
     public static bool IsHubTab(Type type) =>
-        HR.HrModuleViewModel.MergedScreens.Contains(type) && !HR.HrModuleViewModel.ShowSeparateScreens;
+        (HR.HrModuleViewModel.MergedScreens.Contains(type) && !HR.HrModuleViewModel.ShowSeparateScreens)
+        || (Warehouse.WarehouseModuleViewModel.MergedScreens.Contains(type) && !Warehouse.WarehouseModuleViewModel.ShowSeparateScreens);
 
     public static bool IsConfigurable(string homeModule) => homeModule is not (ModuleCode.SystemSettings or ModuleCode.Dashboard);
 

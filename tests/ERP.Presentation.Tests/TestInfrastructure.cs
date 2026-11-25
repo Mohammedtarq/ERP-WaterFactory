@@ -85,6 +85,7 @@ public class AppFixture
         // شاشات المطابقة والشركاء والفائض تظهر في القائمة صفحة واحدة بتبويبات؛ الاختبارات القديمة تفتحها منفصلة
         ERP.Presentation.ViewModels.Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens = true;
         ERP.Presentation.ViewModels.HR.HrModuleViewModel.ShowSeparateScreens = true;
+        ERP.Presentation.ViewModels.Warehouse.WarehouseModuleViewModel.ShowSeparateScreens = true;
         // الاختبارات تكتب أحيانًا مباشرة في القاعدة (خارج الجلسة): شاشات الأرصدة تُحدَّث عند كل فتح بلا مهلة
         SectionViewModel.IdleRefreshInterval = TimeSpan.Zero;
 
