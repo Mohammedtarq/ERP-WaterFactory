@@ -37,7 +37,7 @@
             </StackPanel>
             <DataGrid ItemsSource="{Binding Rows}" CanUserAddRows="False">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="الشاشة" Binding="{Binding Title}" Width="2*" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الشاشة" Binding="{Binding DisplayTitle}" Width="2*" IsReadOnly="True"/>
                     <DataGridTextColumn Header="وحدتها الأصلية" Binding="{Binding HomeTitle}" Width="1.3*" IsReadOnly="True"/>
                     <DataGridTemplateColumn Header="يظهر في" Width="1.5*">
                         <DataGridTemplateColumn.CellTemplate>

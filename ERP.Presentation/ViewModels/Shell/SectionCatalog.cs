@@ -5,18 +5,24 @@ using ERP.Presentation.Services;
 namespace ERP.Presentation.ViewModels.Shell;
 
 /// <summary>قسم قابل للتوزيع: مفتاحه واسمه ووحدته الأصلية، وهل يُنقل.</summary>
-public sealed record SectionEntry(string Key, string Title, string HomeModule, string HomeTitle, bool Movable);
+public sealed record SectionEntry(string Key, string Title, string HomeModule, string HomeTitle, bool Movable, string? HubTitle = null)
+{
+    /// <summary>العنوان في «توزيع الأقسام»: تبويب الصفحة المدموجة يُذكر معه اسم صفحته.</summary>
+    public string DisplayTitle => HubTitle is null ? Title : $"{Title} (ضمن: {HubTitle})";
+}
 
 /// <summary>
 /// كل أقسام النظام التي تُبنى من الجلسة وحدها (مفتاح = اسم نوع الشاشة): لنقلها بين الوحدات أو إخفائها عن دور.
 /// أقسام الإعدادات ولوحة المعلومات لا تُوزَّع (حتى لا يُغلق الباب على الإدارة)، وفاتورة البيع وسجل الفواتير
-/// لا تُنقل لأن ترحيلها وإلغاءها يتحققان من صلاحية المبيعات داخل قاعدة البيانات نفسها.
+/// لا تُنقل لأن ترحيلها وإلغاءها يتحققان من صلاحية المبيعات داخل قاعدة البيانات نفسها (وكذلك اعتماد العلاوة السنوية: الموارد البشرية).
 /// </summary>
 public static class SectionCatalog
 {
     private static readonly HashSet<string> NotMovable = new()
     {
         KeyOf(typeof(Sales.SalesInvoiceSectionViewModel)), KeyOf(typeof(Sales.SalesInvoiceListSectionViewModel)),
+        // اعتماد العلاوة السنوية يتحقق من صلاحية الموارد البشرية داخل قاعدة البيانات
+        KeyOf(typeof(HR.AnnualRaisesSectionViewModel)),
     };
 
     private static readonly Lazy<Dictionary<string, Type>> Types = new(() =>
@@ -38,8 +44,12 @@ public static class SectionCatalog
         (type == typeof(Production.DailyProductionSectionViewModel) && !Production.ProductionModuleViewModel.ShowDailyProduction)
         || ((type == typeof(Finance.ReconciliationSectionViewModel) || type == typeof(Finance.PartnersSectionViewModel) || type == typeof(Finance.WorkingCapitalSectionViewModel))
             && !Finance.FinanceModuleViewModel.ShowSeparateReconciliationScreens)
-        || (HR.HrModuleViewModel.MergedScreens.Contains(type) && !HR.HrModuleViewModel.ShowSeparateScreens)
+        || IsHubTab(type)
         || type == typeof(Settings.RahmaImportSectionViewModel) || type == typeof(Settings.RahmaUpdateSectionViewModel);   // داخل صفحة «الرحمة»
+
+    /// <summary>شاشة صارت تبويبًا داخل صفحة مدموجة: لا تُعرض مستقلة في القوائم والبحث، لكنها تُدرج في «توزيع الأقسام» لإخفائها أو نقلها.</summary>
+    public static bool IsHubTab(Type type) =>
+        HR.HrModuleViewModel.MergedScreens.Contains(type) && !HR.HrModuleViewModel.ShowSeparateScreens;
 
     public static bool IsConfigurable(string homeModule) => homeModule is not (ModuleCode.SystemSettings or ModuleCode.Dashboard);
 
@@ -53,12 +63,19 @@ public static class SectionCatalog
     }
 
     /// <summary>الأقسام القابلة للتوزيع مرتبة حسب الوحدة ثم الاسم (تُبنى بإنشاء كل شاشة دون تحميلها).</summary>
-    public static List<SectionEntry> Entries(AppSession session, IDialogService dialogs) =>
-        Types.Value.Keys.Select(k => Create(k, session, dialogs)).OfType<SectionViewModel>()
-            .Where(s => IsConfigurable(s.HomeModule) && !IsRetired(s.GetType()))
-            .Select(s => new SectionEntry(KeyOf(s), s.Title, s.HomeModule, ModuleTitle(s.HomeModule), IsMovable(s.GetType(), s.HomeModule)))
+    public static List<SectionEntry> Entries(AppSession session, IDialogService dialogs)
+    {
+        var all = Types.Value.Keys.Select(k => Create(k, session, dialogs)).OfType<SectionViewModel>().ToList();
+        // اسم الصفحة المدموجة لكل تبويب فيها (يُقرأ من كل تبويباتها قبل أي إخفاء)
+        var hubOf = all.OfType<HubSectionViewModel>().SelectMany(h => h.AllTabs.Select(t => (key: KeyOf(t.Child), hub: h.Title)))
+            .GroupBy(x => x.key).ToDictionary(g => g.Key, g => g.First().hub);
+        return all
+            .Where(s => IsConfigurable(s.HomeModule) && (!IsRetired(s.GetType()) || IsHubTab(s.GetType())))
+            .Select(s => new SectionEntry(KeyOf(s), s.Title, s.HomeModule, ModuleTitle(s.HomeModule), IsMovable(s.GetType(), s.HomeModule),
+                                          IsHubTab(s.GetType()) ? hubOf.GetValueOrDefault(KeyOf(s)) : null))
             .OrderBy(e => Settings.RolesPermissionsSectionViewModel.Modules.Select(m => m.code).ToList().IndexOf(e.HomeModule)).ThenBy(e => e.Title)
             .ToList();
+    }
 
     /// <summary>كل الشاشات (ومنها الإعدادات) بعنوانها ووحدتها ولونها: للبحث السريع (Ctrl+K) و«مفضلتي».</summary>
     public static List<QuickEntry> QuickEntries(AppSession session, IDialogService dialogs) =>

@@ -606,6 +606,8 @@ public class SectionLayoutRow : ObservableObject
     }
     public SectionEntry Entry { get; }
     public string Title => Entry.Title;
+    /// <summary>للعرض: تبويب الصفحة المدموجة يُذكر معه اسم صفحته.</summary>
+    public string DisplayTitle => Entry.DisplayTitle;
     public string HomeTitle => Entry.HomeTitle;
     public bool Movable => Entry.Movable;
     public string OriginalTarget { get; private set; }
@@ -701,7 +703,7 @@ public class SectionLayoutSectionViewModel : SectionViewModel
         if (changed.Count == 0) { StatusMessage = "لا تغييرات"; return; }
         if (Role is null) { Dialogs.Error("اختر الدور"); return; }
         if (changed.FirstOrDefault(r => r.IsMoved && !r.Movable) is { } fixedRow)
-        { Dialogs.Error($"«{fixedRow.Title}» لا يُنقل: ترحيله يتحقق من صلاحية {fixedRow.HomeTitle} داخل قاعدة البيانات"); return; }
+        { Dialogs.Error($"«{fixedRow.Title}» لا يُنقل: عملياته تتحقق من صلاحية {fixedRow.HomeTitle} داخل قاعدة البيانات"); return; }
         await using var db = Session.NewDb();
         var svc = new SectionLayoutService(db);
         foreach (var r in changed)

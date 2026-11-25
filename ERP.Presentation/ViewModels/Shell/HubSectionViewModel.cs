@@ -18,11 +18,23 @@ public abstract class HubSectionViewModel : SectionViewModel
                                   string description, params HubTab[] tabs)
         : base(s, d, module, title, glyph, color, description)
     {
-        // ما أخفته الإدارة عن دور المستخدم من الشاشات يبقى مخفيًا داخل الصفحة أيضًا
-        Tabs = tabs.Where(t => !s.Layout.Hidden.Contains(SectionCatalog.KeyOf(t.Child))).ToList();
+        // ما أخفته الإدارة عن دور المستخدم أو نقلته إلى وحدة أخرى يغيب عن الصفحة؛ يبقى كائنه في AllTabs للروابط الداخلية
+        AllTabs = tabs;
+        Tabs = tabs.Where(t => !IsAway(s, t.Child)).ToList();
     }
 
+    /// <summary>الشاشة غابت عن هذه الصفحة: مخفية عن دور المستخدم، أو منقولة بقرار الإدارة إلى وحدة أخرى (تظهر هناك شاشةً مستقلة).</summary>
+    private static bool IsAway(AppSession s, SectionViewModel child)
+    {
+        var key = SectionCatalog.KeyOf(child);
+        if (s.Layout.Hidden.Contains(key) && SectionCatalog.IsConfigurable(child.HomeModule)) return true;
+        return s.Layout.Moves.TryGetValue(key, out var target) && target != child.HomeModule && SectionCatalog.IsMovable(child.GetType(), child.HomeModule);
+    }
+
+    /// <summary>التبويبات الظاهرة لهذا المستخدم.</summary>
     public IReadOnlyList<HubTab> Tabs { get; }
+    /// <summary>كل تبويبات الصفحة قبل الإخفاء والنقل (لتوزيع الأقسام وللروابط الداخلية).</summary>
+    public IReadOnlyList<HubTab> AllTabs { get; }
 
     protected override bool ReloadOnActivate => true;
     protected override bool HasPendingInput => Tabs.Any(t => t.Child.HasPendingInputNow);
@@ -55,7 +67,8 @@ public abstract class HubSectionViewModel : SectionViewModel
         return true;
     }
 
-    public T Child<T>() where T : SectionViewModel => Tabs.Select(t => t.Child).OfType<T>().First();
+    /// <summary>الشاشة داخل الصفحة بنوعها، ولو غابت عن هذا المستخدم (يبقى كائنها متاحًا للروابط الداخلية).</summary>
+    public T Child<T>() where T : SectionViewModel => AllTabs.Select(t => t.Child).OfType<T>().First();
 
     /// <summary>فتح الصفحة (أو العودة إليها) يحدّث التبويب الظاهر فقط؛ والباقي عند فتحه.</summary>
     public override Task LoadAsync() => SelectedChild?.ActivateAsync() ?? Task.CompletedTask;

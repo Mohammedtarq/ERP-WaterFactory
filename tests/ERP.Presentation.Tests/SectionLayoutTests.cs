@@ -1,4 +1,6 @@
 using ERP.Data.ProjectDb.Entities;
+using ERP.Presentation.ViewModels.Finance;
+using ERP.Presentation.ViewModels.HR;
 using ERP.Presentation.ViewModels.Production;
 using ERP.Presentation.ViewModels.Sales;
 using ERP.Presentation.ViewModels.Settings;
@@ -99,6 +101,111 @@ public class SectionLayoutTests
             Row<CustomerStatementSectionViewModel>().Visible = true;
             await layout.SaveCommand.ExecuteAsync();
             Assert.Equal((0, 0), (layout.MovedCount, layout.HiddenCount));
+        }
+    }
+    // ===== تبويبات الصفحات المدموجة: تُدرج في «توزيع الأقسام» لإخفائها عن دور أو نقلها إلى وحدة أخرى =====
+
+    private async Task<(SectionLayoutSectionViewModel layout, RecordingDialogs dialogs)> OpenLayoutAsync(string role)
+    {
+        var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+        var settings = shell.Open<SettingsModuleViewModel>(ModuleCode.SystemSettings);
+        var layout = settings.Section<SectionLayoutSectionViewModel>();
+        await Open(settings, layout);
+        layout.Role = layout.Roles.Single(r => r.Name == role);
+        await layout.IdleAsync();
+        return (layout, dialogs);
+    }
+
+    [Fact]
+    public async Task Hub_tabs_are_listed_in_the_layout_with_their_page_name_but_not_as_standalone_search_entries()
+    {
+        // الوضع الحقيقي: الشاشات داخل الصفحات المدموجة فقط (الاختبارات تعرضها منفصلة أيضًا بحكم الإعداد العام)
+        HrModuleViewModel.ShowSeparateScreens = false;
+        try
+        {
+            var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+            var entries = SectionCatalog.Entries(shell.Session, dialogs);
+            var late = entries.Single(e => e.Key == SectionCatalog.KeyOf(typeof(LateRulesSectionViewModel)));
+            Assert.Equal(ModuleCode.HR, late.HomeModule);
+            Assert.Equal("الحضور", late.HubTitle);
+            Assert.Contains("(ضمن: الحضور)", late.DisplayTitle);
+            // الصفحة نفسها تبقى سطرًا، لكن تبويبها لا يظهر مستقلًا في البحث السريع و«مفضلتي»
+            Assert.Contains(entries, e => e.Key == "AttendanceHub");
+            Assert.DoesNotContain(SectionCatalog.QuickEntries(shell.Session, dialogs), q => q.Key == late.Key);
+            // العلاوة السنوية لا تُنقل (قاعدة البيانات تتحقق من صلاحية الموارد البشرية)
+            Assert.False(entries.Single(e => e.Key == SectionCatalog.KeyOf(typeof(AnnualRaisesSectionViewModel))).Movable);
+        }
+        finally { HrModuleViewModel.ShowSeparateScreens = true; }
+    }
+
+    [Fact]
+    public async Task Hiding_a_hub_tab_removes_it_from_the_page_and_hiding_every_tab_removes_the_page()
+    {
+        var (layout, dialogs) = await OpenLayoutAsync("مدير عام");
+        layout.ModuleFilter = "الموارد البشرية";
+        SectionLayoutRow Row<T>() => layout.Rows.Single(r => r.Entry.Key == SectionCatalog.KeyOf(typeof(T)));
+        try
+        {
+            Row<LateRulesSectionViewModel>().Visible = false;
+            Row<LeavesSectionViewModel>().Visible = false;
+            Row<LeaveSettingsSectionViewModel>().Visible = false;
+            await layout.SaveCommand.ExecuteAsync();
+            Assert.Empty(dialogs.Errors);
+
+            var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+            var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
+            var attendance = hr.Hubs.Single(h => h is AttendanceHubSectionViewModel);
+            Assert.DoesNotContain(attendance.Tabs, t => t.Child is LateRulesSectionViewModel);
+            Assert.Contains(attendance.AllTabs, t => t.Child is LateRulesSectionViewModel);       // الكائن متاح للروابط الداخلية
+            Assert.NotNull(attendance.Child<LateRulesSectionViewModel>());
+            Assert.Contains(hr.Tabs, t => t is AttendanceHubSectionViewModel);
+            // أُخفيت كل تبويبات «الإجازات»: لا تظهر الصفحة فارغة، وخصائص الوحدة الداخلية لا تنهار
+            Assert.DoesNotContain(hr.Tabs, t => t is LeavesHubSectionViewModel);
+            Assert.NotNull(hr.Leaves);
+        }
+        finally
+        {
+            Row<LateRulesSectionViewModel>().Visible = true;
+            Row<LeavesSectionViewModel>().Visible = true;
+            Row<LeaveSettingsSectionViewModel>().Visible = true;
+            await layout.SaveCommand.ExecuteAsync();
+            Assert.Equal(0, layout.HiddenCount);
+        }
+    }
+
+    [Fact]
+    public async Task Moving_a_hub_tab_to_finance_drops_it_from_the_page_and_shows_it_in_finance()
+    {
+        var (layout, dialogs) = await OpenLayoutAsync("مدير عام");
+        layout.ModuleFilter = "الموارد البشرية";
+        SectionLayoutRow Row<T>() => layout.Rows.Single(r => r.Entry.Key == SectionCatalog.KeyOf(typeof(T)));
+        try
+        {
+            // العلاوة السنوية لا تُنقل
+            Row<AnnualRaisesSectionViewModel>().Target = ModuleCode.Finance;
+            await layout.SaveCommand.ExecuteAsync();
+            Assert.Contains(dialogs.Errors, e => e.Contains("لا يُنقل"));
+            dialogs.Errors.Clear();
+            Row<AnnualRaisesSectionViewModel>().Target = ModuleCode.HR;
+
+            Row<LateRulesSectionViewModel>().Target = ModuleCode.Finance;
+            await layout.SaveCommand.ExecuteAsync();
+            Assert.Empty(dialogs.Errors);
+            Assert.Equal(1, layout.MovedCount);
+
+            var (shell, _) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
+            var hr = shell.Open<HrModuleViewModel>(ModuleCode.HR);
+            Assert.DoesNotContain(hr.Hubs.Single(h => h is AttendanceHubSectionViewModel).Tabs, t => t.Child is LateRulesSectionViewModel);
+            var finance = shell.Open<FinanceModuleViewModel>(ModuleCode.Finance);
+            var moved = Assert.Single(finance.Tabs.OfType<LateRulesSectionViewModel>());
+            Assert.Equal((ModuleCode.Finance, "الموارد البشرية"), (moved.Module, moved.MovedFrom));
+            await Open(finance, moved);
+        }
+        finally
+        {
+            Row<LateRulesSectionViewModel>().Target = ModuleCode.HR;
+            await layout.SaveCommand.ExecuteAsync();
+            Assert.Equal(0, layout.MovedCount);
         }
     }
 }

@@ -350,7 +350,9 @@ public abstract class ModuleViewModel : ViewModelBase
         var key = SectionCatalog.KeyOf(section);
         var movedAway = layout.Moves.TryGetValue(key, out var target) && target != section.HomeModule && SectionCatalog.IsMovable(section.GetType(), section.HomeModule);
         var hidden = layout.Hidden.Contains(key) && SectionCatalog.IsConfigurable(section.HomeModule);
-        if (!movedAway && !hidden) Tabs.Add(section);
+        // صفحة مدموجة لم يبقَ فيها تبويب لهذا المستخدم (أُخفيت كلها أو نُقلت) لا تظهر فارغة
+        var emptyHub = section is HubSectionViewModel hub && hub.Tabs.Count == 0;
+        if (!movedAway && !hidden && !emptyHub) Tabs.Add(section);
         return section;
     }
 
