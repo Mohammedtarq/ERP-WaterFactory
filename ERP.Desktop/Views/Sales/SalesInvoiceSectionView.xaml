@@ -29,6 +29,12 @@
             <!-- ================= شريط الأوامر ================= -->
             <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource SecondaryButton}" Command="{Binding ShowListCommand}" ToolTip="الرجوع إلى قائمة الفواتير (تبقى هذه الفاتورة محددة والفلاتر كما هي)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8FD;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="قائمة الفواتير"/>
+                        </StackPanel>
+                    </Button>
                     <Button Style="{StaticResource SecondaryButton}" Command="{Binding NewInvoiceCommand}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE710;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>

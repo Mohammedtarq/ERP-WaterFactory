@@ -97,6 +97,10 @@
                         <TextBlock Text="حد الدين (د.ع) — فارغ = بلا حد" Style="{StaticResource FieldLabel}"/>
                         <TextBox Text="{Binding Editor.CreditLimit, TargetNullValue=''}" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"
                                  ToolTip="البيع الآجل الذي يتجاوز هذا الحد يتوقف حتى يوافق من يملك صلاحية «تجاوز حد دين العميل»"/>
+                        <TextBlock Text="المنتجات الظاهرة عند البيع" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding VisibleProductsOptions}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Editor.AssignedProductsOnly}"
+                                  ToolTip="المخصص له فقط: في قائمة التشغيلة بفاتورة البيع يظهر متغيره الخاص والمتغيرات العامة والتشغيلات العادية، ولا تظهر متغيرات الزبائن الآخرين"/>
+                        <TextBlock Text="«المخصص له فقط» يُخفي متغيرات (ليبلات) الزبائن الآخرين عن هذا الزبون في فاتورة البيع؛ المتغيرات العامة بلا زبون تبقى ظاهرة." Style="{StaticResource Muted}" FontSize="11"/>
                         <CheckBox Content="فعّال" IsChecked="{Binding Editor.IsActive}"/>
                         <TextBlock Text="الوكيل: سعر خاص لكل صنف. العميل الفرعي: يرث سعر وكيله، ومديونيته مستقلة عنه. المباشر: السعر العادي." Style="{StaticResource Muted}" FontSize="11" Margin="0,10,0,0"/>
                     </StackPanel>

@@ -30,7 +30,7 @@
                 <TextBox Text="{Binding VoidReason, UpdateSourceTrigger=PropertyChanged}" ToolTip="سبب إلغاء الفاتورة"/>
             </DockPanel>
 
-            <DataGrid ItemsSource="{Binding Rows}">
+            <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow, Mode=TwoWay}">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="الرقم" Binding="{Binding InvoiceNumber}" Width="130"/>
                     <DataGridTextColumn Header="التاريخ" Binding="{Binding InvoiceDate, StringFormat=yyyy/MM/dd}" Width="95"/>

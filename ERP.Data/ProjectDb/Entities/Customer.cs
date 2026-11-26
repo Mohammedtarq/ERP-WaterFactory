@@ -24,6 +24,12 @@ public class Customer
     /// <summary>وكيل / صاحب خصم تشجيعي / لا شيء — لتقرير الخصم الشهري فقط (58_pack_prices.sql).</summary>
     public DiscountKind? DiscountKind { get; set; }
 
+    /// <summary>
+    /// false = تظهر له كل المتغيرات في قائمة التشغيلة (الافتراضي). true = المخصص له فقط: متغيره الخاص والمتغيرات العامة
+    /// (مناسبات بلا عميل) والتشغيلات العادية، ولا تظهر متغيرات الزبائن الآخرين (84_customer_assigned_products.sql).
+    /// </summary>
+    public bool AssignedProductsOnly { get; set; }
+
     // ملاحظة: مديونية كل عميل (وكيل أو فرعي) مستقلة تمامًا وتُحسب من
     // SalesInvoices + Vouchers الخاصة به فقط — لا حقل رصيد هنا، بنفس مبدأ
     // "السجل بدل العمود" المستخدم في المخزون والمالية.

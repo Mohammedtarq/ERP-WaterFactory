@@ -17,6 +17,7 @@ public class SalesModuleViewModel : ModuleViewModel
         UseDashboard(s, d, ModuleCode.Sales, ModuleDashboardViewModel.Sales);
         Invoice = Add(new SalesInvoiceSectionViewModel(s, d));
         InvoiceList = Add(new SalesInvoiceListSectionViewModel(s, d, OpenInvoiceAsync));
+        Invoice.ShowList = ShowInvoiceListAsync;
         Statement = Add(new CustomerStatementSectionViewModel(s, d));
         Returns = Add(new CustomerReturnSectionViewModel(s, d));
         Deposits = Add(new CustomerDepositsSectionViewModel(s, d));
@@ -39,6 +40,14 @@ public class SalesModuleViewModel : ModuleViewModel
     public CustomerStatementSectionViewModel Statement { get; }
     public CustomerReturnSectionViewModel Returns { get; }
     public CustomerDepositsSectionViewModel Deposits { get; }
+
+    /// <summary>الرجوع من الفاتورة إلى قائمة الفواتير: الفلاتر كما هي، والفاتورة التي كنت فيها محددة.</summary>
+    public async Task ShowInvoiceListAsync(int? invoiceId)
+    {
+        InvoiceList.RememberSelection(invoiceId);
+        SelectedTab = InvoiceList;
+        await LastActivation;
+    }
 
     /// <summary>فتح فاتورة من القائمة داخل تبويب الفاتورة (مسودة للتعديل، مرحّلة للعرض فقط).</summary>
     public async Task OpenInvoiceAsync(int invoiceId)
@@ -198,6 +207,12 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     {
         _paymentMethod = PaymentOptions[0];
         NewInvoiceCommand = new RelayCommand(() => { if (ConfirmDiscard()) ResetForm(); });
+        ShowListCommand = new AsyncRelayCommand(async () =>
+        {
+            // الفاتورة المرحّلة المفتوحة للعرض، أو التي بلا سطور، ترجع للقائمة بلا سؤال
+            if (!IsReadOnly && Lines.Count > 0 && !Dialogs.Confirm("التعديلات غير المحفوظة ستُفقد. متابعة والرجوع إلى قائمة الفواتير؟")) return;
+            if (ShowList is not null) await ShowList(InvoiceId);
+        });
         AddFeeCommand = new RelayCommand(AddFee);
         RemoveFeeCommand = new RelayCommand(p => { if (p is InvoiceFeeDraft f && !IsReadOnly) { Fees.Remove(f); RaiseTotals(); } });
         ClearAgentCommand = new RelayCommand(() => Agent = null);
@@ -241,6 +256,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         get => _customer;
         set
         {
+            var previous = _customer;
             if (!SetProperty(ref _customer, value)) return;
             OnPropertyChanged(nameof(PricingTypeLabel));
             OnPropertyChanged(nameof(PricingTypeColor));
@@ -252,7 +268,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             // رسوم التحميل للوكيل وعملائه فقط: العميل المباشر تسقط رسومه
             if (!IsAgentOrSub && Fees.Count > 0 && !_suppressReprice) { Fees.Clear(); RaiseTotals(); }
             if (!_suppressReprice) Background(RepriceAsync());
-            if (LineItem is not null) Background(RefreshLineStockAsync());   // المتاح يتبع محجوز العميل
+            // قائمة التشغيلة تتبع خيار «المنتجات الظاهرة» للزبون: تُبنى من جديد إن اختلف الخيار بين الزبونين
+            if (LineItem is not null && (previous?.AssignedProductsOnly == true || value?.AssignedProductsOnly == true) && !IsReadOnly) Background(OnLineItemChangedAsync());
+            else if (LineItem is not null) Background(RefreshLineStockAsync());   // المتاح يتبع محجوز العميل
         }
     }
 
@@ -405,6 +423,8 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     private readonly List<Data.ProjectDb.Entities.Warehouse> _allWarehouses = new();
     private readonly List<Item> _allItems = new();
     private List<PendingProductionService.InProduction> _inProduction = new();
+    /// <summary>صاحب كل متغير (طلب خاص): فارغ = مناسبة عامة. لفلترة قائمة التشغيلة لزبون «المخصص له فقط».</summary>
+    private Dictionary<int, int?> _recipeOwner = new();
     private Dictionary<(int wh, int item), decimal> _stock = new();
     private Dictionary<int, HashSet<string>> _itemLevels = new();
     private Dictionary<int, decimal> _topPack = new();   // قطع العبوة الكبرى لكل صنف (لعرض المتوفر بعددها)
@@ -596,6 +616,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     public decimal AmountDue => Total - PaidNow;
 
     public RelayCommand NewInvoiceCommand { get; }
+    /// <summary>زر «قائمة الفواتير» داخل الفاتورة: يرجع للقائمة (يضبطه الموديول) ويحدد الفاتورة التي كان فيها.</summary>
+    public AsyncRelayCommand ShowListCommand { get; }
+    public Func<int?, Task>? ShowList { get; set; }
     public AsyncRelayCommand AddLineCommand { get; }
     public RelayCommand RemoveLineCommand { get; }
     public AsyncRelayCommand SaveDraftCommand { get; }
@@ -644,6 +667,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
         // ما هو قيد الإنتاج (أوامر مفتوحة): يظهر في قائمة البيع حتى برصيد صفر، مع المتاح للبيع منه
         _inProduction = await new PendingProductionService(db).InProductionAsync();
+        _recipeOwner = await db.CustomRecipes.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.CustomerId);
 
         var keepFilter = PackFilter;
         PackFilters.Clear();
@@ -692,6 +716,16 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         LoadingRate = await new SalesService(db).GetLoadingRateAsync(InvoiceDate);
     }
 
+    /// <summary>
+    /// هل يظهر المتغير (أو تشغيلته) في قائمة التشغيلة لهذا الزبون؟ الزبون الذي خياره «المخصص له فقط» يرى متغيره الخاص والمتغيرات العامة
+    /// (مناسبات بلا عميل) والتشغيلات العادية، ولا يرى متغيرات الزبائن الآخرين. غيره يرى كل شيء كما كان.
+    /// </summary>
+    internal bool RecipeVisible(int? recipeId)
+    {
+        if (recipeId is null || Customer is not { AssignedProductsOnly: true } c) return true;
+        return !_recipeOwner.TryGetValue(recipeId.Value, out var owner) || owner is null || owner == c.Id;
+    }
+
     private async Task OnLineItemChangedAsync()
     {
         LevelOptions.Clear();
@@ -715,9 +749,9 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
                 .Select(g => new { g.Key.BatchId, g.Key.BatchNumber, g.Key.ExpiryDate, g.Key.CustomRecipeId, g.Key.Recipe, Qty = g.Sum(t => t.QuantityBaseUnits) })
                 .Where(x => x.Qty > 0).OrderBy(x => x.ExpiryDate).ToListAsync();
             // المتغيرات الموجودة في المخزن: صرف تلقائي من متغير بالاسم (المطعم أو المناسبة)
-            foreach (var v in batches.Where(b => b.CustomRecipeId != null).GroupBy(b => new { b.CustomRecipeId, b.Recipe }))
+            foreach (var v in batches.Where(b => b.CustomRecipeId != null && RecipeVisible(b.CustomRecipeId)).GroupBy(b => new { b.CustomRecipeId, b.Recipe }))
                 BatchOptions.Add(new BatchOption { RecipeId = v.Key.CustomRecipeId, PriceRecipeId = v.Key.CustomRecipeId, Label = $"تلقائي — {v.Key.Recipe} — {v.Sum(b => b.Qty):N0} قطعة", ShortLabel = $"تلقائي — {v.Key.Recipe}" });
-            foreach (var b in batches)
+            foreach (var b in batches.Where(b => RecipeVisible(b.CustomRecipeId)))
                 BatchOptions.Add(new BatchOption
                 {
                     BatchId = b.BatchId, PriceRecipeId = b.CustomRecipeId, ShortLabel = b.Recipe is null ? b.BatchNumber : $"{b.BatchNumber} ({b.Recipe})",
@@ -726,7 +760,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         }
         // متغيرات قيد الإنتاج (أوامر مفتوحة) ولا رصيد لها بعد: تُعرض للبيع بانتظار الإنتاج بالاسم
         if (Mode == SaleMode.Direct)
-            foreach (var x in _inProduction.Where(x => x.ItemId == LineItem.Id && x.RecipeId != null && !BatchOptions.Any(b => b.BatchId == null && b.RecipeId == x.RecipeId)))
+            foreach (var x in _inProduction.Where(x => x.ItemId == LineItem.Id && x.RecipeId != null && RecipeVisible(x.RecipeId) && !BatchOptions.Any(b => b.BatchId == null && b.RecipeId == x.RecipeId)))
                 BatchOptions.Add(new BatchOption
                 {
                     RecipeId = x.RecipeId, PriceRecipeId = x.RecipeId, ShortLabel = $"تلقائي — {x.RecipeName}",
@@ -1110,6 +1144,17 @@ public class SalesInvoiceListSectionViewModel : SectionViewModel
     public DateTime? ToDate { get => _toDate; set { if (SetProperty(ref _toDate, value)) Background(LoadAsync()); } }
     public Customer? CustomerFilter { get => _customerFilter; set { if (SetProperty(ref _customerFilter, value)) Background(LoadAsync()); } }
 
+    private int? _selectedId;
+    private SalesInvoiceListRow? _selectedRow;
+    /// <summary>السطر المحدد: يبقى محددًا بعد إعادة تحميل القائمة، ويُحدَّد عند الرجوع من الفاتورة.</summary>
+    public SalesInvoiceListRow? SelectedRow
+    {
+        get => _selectedRow;
+        set { if (SetProperty(ref _selectedRow, value) && value is not null) _selectedId = value.Id; }
+    }
+    /// <summary>الفاتورة التي يُحدَّد سطرها عند التحميل التالي (رجوع من شاشة الفاتورة).</summary>
+    public void RememberSelection(int? invoiceId) { if (invoiceId is not null) _selectedId = invoiceId; }
+
     public decimal PostedTotal => Rows.Where(r => r.Status == "Posted").Sum(r => r.TotalAmount);
     public int DraftCount => Rows.Count(r => r.Status == "Draft");
 
@@ -1142,6 +1187,7 @@ public class SalesInvoiceListSectionViewModel : SectionViewModel
             var rows = await new SalesService(db).GetInvoiceListAsync(FromDate, ToDate, CustomerFilter?.Id);
             Rows.Clear();
             foreach (var r in rows) Rows.Add(r);
+            SelectedRow = _selectedId is int sid ? Rows.FirstOrDefault(r => r.Id == sid) : null;
             OnPropertyChanged(nameof(PostedTotal));
             OnPropertyChanged(nameof(DraftCount));
         }
@@ -1391,6 +1437,12 @@ public class CustomersSectionViewModel : CrudSectionViewModel<Customer>
         new Option<DiscountKind?>(null, "لا شيء"),
         new Option<DiscountKind?>(DiscountKind.Agent, "وكيل"),
         new Option<DiscountKind?>(DiscountKind.Incentive, "صاحب خصم تشجيعي")
+    };
+    /// <summary>المنتجات الظاهرة في قائمة التشغيلة عند البيع لهذا الزبون.</summary>
+    public IReadOnlyList<Option<bool>> VisibleProductsOptions { get; } = new[]
+    {
+        new Option<bool>(false, "كل المنتجات"),
+        new Option<bool>(true, "المخصص له فقط")
     };
     public ObservableCollection<Customer> Agents { get; } = new();
 
