@@ -1,0 +1,67 @@
+<UserControl x:Class="ERP.Desktop.Views.Controls.AuditLogSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Controls;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:AuditLogSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="340"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="من" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker SelectedDate="{Binding From}" Width="130"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="إلى" Style="{StaticResource FieldLabel}"/>
+                        <DatePicker SelectedDate="{Binding To}" Width="130"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="المستخدم" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding UserOptions}" SelectedItem="{Binding SelectedUser}" DisplayMemberPath="Label" Width="150"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="الجدول" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding TableOptions}" SelectedItem="{Binding SelectedTable}" DisplayMemberPath="Label" Width="160"/>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="بحث (رقم مستند أو اسم)" Style="{StaticResource FieldLabel}"/>
+                        <TextBox Text="{Binding Search, UpdateSourceTrigger=PropertyChanged}" Width="170"/>
+                    </StackPanel>
+                    <Button Content="عرض" Style="{StaticResource PrimaryButton}" Command="{Binding SearchCommand}" VerticalAlignment="Bottom"/>
+                    <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" VerticalAlignment="Bottom"/>
+                </WrapPanel>
+                <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الوقت" Binding="{Binding AtLocal, StringFormat=yyyy/MM/dd HH:mm}" Width="130"/>
+                        <DataGridTextColumn Header="المستخدم" Binding="{Binding User}" Width="110"/>
+                        <DataGridTextColumn Header="العملية" Binding="{Binding ActionName}" Width="90"/>
+                        <DataGridTextColumn Header="الجدول" Binding="{Binding TableTitle}" Width="140"/>
+                        <DataGridTextColumn Header="السجل" Binding="{Binding RecordId}" Width="70"/>
+                        <DataGridTextColumn Header="الوصف" Binding="{Binding Summary}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="تفاصيل التغيير (قبل ← بعد)" Style="{StaticResource SectionTitle}"/>
+                <TextBlock DockPanel.Dock="Top" Text="اختر حركة من الجدول لعرض الحقول التي تغيّرت." Style="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap"/>
+                <ItemsControl ItemsSource="{Binding SelectedChanges}" Margin="0,10,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,3"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

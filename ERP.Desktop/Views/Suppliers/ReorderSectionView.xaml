@@ -1,0 +1,56 @@
+<UserControl x:Class="ERP.Desktop.Views.Suppliers.ReorderSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Suppliers;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:ReorderSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock Text="الاستهلاك على آخر (يوم)" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox Text="{Binding HistoryDays, UpdateSourceTrigger=LostFocus}" Width="60" FlowDirection="LeftToRight"/>
+                    <TextBlock Text="الطلب يكفي (يوم)" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                    <TextBox Text="{Binding CoverDays, UpdateSourceTrigger=LostFocus}" Width="60" FlowDirection="LeftToRight"/>
+                    <TextBlock Text="أيام الأمان" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="12,0,6,0"/>
+                    <TextBox Text="{Binding SafetyDays, UpdateSourceTrigger=LostFocus}" Width="50" FlowDirection="LeftToRight"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}" Margin="12,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="حفظ التعديلات"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Content="طباعة" Style="{StaticResource SecondaryButton}" Command="{Binding PrintCommand}" Margin="8,0,0,0"/>
+                    <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                </StackPanel>
+                <TextBlock Text="مقترح الشراء" Style="{StaticResource SectionTitle}" Margin="0"/>
+            </DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                       Text="{Binding FormulaText}"/>
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+            <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="False" CanUserAddRows="False">
+                <DataGrid.Resources>
+                    <Style x:Key="EditableCell" TargetType="DataGridCell">
+                        <Setter Property="Background" Value="#FFFBEB"/>
+                        <Setter Property="ToolTip" Value="قابل للتعديل — ثم «حفظ التعديلات»"/>
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="الحالة" Binding="{Binding Row.Status}" Width="90" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الرمز" Binding="{Binding Row.ItemCode}" Width="100" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="المادة" Binding="{Binding Row.ItemName}" Width="*" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الرصيد" Binding="{Binding Row.OnHand, StringFormat=N0}" Width="100" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الاستهلاك اليومي" Binding="{Binding Row.DailyUse, StringFormat=N0}" Width="110" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="يكفي (يوم)" Binding="{Binding Row.CoverDays, StringFormat=N1, TargetNullValue='—'}" Width="90" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="مدة التجهيز ✎" Binding="{Binding LeadTimeDays, UpdateSourceTrigger=LostFocus}" Width="100" CellStyle="{StaticResource EditableCell}"/>
+                    <DataGridTextColumn Header="حد التنبيه ✎" Binding="{Binding AlertLevel, TargetNullValue='', UpdateSourceTrigger=LostFocus}" Width="100" CellStyle="{StaticResource EditableCell}"/>
+                    <DataGridTextColumn Header="نقطة الطلب" Binding="{Binding Row.ReorderPoint, StringFormat=N0}" Width="100" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="الكمية المقترحة" Binding="{Binding Row.SuggestedQuantity, StringFormat=N0}" Width="120" IsReadOnly="True"/>
+                    <DataGridCheckBoxColumn Header="معدَّل" Binding="{Binding IsChanged, Mode=OneWay}" Width="60" IsReadOnly="True"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+    </Border>
+</UserControl>

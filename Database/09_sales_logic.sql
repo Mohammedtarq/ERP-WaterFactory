@@ -1,0 +1,920 @@
+/* ============================================================
+   منطق وحدة المبيعات (يُنفَّذ بعد الملفات 01 → 08)
+   - التسعير الهرمي: وكيل / عميل فرعي / عميل مباشر
+   - مستلزمات التحميل، الضريبة، المبيعات المجانية
+   - اختيار التشغيلة تلقائيًا (FIFO حسب تاريخ الصلاحية)
+   - الترحيل: خصم المخزون + القيد المحاسبي التلقائي (العقل المالي)
+     + محفظة المندوب — كلها في معاملة واحدة (إما تنجح كلها أو لا شيء)
+
+   قواعد الربط المطلوبة في AccountMappingRules (TransactionType):
+     SalesInvoiceCash        مدين: الصندوق            دائن: إيرادات المبيعات
+     SalesInvoiceCredit      مدين: ذمم العملاء         دائن: إيرادات المبيعات
+     SalesInvoiceElectronic  مدين: البنك/الدفع الإلكتروني دائن: إيرادات المبيعات
+     SalesInvoiceRepCash     مدين: عهدة المندوبين      دائن: إيرادات المبيعات
+     SalesTax                (يُستخدم الحساب الدائن فقط: ضريبة مستحقة)
+     LoadingSuppliesCharge   (يُستخدم الحساب الدائن فقط: إيراد مستلزمات التحميل)
+   ============================================================ */
+
+-- هذا الملف قابل لإعادة التنفيذ بأمان (كل إضافة محمية بشرط، والإجراءات CREATE OR ALTER)
+-- حتى يرقّي البرنامج أي قاعدة قائمة تلقائيًا إلى آخر نسخة.
+
+-- ============ أعمدة إضافية على رأس الفاتورة (مجاميع + تتبّع الترحيل) ============
+IF COL_LENGTH('SalesInvoices', 'SubTotal') IS NULL
+    ALTER TABLE SalesInvoices ADD SubTotal DECIMAL(18,2) NOT NULL CONSTRAINT DF_SalesInvoices_SubTotal DEFAULT 0;
+IF COL_LENGTH('SalesInvoices', 'TaxAmount') IS NULL
+    ALTER TABLE SalesInvoices ADD TaxAmount DECIMAL(18,2) NOT NULL CONSTRAINT DF_SalesInvoices_TaxAmount DEFAULT 0;
+IF COL_LENGTH('SalesInvoices', 'TotalAmount') IS NULL
+    ALTER TABLE SalesInvoices ADD TotalAmount DECIMAL(18,2) NOT NULL CONSTRAINT DF_SalesInvoices_TotalAmount DEFAULT 0;
+IF COL_LENGTH('SalesInvoices', 'Notes') IS NULL
+    ALTER TABLE SalesInvoices ADD Notes NVARCHAR(400) NULL;
+IF COL_LENGTH('SalesInvoices', 'PostedByUserId') IS NULL
+    ALTER TABLE SalesInvoices ADD PostedByUserId INT NULL CONSTRAINT FK_SalesInvoices_PostedBy FOREIGN KEY REFERENCES Users(Id);
+IF COL_LENGTH('SalesInvoices', 'PostedAt') IS NULL
+    ALTER TABLE SalesInvoices ADD PostedAt DATETIME2 NULL;
+-- رصيد افتتاحي منقول من نظام سابق: فاتورة بلا سطور تدخل كشف العميل وتوزيع الدفعات، وتُستبعد من المبيعات
+IF COL_LENGTH('SalesInvoices', 'IsOpeningBalance') IS NULL
+    ALTER TABLE SalesInvoices ADD IsOpeningBalance BIT NOT NULL CONSTRAINT DF_SalesInvoices_IsOpeningBalance DEFAULT 0;
+GO
+
+-- إلغاء المستند المرحّل بدل حذفه: الفاتورة تُلغى بحركات عكسية وتبقى ظاهرة بحالة "ملغاة"
+IF COL_LENGTH('SalesInvoices', 'VoidReason') IS NULL
+    ALTER TABLE SalesInvoices ADD VoidReason NVARCHAR(300) NULL,
+                                  VoidedByUserId INT NULL CONSTRAINT FK_SalesInvoices_VoidedBy FOREIGN KEY REFERENCES Users(Id),
+                                  VoidedAt DATETIME2 NULL;
+IF COL_LENGTH('Vouchers', 'IsVoided') IS NULL
+    ALTER TABLE Vouchers ADD IsVoided BIT NOT NULL CONSTRAINT DF_Vouchers_IsVoided DEFAULT 0,
+                             VoidReason NVARCHAR(300) NULL,
+                             VoidedByUserId INT NULL CONSTRAINT FK_Vouchers_VoidedBy FOREIGN KEY REFERENCES Users(Id),
+                             VoidedAt DATETIME2 NULL;
+GO
+
+-- سعر القائمة لحظة البيع: الخصم في الحسابات الختامية = (سعر القائمة − سعر الوكيل) × الكمية
+IF COL_LENGTH('SalesInvoiceLines', 'ListUnitPrice') IS NULL
+    ALTER TABLE SalesInvoiceLines ADD ListUnitPrice DECIMAL(18,2) NULL;
+-- حد الدين بالمبلغ: تجاوزه يوقف البيع الآجل حتى يوافق من يملك الصلاحية
+IF COL_LENGTH('Customers', 'CreditLimit') IS NULL
+    ALTER TABLE Customers ADD CreditLimit DECIMAL(18,2) NULL;
+GO
+
+-- متغيرات المنتج التام: التشغيلة تحمل وصفتها (الليبل/الغطاء الخاص)، وسطر البيع قد يطلب متغيرًا بعينه
+IF COL_LENGTH('ItemBatches', 'CustomRecipeId') IS NULL
+    ALTER TABLE ItemBatches ADD CustomRecipeId INT NULL CONSTRAINT FK_ItemBatches_CustomRecipe REFERENCES CustomRecipes(Id);
+IF COL_LENGTH('SalesInvoiceLines', 'CustomRecipeId') IS NULL
+    ALTER TABLE SalesInvoiceLines ADD CustomRecipeId INT NULL CONSTRAINT FK_SalesInvoiceLines_CustomRecipe REFERENCES CustomRecipes(Id);
+GO
+
+-- البيع بانتظار الإنتاج: ما بيع فوق الرصيد المسجّل يُسجَّل عجزًا باسم الصنف والفاتورة، ويُسوّى تلقائيًا عند تسجيل الإنتاج
+IF OBJECT_ID('PendingProductionShortages', 'U') IS NULL
+CREATE TABLE PendingProductionShortages (
+    Id                  INT IDENTITY(1,1) PRIMARY KEY,
+    ItemId              INT             NOT NULL FOREIGN KEY REFERENCES Items(Id),
+    WarehouseId         INT             NOT NULL FOREIGN KEY REFERENCES Warehouses(Id),
+    Quantity            DECIMAL(18,3)   NOT NULL CHECK (Quantity > 0),
+    SettledQuantity     DECIMAL(18,3)   NOT NULL DEFAULT 0,
+    SalesInvoiceId      INT             NULL FOREIGN KEY REFERENCES SalesInvoices(Id),
+    CreatedByUserId     INT             NOT NULL FOREIGN KEY REFERENCES Users(Id),
+    CreatedAt           DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+    SettledAt           DATETIME2       NULL
+);
+GO
+
+DECLARE @oldStatusCk sysname = (SELECT TOP 1 name FROM sys.check_constraints
+                                WHERE parent_object_id = OBJECT_ID('SalesInvoices')
+                                  AND definition LIKE N'%Draft%' AND definition NOT LIKE N'%Voided%');
+IF @oldStatusCk IS NOT NULL EXEC (N'ALTER TABLE SalesInvoices DROP CONSTRAINT [' + @oldStatusCk + N']');
+IF OBJECT_ID('CK_SalesInvoices_Status', 'C') IS NULL
+    ALTER TABLE SalesInvoices ADD CONSTRAINT CK_SalesInvoices_Status CHECK (Status IN (N'Draft', N'Posted', N'Voided'));
+GO
+
+IF OBJECT_ID('CK_SalesInvoices_FreeSaleRecipient', 'C') IS NULL
+    ALTER TABLE SalesInvoices ADD CONSTRAINT CK_SalesInvoices_FreeSaleRecipient
+        CHECK (IsFreeSale = 0 OR (FreeSaleRecipient IS NOT NULL AND LEN(LTRIM(FreeSaleRecipient)) > 0));
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SalesInvoices_Customer')
+    CREATE INDEX IX_SalesInvoices_Customer ON SalesInvoices (CustomerId, Status, InvoiceDate);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SalesInvoiceLines_Invoice')
+    CREATE INDEX IX_SalesInvoiceLines_Invoice ON SalesInvoiceLines (SalesInvoiceId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AgentItemPrices_Item')
+    CREATE INDEX IX_AgentItemPrices_Item ON AgentItemPrices (ItemId, CustomerId);
+GO
+
+-- ============ الترقيم التلقائي ============
+IF OBJECT_ID('seq_SalesInvoiceNumber', 'SO') IS NULL
+    CREATE SEQUENCE seq_SalesInvoiceNumber AS INT START WITH 1 INCREMENT BY 1;
+IF OBJECT_ID('seq_SalesJournalNumber', 'SO') IS NULL
+    CREATE SEQUENCE seq_SalesJournalNumber AS INT START WITH 1 INCREMENT BY 1;
+GO
+
+/* ============================================================
+   الرصيد الحالي للمخزون لكل صنف/مخزن/تشغيلة (من سجل الحركة فقط)
+   ============================================================ */
+CREATE OR ALTER VIEW vw_StockBalance AS
+SELECT  st.ItemId, st.WarehouseId, st.BatchId,
+        SUM(st.QuantityBaseUnits) AS QuantityBaseUnits
+FROM    StockTransactions st
+GROUP BY st.ItemId, st.WarehouseId, st.BatchId;
+GO
+
+/* ============================================================
+   صلاحية المستخدم على وحدة (View/Add/Edit/Delete/Post)
+   ============================================================ */
+CREATE OR ALTER FUNCTION fn_UserCan (@UserId INT, @ModuleCode NVARCHAR(50), @Action NVARCHAR(10))
+RETURNS BIT
+AS
+BEGIN
+    DECLARE @r BIT = 0;
+    SELECT @r = CASE @Action
+                    WHEN N'View'   THEN rp.CanView
+                    WHEN N'Add'    THEN rp.CanAdd
+                    WHEN N'Edit'   THEN rp.CanEdit
+                    WHEN N'Delete' THEN rp.CanDelete
+                    WHEN N'Post'   THEN rp.CanPost
+                    ELSE 0 END
+    FROM   Users u
+    JOIN   RolePermissions rp ON rp.RoleId = u.RoleId AND rp.ModuleCode = @ModuleCode
+    WHERE  u.Id = @UserId AND u.IsActive = 1;
+    RETURN ISNULL(@r, 0);
+END;
+GO
+
+/* ============================================================
+   التسعير الهرمي — سعر القطعة الواحدة (الوحدة الأساسية)
+   1) وكيل        ← سعره الخاص في AgentItemPrices
+   2) عميل فرعي   ← سعر الوكيل الأب في AgentItemPrices
+   3) غير ذلك (أو لا يوجد سعر خاص) ← Items.SalePrice
+   @UseAgentPricing = 0 يُجبر السعر العادي
+   ============================================================ */
+CREATE OR ALTER FUNCTION fn_Sales_BaseUnitPrice (@CustomerId INT, @ItemId INT, @UseAgentPricing BIT)
+RETURNS DECIMAL(18,4)
+AS
+BEGIN
+    DECLARE @price DECIMAL(18,4), @agentId INT, @type NVARCHAR(20);
+
+    SELECT @type = CustomerType,
+           @agentId = CASE CustomerType WHEN N'Agent' THEN Id
+                                        WHEN N'SubCustomer' THEN ParentAgentId END
+    FROM   Customers WHERE Id = @CustomerId;
+
+    IF @UseAgentPricing = 1 AND @agentId IS NOT NULL
+        SELECT @price = AgentPrice FROM AgentItemPrices WHERE CustomerId = @agentId AND ItemId = @ItemId;
+
+    IF @price IS NULL
+        SELECT @price = SalePrice FROM Items WHERE Id = @ItemId;
+
+    RETURN @price;
+END;
+GO
+
+/* ============================================================
+   سعر مستلزمات التحميل الساري في تاريخ معيّن
+   ============================================================ */
+CREATE OR ALTER FUNCTION fn_Sales_LoadingRate (@OnDate DATE)
+RETURNS DECIMAL(18,2)
+AS
+BEGIN
+    RETURN ISNULL((SELECT TOP 1 RatePerPiece FROM LoadingSuppliesSettings
+                   WHERE EffectiveDate <= @OnDate
+                   ORDER BY EffectiveDate DESC, Id DESC), 0);
+END;
+GO
+
+/* ============================================================
+   من يحق له أي تشغيلة من المنتج التام (مرآة BatchScope في ERP.Data):
+   - @RecipeId محدد ← تشغيلات هذا المتغير فقط، والمحجوز لعميل آخر يحتاج @AllowReserved
+   - غير محدد ← محجوز العميل نفسه أولًا (0)، ثم الأساسي (1)، ثم المحجوز لغيره بالصلاحية (2)؛
+     والمناسبات لا تُصرف إلا بطلبها بالاسم
+   NULL = لا يحق
+   ============================================================ */
+CREATE OR ALTER FUNCTION fn_Stock_BatchPriority (@BatchId INT, @CustomerId INT, @RecipeId INT, @AllowReserved BIT)
+RETURNS INT
+AS
+BEGIN
+    DECLARE @batchRecipe INT, @owner INT;
+    SELECT @batchRecipe = b.CustomRecipeId, @owner = r.CustomerId
+    FROM ItemBatches b LEFT JOIN CustomRecipes r ON r.Id = b.CustomRecipeId
+    WHERE b.Id = @BatchId;
+
+    IF @RecipeId IS NOT NULL
+        RETURN CASE WHEN ISNULL(@batchRecipe, 0) <> @RecipeId THEN NULL
+                    WHEN @owner IS NULL OR @owner = @CustomerId OR @AllowReserved = 1 THEN 0 END;
+    IF @batchRecipe IS NULL RETURN 1;
+    IF @owner = @CustomerId RETURN 0;
+    IF @owner IS NULL RETURN NULL;
+    RETURN CASE WHEN @AllowReserved = 1 THEN 2 END;
+END;
+GO
+
+/* ============================================================
+   إنشاء فاتورة مبيعات (مسودة)
+   ============================================================ */
+CREATE OR ALTER PROCEDURE sp_Sales_CreateInvoice
+    @CustomerId             INT,
+    @WarehouseId            INT,
+    @InvoiceDate            DATE,
+    @PaymentMethod          NVARCHAR(20),
+    @AmountPaidNow          DECIMAL(18,2)   = 0,     -- يُعتبر فقط عند Partial
+    @TaxEnabled             BIT             = 0,
+    @TaxRate                DECIMAL(5,2)    = 14,
+    @LoadingSuppliesEnabled BIT             = 0,
+    @IsAgentPricing         BIT             = NULL,  -- NULL = تلقائي حسب نوع العميل
+    @IsFreeSale             BIT             = 0,
+    @FreeSaleRecipient      NVARCHAR(200)   = NULL,
+    @SalesRepEmployeeId     INT             = NULL,  -- NULL = مالك مخزن الكاش فان إن وُجد
+    @Notes                  NVARCHAR(400)   = NULL,
+    @UserId                 INT,
+    @NewInvoiceId           INT             = NULL OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON; SET XACT_ABORT ON;
+
+    IF dbo.fn_UserCan(@UserId, N'Sales', N'Add') = 0
+        THROW 51000, N'لا تملك صلاحية إضافة فواتير مبيعات.', 1;
+
+    DECLARE @custType NVARCHAR(20), @custActive BIT, @parentAgent INT;
+    SELECT @custType = CustomerType, @custActive = IsActive, @parentAgent = ParentAgentId
+    FROM Customers WHERE Id = @CustomerId;
+
+    IF @custType IS NULL OR @custActive = 0
+        THROW 51001, N'العميل غير موجود أو غير فعّال.', 1;
+    IF @custType = N'SubCustomer' AND NOT EXISTS
+        (SELECT 1 FROM Customers WHERE Id = @parentAgent AND CustomerType = N'Agent')
+        THROW 51002, N'العميل الفرعي يجب أن يكون مرتبطًا بوكيل صحيح.', 1;
+
+    DECLARE @whType NVARCHAR(30), @whSellable BIT, @whOwner INT;
+    SELECT @whType = WarehouseType, @whSellable = IsSellableStock, @whOwner = OwnerEmployeeId
+    FROM Warehouses WHERE Id = @WarehouseId AND IsActive = 1;
+
+    IF @whType IS NULL
+        THROW 51003, N'المخزن غير موجود أو غير فعّال.', 1;
+    IF @whSellable = 0
+        THROW 51004, N'لا يمكن البيع من هذا المخزن (مخزون غير قابل للبيع).', 1;
+
+    IF @IsFreeSale = 1 AND LEN(LTRIM(ISNULL(@FreeSaleRecipient, N''))) = 0
+        THROW 51005, N'المبيعات المجانية تتطلب تحديد الجهة المستفيدة.', 1;
+
+    IF @PaymentMethod NOT IN (N'Cash', N'Credit', N'Partial', N'Electronic')
+        THROW 51006, N'طريقة دفع غير صحيحة.', 1;
+
+    IF @SalesRepEmployeeId IS NULL AND @whType = N'RepVan'
+        SET @SalesRepEmployeeId = @whOwner;
+
+    IF @SalesRepEmployeeId IS NOT NULL AND NOT EXISTS
+        (SELECT 1 FROM Employees WHERE Id = @SalesRepEmployeeId AND IsSalesRep = 1 AND IsActive = 1)
+        THROW 51007, N'الموظف المحدد ليس مندوب مبيعات فعّالًا.', 1;
+
+    SET @IsAgentPricing = ISNULL(@IsAgentPricing,
+                          CASE WHEN @custType IN (N'Agent', N'SubCustomer') THEN 1 ELSE 0 END);
+
+    DECLARE @num NVARCHAR(30) = N'SI-' + CAST(YEAR(@InvoiceDate) AS NVARCHAR(4)) + N'-'
+            + RIGHT(N'000000' + CAST(NEXT VALUE FOR seq_SalesInvoiceNumber AS NVARCHAR(10)), 6);
+
+    INSERT INTO SalesInvoices
+        (InvoiceNumber, CustomerId, WarehouseId, InvoiceDate, PaymentMethod, AmountPaidNow,
+         TaxEnabled, TaxRate, LoadingSuppliesEnabled, IsAgentPricing, IsFreeSale,
+         FreeSaleRecipient, SalesRepEmployeeId, Notes, CreatedByUserId)
+    VALUES
+        (@num, @CustomerId, @WarehouseId, @InvoiceDate, @PaymentMethod,
+         CASE WHEN @PaymentMethod = N'Partial' THEN ISNULL(@AmountPaidNow, 0) ELSE 0 END,
+         CASE WHEN @IsFreeSale = 1 THEN 0 ELSE @TaxEnabled END, @TaxRate,
+         CASE WHEN @IsFreeSale = 1 THEN 0 ELSE @LoadingSuppliesEnabled END,
+         @IsAgentPricing, @IsFreeSale,
+         CASE WHEN @IsFreeSale = 1 THEN LTRIM(RTRIM(@FreeSaleRecipient)) END,
+         @SalesRepEmployeeId, @Notes, @UserId);
+
+    SET @NewInvoiceId = SCOPE_IDENTITY();
+    SELECT @NewInvoiceId AS InvoiceId, @num AS InvoiceNumber;
+END;
+GO
+
+/* ============================================================
+   إضافة سطر إلى فاتورة مسودة
+   - @UnitPrice = NULL ← يُحسب تلقائيًا بالتسعير الهرمي × عدد القطع في وحدة البيع
+   - @BatchId   = NULL ← تُختار التشغيلات تلقائيًا (FIFO) وقت الترحيل
+   ============================================================ */
+CREATE OR ALTER PROCEDURE sp_Sales_AddInvoiceLine
+    @InvoiceId          INT,
+    @ItemId             INT,
+    @PackagingLevelId   INT,
+    @QuantityInLevel    DECIMAL(18,3),
+    @UnitPrice          DECIMAL(18,2)   = NULL,
+    @BatchId            INT             = NULL,
+    @UserId             INT,
+    @NewLineId          INT             = NULL OUTPUT,
+    @CustomRecipeId     INT             = NULL
+AS
+BEGIN
+    SET NOCOUNT ON; SET XACT_ABORT ON;
+
+    IF dbo.fn_UserCan(@UserId, N'Sales', N'Edit') = 0 AND dbo.fn_UserCan(@UserId, N'Sales', N'Add') = 0
+        THROW 51010, N'لا تملك صلاحية تعديل فواتير المبيعات.', 1;
+
+    DECLARE @status NVARCHAR(20), @custId INT, @agentPricing BIT, @free BIT, @rawSale BIT;
+    SELECT @status = i.Status, @custId = i.CustomerId, @agentPricing = i.IsAgentPricing, @free = i.IsFreeSale,
+           @rawSale = CASE WHEN w.WarehouseType = N'RawMaterial' THEN 1 ELSE 0 END
+    FROM SalesInvoices i JOIN Warehouses w ON w.Id = i.WarehouseId WHERE i.Id = @InvoiceId;
+
+    IF @status IS NULL THROW 51011, N'الفاتورة غير موجودة.', 1;
+    IF @status <> N'Draft' THROW 51012, N'لا يمكن تعديل فاتورة مرحّلة.', 1;
+    IF @QuantityInLevel IS NULL OR @QuantityInLevel <= 0
+        THROW 51013, N'الكمية يجب أن تكون أكبر من صفر.', 1;
+    IF NOT EXISTS (SELECT 1 FROM Items WHERE Id = @ItemId AND IsActive = 1)
+        THROW 51014, N'الصنف غير موجود أو غير فعّال.', 1;
+
+    DECLARE @baseUnits DECIMAL(18,3);
+    -- بيع المواد الأولية (من مخزنها، بصلاحية خاصة في الواجهة) يقبل أي وحدة للمادة
+    SELECT @baseUnits = EquivalentBaseUnits FROM ItemPackagingLevels
+    WHERE Id = @PackagingLevelId AND ItemId = @ItemId AND (IsSellableUnit = 1 OR @rawSale = 1);
+
+    IF @baseUnits IS NULL
+        THROW 51015, N'وحدة البيع المختارة لا تخص هذا الصنف أو غير قابلة للبيع.', 1;
+
+    IF @BatchId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ItemBatches WHERE Id = @BatchId AND ItemId = @ItemId)
+        THROW 51016, N'التشغيلة المختارة لا تخص هذا الصنف.', 1;
+
+    IF @CustomRecipeId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM CustomRecipes WHERE Id = @CustomRecipeId AND FinishedItemId = @ItemId)
+        THROW 51018, N'المتغير المختار لا يخص هذا الصنف.', 1;
+
+    IF @UnitPrice IS NOT NULL AND @UnitPrice < 0
+        THROW 51017, N'السعر لا يمكن أن يكون سالبًا.', 1;
+
+    IF @free = 1
+        SET @UnitPrice = 0;
+    ELSE IF @UnitPrice IS NULL
+        SET @UnitPrice = ROUND(dbo.fn_Sales_BaseUnitPrice(@custId, @ItemId, @agentPricing) * @baseUnits, 2);
+
+    INSERT INTO SalesInvoiceLines
+        (SalesInvoiceId, ItemId, BatchId, PackagingLevelId, QuantityInLevel, QuantityBaseUnits, UnitPrice, LineTotal, ListUnitPrice, CustomRecipeId)
+    VALUES
+        (@InvoiceId, @ItemId, @BatchId, @PackagingLevelId, @QuantityInLevel,
+         @QuantityInLevel * @baseUnits, @UnitPrice, ROUND(@QuantityInLevel * @UnitPrice, 2),
+         CASE WHEN @free = 1 THEN 0 ELSE ROUND((SELECT SalePrice FROM Items WHERE Id = @ItemId) * @baseUnits, 2) END,
+         CASE WHEN @BatchId IS NULL THEN @CustomRecipeId END);
+
+    SET @NewLineId = SCOPE_IDENTITY();
+    SELECT @NewLineId AS LineId, @UnitPrice AS UnitPrice;
+END;
+GO
+
+/* ============================================================
+   تعديل رأس فاتورة مسودة (العميل، المخزن، الدفع، الخيارات...)
+   نفس تحققات الإنشاء؛ السطور تبقى كما هي وتُعاد تسعيرتها من الواجهة عند الحاجة.
+   ============================================================ */
+CREATE OR ALTER PROCEDURE sp_Sales_UpdateDraftHeader
+    @InvoiceId              INT,
+    @CustomerId             INT,
+    @WarehouseId            INT,
+    @InvoiceDate            DATE,
+    @PaymentMethod          NVARCHAR(20),
+    @AmountPaidNow          DECIMAL(18,2)   = 0,
+    @TaxEnabled             BIT             = 0,
+    @TaxRate                DECIMAL(5,2)    = 14,
+    @LoadingSuppliesEnabled BIT             = 0,
+    @IsAgentPricing         BIT             = NULL,
+    @IsFreeSale             BIT             = 0,
+    @FreeSaleRecipient      NVARCHAR(200)   = NULL,
+    @SalesRepEmployeeId     INT             = NULL,
+    @Notes                  NVARCHAR(400)   = NULL,
+    @UserId                 INT
+AS
+BEGIN
+    SET NOCOUNT ON; SET XACT_ABORT ON;
+
+    IF dbo.fn_UserCan(@UserId, N'Sales', N'Edit') = 0
+        THROW 51050, N'لا تملك صلاحية تعديل فواتير المبيعات.', 1;
+    IF NOT EXISTS (SELECT 1 FROM SalesInvoices WHERE Id = @InvoiceId AND Status = N'Draft')
+        THROW 51051, N'الفاتورة غير موجودة أو مرحّلة (لا يمكن تعديل فاتورة مرحّلة).', 1;
+
+    DECLARE @custType NVARCHAR(20), @custActive BIT, @parentAgent INT;
+    SELECT @custType = CustomerType, @custActive = IsActive, @parentAgent = ParentAgentId FROM Customers WHERE Id = @CustomerId;
+    IF @custType IS NULL OR @custActive = 0
+        THROW 51001, N'العميل غير موجود أو غير فعّال.', 1;
+    IF @custType = N'SubCustomer' AND NOT EXISTS (SELECT 1 FROM Customers WHERE Id = @parentAgent AND CustomerType = N'Agent')
+        THROW 51002, N'العميل الفرعي يجب أن يكون مرتبطًا بوكيل صحيح.', 1;
+
+    DECLARE @whType NVARCHAR(30), @whSellable BIT, @whOwner INT;
+    SELECT @whType = WarehouseType, @whSellable = IsSellableStock, @whOwner = OwnerEmployeeId
+    FROM Warehouses WHERE Id = @WarehouseId AND IsActive = 1;
+    IF @whType IS NULL THROW 51003, N'المخزن غير موجود أو غير فعّال.', 1;
+    IF @whSellable = 0 THROW 51004, N'لا يمكن البيع من هذا المخزن (مخزون غير قابل للبيع).', 1;
+    IF @IsFreeSale = 1 AND LEN(LTRIM(ISNULL(@FreeSaleRecipient, N''))) = 0
+        THROW 51005, N'المبيعات المجانية تتطلب تحديد الجهة المستفيدة.', 1;
+    IF @PaymentMethod NOT IN (N'Cash', N'Credit', N'Partial', N'Electronic')
+        THROW 51006, N'طريقة دفع غير صحيحة.', 1;
+
+    IF @SalesRepEmployeeId IS NULL AND @whType = N'RepVan' SET @SalesRepEmployeeId = @whOwner;
+    IF @SalesRepEmployeeId IS NOT NULL AND NOT EXISTS
+        (SELECT 1 FROM Employees WHERE Id = @SalesRepEmployeeId AND IsSalesRep = 1 AND IsActive = 1)
+        THROW 51007, N'الموظف المحدد ليس مندوب مبيعات فعّالًا.', 1;
+
+    SET @IsAgentPricing = ISNULL(@IsAgentPricing, CASE WHEN @custType IN (N'Agent', N'SubCustomer') THEN 1 ELSE 0 END);
+
+    UPDATE SalesInvoices SET
+        CustomerId = @CustomerId, WarehouseId = @WarehouseId, InvoiceDate = @InvoiceDate, PaymentMethod = @PaymentMethod,
+        AmountPaidNow = CASE WHEN @PaymentMethod = N'Partial' THEN ISNULL(@AmountPaidNow, 0) ELSE 0 END,
+        TaxEnabled = CASE WHEN @IsFreeSale = 1 THEN 0 ELSE @TaxEnabled END, TaxRate = @TaxRate,
+        LoadingSuppliesEnabled = CASE WHEN @IsFreeSale = 1 THEN 0 ELSE @LoadingSuppliesEnabled END,
+        IsAgentPricing = @IsAgentPricing, IsFreeSale = @IsFreeSale,
+        FreeSaleRecipient = CASE WHEN @IsFreeSale = 1 THEN LTRIM(RTRIM(@FreeSaleRecipient)) END,
+        SalesRepEmployeeId = @SalesRepEmployeeId, Notes = @Notes
+    WHERE Id = @InvoiceId;
+
+    -- المجانية: كل السطور بسعر صفر
+    IF @IsFreeSale = 1
+        UPDATE SalesInvoiceLines SET UnitPrice = 0, LineTotal = 0 WHERE SalesInvoiceId = @InvoiceId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE sp_Sales_DeleteInvoiceLine
+    @LineId INT,
+    @UserId INT
+AS
+BEGIN
+    SET NOCOUNT ON; SET XACT_ABORT ON;
+    IF dbo.fn_UserCan(@UserId, N'Sales', N'Edit') = 0
+        THROW 51020, N'لا تملك صلاحية تعديل فواتير المبيعات.', 1;
+
+    IF NOT EXISTS (SELECT 1 FROM SalesInvoiceLines l JOIN SalesInvoices i ON i.Id = l.SalesInvoiceId
+                   WHERE l.Id = @LineId AND i.Status = N'Draft')
+        THROW 51021, N'السطر غير موجود أو أن الفاتورة مرحّلة.', 1;
+
+    DELETE FROM SalesInvoiceLines WHERE Id = @LineId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE sp_Sales_DeleteDraftInvoice
+    @InvoiceId INT,
+    @UserId    INT
+AS
+BEGIN
+    SET NOCOUNT ON; SET XACT_ABORT ON;
+    IF dbo.fn_UserCan(@UserId, N'Sales', N'Delete') = 0
+        THROW 51025, N'لا تملك صلاحية حذف فواتير المبيعات.', 1;
+    IF NOT EXISTS (SELECT 1 FROM SalesInvoices WHERE Id = @InvoiceId AND Status = N'Draft')
+        THROW 51026, N'الفاتورة غير موجودة أو مرحّلة (الفاتورة المرحّلة لا تُحذف).', 1;
+
+    BEGIN TRY
+        BEGIN TRAN;
+            DELETE FROM SalesInvoiceLines WHERE SalesInvoiceId = @InvoiceId;
+            DELETE FROM SalesInvoices WHERE Id = @InvoiceId;
+        COMMIT;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        THROW;
+    END CATCH;
+END;
+GO
+
+/* ============================================================
+   ترحيل فاتورة المبيعات — العملية الكاملة في معاملة واحدة
+   1) احتساب المجاميع (سطور + ضريبة + مستلزمات تحميل)
+   2) خصم المخزون من سجل الحركة (مع FIFO للتشغيلات) ومنع الرصيد السالب
+   3) توليد القيد المحاسبي المتوازن وترحيله (عدا المبيعات المجانية)
+   4) قيد المبلغ النقدي في محفظة المندوب (عند البيع من كاش فان)
+   ============================================================ */
+CREATE OR ALTER PROCEDURE sp_Sales_PostInvoice
+    @InvoiceId  INT,
+    @UserId     INT,
+    -- بيع تطبيق المندوب: يتجاوز حد الدين بقرار الإدارة (إعدادات التطبيق)، ويُسجَّل تنبيهًا للمراجعة
+    @AllowOverLimit BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON; SET XACT_ABORT ON;
+
+    IF dbo.fn_UserCan(@UserId, N'Sales', N'Post') = 0
+        THROW 51030, N'لا تملك صلاحية ترحيل فواتير المبيعات.', 1;
+
+    BEGIN TRY
+    BEGIN TRAN;
+
+    DECLARE @status NVARCHAR(20), @num NVARCHAR(30), @custId INT, @whId INT, @date DATE,
+            @pay NVARCHAR(20), @paid DECIMAL(18,2), @taxOn BIT, @taxRate DECIMAL(5,2),
+            @loadOn BIT, @free BIT, @recipient NVARCHAR(200), @repId INT, @whType NVARCHAR(30);
+
+    SELECT @status = i.Status, @num = i.InvoiceNumber, @custId = i.CustomerId, @whId = i.WarehouseId,
+           @date = i.InvoiceDate, @pay = i.PaymentMethod, @paid = i.AmountPaidNow,
+           @taxOn = i.TaxEnabled, @taxRate = i.TaxRate, @loadOn = i.LoadingSuppliesEnabled,
+           @free = i.IsFreeSale, @recipient = i.FreeSaleRecipient, @repId = i.SalesRepEmployeeId,
+           @whType = w.WarehouseType
+    FROM SalesInvoices i WITH (UPDLOCK, HOLDLOCK)
+    JOIN Warehouses w ON w.Id = i.WarehouseId
+    WHERE i.Id = @InvoiceId;
+
+    IF @status IS NULL THROW 51031, N'الفاتورة غير موجودة.', 1;
+    IF @status <> N'Draft' THROW 51032, N'الفاتورة مرحّلة مسبقًا.', 1;
+    IF NOT EXISTS (SELECT 1 FROM SalesInvoiceLines WHERE SalesInvoiceId = @InvoiceId)
+        THROW 51033, N'لا يمكن ترحيل فاتورة بلا سطور.', 1;
+
+    -- ---------- 1) المجاميع ----------
+    DECLARE @sub DECIMAL(18,2), @pieces DECIMAL(18,3), @tax DECIMAL(18,2) = 0,
+            @load DECIMAL(18,2) = 0, @total DECIMAL(18,2);
+
+    SELECT @sub = SUM(LineTotal), @pieces = SUM(QuantityBaseUnits)
+    FROM SalesInvoiceLines WHERE SalesInvoiceId = @InvoiceId;
+
+    IF @free = 1
+        SELECT @sub = 0, @tax = 0, @load = 0;
+    ELSE
+    BEGIN
+        IF @taxOn = 1  SET @tax  = ROUND(@sub * @taxRate / 100.0, 2);
+        IF @loadOn = 1 SET @load = ROUND(@pieces * dbo.fn_Sales_LoadingRate(@date), 2);
+    END;
+    SET @total = @sub + @tax + @load;
+
+    SET @paid = CASE WHEN @free = 1 THEN 0
+                     WHEN @pay IN (N'Cash', N'Electronic') THEN @total
+                     WHEN @pay = N'Credit' THEN 0
+                     ELSE @paid END;
+
+    IF @pay = N'Partial' AND @free = 0 AND (@paid <= 0 OR @paid >= @total)
+        THROW 51034, N'في الدفع الجزئي يجب أن يكون المبلغ المدفوع أكبر من صفر وأقل من إجمالي الفاتورة.', 1;
+
+    -- حد الدين: الآجل أو الجزئي يُرفض إن تجاوز رصيدُ العميل بعد الفاتورة حدَّه، إلا لمن يملك صلاحية التجاوز
+    DECLARE @limit DECIMAL(18,2) = (SELECT CreditLimit FROM Customers WHERE Id = @custId);
+    IF @free = 0 AND @total > @paid AND @limit IS NOT NULL
+    BEGIN
+        DECLARE @balance DECIMAL(18,2) = ISNULL((SELECT Balance FROM vw_CustomerBalances WHERE CustomerId = @custId), 0);
+        IF @balance + (@total - @paid) > @limit AND @AllowOverLimit = 0
+           AND NOT EXISTS (SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
+                           WHERE u.Id = @UserId AND rp.ModuleCode = N'Special:CreditOverride' AND rp.CanView = 1)
+        BEGIN
+            DECLARE @limitMsg NVARCHAR(400) = N'العميل تجاوز حد دينه (' + FORMAT(@limit, N'N0') + N' د.ع): رصيده الحالي ' + FORMAT(@balance, N'N0')
+                     + N' والفاتورة تضيف ' + FORMAT(@total - @paid, N'N0') + N'. البيع الآجل موقوف حتى يوافق المدير، أو اقبض نقدًا.';
+            THROW 51046, @limitMsg, 1;
+        END;
+    END;
+
+    -- ---------- 2) خصم المخزون ----------
+    -- قفل على مستوى المخزن لمنع بيعين متزامنين لنفس الكمية
+    DECLARE @lockName NVARCHAR(100) = N'Stock:' + CAST(@whId AS NVARCHAR(10)), @lockRes INT;
+    EXEC @lockRes = sp_getapplock @Resource = @lockName, @LockMode = N'Exclusive',
+                                  @LockOwner = N'Transaction', @LockTimeout = 15000;
+    IF @lockRes < 0 THROW 51035, N'المخزن مشغول بعملية أخرى، أعد المحاولة.', 1;
+
+    DECLARE @txType NVARCHAR(30) =
+        CASE WHEN @whType = N'RepVan' THEN CASE WHEN @free = 1 THEN N'RepFreeSale' ELSE N'RepSale' END
+             ELSE CASE WHEN @free = 1 THEN N'FreeIssue' ELSE N'SalesIssue' END END;
+
+    DECLARE @alloc TABLE (ItemId INT, BatchId INT NULL, Qty DECIMAL(18,3));
+    DECLARE @short TABLE (ItemId INT, Qty DECIMAL(18,3));
+    DECLARE @lineItem INT, @lineBatch INT, @lineRecipe INT, @need DECIMAL(18,3), @itemName NVARCHAR(200), @msg NVARCHAR(1000), @reservedHint NVARCHAR(500);
+    -- البيع من رصيد محجوز لعميل آخر (تشغيلات مطعم) بصلاحية خاصة
+    DECLARE @canReserved BIT = CASE WHEN EXISTS (
+            SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
+            WHERE u.Id = @UserId AND rp.ModuleCode = N'Special:ReservedStock' AND rp.CanView = 1) THEN 1 ELSE 0 END;
+    -- البيع بانتظار الإنتاج: مخزن المنتج التام فقط، وبصلاحية خاصة تحددها الإدارة
+    DECLARE @canPend BIT = CASE WHEN @whType = N'FinishedGoods' AND EXISTS (
+            SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
+            WHERE u.Id = @UserId AND rp.ModuleCode = N'Special:SellPending' AND rp.CanView = 1) THEN 1 ELSE 0 END;
+
+    -- الطلب مجمّعًا حسب الصنف/التشغيلة (سطران لنفس الصنف يُحسبان معًا)
+    DECLARE req CURSOR LOCAL FAST_FORWARD FOR
+        SELECT l.ItemId, l.BatchId, COALESCE(l.CustomRecipeId, b.CustomRecipeId), SUM(l.QuantityBaseUnits)
+        FROM SalesInvoiceLines l LEFT JOIN ItemBatches b ON b.Id = l.BatchId
+        WHERE l.SalesInvoiceId = @InvoiceId
+        GROUP BY l.ItemId, l.BatchId, COALESCE(l.CustomRecipeId, b.CustomRecipeId)
+        -- المحدد أولًا، ثم المتغير المطلوب بالاسم، ثم FIFO
+        ORDER BY CASE WHEN l.BatchId IS NULL THEN 1 ELSE 0 END, CASE WHEN COALESCE(l.CustomRecipeId, b.CustomRecipeId) IS NULL THEN 1 ELSE 0 END, l.ItemId;
+    OPEN req;
+    FETCH NEXT FROM req INTO @lineItem, @lineBatch, @lineRecipe, @need;
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        DECLARE @avail TABLE (BatchId INT NULL, Qty DECIMAL(18,3), Ord INT);
+        DELETE FROM @avail;
+
+        INSERT INTO @avail (BatchId, Qty, Ord)
+        SELECT b.BatchId,
+               b.QuantityBaseUnits - ISNULL((SELECT SUM(a.Qty) FROM @alloc a
+                                             WHERE a.ItemId = @lineItem
+                                               AND ISNULL(a.BatchId, -1) = ISNULL(b.BatchId, -1)), 0),
+               ROW_NUMBER() OVER (ORDER BY p.Priority, CASE WHEN ib.ExpiryDate IS NULL THEN 1 ELSE 0 END,
+                                           ib.ExpiryDate, ib.ManufactureDate, b.BatchId)
+        FROM vw_StockBalance b
+        LEFT JOIN ItemBatches ib ON ib.Id = b.BatchId
+        CROSS APPLY (SELECT dbo.fn_Stock_BatchPriority(b.BatchId, @custId, @lineRecipe, @canReserved) AS Priority) p
+        WHERE b.ItemId = @lineItem AND b.WarehouseId = @whId
+          AND (@lineBatch IS NULL OR b.BatchId = @lineBatch)
+          AND p.Priority IS NOT NULL;
+
+        DELETE FROM @avail WHERE Qty <= 0;
+
+        IF ISNULL((SELECT SUM(Qty) FROM @avail), 0) < @need AND @canPend = 1 AND @lineBatch IS NULL AND @lineRecipe IS NULL
+        BEGIN
+            -- يخرج المتاح كله، والفرق عجز بانتظار الإنتاج
+            INSERT INTO @short (ItemId, Qty) VALUES (@lineItem, @need - ISNULL((SELECT SUM(Qty) FROM @avail), 0));
+            SET @need = ISNULL((SELECT SUM(Qty) FROM @avail), 0);
+        END;
+
+        IF ISNULL((SELECT SUM(Qty) FROM @avail), 0) < @need
+        BEGIN
+            SELECT @itemName = ItemName FROM Items WHERE Id = @lineItem;
+            -- ما لا يحق لهذا البيع من رصيد المتغيرات الأخرى، ليعرف البائع السبب
+            SELECT @reservedHint = STRING_AGG(x.Name + N' ' + FORMAT(x.Qty, N'0.###'), N'، ')
+            FROM (SELECT r.Name, SUM(b.QuantityBaseUnits) AS Qty
+                  FROM vw_StockBalance b JOIN ItemBatches ib ON ib.Id = b.BatchId JOIN CustomRecipes r ON r.Id = ib.CustomRecipeId
+                  WHERE b.ItemId = @lineItem AND b.WarehouseId = @whId AND b.QuantityBaseUnits > 0
+                    AND dbo.fn_Stock_BatchPriority(b.BatchId, @custId, @lineRecipe, @canReserved) IS NULL
+                  GROUP BY r.Name) x;
+            SET @msg = N'الرصيد غير كافٍ للصنف "' + @itemName + N'"'
+                     + ISNULL(N' (' + (SELECT Name FROM CustomRecipes WHERE Id = @lineRecipe) + N')', N'') + N': المطلوب '
+                     + FORMAT(@need, N'0.###') + N' قطعة، المتاح '
+                     + FORMAT(ISNULL((SELECT SUM(Qty) FROM @avail), 0), N'0.###') + N' قطعة.'
+                     + ISNULL(N' ويوجد رصيد متغيرات لا يُصرف لهذا البيع: ' + @reservedHint + N' قطعة.', N'');
+            THROW 51036, @msg, 1;
+        END;
+
+        -- توزيع الكمية على التشغيلات بالترتيب (FIFO)
+        INSERT INTO @alloc (ItemId, BatchId, Qty)
+        SELECT @lineItem, BatchId,
+               CASE WHEN Cum - Qty >= @need THEN 0
+                    WHEN Cum <= @need THEN Qty
+                    ELSE @need - (Cum - Qty) END
+        FROM (SELECT BatchId, Qty, SUM(Qty) OVER (ORDER BY Ord ROWS UNBOUNDED PRECEDING) AS Cum
+              FROM @avail) x
+        WHERE Cum - Qty < @need;
+
+        FETCH NEXT FROM req INTO @lineItem, @lineBatch, @lineRecipe, @need;
+    END;
+    CLOSE req; DEALLOCATE req;
+
+    INSERT INTO StockTransactions
+        (ItemId, WarehouseId, BatchId, QuantityBaseUnits, TransactionType,
+         FreeIssueRecipient, ReferenceTable, ReferenceId, TransactionDate, CreatedByUserId)
+    SELECT ItemId, @whId, BatchId, -SUM(Qty), @txType,
+           CASE WHEN @free = 1 THEN @recipient END, N'SalesInvoices', @InvoiceId,
+           SYSUTCDATETIME(), @UserId
+    FROM @alloc WHERE Qty > 0
+    GROUP BY ItemId, BatchId;
+
+    -- العجز بانتظار الإنتاج: حركة بلا تشغيلة تُسوّى عند تسجيل الإنتاج، مع سجل باسم الصنف والفاتورة
+    INSERT INTO StockTransactions
+        (ItemId, WarehouseId, BatchId, QuantityBaseUnits, TransactionType,
+         FreeIssueRecipient, ReferenceTable, ReferenceId, TransactionDate, CreatedByUserId)
+    SELECT ItemId, @whId, NULL, -SUM(Qty), @txType,
+           CASE WHEN @free = 1 THEN @recipient END, N'SalesInvoices', @InvoiceId, SYSUTCDATETIME(), @UserId
+    FROM @short GROUP BY ItemId;
+    INSERT INTO PendingProductionShortages (ItemId, WarehouseId, Quantity, SalesInvoiceId, CreatedByUserId)
+    SELECT ItemId, @whId, SUM(Qty), @InvoiceId, @UserId FROM @short GROUP BY ItemId;
+
+    -- ---------- 3) القيد المحاسبي (العقل المالي) ----------
+    DECLARE @jeId INT = NULL;
+
+    IF @free = 0 AND @total > 0
+    BEGIN
+        DECLARE @cashRule NVARCHAR(60) =
+            CASE WHEN @pay = N'Electronic' THEN N'SalesInvoiceElectronic'
+                 WHEN @repId IS NOT NULL   THEN N'SalesInvoiceRepCash'
+                 ELSE N'SalesInvoiceCash' END;
+        DECLARE @revenueRule NVARCHAR(60) = CASE WHEN @pay IN (N'Credit', N'Partial')
+                                                 THEN N'SalesInvoiceCredit' ELSE @cashRule END;
+
+        DECLARE @cashAcc INT, @arAcc INT, @revAcc INT, @taxAcc INT, @loadAcc INT;
+        SELECT @cashAcc = DebitAccountId FROM AccountMappingRules WHERE TransactionType = @cashRule;
+        SELECT @arAcc   = DebitAccountId FROM AccountMappingRules WHERE TransactionType = N'SalesInvoiceCredit';
+        SELECT @revAcc  = CreditAccountId FROM AccountMappingRules WHERE TransactionType = @revenueRule;
+        SELECT @taxAcc  = CreditAccountId FROM AccountMappingRules WHERE TransactionType = N'SalesTax';
+        SELECT @loadAcc = CreditAccountId FROM AccountMappingRules WHERE TransactionType = N'LoadingSuppliesCharge';
+
+        IF @paid > 0 AND @cashAcc IS NULL
+        BEGIN SET @msg = N'قاعدة الربط المحاسبي "' + @cashRule + N'" غير معرّفة في الإعدادات المالية.'; THROW 51040, @msg, 1; END;
+        IF @paid < @total AND @arAcc IS NULL
+            THROW 51041, N'قاعدة الربط المحاسبي "SalesInvoiceCredit" (ذمم العملاء) غير معرّفة.', 1;
+        IF @revAcc IS NULL
+        BEGIN SET @msg = N'قاعدة الربط المحاسبي "' + @revenueRule + N'" (إيرادات المبيعات) غير معرّفة.'; THROW 51042, @msg, 1; END;
+        IF @tax > 0 AND @taxAcc IS NULL
+            THROW 51043, N'قاعدة الربط المحاسبي "SalesTax" (الضريبة المستحقة) غير معرّفة.', 1;
+        IF @load > 0 AND @loadAcc IS NULL
+            THROW 51044, N'قاعدة الربط المحاسبي "LoadingSuppliesCharge" (مستلزمات التحميل) غير معرّفة.', 1;
+
+        DECLARE @custName NVARCHAR(200) = (SELECT Name FROM Customers WHERE Id = @custId);
+        DECLARE @jeNum NVARCHAR(30) = N'SJ-' + CAST(YEAR(@date) AS NVARCHAR(4)) + N'-'
+                + RIGHT(N'000000' + CAST(NEXT VALUE FOR seq_SalesJournalNumber AS NVARCHAR(10)), 6);
+
+        INSERT INTO JournalEntries (EntryNumber, EntryDate, EntryType, Description, CreatedByUserId,
+                                    IsPosted, SourceTable, SourceId)
+        VALUES (@jeNum, @date, N'AutoSales',
+                N'فاتورة مبيعات ' + @num + N' — ' + @custName, @UserId, 0, N'SalesInvoices', @InvoiceId);
+        SET @jeId = SCOPE_IDENTITY();
+
+        INSERT INTO JournalEntryLines (JournalEntryId, AccountId, Debit, Credit, Description)
+        SELECT @jeId, AccountId, Debit, Credit, Description
+        FROM (VALUES
+            (@cashAcc, @paid,         0,    N'المقبوض عند البيع'),
+            (@arAcc,   @total - @paid, 0,   N'ذمم العميل: ' + @custName),
+            (@revAcc,  0,             @sub, N'إيرادات مبيعات'),
+            (@taxAcc,  0,             @tax, N'ضريبة مبيعات'),
+            (@loadAcc, 0,             @load, N'مستلزمات التحميل')
+        ) v(AccountId, Debit, Credit, Description)
+        WHERE Debit > 0 OR Credit > 0;
+
+        IF (SELECT SUM(Debit) - SUM(Credit) FROM JournalEntryLines WHERE JournalEntryId = @jeId) <> 0
+            THROW 51045, N'القيد غير متوازن (مدين ≠ دائن) — تم إلغاء الترحيل.', 1;
+
+        UPDATE JournalEntries SET IsPosted = 1 WHERE Id = @jeId;
+    END;
+
+    -- ---------- 4) محفظة المندوب (النقد المقبوض ميدانيًا فقط) ----------
+    IF @repId IS NOT NULL AND @paid > 0 AND @pay <> N'Electronic'
+        INSERT INTO RepWalletTransactions (EmployeeId, Description, AmountIn, AmountOut,
+                                           ReferenceTable, ReferenceId, JournalEntryId)
+        VALUES (@repId, N'مبيعات نقدية — فاتورة ' + @num, @paid, 0, N'SalesInvoices', @InvoiceId, @jeId);
+
+    -- ---------- 4ب) الصندوق: النقد المقبوض في المصنع (لا مندوب، ولا دفع إلكتروني) ----------
+    -- يدخل صندوق المستخدم (أو الافتراضي) — sp_CashBox_RecordAuto في 12_warehouse_docs_cashboxes.sql
+    IF @repId IS NULL AND @paid > 0 AND @pay <> N'Electronic' AND @whType <> N'RepVan'
+       AND OBJECT_ID('dbo.sp_CashBox_RecordAuto', 'P') IS NOT NULL
+    BEGIN
+        DECLARE @cbDesc NVARCHAR(400) = N'مبيعات نقدية — فاتورة ' + @num,
+                @cbParty NVARCHAR(200) = (SELECT Name FROM Customers WHERE Id = @custId);
+        EXEC dbo.sp_CashBox_RecordAuto @UserId = @UserId, @TxType = N'SalesReceipt', @Amount = @paid, @TxDate = @date,
+             @ReferenceTable = N'SalesInvoices', @ReferenceId = @InvoiceId, @PartyName = @cbParty,
+             @Description = @cbDesc, @JournalEntryId = @jeId;
+    END;
+
+    -- ---------- 5) إغلاق الفاتورة ----------
+    UPDATE SalesInvoices
+    SET SubTotal = @sub, TaxAmount = @tax, LoadingSuppliesAmount = @load, TotalAmount = @total,
+        AmountPaidNow = @paid, Status = N'Posted', JournalEntryId = @jeId,
+        PostedByUserId = @UserId, PostedAt = SYSUTCDATETIME()
+    WHERE Id = @InvoiceId;
+
+    COMMIT;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        THROW;
+    END CATCH;
+
+    SELECT @InvoiceId AS InvoiceId, @num AS InvoiceNumber, @sub AS SubTotal, @tax AS TaxAmount,
+           @load AS LoadingSuppliesAmount, @total AS TotalAmount, @paid AS AmountPaidNow,
+           @total - @paid AS AmountDue, @jeId AS JournalEntryId;
+END;
+GO
+
+/* ============================================================
+   معاينة مجاميع الفاتورة قبل الترحيل (للعرض في الشاشة)
+   ============================================================ */
+CREATE OR ALTER VIEW vw_SalesInvoiceTotals AS
+SELECT  i.Id AS InvoiceId, i.InvoiceNumber, i.Status, i.IsFreeSale,
+        CASE WHEN i.Status = N'Posted' THEN i.SubTotal
+             WHEN i.IsFreeSale = 1 THEN 0 ELSE ISNULL(l.Sub, 0) END AS SubTotal,
+        CASE WHEN i.Status = N'Posted' THEN i.TaxAmount
+             WHEN i.IsFreeSale = 1 OR i.TaxEnabled = 0 THEN 0
+             ELSE ROUND(ISNULL(l.Sub, 0) * i.TaxRate / 100.0, 2) END AS TaxAmount,
+        CASE WHEN i.Status = N'Posted' THEN i.LoadingSuppliesAmount
+             WHEN i.IsFreeSale = 1 OR i.LoadingSuppliesEnabled = 0 THEN 0
+             ELSE ROUND(ISNULL(l.Pieces, 0) * dbo.fn_Sales_LoadingRate(i.InvoiceDate), 2) END AS LoadingSuppliesAmount,
+        ISNULL(l.Pieces, 0) AS TotalPieces
+FROM    SalesInvoices i
+LEFT JOIN (SELECT SalesInvoiceId, SUM(LineTotal) AS Sub, SUM(QuantityBaseUnits) AS Pieces
+           FROM SalesInvoiceLines GROUP BY SalesInvoiceId) l ON l.SalesInvoiceId = i.Id;
+GO
+
+/* ============================================================
+   قائمة الفواتير (لشاشة البحث/العرض)
+   ============================================================ */
+CREATE OR ALTER VIEW vw_SalesInvoiceList AS
+SELECT  i.Id, i.InvoiceNumber, i.InvoiceDate, i.Status,
+        i.CustomerId, c.Name AS CustomerName, c.CustomerType,
+        w.Name AS WarehouseName, e.FullName AS SalesRepName,
+        i.PaymentMethod, i.IsFreeSale, i.FreeSaleRecipient, i.IsAgentPricing,
+        t.SubTotal, t.TaxAmount, t.LoadingSuppliesAmount,
+        t.SubTotal + t.TaxAmount + t.LoadingSuppliesAmount AS TotalAmount,
+        i.AmountPaidNow,
+        CASE WHEN i.Status = N'Posted' THEN i.TotalAmount - i.AmountPaidNow END AS AmountDue,
+        i.JournalEntryId
+FROM    SalesInvoices i
+JOIN    Customers c  ON c.Id = i.CustomerId
+JOIN    Warehouses w ON w.Id = i.WarehouseId
+LEFT JOIN Employees e ON e.Id = i.SalesRepEmployeeId
+JOIN    vw_SalesInvoiceTotals t ON t.InvoiceId = i.Id
+WHERE   i.IsOpeningBalance = 0;
+GO
+
+/* ============================================================
+   كشف حساب العميل (مديونية كل عميل مستقلة — فواتيره وسنداته فقط)
+   مدين = قيمة الفاتورة، دائن = المدفوع عند البيع + سندات القبض
+   ============================================================ */
+CREATE OR ALTER VIEW vw_CustomerStatement AS
+SELECT  i.CustomerId, i.InvoiceDate AS TxDate,
+        CASE WHEN i.IsOpeningBalance = 1 THEN N'OpeningBalance' ELSE N'SalesInvoice' END AS TxType,
+        i.InvoiceNumber AS DocNumber, i.Id AS DocId,
+        i.TotalAmount AS Debit, CAST(0 AS DECIMAL(18,2)) AS Credit,
+        CASE WHEN i.IsOpeningBalance = 1 THEN ISNULL(i.Notes, N'رصيد افتتاحي') ELSE N'فاتورة مبيعات' END AS Description
+FROM    SalesInvoices i
+WHERE   i.Status = N'Posted' AND i.IsFreeSale = 0
+UNION ALL
+SELECT  i.CustomerId, i.InvoiceDate, N'PaidAtSale', i.InvoiceNumber, i.Id,
+        0, i.AmountPaidNow, N'مدفوع عند البيع'
+FROM    SalesInvoices i
+WHERE   i.Status = N'Posted' AND i.IsFreeSale = 0 AND i.AmountPaidNow > 0
+UNION ALL
+SELECT  v.PartyId, v.VoucherDate,
+        CASE v.VoucherType WHEN N'Receipt' THEN N'ReceiptVoucher' ELSE N'PaymentVoucher' END,
+        v.VoucherNumber, v.Id,
+        CASE WHEN v.VoucherType = N'Payment' THEN v.Amount ELSE 0 END,
+        CASE WHEN v.VoucherType = N'Receipt' THEN v.Amount ELSE 0 END,
+        CASE v.VoucherType WHEN N'Receipt' THEN N'سند قبض' ELSE N'سند صرف' END
+FROM    Vouchers v
+WHERE   v.PartyType = N'Customer' AND v.PartyId IS NOT NULL AND v.IsVoided = 0;
+GO
+
+CREATE OR ALTER VIEW vw_CustomerBalances AS
+SELECT  c.Id AS CustomerId, c.Name, c.CustomerType, c.ParentAgentId,
+        ISNULL(SUM(s.Debit), 0)  AS TotalDebit,
+        ISNULL(SUM(s.Credit), 0) AS TotalCredit,
+        ISNULL(SUM(s.Debit - s.Credit), 0) AS Balance     -- موجب = على العميل
+FROM    Customers c
+LEFT JOIN vw_CustomerStatement s ON s.CustomerId = c.Id
+GROUP BY c.Id, c.Name, c.CustomerType, c.ParentAgentId;
+GO
+
+/* ============================================================
+   إلغاء فاتورة مرحّلة (بدل الحذف): كل أثر للترحيل يُعكس بحركة مقابلة في نفس المعاملة
+   - المخزون: حركة واردة بنفس الكميات والتشغيلات
+   - القيد: قيد عكسي بنفس تاريخ الفاتورة (فيبقى أثر الشهر صحيحًا)
+   - الصندوق: حركة الصندوق المرتبطة تُعلَّم ملغاة
+   - محفظة المندوب: حركة صادرة بنفس المبلغ
+   الشهر المقفل يمنع الإلغاء (مشغّلات 27_controls.sql) حتى يفتحه المدير.
+   ============================================================ */
+CREATE OR ALTER PROCEDURE sp_Sales_VoidInvoice
+    @InvoiceId  INT,
+    @Reason     NVARCHAR(300),
+    @UserId     INT
+AS
+BEGIN
+    SET NOCOUNT ON; SET XACT_ABORT ON;
+
+    IF dbo.fn_UserCan(@UserId, N'Sales', N'Delete') = 0
+       AND NOT EXISTS (SELECT 1 FROM Users u JOIN RolePermissions rp ON rp.RoleId = u.RoleId
+                       WHERE u.Id = @UserId AND rp.ModuleCode = N'Special:VoidPosted' AND rp.CanView = 1)
+        THROW 51060, N'لا تملك صلاحية إلغاء الفواتير المرحّلة.', 1;
+    IF LEN(LTRIM(ISNULL(@Reason, N''))) = 0
+        THROW 51061, N'اكتب سبب الإلغاء.', 1;
+
+    BEGIN TRY
+    BEGIN TRAN;
+
+    DECLARE @status NVARCHAR(20), @num NVARCHAR(30), @date DATE, @jeId INT, @repId INT, @paid DECIMAL(18,2), @pay NVARCHAR(20), @opening BIT;
+    SELECT @status = Status, @num = InvoiceNumber, @date = InvoiceDate, @jeId = JournalEntryId,
+           @repId = SalesRepEmployeeId, @paid = AmountPaidNow, @pay = PaymentMethod, @opening = IsOpeningBalance
+    FROM SalesInvoices WITH (UPDLOCK, HOLDLOCK) WHERE Id = @InvoiceId;
+
+    IF @status IS NULL THROW 51062, N'الفاتورة غير موجودة.', 1;
+    IF @status = N'Voided' THROW 51063, N'الفاتورة ملغاة مسبقًا.', 1;
+    IF @status <> N'Posted' THROW 51064, N'الفاتورة مسودة: احذف المسودة بدل إلغائها.', 1;
+    IF @opening = 1 THROW 51065, N'الرصيد الافتتاحي المنقول لا يُلغى من هنا.', 1;
+
+    -- 1) المخزون: عكس كل حركة صادرة بالفاتورة
+    INSERT INTO StockTransactions (ItemId, WarehouseId, BatchId, QuantityBaseUnits, TransactionType,
+                                   FreeIssueRecipient, ReferenceTable, ReferenceId, TransactionDate, CreatedByUserId)
+    SELECT ItemId, WarehouseId, BatchId, -QuantityBaseUnits, N'SalesVoid',
+           FreeIssueRecipient, N'SalesInvoices', @InvoiceId, SYSUTCDATETIME(), @UserId
+    FROM StockTransactions
+    WHERE ReferenceTable = N'SalesInvoices' AND ReferenceId = @InvoiceId AND TransactionType <> N'SalesVoid';
+
+    -- 2) القيد العكسي
+    IF @jeId IS NOT NULL
+    BEGIN
+        DECLARE @revId INT, @revNum NVARCHAR(30) = N'SJ-' + CAST(YEAR(@date) AS NVARCHAR(4)) + N'-'
+                + RIGHT(N'000000' + CAST(NEXT VALUE FOR seq_SalesJournalNumber AS NVARCHAR(10)), 6);
+        INSERT INTO JournalEntries (EntryNumber, EntryDate, EntryType, Description, CreatedByUserId, IsPosted, SourceTable, SourceId)
+        VALUES (@revNum, @date, N'AutoSales', N'إلغاء فاتورة مبيعات ' + @num + N' — ' + @Reason, @UserId, 0, N'SalesInvoices', @InvoiceId);
+        SET @revId = SCOPE_IDENTITY();
+        INSERT INTO JournalEntryLines (JournalEntryId, AccountId, Debit, Credit, Description)
+        SELECT @revId, AccountId, Credit, Debit, N'عكس: ' + ISNULL(Description, N'')
+        FROM JournalEntryLines WHERE JournalEntryId = @jeId;
+        UPDATE JournalEntries SET IsPosted = 1 WHERE Id = @revId;
+    END;
+
+    -- 3) الصندوق
+    IF OBJECT_ID('CashBoxTransactions', 'U') IS NOT NULL
+        UPDATE CashBoxTransactions SET IsVoided = 1, VoidReason = N'إلغاء الفاتورة: ' + @Reason,
+                                       ModifiedByUserId = @UserId, ModifiedAt = SYSUTCDATETIME()
+        WHERE ReferenceTable = N'SalesInvoices' AND ReferenceId = @InvoiceId AND IsVoided = 0;
+
+    -- 4) محفظة المندوب
+    IF @repId IS NOT NULL AND @paid > 0 AND @pay <> N'Electronic'
+        INSERT INTO RepWalletTransactions (EmployeeId, Description, AmountIn, AmountOut, ReferenceTable, ReferenceId, JournalEntryId)
+        VALUES (@repId, N'إلغاء فاتورة ' + @num, 0, @paid, N'SalesInvoices', @InvoiceId, @jeId);
+
+    -- 4ب) عجز بانتظار الإنتاج لهذه الفاتورة: يُغلق (البضاعة عادت أصلًا بالحركة العكسية)
+    IF OBJECT_ID('PendingProductionShortages', 'U') IS NOT NULL
+        UPDATE PendingProductionShortages SET SettledQuantity = Quantity, SettledAt = SYSUTCDATETIME()
+        WHERE SalesInvoiceId = @InvoiceId AND SettledQuantity < Quantity;
+
+    -- 5) الحالة (توزيع الدفعات يُعاد من الخدمة بعد الإلغاء)
+    IF OBJECT_ID('PaymentAllocations', 'U') IS NOT NULL
+        DELETE FROM PaymentAllocations WHERE SalesInvoiceId = @InvoiceId;
+    UPDATE SalesInvoices SET Status = N'Voided', VoidReason = @Reason, VoidedByUserId = @UserId, VoidedAt = SYSUTCDATETIME()
+    WHERE Id = @InvoiceId;
+
+    COMMIT;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK;
+        THROW;
+    END CATCH;
+END;
+GO

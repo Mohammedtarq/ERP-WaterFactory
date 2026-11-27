@@ -1,0 +1,216 @@
+using ERP.Data.ProjectDb.Entities;
+using ERP.Data.Security;
+using ERP.Data.Services;
+using Microsoft.EntityFrameworkCore;
+using Xunit;
+
+namespace ERP.Data.IntegrationTests;
+
+/// <summary>المطابقة الدورية: التقييم (الكلفة/سعر البيع للمنتج التام)، مطابقة الأساس، الفائض وتوزيعه، سحوبات الشركاء، الخسارة.</summary>
+[Collection("provisioned")]
+public class ReconciliationTests
+{
+    private readonly ProvisionedFixture _f;
+    public ReconciliationTests(ProvisionedFixture f) => _f = f;
+
+    [Fact]
+    public async Task Baseline_then_surplus_distributed_by_share_withdrawals_and_loss()
+    {
+        Assert.True(_f.Install.Success, _f.Install.ErrorMessage);
+        await using var db = _f.NewDb();
+        var admin = _f.AdminLocalId;
+        var svc = new ReconciliationService(db);
+
+        // صنفان معروفا القيمة: مادة كلفتها 10، ومنتج وصفته 2 من المادة (كلفة 20) وسعر بيعه 50
+        var raw = new Item { ItemCode = "RC-RAW", ItemName = "مادة المطابقة", SourcingMethod = SourcingMethod.Purchased, CostPrice = 10 };
+        var fg = new Item { ItemCode = "RC-FG", ItemName = "منتج المطابقة", SourcingMethod = SourcingMethod.Manufactured, SalePrice = 50 };
+        db.Items.AddRange(raw, fg);
+        await db.SaveChangesAsync();
+        db.BillOfMaterials.Add(new BillOfMaterials { FinishedItemId = fg.Id, Name = "وصفة المطابقة", IsActive = true,
+                                                     Lines = { new BOMLine { RawMaterialItemId = raw.Id, QuantityPerUnit = 2 } } });
+        var rawWh = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.RawMaterial);
+        var fgWh = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods);
+        var damagedWh = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.Damaged);
+        void Stock(Item i, int wh, decimal q) => db.StockTransactions.Add(new StockTransaction
+            { ItemId = i.Id, WarehouseId = wh, QuantityBaseUnits = q, TransactionType = StockTransactionType.Receipt, CreatedByUserId = admin });
+        Stock(raw, rawWh.Id, 100);
+        Stock(fg, fgWh.Id, 10);
+        Stock(raw, damagedWh.Id, 999);          // التالف لا يُقيَّم
+        await db.SaveChangesAsync();
+
+        Assert.Equal(20m, (await svc.ManufacturedUnitCostsAsync())[fg.Id]);
+        var atCost = await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost);
+        var atSale = await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.SalePrice);
+        Assert.Contains(atCost.Lines, l => l.Section == ReconciliationService.RawSection && l.Description.Contains("RC-RAW") && l.Quantity == 100 && l.Value == 1_000);
+        Assert.Contains(atCost.Lines, l => l.Section == ReconciliationService.FgSection && l.Description.Contains("RC-FG") && l.UnitValue == 20 && l.Value == 200);
+        Assert.Contains(atSale.Lines, l => l.Section == ReconciliationService.FgSection && l.Description.Contains("RC-FG") && l.UnitValue == 50 && l.Value == 500);
+        Assert.DoesNotContain(atCost.Lines, l => l.Quantity == 999);
+        Assert.Equal(atCost.TotalAssets - atCost.TotalLiabilities, atCost.NetAssets);
+
+        // الشركاء: الاسم فريد، والمجموع لا يتجاوز 100%، والإدارة للأدمن
+        var (p1, mohammed) = await svc.SavePartnerAsync(null, "محمد", 50, true, true, "المدير", admin);
+        Assert.True(p1.Success, p1.ErrorMessage);
+        var (_, second) = await svc.SavePartnerAsync(null, "الشريك الثاني", 30, false, true, null, admin);
+        Assert.False((await svc.SavePartnerAsync(null, "الشريك الثالث", 25, false, true, null, admin)).result.Success);   // 105%
+        Assert.False((await svc.SavePartnerAsync(null, "محمد", 10, false, true, null, admin)).result.Success);            // مكرر
+        var clerkRole = await db.Roles.FirstAsync(r => r.Name == "موظف مبيعات");
+        var clerk = new User { Username = "rec_clerk", PasswordHash = PasswordHasher.Hash("x"), RoleId = clerkRole.Id };
+        db.Users.Add(clerk);
+        await db.SaveChangesAsync();
+        Assert.False((await svc.SavePartnerAsync(null, "غير مخوّل", 5, false, true, null, clerk.Id)).result.Success);
+        var (_, third) = await svc.SavePartnerAsync(null, "الشريك الثالث", 20, false, true, null, admin);
+
+        // مطابقة الأساس: بلا فائض ولا توزيع
+        Assert.False((await svc.PostAsync(DateTime.Today, FinishedGoodsValuation.Cost, null, clerk.Id)).result.Success);
+        var (b, baseline) = await svc.PostAsync(DateTime.Today, FinishedGoodsValuation.Cost, "مطابقة الأساس", admin);
+        Assert.True(b.Success, b.ErrorMessage);
+        Assert.True(baseline!.IsBaseline);
+        Assert.Equal(0, baseline.Surplus);
+        Assert.StartsWith($"REC-{DateTime.Today.Year}-", baseline.ReconNumber);
+        Assert.False(await db.PartnerTransactions.AnyAsync(t => t.ReconciliationId == baseline.Id));
+        Assert.Contains(await db.AssetReconciliationLines.Where(l => l.ReconciliationId == baseline.Id).ToListAsync(), l => l.Description.Contains("RC-RAW"));
+
+        // بين المطابقتين: مخزون +50 (قيمة 500) وإيداع مالك 100,000 في الصندوق (ليس ربحًا)
+        Stock(raw, rawWh.Id, 50);
+        await db.SaveChangesAsync();
+        var boxId = await db.CashBoxes.Where(x => x.IsActive && x.IsDefault).Select(x => x.Id).FirstAsync();
+        Assert.True((await new CashBoxService(db).DepositAsync(boxId, 100_000, DateTime.Today, "المالك", null, admin)).result.Success);
+        var next = await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost);
+        Assert.Equal(baseline.Id, next.PreviousId);
+        Assert.Equal(100_000, next.OwnerDeposits);
+        Assert.Equal(500, next.Surplus);
+        Assert.Equal(new[] { 250m, 150m, 100m }, next.Shares.OrderByDescending(s => s.Amount).Select(s => s.Amount));
+
+        var (r2, recon2) = await svc.PostAsync(DateTime.Today, FinishedGoodsValuation.Cost, null, admin);
+        Assert.True(r2.Success, r2.ErrorMessage);
+        Assert.Equal(500, recon2!.Surplus);
+        var partners = await svc.GetPartnersAsync();
+        Assert.Equal(250, partners.Single(p => p.Id == mohammed!.Id).Balance);
+        Assert.True(partners.Single(p => p.Id == mohammed!.Id).IsManager);
+        Assert.Equal(150, partners.Single(p => p.Id == second!.Id).Balance);
+        Assert.Equal(100, partners.Single(p => p.Id == third!.Id).Balance);
+        var je = await db.JournalEntryLines.Include(l => l.Account).Where(l => l.JournalEntryId == recon2.JournalEntryId).ToListAsync();
+        Assert.Equal(500, je.Single(l => l.Account.AccountCode == "3103").Credit);
+        Assert.Equal(500, je.Single(l => l.Account.AccountCode == "3104").Debit);
+
+        // سحب أرباح: لا يتجاوز رصيد الشريك، ويخرج من الصندوق، ولا يُعد خسارة في المطابقة التالية
+        Assert.False((await svc.WithdrawAsync(mohammed!.Id, 251, DateTime.Today, null, admin, boxId)).result.Success);
+        var boxBefore = await new CashBoxService(db).GetBalanceAsync(boxId);
+        var (w, wtx) = await svc.WithdrawAsync(mohammed.Id, 200, DateTime.Today, "سحب شهري", admin, boxId);
+        Assert.True(w.Success, w.ErrorMessage);
+        Assert.Equal(boxBefore - 200, await new CashBoxService(db).GetBalanceAsync(boxId));
+        Assert.Equal(CashBoxTxType.PartnerWithdrawal, (await db.CashBoxTransactions.SingleAsync(t => t.ReferenceTable == "PartnerTransactions" && t.ReferenceId == wtx!.Id)).TxType);
+        var afterWithdrawal = await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost);
+        Assert.Equal(200, afterWithdrawal.PartnerWithdrawals);
+        Assert.Equal(0, afterWithdrawal.Surplus);
+
+        var statement = await svc.GetPartnerStatementAsync(mohammed.Id);
+        Assert.Equal(2, statement.Count);
+        Assert.Equal(recon2.ReconNumber, statement[0].Reference);
+        Assert.Equal(50, statement[^1].Balance);
+
+        // خسارة: نقص مخزون 30 (−300) يوزَّع سالبًا بنفس النسب
+        Stock(raw, rawWh.Id, -30);
+        await db.SaveChangesAsync();
+        var (r3, recon3) = await svc.PostAsync(DateTime.Today, FinishedGoodsValuation.Cost, "خسارة تجريبية", admin);
+        Assert.True(r3.Success, r3.ErrorMessage);
+        Assert.Equal(-300, recon3!.Surplus);
+        var shares3 = await svc.GetSharesAsync(recon3.Id);
+        Assert.Equal(-150, shares3.Single(s => s.PartnerId == mohammed.Id).Amount);
+        Assert.Equal(-100, (await svc.GetPartnersAsync()).Single(p => p.Id == mohammed.Id).Balance);   // 250 − 200 − 150
+        var je3 = await db.JournalEntryLines.Include(l => l.Account).Where(l => l.JournalEntryId == recon3.JournalEntryId).ToListAsync();
+        Assert.Equal(300, je3.Single(l => l.Account.AccountCode == "3103").Debit);
+
+        // رصيد افتتاحي، ولا مطابقة بتاريخ أقدم، والنسب الناقصة تمنع التوزيع
+        Assert.True((await svc.OpeningAsync(third!.Id, 1_000, DateTime.Today, "من نظام الرحمة", admin)).result.Success);
+        Assert.Equal(1_000 + 100 - 60, (await svc.GetPartnersAsync()).Single(p => p.Id == third.Id).Balance);
+        Assert.False((await svc.PostAsync(DateTime.Today.AddDays(-1), FinishedGoodsValuation.Cost, null, admin)).result.Success);
+        Assert.True((await svc.SavePartnerAsync(third.Id, "الشريك الثالث", 10, false, true, null, admin)).result.Success);   // المجموع 90%
+        Stock(raw, rawWh.Id, 10);
+        await db.SaveChangesAsync();
+        var incomplete = await svc.PostAsync(DateTime.Today, FinishedGoodsValuation.Cost, null, admin);
+        Assert.False(incomplete.result.Success);
+        Assert.Contains("100%", incomplete.result.ErrorMessage);
+        Assert.Equal(3, (await svc.GetReconciliationsAsync()).Count);
+
+        // ---- حذف آخر مطابقة: للأدمن، بسبب، للأخيرة فقط، ويعكس القيد والحصص ----
+        var clerkId = (await db.Users.FirstAsync(u => u.Username != "admin" && u.Id != admin)).Id;
+        Assert.Contains("للأدمن", (await svc.DeleteLastAsync(recon3.Id, "تجربة", clerkId)).ErrorMessage);
+        Assert.Contains("سبب", (await svc.DeleteLastAsync(recon3.Id, " ", admin)).ErrorMessage);
+        Assert.Contains("آخر مطابقة", (await svc.DeleteLastAsync(recon2.Id, "ليست الأخيرة", admin)).ErrorMessage);
+        var before = (await svc.GetPartnersAsync()).ToDictionary(p => p.Id, p => p.Balance);
+        var deleted = await svc.DeleteLastAsync(recon3.Id, "مطابقة خاطئة", admin);
+        Assert.True(deleted.Success, deleted.ErrorMessage);
+        Assert.Equal(2, (await svc.GetReconciliationsAsync()).Count);
+        Assert.False(await db.AssetReconciliations.AnyAsync(r => r.Id == recon3.Id));
+        var after = (await svc.GetPartnersAsync()).ToDictionary(p => p.Id, p => p.Balance);
+        Assert.Equal(before[mohammed.Id] + 150, after[mohammed.Id]);   // عادت حصته من الخسارة (−150)
+        Assert.Equal(50, after[mohammed.Id]);                           // 250 − 200
+        Assert.Equal(150, after[second!.Id]);
+        // الحصص وعكسها تبقى ظاهرة في كشف الشريك (صافيها صفر) وغير مرتبطة بمطابقة
+        var txs = await db.PartnerTransactions.Where(t => t.PartnerId == mohammed.Id && t.Kind == PartnerTxKind.ProfitShare).ToListAsync();
+        Assert.Contains(txs, t => t.Amount == -150 && t.Notes!.Contains("المحذوفة"));
+        Assert.Contains(txs, t => t.Amount == 150 && t.ReconciliationId == null);
+        // القيد وعكسه صافيهما صفر على كل حساب
+        var reversal = await db.JournalEntries.SingleAsync(j => j.Description.Contains($"عكس قيد توزيع المطابقة {recon3.ReconNumber}"));
+        var both = await db.JournalEntryLines.Where(l => l.JournalEntryId == recon3.JournalEntryId || l.JournalEntryId == reversal.Id).ToListAsync();
+        Assert.All(both.GroupBy(l => l.AccountId), g => Assert.Equal(0m, g.Sum(l => l.Debit - l.Credit)));
+        // لا يمكن حذف مطابقة سُحب من أرباحها: محمد سحب 200 من حصته (250)
+        var blocked = await svc.DeleteLastAsync(recon2.Id, "تجربة", admin);
+        Assert.False(blocked.Success);
+        Assert.Contains("سحب من أرباحها", blocked.ErrorMessage);
+        Assert.Equal(2, (await svc.GetReconciliationsAsync()).Count);
+
+        // ---- تعديل البنود قبل الاعتماد (للأدمن): قيمة / استبعاد / بند يدوي، والسبب إلزامي، والأثر على الفائض ----
+        Assert.True((await svc.SavePartnerAsync(third.Id, "الشريك الثالث", 20, false, true, null, admin)).result.Success);   // المجموع 100% من جديد
+        var s0 = await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost);
+        var rawLine = s0.Lines.First(l => l.Section == ReconciliationService.RawSection && l.Description.Contains("RC-RAW"));
+        var edit = new ReconciliationAdjustment(AdjustmentKind.Edit, rawLine.Section, rawLine.Description, rawLine.Value, rawLine.Value + 1_000, "جرد فعلي أعلى");
+        var s1 = await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost, new[] { edit });
+        Assert.Equal(s0.Surplus + 1_000, s1.Surplus);
+        Assert.Equal(s0.Surplus, s1.SurplusBeforeAdjustments);
+        Assert.Equal(1_000, s1.AdjustmentsDelta);
+        Assert.Equal(s0.RawMaterials + 1_000, s1.RawMaterials);
+        var edited = s1.Lines.Single(l => l.Description == rawLine.Description);
+        Assert.Equal((rawLine.Value, rawLine.Value + 1_000, "جرد فعلي أعلى"), (edited.OriginalValue, edited.Value, edited.Note));
+        Assert.Equal(s1.Surplus, s1.Shares.Sum(x => x.Amount));
+
+        var exclude = new ReconciliationAdjustment(AdjustmentKind.Exclude, rawLine.Section, rawLine.Description, rawLine.Value, 0, "مادة معزولة");
+        var s2 = await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost, new[] { exclude });
+        Assert.Equal(s0.Surplus - rawLine.Value, s2.Surplus);
+        Assert.True(s2.Lines.Single(l => l.Description == rawLine.Description).IsExcluded);
+
+        var liability = new ReconciliationAdjustment(AdjustmentKind.ManualLiability, "", "قرض شخصي", 0, 300, "التزام غير مسجّل");
+        var asset = new ReconciliationAdjustment(AdjustmentKind.ManualAsset, "", "معدّة مشتراة نقدًا", 0, 200, "أصل غير مسجّل");
+        var s3 = await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost, new[] { liability, asset });
+        Assert.Equal(s0.Surplus - 300 + 200, s3.Surplus);
+        Assert.Equal((200m, 300m), (s3.ManualAssets, s3.ManualLiabilities));
+        Assert.Equal(s3.TotalAssets - s3.TotalLiabilities, s3.NetAssets);
+
+        // رفض: بلا سبب، أو قيمة أصلية قديمة، أو بند غير موجود، أو مبلغ يدوي صفر
+        Assert.NotEmpty((await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost, new[] { edit with { Reason = " " } })).AdjustmentErrors);
+        Assert.NotEmpty((await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost, new[] { edit with { OriginalValue = rawLine.Value + 5 } })).AdjustmentErrors);
+        Assert.NotEmpty((await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost, new[] { edit with { Description = "بند وهمي" } })).AdjustmentErrors);
+        Assert.NotEmpty((await svc.ComputeAsync(DateTime.Today, FinishedGoodsValuation.Cost, new[] { liability with { NewValue = 0 } })).AdjustmentErrors);
+        var stale = await svc.PostAsync(DateTime.Today, FinishedGoodsValuation.Cost, null, admin, new[] { edit with { OriginalValue = rawLine.Value + 5 } });
+        Assert.False(stale.result.Success);
+        Assert.Contains("التعديلات اليدوية", stale.result.ErrorMessage);
+        Assert.False((await svc.PostAsync(DateTime.Today, FinishedGoodsValuation.Cost, null, clerkId, new[] { edit })).result.Success);   // غير الأدمن
+        Assert.Equal(2, (await svc.GetReconciliationsAsync()).Count);
+
+        // اعتماد بتعديلين: تُحفظ البنود المعدّلة بقيمتها الأصلية وسببها، ويُوزَّع الفائض المعدّل، ويُسجَّل التدقيق
+        var (rp, adjusted) = await svc.PostAsync(DateTime.Today, FinishedGoodsValuation.Cost, null, admin, new[] { edit, liability });
+        Assert.True(rp.Success, rp.ErrorMessage);
+        Assert.Equal(s0.Surplus + 1_000 - 300, adjusted!.Surplus);
+        Assert.Equal((300m, 700m), (adjusted.ManualLiabilities, adjusted.AdjustmentsDelta));
+        var saved = await db.AssetReconciliationLines.Where(l => l.ReconciliationId == adjusted.Id && (l.OriginalValue != null || l.IsManual)).ToListAsync();
+        Assert.Equal(2, saved.Count);
+        Assert.Contains(saved, l => l.Description == rawLine.Description && l.OriginalValue == rawLine.Value && l.Value == rawLine.Value + 1_000 && l.AdjustReason == "جرد فعلي أعلى" && l.AdjustedByUserId == admin);
+        Assert.Contains(saved, l => l.IsManual && l.Description == "قرض شخصي" && l.Value == 300);
+        Assert.Equal(adjusted.Surplus, (await svc.GetSharesAsync(adjusted.Id)).Sum(x => x.Amount));
+        Assert.Contains(await db.AuditLogs.AsNoTracking().Where(a => a.Action == "Adjust" && a.TableName == "AssetReconciliations").Select(a => a.Summary).ToListAsync(), t => t != null && t.Contains("تعديلات يدوية") && t.Contains("جرد فعلي أعلى"));
+        // تنظيف: حذف المطابقة المعدّلة (آخر مطابقة) يعيد الحال لما قبلها
+        Assert.True((await svc.DeleteLastAsync(adjusted.Id, "تنظيف الاختبار", admin)).Success);
+        Assert.Equal(2, (await svc.GetReconciliationsAsync()).Count);
+    }
+}

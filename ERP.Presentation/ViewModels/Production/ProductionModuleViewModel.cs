@@ -1,0 +1,1442 @@
+using System.Collections.ObjectModel;
+using ERP.Data.ProjectDb;
+using ERP.Data.ProjectDb.Entities;
+using ERP.Data.Services;
+using ERP.Presentation.Mvvm;
+using ERP.Presentation.Services;
+using ERP.Presentation.ViewModels.Shell;
+using Microsoft.EntityFrameworkCore;
+
+namespace ERP.Presentation.ViewModels.Production;
+
+public class ProductionModuleViewModel : ModuleViewModel
+{
+    public ProductionModuleViewModel(AppSession s, IDialogService d)
+        : base("الإنتاج", Icons.Production, ModuleColors.Production)
+    {
+        UseDashboard(s, d, ModuleCode.Production, ModuleDashboardViewModel.Production);
+        // تسلسل العمل مرقّم: الأمر ← تحت التصنيع ← (فحص المختبر في وحدة المختبر) ← التعبئة للمخزن، ثم المتابعة والمرجعيات بلا أرقام
+        Orders = AddStep(1, new ProductionOrdersSectionViewModel(s, d));
+        // «إنتاج اليوم» حلّ محله الإنتاج الإضافي داخل أوامر الإنتاج؛ يبقى في الكود مخفيًا (ShowDailyProduction) ويمكن إعادته
+        Daily = new DailyProductionSectionViewModel(s, d);
+        var step = 2;
+        if (ShowDailyProduction) AddStep(step++, Daily);
+        Wip = AddStep(step++, new MachineWipSectionViewModel(s, d));
+        Packing = AddStep(step++, new PackingSectionViewModel(s, d));
+        AddStep(step, new PendingProductionSectionViewModel(s, d));
+        Add(new VariantStockSectionViewModel(s, d));
+        Add(new ImportedBatchesSectionViewModel(s, d));
+        Add(new ProductionReportsSectionViewModel(s, d));
+        Add(new ProductionMonthSectionViewModel(s, d));
+        Machines = Add(new MachinesSectionViewModel(s, d));
+        Add(new CustomRecipesSectionViewModel(s, d));
+        _session = s;
+        _dialogs = d;
+        s.WorkspacesChanged += OnWorkspacesChanged;
+        Background(RefreshWorkspacesAsync());
+    }
+
+    /// <summary>إظهار شاشة «إنتاج اليوم» في القائمة (مخفية افتراضيًا بعد الإنتاج الإضافي في أوامر الإنتاج).</summary>
+    public static bool ShowDailyProduction { get; set; }
+
+    private readonly AppSession _session;
+    private readonly IDialogService _dialogs;
+    private readonly SemaphoreSlim _workspaceLock = new(1, 1);
+    private void OnWorkspacesChanged() => Background(RefreshWorkspacesAsync());
+
+    /// <summary>مساحات المخازن التي نُقلت إلى الإنتاج (تعريف المخازن ← يظهر في وحدة: الإنتاج): تبويب لكل مخزن منها، صلاحياته على وحدة الإنتاج.</summary>
+    public IReadOnlyList<Warehouse.WarehouseWorkspaceSectionViewModel> Workspaces => Tabs.ToArray().OfType<Warehouse.WarehouseWorkspaceSectionViewModel>().ToList();
+
+    public async Task RefreshWorkspacesAsync()
+    {
+        await _workspaceLock.WaitAsync();
+        try
+        {
+            await using var db = _session.NewDb();
+            var warehouses = await db.Warehouses.AsNoTracking()
+                .Where(w => w.IsActive && w.ShowInModule == ModuleCode.Production && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.RepVan)
+                .OrderBy(w => w.Name).ToListAsync();
+            foreach (var ws in Workspaces)
+            {
+                var w = warehouses.FirstOrDefault(x => x.Id == ws.WarehouseId);
+                if (w is null || w.Name != ws.Title || w.WarehouseType != ws.WarehouseType) RemoveSection(ws);
+            }
+            foreach (var w in warehouses)
+            {
+                if (Workspaces.Any(x => x.WarehouseId == w.Id)) continue;
+                var section = new Warehouse.WarehouseWorkspaceSectionViewModel(_session, _dialogs, w) { Module = ModuleCode.Production };
+                section.MovedFrom = "المخازن";
+                InsertSection(Tabs.Count, section);
+            }
+        }
+        finally { _workspaceLock.Release(); }
+    }
+
+    public DailyProductionSectionViewModel Daily { get; }
+    public ProductionOrdersSectionViewModel Orders { get; }
+    public PackingSectionViewModel Packing { get; }
+    public MachineWipSectionViewModel Wip { get; }
+    public MachinesSectionViewModel Machines { get; }
+}
+
+// ============================ أوامر الإنتاج ============================
+public class RequirementPreview
+{
+    public string RawMaterialName { get; init; } = "";
+    public decimal Required { get; init; }
+    public decimal Available { get; init; }
+    public string RequiredText { get; init; } = "";
+    public string AvailableText { get; init; } = "";
+    public string WhereText { get; init; } = "";
+    public string UsedBy { get; init; } = "";
+    public bool IsShared { get; init; }
+    public bool IsSufficient => Available >= Required;
+}
+
+/// <summary>مكوّن في سطر أمر (للاستبدال): المادة وكميتها المطلوبة.</summary>
+public record ComponentOption(int ItemId, string Name, decimal Quantity)
+{
+    public string Display => $"{Name} — {Quantity:N0}";
+}
+
+/// <summary>صنف مضاف لأمر إنتاج قيد الإنشاء.</summary>
+public class OrderLineDraft
+{
+    public int FinishedItemId { get; init; }
+    public string ItemName { get; init; } = "";
+    public int? RecipeId { get; init; }
+    public string? RecipeName { get; init; }
+    public decimal Quantity { get; init; }
+    /// <summary>الكمية بالعبوة كما أُدخلت: «7 كارتون».</summary>
+    public string QuantityText { get; init; } = "";
+    public string BatchNumber { get; init; } = "";
+    /// <summary>ما بيع مقدمًا من هذا الصنف/المتغير ولا يغطيه أمر آخر (بالقطعة)، ووحدة البيع لعرضه: «2 شرنك (40 قطعة)».</summary>
+    public decimal SoldAheadPieces { get; init; }
+    public string? SaleLevelName { get; init; }
+    public decimal SaleLevelPer { get; init; } = 1;
+    public bool HasSoldAhead => SoldAheadPieces > 0;
+    public string SoldAheadText => HasSoldAhead ? $"مباع مقدمًا: {PendingProductionService.FormatPacks(SoldAheadPieces, SaleLevelName, SaleLevelPer)}" : "";
+    /// <summary>ما يبقى للمخزن بعد تسوية المباع، أو تنبيه خفيف (لا يمنع) إن كانت الكمية أقل من المباع.</summary>
+    public string ToStockText => !HasSoldAhead ? ""
+        : Quantity >= SoldAheadPieces ? $"للمخزن بعد التسوية: {PendingProductionService.FormatPacks(Quantity - SoldAheadPieces, SaleLevelName, SaleLevelPer)}"
+        : $"⚠ كميتك أقل من المباع بـ {PendingProductionService.FormatPacks(SoldAheadPieces - Quantity, SaleLevelName, SaleLevelPer)}";
+    public bool IsShort => HasSoldAhead && Quantity < SoldAheadPieces;
+    public ProductionLineInput ToInput() => new(FinishedItemId, Quantity, RecipeId, BatchNumber);
+}
+
+public class ProductionOrdersSectionViewModel : SectionViewModel
+{
+    private bool _isComposing;
+    private Item? _finishedItem;
+    private CustomRecipe? _recipe;
+    private decimal _packs;
+    private ItemPackagingLevel? _level;
+    private int _levelsLoad;
+    private Data.ProjectDb.Entities.Warehouse? _rawWarehouse;
+    private Machine? _machine;
+
+    public ProductionOrdersSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.Production, "أوامر الإنتاج", Icons.Factory, "#14B8A6", "إنشاء الأمر من قائمة المواد، بدء التشغيل، والإغلاق")
+    {
+        NewOrderCommand = new AsyncRelayCommand(async () =>
+        {
+            if (!Require(CanAdd, "إنشاء أوامر الإنتاج")) return;
+            EditingOrder = null;
+            ExtraOrder = null;
+            BatchOrder = null;
+            ComposeLines.Clear();
+            SetPacks(0);
+            await using var db = Session.NewDb();
+            BatchNumber = await new ProductionService(db).NextBatchNumberAsync();
+            IsComposing = true;
+            await AddSoldAheadLinesAsync(db);
+        });
+        EditBatchCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenBatchAsync(r) : Task.CompletedTask);
+        SaveBatchCommand = new AsyncRelayCommand(SaveBatchAsync);
+        CloseBatchCommand = new RelayCommand(() => BatchOrder = null);
+        OverrideCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenOverrideAsync(r) : Task.CompletedTask);
+        SaveOverrideCommand = new AsyncRelayCommand(SaveOverrideAsync);
+        CloseOverrideCommand = new RelayCommand(() => OverrideOrder = null);
+        EditDraftCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenEditDraftAsync(r) : Task.CompletedTask);
+        ExtraCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? OpenExtraAsync(r) : Task.CompletedTask);
+        SaveExtraCommand = new AsyncRelayCommand(SaveExtraAsync);
+        CloseExtraCommand = new RelayCommand(() => ExtraOrder = null);
+        CancelComposeCommand = new RelayCommand(() => { IsComposing = false; EditingOrder = null; ComposeLines.Clear(); });
+        AddLineCommand = new AsyncRelayCommand(AddLineAsync);
+        RemoveLineCommand = new AsyncRelayCommand(async p => { if (p is OrderLineDraft l) { ComposeLines.Remove(l); await PreviewAsync(); } });
+        PreviewCommand = new AsyncRelayCommand(PreviewAsync);
+        CreateCommand = new AsyncRelayCommand(CreateAsync);
+        StartCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? StartAsync(r) : Task.CompletedTask);
+        CompleteCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? CompleteAsync(r) : Task.CompletedTask);
+        CancelOrderCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? CancelAsync(r) : Task.CompletedTask);
+        DeleteOrderCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? DeleteCancelledAsync(r) : Task.CompletedTask);
+        PrintCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? PrintAsync(db => DocumentReports.ProductionOrderAsync(Session, db, r.Id)) : Task.CompletedTask);
+        PrintPackingCommand = new AsyncRelayCommand(p => p is ProductionOrderRow r ? PrintAsync(db => DocumentReports.PackingAsync(Session, db, r.Id)) : Task.CompletedTask);
+    }
+
+    protected override bool ReloadOnActivate => true;
+
+    public ObservableCollection<ProductionOrderRow> Orders { get; } = new();
+    /// <summary>فترة العرض: اليوم افتراضيًا؛ لأي يوم سابق «من / إلى» ثم «عرض». الأوامر المفتوحة تظهر دائمًا.</summary>
+    public DateTime OrdersFrom { get; set; } = DateTime.Today;
+    public DateTime OrdersTo { get; set; } = DateTime.Today;
+    public ObservableCollection<Item> FinishedItems { get; } = new();
+    public ObservableCollection<CustomRecipe> Recipes { get; } = new();
+    public ObservableCollection<Data.ProjectDb.Entities.Warehouse> RawWarehouses { get; } = new();
+    public ObservableCollection<RequirementPreview> Preview { get; } = new();
+    public ObservableCollection<Machine> Machines { get; } = new();
+    public Machine? Machine { get => _machine; set => SetProperty(ref _machine, value); }
+
+    public bool IsComposing { get => _isComposing; private set { if (SetProperty(ref _isComposing, value)) OnPropertyChanged(nameof(HasSidePanel)); } }
+    /// <summary>لوحة جانبية مفتوحة (أمر جديد، رقم الدفعة، الاستبدال): تأخذ عرضًا من الجدول، فتُخفى منه الأعمدة الأقل أهمية.</summary>
+    public bool HasSidePanel => IsComposing || IsEditingBatch || IsOverriding || IsExtra;
+    public Item? FinishedItem { get => _finishedItem; set { if (SetProperty(ref _finishedItem, value)) Background(LoadRecipesAsync()); } }
+    public CustomRecipe? Recipe { get => _recipe; set { if (SetProperty(ref _recipe, value)) Background(PreviewAsync()); } }
+    /// <summary>عبوات المنتج المختار (كارتون، شرنك…) — الأكبر أولًا؛ الإنتاج يُدخل بالعبوة لا بالقطعة.</summary>
+    public ObservableCollection<ItemPackagingLevel> Levels { get; } = new();
+    /// <summary>وحدة الإنتاج المختارة؛ تغييرها يُبقي العدد كما كُتب (7 كارتون ← 7 شرنك).</summary>
+    public ItemPackagingLevel? Level
+    {
+        get => _level;
+        set { if (SetProperty(ref _level, value)) RaiseQuantity(); }
+    }
+    /// <summary>عدد العبوات المطلوب إنتاجها (مثل 7 كراتين).</summary>
+    public decimal Packs { get => _packs; set { if (SetProperty(ref _packs, value)) RaiseQuantity(); } }
+    public string LevelName => Level?.LevelName ?? "قطعة";
+    private decimal PerPack => Level is { EquivalentBaseUnits: > 0 } l ? l.EquivalentBaseUnits : 1;
+    /// <summary>الكمية بالقطع (للحساب الداخلي) = العدد × قطع العبوة. ضبطها بالقطع يحوّلها لعبوات إن قُسمت عليها.</summary>
+    public decimal Quantity
+    {
+        get => Packs * PerPack;
+        set => SetPieces(value);
+    }
+    public string PiecesText => Level is { EquivalentBaseUnits: > 1 } ? $"{Packs:N0} {LevelName} = {Quantity:N0} قطعة" : "";
+
+    private void RaiseQuantity()
+    {
+        OnPropertyChanged(nameof(Quantity));
+        OnPropertyChanged(nameof(LevelName));
+        OnPropertyChanged(nameof(PiecesText));
+    }
+
+    private void SetPacks(decimal packs)
+    {
+        _packs = packs;
+        OnPropertyChanged(nameof(Packs));
+        RaiseQuantity();
+    }
+
+    /// <summary>كمية بالقطع: بأكبر عبوة تقسمها، وإلا بالقطعة.</summary>
+    private void SetPieces(decimal pieces)
+    {
+        var level = pieces == 0 ? Levels.FirstOrDefault()
+            : Levels.FirstOrDefault(l => l.EquivalentBaseUnits > 0 && pieces % l.EquivalentBaseUnits == 0);
+        _level = level;
+        OnPropertyChanged(nameof(Level));
+        SetPacks(level is { EquivalentBaseUnits: > 0 } ? pieces / level.EquivalentBaseUnits : pieces);
+    }
+    public Data.ProjectDb.Entities.Warehouse? RawWarehouse { get => _rawWarehouse; set => SetProperty(ref _rawWarehouse, value); }
+    public bool AllSufficient => Preview.Count > 0 && Preview.All(p => p.IsSufficient);
+
+    public AsyncRelayCommand NewOrderCommand { get; }
+    public AsyncRelayCommand EditBatchCommand { get; }
+    public AsyncRelayCommand AddLineCommand { get; }
+    public AsyncRelayCommand RemoveLineCommand { get; }
+    /// <summary>أصناف الأمر المضافة (أمر متعدد الأصناف). الصنف المختار حاليًا يُضاف تلقائيًا عند الإنشاء.</summary>
+    public ObservableCollection<OrderLineDraft> ComposeLines { get; } = new();
+    public ObservableCollection<ProductionLineRow> BatchLines { get; } = new();
+    private ProductionLineRow? _batchLine;
+    public ProductionLineRow? BatchLine
+    {
+        get => _batchLine;
+        set { if (SetProperty(ref _batchLine, value)) NewBatchNumber = value?.OutputBatch ?? ""; }
+    }
+    public AsyncRelayCommand SaveBatchCommand { get; }
+    public RelayCommand CloseBatchCommand { get; }
+
+    // ---------------- رقم الدفعة ----------------
+    private string _batchNumber = "";
+    private ProductionOrderRow? _batchOrder;
+    private string _newBatchNumber = "";
+    private string _batchReason = "";
+    /// <summary>رقم الدفعة للأمر الجديد: مولَّد تلقائيًا وقابل للتعديل قبل الإنشاء.</summary>
+    public string BatchNumber { get => _batchNumber; set => SetProperty(ref _batchNumber, value); }
+    /// <summary>الأمر المفتوح لتعديل رقم دفعته (لوحة جانبية).</summary>
+    public ProductionOrderRow? BatchOrder
+    {
+        get => _batchOrder;
+        private set { if (SetProperty(ref _batchOrder, value)) { OnPropertyChanged(nameof(IsEditingBatch)); OnPropertyChanged(nameof(HasSidePanel)); if (value is not null) { IsComposing = false; OverrideOrder = null; } } }
+    }
+    public bool IsEditingBatch => BatchOrder is not null;
+    public string NewBatchNumber { get => _newBatchNumber; set => SetProperty(ref _newBatchNumber, value); }
+    public string BatchReason { get => _batchReason; set => SetProperty(ref _batchReason, value); }
+    public ObservableCollection<string> BatchHistory { get; } = new();
+    protected override bool HasPendingInput => IsComposing || IsEditingBatch || IsOverriding || IsExtra;
+
+    protected override void ResetInput()
+    {
+        IsComposing = false;
+        EditingOrder = null;
+        ComposeLines.Clear();
+        SetPacks(0);
+        BatchOrder = null;
+        OverrideOrder = null;
+        ExtraOrder = null;
+    }
+
+    // ---------------- استبدال مكوّن في أمر واحد ----------------
+    private ProductionOrderRow? _overrideOrder;
+    private ProductionLineRow? _overrideLine;
+    private ComponentOption? _overrideOriginal;
+    private Item? _overrideReplacement;
+    private string _overrideReason = "";
+    public AsyncRelayCommand OverrideCommand { get; }
+    public AsyncRelayCommand SaveOverrideCommand { get; }
+    public RelayCommand CloseOverrideCommand { get; }
+    public ProductionOrderRow? OverrideOrder
+    {
+        get => _overrideOrder;
+        private set
+        {
+            if (!SetProperty(ref _overrideOrder, value)) return;
+            OnPropertyChanged(nameof(IsOverriding));
+            OnPropertyChanged(nameof(HasSidePanel));
+            if (value is not null) { IsComposing = false; BatchOrder = null; }
+        }
+    }
+    public bool IsOverriding => OverrideOrder is not null;
+    public ObservableCollection<ProductionLineRow> OverrideLines { get; } = new();
+    public ObservableCollection<ComponentOption> OverrideComponents { get; } = new();
+    public ObservableCollection<Item> ReplacementItems { get; } = new();
+    public ObservableCollection<string> OverrideHistory { get; } = new();
+    public ProductionLineRow? OverrideLine { get => _overrideLine; set { if (SetProperty(ref _overrideLine, value)) Background(LoadOverrideComponentsAsync()); } }
+    public ComponentOption? OverrideOriginal { get => _overrideOriginal; set => SetProperty(ref _overrideOriginal, value); }
+    public Item? OverrideReplacement { get => _overrideReplacement; set => SetProperty(ref _overrideReplacement, value); }
+    public string OverrideReason { get => _overrideReason; set => SetProperty(ref _overrideReason, value); }
+
+    private async Task OpenOverrideAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanEdit, "استبدال مكوّن في أمر الإنتاج")) return;
+        if (row.Status != ProductionOrderStatus.Draft) { Dialogs.Error("الاستبدال يكون قبل بدء التشغيل (الأمر مسودة)"); return; }
+        ExtraOrder = null;
+        OverrideOrder = row;
+        OverrideReason = "";
+        OverrideReplacement = null;
+        await using var db = Session.NewDb();
+        if (ReplacementItems.Count == 0)
+            foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Manufactured).OrderBy(i => i.ItemName).ToListAsync())
+                ReplacementItems.Add(i);
+        OverrideLines.Clear();
+        foreach (var l in row.Lines) OverrideLines.Add(l);
+        // تعيين الحقل مباشرة ثم تحميل واحد (الضبط عبر الخاصية يحمّل في الخلفية أيضًا فيتكرر)
+        _overrideLine = OverrideLines.FirstOrDefault();
+        OnPropertyChanged(nameof(OverrideLine));
+        await LoadOverrideComponentsAsync();
+        await LoadOverrideHistoryAsync(db, row.Id);
+    }
+
+    private async Task LoadOverrideComponentsAsync()
+    {
+        OverrideComponents.Clear();
+        if (OverrideLine is null) return;
+        await using var db = Session.NewDb();
+        var lineId = OverrideLine.LineId;
+        foreach (var c in await db.ProductionOrderConsumptions.AsNoTracking().Where(c => c.ProductionOrderLineId == lineId)
+                     .OrderBy(c => c.RawMaterialItem.ItemName)
+                     .Select(c => new ComponentOption(c.RawMaterialItemId, c.RawMaterialItem.ItemName, c.QuantityRequired)).ToListAsync())
+            OverrideComponents.Add(c);
+        OverrideOriginal = OverrideComponents.FirstOrDefault();
+    }
+
+    private async Task LoadOverrideHistoryAsync(Data.ProjectDb.ProjectDbContext db, int orderId)
+    {
+        OverrideHistory.Clear();
+        foreach (var o in await new PackagingTemplateService(db).GetOrderOverridesAsync(orderId))
+            OverrideHistory.Add($"{o.ChangedAt.ToLocalTime():yyyy/MM/dd HH:mm} — {o.ChangedByUser.Username}: {o.Line.FinishedItem.ItemName}: {o.OriginalItem.ItemName} ← {o.ReplacementItem.ItemName} ({o.Quantity:N0}) — {o.Reason}");
+    }
+
+    private async Task SaveOverrideAsync()
+    {
+        if (OverrideOrder is null || !Require(CanEdit, "استبدال مكوّن في أمر الإنتاج")) return;
+        if (OverrideLine is null || OverrideOriginal is null || OverrideReplacement is null) { Dialogs.Error("اختر الصنف والمكوّن الأصلي والبديل"); return; }
+        await using var db = Session.NewDb();
+        var (lineId, original, replacement) = (OverrideLine.LineId, OverrideOriginal.ItemId, OverrideReplacement.Id);
+        if (await RunOperationAsync(() => new PackagingTemplateService(db).OverrideOrderComponentAsync(lineId, original, replacement, OverrideReason, Session.UserId),
+                                    $"استُبدل {OverrideOriginal.Name} بـ {OverrideReplacement.ItemName} في {OverrideOrder.MONumber} فقط"))
+        {
+            OverrideOrder = null;
+            await LoadAsync();
+        }
+    }
+    // ---------------- تعديل مسودة أمر (النوع والعدد) بنفس لوحة الأمر الجديد ----------------
+    private ProductionOrderRow? _editingOrder;
+    public AsyncRelayCommand EditDraftCommand { get; }
+    /// <summary>المسودة قيد التعديل في لوحة «أمر إنتاج جديد» (null = أمر جديد).</summary>
+    public ProductionOrderRow? EditingOrder
+    {
+        get => _editingOrder;
+        private set { if (SetProperty(ref _editingOrder, value)) { OnPropertyChanged(nameof(ComposeTitle)); OnPropertyChanged(nameof(CreateButtonText)); } }
+    }
+    public string ComposeTitle => EditingOrder is null ? "أمر إنتاج جديد" : $"تعديل المسودة {EditingOrder.MONumber}";
+    public string CreateButtonText => EditingOrder is null ? "إنشاء الأمر" : "حفظ التعديل";
+
+    private async Task OpenEditDraftAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanEdit, "تعديل مسودة الأمر")) return;
+        if (row.Status != ProductionOrderStatus.Draft) { Dialogs.Error("تعديل النوع والعدد يكون قبل بدء التشغيل (الأمر مسودة)"); return; }
+        ExtraOrder = null;
+        BatchOrder = null;
+        OverrideOrder = null;
+        await using var db = Session.NewDb();
+        var header = await db.ProductionOrders.AsNoTracking().Where(o => o.Id == row.Id).Select(o => new { o.RawMaterialsWarehouseId, o.MachineId }).FirstAsync();
+        ComposeLines.Clear();
+        foreach (var l in row.Lines)
+            ComposeLines.Add(new OrderLineDraft
+            {
+                FinishedItemId = l.FinishedItemId, ItemName = l.FinishedItemName, RecipeId = l.CustomRecipeId, RecipeName = l.RecipeName,
+                Quantity = l.QuantityToProduce, QuantityText = l.QuantityText, BatchNumber = l.OutputBatch ?? ""
+            });
+        BatchNumber = row.OutputBatch ?? "";
+        _finishedItem = null;
+        OnPropertyChanged(nameof(FinishedItem));
+        SetPacks(0);
+        _rawWarehouse = RawWarehouses.FirstOrDefault(w => w.Id == header.RawMaterialsWarehouseId) ?? _rawWarehouse;
+        OnPropertyChanged(nameof(RawWarehouse));
+        _machine = Machines.FirstOrDefault(m => m.Id == header.MachineId) ?? _machine;
+        OnPropertyChanged(nameof(Machine));
+        EditingOrder = row;
+        IsComposing = true;
+        await RefreshSoldAheadAsync(row.Id);
+        await PreviewAsync();
+    }
+
+    // ---------------- إنتاج إضافي على أمر/دفعة (يوافق عليه أمين المخزن) ----------------
+    private ProductionOrderRow? _extraOrder;
+    private ProductionLineRow? _extraLine;
+    private ItemPackagingLevel? _extraLevel;
+    private decimal _extraPacks;
+    private string _extraReason = "";
+    private string _extraNeedsText = "";
+    private bool _extraShort;
+    private int _extraToken;
+    private int _extraLevelsToken;
+    public AsyncRelayCommand ExtraCommand { get; }
+    public AsyncRelayCommand SaveExtraCommand { get; }
+    public RelayCommand CloseExtraCommand { get; }
+    public ProductionOrderRow? ExtraOrder
+    {
+        get => _extraOrder;
+        private set
+        {
+            if (!SetProperty(ref _extraOrder, value)) return;
+            OnPropertyChanged(nameof(IsExtra));
+            OnPropertyChanged(nameof(HasSidePanel));
+            if (value is not null) { IsComposing = false; BatchOrder = null; OverrideOrder = null; }
+        }
+    }
+    public bool IsExtra => ExtraOrder is not null;
+    public ObservableCollection<ProductionLineRow> ExtraLines { get; } = new();
+    public ObservableCollection<ItemPackagingLevel> ExtraLevels { get; } = new();
+    public ObservableCollection<string> ExtraHistory { get; } = new();
+    public ProductionLineRow? ExtraLine { get => _extraLine; set { if (SetProperty(ref _extraLine, value)) Background(LoadExtraLevelsAsync()); } }
+    public ItemPackagingLevel? ExtraLevel { get => _extraLevel; set { if (SetProperty(ref _extraLevel, value)) { OnPropertyChanged(nameof(ExtraPiecesText)); Background(CheckExtraAsync()); } } }
+    public decimal ExtraPacks { get => _extraPacks; set { if (SetProperty(ref _extraPacks, value)) { OnPropertyChanged(nameof(ExtraPiecesText)); Background(CheckExtraAsync()); } } }
+    public string ExtraReason { get => _extraReason; set => SetProperty(ref _extraReason, value); }
+    /// <summary>نتيجة فحص المواد للزيادة: «المواد تكفي» أو اسم كل مادة ناقصة ومقدار نقصها.</summary>
+    public string ExtraNeedsText { get => _extraNeedsText; private set => SetProperty(ref _extraNeedsText, value); }
+    public bool ExtraShort { get => _extraShort; private set => SetProperty(ref _extraShort, value); }
+    public string ExtraPiecesText => ExtraLevel is { EquivalentBaseUnits: > 1 } l && ExtraPacks > 0 ? $"{ExtraPacks:N0} {l.LevelName} = {ExtraPacks * l.EquivalentBaseUnits:N0} قطعة" : "";
+
+    private async Task OpenExtraAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanAdd, "الإنتاج الإضافي")) return;
+        if (row.Status is ProductionOrderStatus.Draft or ProductionOrderStatus.Cancelled)
+        { Dialogs.Error("الإنتاج الإضافي يكون لأمر بدأ تشغيله أو اكتمل"); return; }
+        ExtraOrder = row;
+        ExtraLines.Clear();
+        foreach (var l in row.Lines) ExtraLines.Add(l);
+        _extraPacks = 0;
+        OnPropertyChanged(nameof(ExtraPacks));
+        ExtraReason = "";
+        ExtraNeedsText = "";
+        ExtraShort = false;
+        _extraLine = ExtraLines.FirstOrDefault();
+        OnPropertyChanged(nameof(ExtraLine));
+        await LoadExtraLevelsAsync();
+        await LoadExtraHistoryAsync();
+    }
+
+    private async Task LoadExtraLevelsAsync()
+    {
+        var token = ++_extraLevelsToken;
+        ExtraLevels.Clear();
+        _extraLevel = null;
+        if (ExtraLine is null) { OnPropertyChanged(nameof(ExtraLevel)); return; }
+        await using var db = Session.NewDb();
+        var levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == ExtraLine.FinishedItemId && l.EquivalentBaseUnits > 0)
+            .OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync();
+        if (token != _extraLevelsToken) return;
+        foreach (var l in levels) ExtraLevels.Add(l);
+        _extraLevel = ExtraLevels.FirstOrDefault();
+        OnPropertyChanged(nameof(ExtraLevel));
+        OnPropertyChanged(nameof(ExtraPiecesText));
+        await CheckExtraAsync();
+    }
+
+    /// <summary>فحص المواد للزيادة فورًا: تُسمّى المادة الناقصة قبل الإرسال.</summary>
+    private async Task CheckExtraAsync()
+    {
+        var token = ++_extraToken;
+        if (ExtraLine is null || ExtraLevel is null || ExtraPacks <= 0) { ExtraNeedsText = ""; ExtraShort = false; return; }
+        await using var db = Session.NewDb();
+        var (error, needs) = await new DailyProductionService(db).PreviewExtraAsync(ExtraLine.LineId, ExtraLevel.Id, ExtraPacks);
+        if (token != _extraToken) return;
+        var missing = needs.Where(n => n.IsShort).ToList();
+        ExtraShort = error is not null || missing.Count > 0;
+        ExtraNeedsText = error ?? (missing.Count > 0
+            ? "المواد لا تكفي:\n" + string.Join("\n", missing.Select(n => $"«{n.ItemName}»: المطلوب {n.Required:N0}، المتاح {n.Available:N0}، الناقص {n.Short:N0}"))
+            : $"المواد تكفي ({needs.Count} مادة)");
+    }
+
+    private async Task LoadExtraHistoryAsync()
+    {
+        ExtraHistory.Clear();
+        if (ExtraOrder is null) return;
+        await using var db = Session.NewDb();
+        foreach (var r in await new ExtraProductionService(db).ForOrderAsync(ExtraOrder.Id))
+            ExtraHistory.Add($"{r.RequestedAt.ToLocalTime():yyyy/MM/dd} — {r.PacksText} {r.VariantText} — {r.StatusText}" + (r.ApprovedPacks is decimal a && r.Status == ExtraProductionStatus.Partial ? $" ({a:N0})" : "")
+                             + $" — {r.Reason}" + (string.IsNullOrWhiteSpace(r.DecisionNote) ? "" : $" — {r.DecisionNote}"));
+    }
+
+    private async Task SaveExtraAsync()
+    {
+        if (ExtraOrder is null || !Require(CanAdd, "الإنتاج الإضافي")) return;
+        if (ExtraLine is null || ExtraLevel is null) { Dialogs.Error("اختر الصنف ووحدة التعبئة"); return; }
+        if (ExtraShort) { Dialogs.Error(ExtraNeedsText); return; }
+        await using var db = Session.NewDb();
+        var (lineId, levelId, packs, reason) = (ExtraLine.LineId, ExtraLevel.Id, ExtraPacks, ExtraReason);
+        var order = ExtraOrder.MONumber;
+        if (await RunOperationAsync(async () => (await new ExtraProductionService(db).RequestAsync(lineId, levelId, packs, reason, Session.UserId)).result,
+                                    $"أُرسل طلب الإنتاج الإضافي على {order} إلى أمين المخزن للموافقة"))
+        {
+            _extraPacks = 0;
+            OnPropertyChanged(nameof(ExtraPacks));
+            ExtraReason = "";
+            ExtraNeedsText = "";
+            await LoadExtraHistoryAsync();
+        }
+    }
+
+    public RelayCommand CancelComposeCommand { get; }
+    public AsyncRelayCommand PreviewCommand { get; }
+    public AsyncRelayCommand CreateCommand { get; }
+    public AsyncRelayCommand StartCommand { get; }
+    public AsyncRelayCommand CompleteCommand { get; }
+    public AsyncRelayCommand CancelOrderCommand { get; }
+    public AsyncRelayCommand DeleteOrderCommand { get; }
+    private string? _deleteReason;
+    /// <summary>سبب الحذف النهائي لأمر ملغى (إلزامي، يُسجَّل في سجل التدقيق).</summary>
+    public string? DeleteReason { get => _deleteReason; set => SetProperty(ref _deleteReason, value); }
+    public AsyncRelayCommand PrintCommand { get; }
+    public AsyncRelayCommand PrintPackingCommand { get; }
+
+    public override async Task LoadAsync()
+    {
+        await using var db = Session.NewDb();
+        // المنتجات ذات قائمة المواد تُحدَّث في كل تحميل (قد تُنشأ قائمة مواد جديدة من المخازن أو بقالب تعبئة)
+        var withBom = db.BillOfMaterials.Where(b => b.IsActive && b.Lines.Any()).Select(b => b.FinishedItemId);
+        var finished = await db.Items.AsNoTracking().Where(i => withBom.Contains(i.Id) && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync();
+        if (!finished.Select(i => i.Id).SequenceEqual(FinishedItems.Select(i => i.Id)))
+        {
+            var selectedId = FinishedItem?.Id;
+            FinishedItems.Clear();
+            foreach (var i in finished) FinishedItems.Add(i);
+            _finishedItem = FinishedItems.FirstOrDefault(i => i.Id == selectedId);
+            OnPropertyChanged(nameof(FinishedItem));
+        }
+        // المخازن تُحدَّث في كل تحميل: مخزن أُنشئ بعد فتح الشاشة لأول مرة (مخزن إنتاج جديد) يظهر في القائمة بلا إعادة تشغيل البرنامج
+        // الترتيب في الذاكرة: نوع المخزن مخزّن نصًا، ومقارنته داخل ORDER BY لا تُترجم لـ SQL
+        var candidates = (await db.Warehouses.AsNoTracking()
+            .Where(w => w.IsActive && w.WarehouseType != WarehouseType.RepVan && w.WarehouseType != WarehouseType.Damaged
+                     && w.WarehouseType != WarehouseType.WorkInProcess && w.WarehouseType != WarehouseType.FinishedGoods).ToListAsync())
+            .OrderBy(w => w.WarehouseType != WarehouseType.RawMaterial).ThenBy(w => w.Name).ToList();
+        if (!candidates.Select(w => w.Id).SequenceEqual(RawWarehouses.Select(w => w.Id)))
+        {
+            var selectedId = RawWarehouse?.Id;
+            RawWarehouses.Clear();
+            foreach (var w in candidates) RawWarehouses.Add(w);
+            _rawWarehouse = RawWarehouses.FirstOrDefault(w => w.Id == selectedId) ?? RawWarehouses.FirstOrDefault();
+            OnPropertyChanged(nameof(RawWarehouse));
+        }
+        // الماكينات تُحدَّث في كل تحميل (قد تُضاف ماكينة من تبويب الماكينات)
+        var machineId = Machine?.Id;
+        Machines.Clear();
+        foreach (var m in await new MachineService(db).GetAllAsync(activeOnly: true)) Machines.Add(m);
+        _machine = Machines.FirstOrDefault(m => m.Id == machineId) ?? Machines.FirstOrDefault();
+        OnPropertyChanged(nameof(Machine));
+        Orders.Clear();
+        var orderRows = await new ProductionService(db).GetOrdersAsync(OrdersFrom, OrdersTo);
+        var extras = await db.ExtraProductionRequests.AsNoTracking()
+            .Where(r => (r.Status == ExtraProductionStatus.Approved || r.Status == ExtraProductionStatus.Partial) && orderRows.Select(o => o.Id).Contains(r.ProductionOrderId))
+            .Select(r => new { r.ProductionOrderId, Pieces = (r.ApprovedPacks ?? r.Packs) * r.PackagingLevel.EquivalentBaseUnits }).ToListAsync();
+        foreach (var o in orderRows)
+        {
+            var sum = extras.Where(x => x.ProductionOrderId == o.Id).Sum(x => x.Pieces);
+            o.ExtraText = sum > 0 ? $"+ {sum:N0}" : "";
+            Orders.Add(o);
+        }
+    }
+
+    private async Task LoadRecipesAsync()
+    {
+        var token = ++_levelsLoad;
+        var item = FinishedItem;
+        Recipes.Clear();
+        _recipe = null;
+        OnPropertyChanged(nameof(Recipe));
+        List<ItemPackagingLevel> levels = new();
+        if (item is not null)
+        {
+            await using var db = Session.NewDb();
+            foreach (var r in await db.CustomRecipes.AsNoTracking().Include(r => r.Customer)
+                         .Where(r => r.FinishedItemId == item.Id && r.IsActive).OrderBy(r => r.Name).ToListAsync()) Recipes.Add(r);
+            levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == item.Id && l.EquivalentBaseUnits > 0)
+                .OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync();
+        }
+        if (token == _levelsLoad)
+        {
+            // تبقى الكمية بالقطع كما هي (قد تُضبط أثناء التحميل)، وتُعرض بأكبر عبوة تقسمها — الكارتون/الشرنك افتراضيًا
+            var pieces = Quantity;
+            Levels.Clear();
+            foreach (var l in levels) Levels.Add(l);
+            SetPieces(pieces);
+        }
+        await PreviewAsync();
+    }
+
+    /// <summary>أصناف الأمر: المضافة + الصنف المختار حاليًا (إن وُجد).</summary>
+    private List<ProductionLineInput> CollectLines()
+    {
+        // رقم الدفعة موحّد لكل أصناف الأمر: ما في الحقل الآن (المقترح آخر رقم + 1 قابل للتعديل)
+        var number = BatchNumber.Trim();
+        var lines = ComposeLines.Select(l => l.ToInput() with { BatchNumber = number }).ToList();
+        if (FinishedItem is not null && Quantity > 0 && lines.All(l => l.FinishedItemId != FinishedItem.Id || l.CustomRecipeId != Recipe?.Id))
+            lines.Add(new ProductionLineInput(FinishedItem.Id, Quantity, Recipe?.Id, BatchNumber));
+        return lines;
+    }
+
+    private List<PendingProductionService.SoldAhead> _soldAhead = new();
+    private int? _soldAheadExclude;
+
+    /// <summary>
+    /// المبيعات المقدمة (بيع قبل الإنتاج) تدخل المسودة تلقائيًا: كل صنف/متغير بكمية المباع الذي لا يغطيه أمر آخر مفتوح، مقرّبًا لوحدة البيع.
+    /// للمخطّط تعديل الكمية أو حذف البند بحرية (تنبيه خفيف فقط إن نقصت عن المباع، وتنبيه عند بدء الأمر).
+    /// </summary>
+    private async Task AddSoldAheadLinesAsync(ProjectDbContext db)
+    {
+        _soldAheadExclude = null;
+        _soldAhead = await new PendingProductionService(db).SoldAheadAsync();
+        var added = 0;
+        foreach (var x in _soldAhead.Where(x => x.Uncovered > 0))
+        {
+            var qty = PendingProductionService.CeilToLevel(x.Uncovered, x.PerLevel);
+            ComposeLines.Add(SoldAheadLine(x, qty));
+            added++;
+        }
+        if (added > 0)
+        {
+            StatusMessage = $"أُضيف {added} صنف من المبيعات المقدمة (بيع قبل الإنتاج) — عدّل الكمية أو احذف بحرية";
+            await PreviewAsync();
+        }
+    }
+
+    private OrderLineDraft SoldAheadLine(PendingProductionService.SoldAhead x, decimal qty) => new()
+    {
+        FinishedItemId = x.ItemId, ItemName = x.ItemName, RecipeId = x.RecipeId, RecipeName = x.RecipeName,
+        Quantity = qty, QuantityText = PendingProductionService.FormatPacks(qty, x.LevelName, x.PerLevel), BatchNumber = BatchNumber.Trim(),
+        SoldAheadPieces = x.Uncovered, SaleLevelName = x.LevelName, SaleLevelPer = x.PerLevel
+    };
+
+    /// <summary>يلحق بكل بند معروض ما بيع مقدمًا من صنفه (للمسودة المعدّلة أو بند أضافه المخطّط).</summary>
+    private async Task RefreshSoldAheadAsync(int? excludeOrderId)
+    {
+        await using var db = Session.NewDb();
+        _soldAheadExclude = excludeOrderId;
+        _soldAhead = await new PendingProductionService(db).SoldAheadAsync(excludeOrderId);
+        for (var i = 0; i < ComposeLines.Count; i++)
+        {
+            var l = ComposeLines[i];
+            var x = _soldAhead.FirstOrDefault(a => a.ItemId == l.FinishedItemId && a.RecipeId == l.RecipeId);
+            if (x is null || x.Uncovered <= 0) continue;
+            ComposeLines[i] = new OrderLineDraft
+            {
+                FinishedItemId = l.FinishedItemId, ItemName = l.ItemName, RecipeId = l.RecipeId, RecipeName = l.RecipeName, Quantity = l.Quantity,
+                QuantityText = l.QuantityText, BatchNumber = l.BatchNumber, SoldAheadPieces = x.Uncovered, SaleLevelName = x.LevelName, SaleLevelPer = x.PerLevel
+            };
+        }
+    }
+
+    /// <summary>يثبّت الصنف المختار كسطر في الأمر ويجهّز إدخال صنف آخر برقم الدفعة التالي.</summary>
+    private async Task AddLineAsync()
+    {
+        if (FinishedItem is null || Quantity <= 0) { Dialogs.Error($"اختر المنتج وأدخل عدد {LevelName} أكبر من صفر"); return; }
+        if (Packs != Math.Floor(Packs)) { Dialogs.Error($"أدخل عددًا صحيحًا من {LevelName}"); return; }
+        // الصنف نفسه مسموح مرتين: عام وطلب خاص (أو طلبان خاصان مختلفان)
+        var existing = ComposeLines.FirstOrDefault(l => l.FinishedItemId == FinishedItem.Id && l.RecipeId == Recipe?.Id);
+        if (existing is not null && !existing.HasSoldAhead)
+        { Dialogs.Error(Recipe is null ? "الصنف العام مضاف للأمر مسبقًا" : $"الطلب الخاص «{Recipe.Name}» مضاف للأمر مسبقًا"); return; }
+        // بند أُضيف تلقائيًا من المبيعات المقدمة: الكمية المكتوبة تحلّ محله (للزيادة فوق المباع فتذهب للمخزن)
+        OrderLineDraft? sold = existing;
+        if (existing is null && _soldAhead.FirstOrDefault(a => a.ItemId == FinishedItem.Id && a.RecipeId == Recipe?.Id) is { Uncovered: > 0 } x)
+            sold = new OrderLineDraft { SoldAheadPieces = x.Uncovered, SaleLevelName = x.LevelName, SaleLevelPer = x.PerLevel };
+        if (existing is not null) ComposeLines.Remove(existing);
+        ComposeLines.Add(new OrderLineDraft
+        {
+            FinishedItemId = FinishedItem.Id, ItemName = FinishedItem.ItemName, RecipeId = Recipe?.Id, RecipeName = Recipe?.Name,
+            Quantity = Quantity, QuantityText = $"{Packs:N0} {LevelName}", BatchNumber = BatchNumber.Trim(),
+            SoldAheadPieces = sold?.SoldAheadPieces ?? 0, SaleLevelName = sold?.SaleLevelName, SaleLevelPer = sold?.SaleLevelPer ?? 1
+        });
+        SetPacks(0);   // رقم الدفعة يبقى كما هو: موحّد لكل أصناف الأمر
+        FinishedItem = null;
+        await PreviewAsync();
+    }
+
+    /// <summary>معاينة المواد المطلوبة لكل أصناف الأمر (المشتركة مجمَّعة) مقابل المتاح قبل إنشاء الأمر.</summary>
+    private async Task PreviewAsync()
+    {
+        Preview.Clear();
+        var lines = CollectLines();
+        if (lines.Count == 0 || RawWarehouse is null) { OnPropertyChanged(nameof(AllSufficient)); return; }
+        await using var db = Session.NewDb();
+        if (FinishedItem is not null)
+        {
+            var (_, error) = await new ProductionService(db).MergeRecipeAsync(FinishedItem.Id, Recipe?.Id);
+            if (error is not null) { StatusMessage = error; OnPropertyChanged(nameof(AllSufficient)); return; }
+        }
+        // نفس محرك التوفر المستخدم في "احتياجات التصنيع" وفي بدء التشغيل
+        var needs = await new ManufacturingRequirementService(db).CalculateForLinesAsync(lines, RawWarehouse.Id);
+        var packs = await PackFormatter.LoadAsync(db, needs.Select(r => r.RawMaterialItemId));
+        foreach (var r in needs)
+            Preview.Add(new RequirementPreview { RawMaterialName = r.RawMaterialName, Required = r.QuantityRequired, Available = r.QuantityAvailable,
+                                                 RequiredText = packs.Of(r.RawMaterialItemId, r.QuantityRequired), AvailableText = packs.Of(r.RawMaterialItemId, r.QuantityAvailable),
+                                                 WhereText = r.WhereText, UsedBy = r.UsedBy, IsShared = r.IsShared });
+        OnPropertyChanged(nameof(AllSufficient));
+    }
+
+    private async Task CreateAsync()
+    {
+        var lines = CollectLines();
+        if (lines.Count == 0 || RawWarehouse is null) { Dialogs.Error("اختر المنتج ومخزن المواد الأولية"); return; }
+        if (FinishedItem is not null && Packs != Math.Floor(Packs)) { Dialogs.Error($"أدخل عددًا صحيحًا من {LevelName}"); return; }
+        if (Machine is null) { Dialogs.Error("اختر الماكينة (أضفها من تبويب الماكينات إن لم توجد)"); return; }
+        await using var db = Session.NewDb();
+        if (EditingOrder is { } editing)
+        {
+            var (rawId, machineId) = (RawWarehouse.Id, Machine.Id);
+            if (await RunOperationAsync(() => new ProductionService(db).UpdateDraftAsync(editing.Id, lines, rawId, machineId, Session.UserId), $"تم تعديل المسودة {editing.MONumber}"))
+            {
+                IsComposing = false;
+                EditingOrder = null;
+                ComposeLines.Clear();
+                SetPacks(0);
+                await LoadAsync();
+            }
+            return;
+        }
+        if (await RunOperationAsync(async () => (await new ProductionService(db).CreateOrderAsync(lines, RawWarehouse.Id, Machine.Id, Session.UserId)).result,
+                                    lines.Count > 1 ? $"تم إنشاء أمر إنتاج بـ {lines.Count} أصناف — ابدأ تشغيله من الجدول" : "تم إنشاء أمر الإنتاج — ابدأ تشغيله من الجدول"))
+        {
+            IsComposing = false;
+            ComposeLines.Clear();
+            SetPacks(0);
+            await LoadAsync();
+        }
+    }
+
+    private async Task OpenBatchAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanEdit, "تعديل رقم الدفعة")) return;
+        ExtraOrder = null;
+        BatchOrder = row;
+        BatchLines.Clear();
+        foreach (var l in row.Lines) BatchLines.Add(l);
+        BatchLine = BatchLines.FirstOrDefault();
+        NewBatchNumber = BatchLine?.OutputBatch ?? "";
+        BatchReason = "";
+        await LoadBatchHistoryAsync();
+    }
+
+    private async Task LoadBatchHistoryAsync()
+    {
+        BatchHistory.Clear();
+        if (BatchOrder is null) return;
+        await using var db = Session.NewDb();
+        foreach (var c in await new ProductionService(db).GetBatchHistoryAsync(BatchOrder.Id))
+            BatchHistory.Add($"{c.ChangedAt.ToLocalTime():yyyy/MM/dd HH:mm} — {c.ChangedByUser.Username}: {c.OldNumber} ← {c.NewNumber}"
+                             + (c.Reason is null ? "" : $" ({c.Reason})"));
+    }
+
+    private async Task SaveBatchAsync()
+    {
+        if (BatchOrder is null || !Require(CanEdit, "تعديل رقم الدفعة")) return;
+        await using var db = Session.NewDb();
+        if (BatchLine is null) { Dialogs.Error("اختر الصنف"); return; }
+        var lineId = BatchLine.LineId;
+        if (await RunOperationAsync(() => new ProductionService(db).ChangeLineBatchNumberAsync(lineId, NewBatchNumber, BatchReason, Session.UserId),
+                                    $"تم تعديل رقم الدفعة إلى {NewBatchNumber.Trim()}"))
+        {
+            BatchOrder = null;
+            await LoadAsync();
+        }
+    }
+
+    private async Task StartAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanEdit, "بدء التشغيل")) return;
+        await using var preDb = Session.NewDb();
+        var preChecked = await new ProductionService(preDb).HasPassedPreRunQcAsync(row.Id);
+        var preNote = preChecked ? "" : "\nتنبيه: لم تُفحص هذه المسودة في المختبر قبل التشغيل.";
+        // تنبيه خفيف (لا يمنع): مبيعات مقدمة لا يغطيها هذا الأمر ولا أمر آخر مفتوح
+        var shortNotes = (await new PendingProductionService(preDb).SoldAheadAsync(row.Id))
+            .Select(x => (x, qty: row.Lines.Where(l => l.FinishedItemId == x.ItemId && l.CustomRecipeId == x.RecipeId).Sum(l => l.QuantityToProduce)))
+            .Where(t => t.qty > 0 && t.qty < t.x.Uncovered)
+            .Select(t => $"{t.x.ItemName}: مباع مقدمًا {PendingProductionService.FormatPacks(t.x.Uncovered, t.x.LevelName, t.x.PerLevel)} وأمرك فيه {PendingProductionService.FormatPacks(t.qty, t.x.LevelName, t.x.PerLevel)} فقط").ToList();
+        if (shortNotes.Count > 0) preNote += "\nتنبيه — مبيعات مقدمة أكثر من كمية الأمر:\n• " + string.Join("\n• ", shortNotes);
+        if (!Dialogs.Confirm($"بدء تشغيل {row.MONumber}؟ ستُصرف المواد الأولية من المخزن إلى تحت تصنيع الماكينة {row.MachineName} فورًا." + preNote)) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ProductionService(db).StartAsync(row.Id, Session.UserId), $"بدأ تشغيل {row.MONumber} — أرسل عينة للمختبر"))
+            await LoadAsync();
+    }
+
+    private async Task CompleteAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanPost, "إغلاق أوامر الإنتاج")) return;
+        if (!Dialogs.Confirm($"إغلاق {row.MONumber} بما عُبّئ ({row.PackedText} من {row.QuantityText})؟ الفرق يُعتبر هدرًا.")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ProductionService(db).CompleteAsync(row.Id), $"أُغلق {row.MONumber}"))
+            await LoadAsync();
+    }
+
+    private async Task CancelAsync(ProductionOrderRow row)
+    {
+        if (!Require(CanDelete, "إلغاء أوامر الإنتاج")) return;
+        var warn = row.Status == ProductionOrderStatus.InProgress ? " المواد المصروفة له تعود من الماكينة إلى مخازنها (ما بقي منها فعلًا)." : "";
+        if (!Dialogs.Confirm($"إلغاء {row.MONumber}؟{warn}")) return;
+        await using var db = Session.NewDb();
+        var svc = new ProductionService(db);
+        if (await RunOperationAsync(() => svc.CancelAsync(row.Id, Session.UserId), $"أُلغي {row.MONumber}"))
+        {
+            if (svc.LastCancelNote is { } note) StatusMessage = $"أُلغي {row.MONumber} — {note}";
+            await LoadAsync();
+        }
+    }
+
+    /// <summary>حذف نهائي لأمر ملغى لا أثر له (بلا تعبئة ولا فحص، ومواده أُعيدت) — بسبب وصلاحية خاصة.</summary>
+    private async Task DeleteCancelledAsync(ProductionOrderRow row)
+    {
+        if (row.Status != ProductionOrderStatus.Cancelled) { Dialogs.Error("الحذف النهائي لأمر ملغى فقط — ألغِه أولًا"); return; }
+        if (!Require(Has(SpecialPermission.VoidPosted), "الحذف النهائي لأوامر الإنتاج")) return;
+        if (string.IsNullOrWhiteSpace(DeleteReason)) { Dialogs.Error("اكتب سبب الحذف في خانة «سبب الحذف» أعلى القائمة أولًا"); return; }
+        if (!Dialogs.Confirm($"حذف {row.MONumber} نهائيًا؟ لا يمكن التراجع.\nالسبب: {DeleteReason!.Trim()}")) return;
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ProductionService(db).DeleteCancelledAsync(row.Id, DeleteReason!, Session.UserId), $"حُذف {row.MONumber} نهائيًا"))
+        {
+            DeleteReason = null;
+            await LoadAsync();
+        }
+    }
+}
+
+// ============================ فحص المختبر ============================
+public class QcLine : ObservableObject
+{
+    private string _measured = "";
+    private Option<bool?> _manual;
+
+    public QcLine(Option<bool?> auto) => _manual = auto;
+
+    public int TestId { get; init; }
+    public string TestName { get; init; } = "";
+    public string StandardText { get; init; } = "";
+    public string Measured { get => _measured; set => SetProperty(ref _measured, value); }
+    public Option<bool?> Manual { get => _manual; set => SetProperty(ref _manual, value); }
+    public string ResultLabel { get; set; } = "";
+}
+
+public class QcHistoryRow
+{
+    public int Id { get; init; }
+    public DateTime TestDate { get; init; }
+    public string MONumber { get; init; } = "";
+    public string BatchNumber { get; init; } = "";
+    public string ResultLabel { get; init; } = "";
+    public string TestedBy { get; init; } = "";
+    public string Details { get; init; } = "";
+}
+
+public class QcSectionViewModel : SectionViewModel
+{
+    private QcOrderRow? _order;
+    private string? _lastResult;
+
+    public QcSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.Lab, "فحص المختبر", Icons.Star, "#8B5CF6", "فحص واحد لأمر الإنتاج كله بكل أصنافه — فشل اختبار واحد يرفض الأمر")
+    {
+        SaveCommand = new AsyncRelayCommand(SaveAsync);
+        PrintCommand = new AsyncRelayCommand(p => p is QcHistoryRow r ? PrintAsync(db => DocumentReports.QcResultAsync(Session, db, r.Id)) : Task.CompletedTask);
+        ShowCommand = new AsyncRelayCommand(LoadAsync);
+        TodayCommand = new AsyncRelayCommand(() => { (From, To, Search) = (DateTime.Today, DateTime.Today, ""); return LoadAsync(); });
+    }
+
+    // العرض يومًا بيوم (اليوم افتراضيًا) أو «من — إلى» مع بحث، حتى لا تختلط الأيام؛ «عرض» يطبّق الفترة
+    private DateTime _from = DateTime.Today, _to = DateTime.Today;
+    private string _search = "";
+    public DateTime From { get => _from; set => SetProperty(ref _from, value.Date); }
+    public DateTime To { get => _to; set => SetProperty(ref _to, value.Date); }
+    /// <summary>بحث برقم الأمر أو الدفعة أو اسم الصنف.</summary>
+    public string Search { get => _search; set => SetProperty(ref _search, value ?? ""); }
+    public AsyncRelayCommand ShowCommand { get; }
+    public AsyncRelayCommand TodayCommand { get; }
+    private bool Matches(params string?[] fields) =>
+        Search.Trim().Length == 0 || fields.Any(f => f?.Contains(Search.Trim(), StringComparison.OrdinalIgnoreCase) == true);
+
+    protected override bool ReloadOnActivate => true;
+
+    public IReadOnlyList<Option<bool?>> ManualOptions { get; } = new[]
+    {
+        new Option<bool?>(null, "تلقائي من المعيار"), new Option<bool?>(true, "ناجح (قرار الفاحص)"), new Option<bool?>(false, "راسب (قرار الفاحص)")
+    };
+    public ObservableCollection<QcOrderRow> QcOrders { get; } = new();
+    public ObservableCollection<QcLine> Lines { get; } = new();
+    public ObservableCollection<QcHistoryRow> History { get; } = new();
+
+    public QcOrderRow? Order { get => _order; set { if (SetProperty(ref _order, value)) Background(LoadTestsAsync()); } }
+    public string? LastResult { get => _lastResult; private set => SetProperty(ref _lastResult, value); }
+    public AsyncRelayCommand SaveCommand { get; }
+    public AsyncRelayCommand PrintCommand { get; }
+
+    public override async Task LoadAsync()
+    {
+        await using var db = Session.NewDb();
+        var orderId = Order?.OrderId;
+        QcOrders.Clear();
+        if (To < From) To = From;
+        // أوامر الفترة المختارة (اليوم افتراضيًا)، والتي لم تُفحص بعد تظهر دائمًا حتى لا يُنسى أمر
+        var days = Math.Max(30, (DateTime.Today - From).Days + 1);
+        foreach (var o in await new ProductionService(db).GetQcOrdersAsync(days))
+            if ((o.LastQc is null || (o.Date?.Date >= From && o.Date?.Date <= To)) && Matches(o.MONumber, o.Items)) QcOrders.Add(o);
+        _order = QcOrders.FirstOrDefault(o => o.OrderId == orderId) ?? QcOrders.FirstOrDefault(o => o.LastQc is null) ?? QcOrders.FirstOrDefault();
+        OnPropertyChanged(nameof(Order));
+        await LoadTestsAsync();
+
+        var (fromUtc, toUtc) = (From.ToUniversalTime(), To.AddDays(1).ToUniversalTime());
+        var results = await db.QCBatchResults.AsNoTracking().Where(q => q.TestDate >= fromUtc && q.TestDate < toUtc).OrderByDescending(q => q.Id).Take(500)
+            .Select(q => new
+            {
+                q.Id, q.TestDate, q.ProductionOrder.MONumber, q.Batch.BatchNumber, q.OverallResult, q.TestedByUser.Username,
+                Lines = q.ResultLines.Select(l => l.QualityTest.TestName + ": " + l.MeasuredValue + (l.Result == QCLineResult.Pass ? " ✓" : " ✗"))
+            }).ToListAsync();
+        History.Clear();
+        foreach (var r in results.Where(r => Matches(r.MONumber, r.BatchNumber)))
+            History.Add(new QcHistoryRow
+            {
+                Id = r.Id, TestDate = r.TestDate.ToLocalTime(), MONumber = r.MONumber, BatchNumber = r.BatchNumber, TestedBy = r.Username,
+                ResultLabel = r.OverallResult == QCOverallResult.Passed ? "ناجحة" : "مرفوضة", Details = string.Join(" · ", r.Lines)
+            });
+    }
+
+    private async Task LoadTestsAsync()
+    {
+        Lines.Clear();
+        if (Order is null) return;
+        await using var db = Session.NewDb();
+        foreach (var t in await new ProductionService(db).GetOrderTestsAsync(Order.OrderId))
+            Lines.Add(new QcLine(ManualOptions[0])
+            {
+                TestId = t.Id, TestName = t.TestName,
+                StandardText = t.StandardMin is not null || t.StandardMax is not null
+                    ? $"{t.StandardMin?.ToString("0.##") ?? "…"} – {t.StandardMax?.ToString("0.##") ?? "…"}"
+                    : $"= {t.StandardText}"
+            });
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!Require(CanAdd || CanEdit, "تسجيل نتائج المختبر")) return;
+        if (Order is null) { Dialogs.Error("اختر أمر الإنتاج المطلوب فحصه"); return; }
+        await using var db = Session.NewDb();
+        QCOverallResult? overall = null;
+        if (await RunOperationAsync(async () =>
+            {
+                var (r, o) = await new ProductionService(db).RecordQcAsync(Order.OrderId,
+                    Lines.Select(l => new QcInput(l.TestId, l.Measured, l.Manual.Value)).ToList(), Session.UserId);
+                overall = o;
+                return r;
+            }, "تم حفظ نتيجة الفحص"))
+        {
+            var count = Order.LineCount == 1 ? "صنفه" : $"أصنافه الـ{Order.LineCount}";
+            LastResult = Order.IsDraft
+                ? (overall == QCOverallResult.Passed
+                    ? $"المسودة {Order.MONumber}: النتيجة ناجحة ✓ لكل {count} — يلزم فحص آخر بعد بدء التشغيل قبل التعبئة"
+                    : $"المسودة {Order.MONumber}: النتيجة مرفوضة ✗ لكل {count} — تبقى مسودة: عدّلها (⋯ ← تعديل المسودة) أو ألغِها ثم أعد الفحص")
+                : overall == QCOverallResult.Passed
+                ? $"الأمر {Order.MONumber}: النتيجة ناجحة ✓ لكل {count}"
+                : Order.Status == ProductionOrderStatus.Completed
+                    ? $"الأمر {Order.MONumber}: النتيجة مرفوضة ✗ لكل {count} — إنتاجه في المخزن: انقله إلى التالف أو أعد الفحص"
+                    : $"الأمر {Order.MONumber}: النتيجة مرفوضة ✗ لكل {count} — لا يمكن تعبئته (أعد الفحص أو ألغِ الأمر)";
+            await LoadAsync();
+        }
+    }
+}
+
+// ============================ التعبئة ============================
+public class PackingRow
+{
+    public int OrderId { get; init; }
+    public DateTime PackingDate { get; init; }
+    public string MONumber { get; init; } = "";
+    public string LevelName { get; init; } = "";
+    public decimal Units { get; init; }
+    public decimal Pieces { get; init; }
+    public string WarehouseName { get; init; } = "";
+}
+
+public class PackingSectionViewModel : SectionViewModel
+{
+    private ProductionLineRow? _order;
+    private ItemPackagingLevel? _level;
+    private decimal _units;
+    private Data.ProjectDb.Entities.Warehouse? _warehouse;
+    private int _levelsLoad;
+
+    public PackingSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.Production, "أوامر التعبئة", Icons.Layers, "#0EA5E9", "تحويل الناتج المعتمد إلى كراتين/شرنك في مخزن المنتج التام")
+    {
+        PackCommand = new AsyncRelayCommand(PackAsync);
+        PrintCommand = new AsyncRelayCommand(p => p is PackingRow r ? PrintAsync(db => DocumentReports.PackingAsync(Session, db, r.OrderId)) : Task.CompletedTask);
+        ShowCommand = new AsyncRelayCommand(LoadAsync);
+        TodayCommand = new AsyncRelayCommand(() => { (From, To, Search) = (DateTime.Today, DateTime.Today, ""); return LoadAsync(); });
+    }
+
+    // العرض يومًا بيوم (اليوم افتراضيًا) أو «من — إلى» مع بحث، حتى لا تختلط الأيام؛ «عرض» يطبّق الفترة
+    private DateTime _from = DateTime.Today, _to = DateTime.Today;
+    private string _search = "";
+    public DateTime From { get => _from; set => SetProperty(ref _from, value.Date); }
+    public DateTime To { get => _to; set => SetProperty(ref _to, value.Date); }
+    /// <summary>بحث برقم الأمر أو الدفعة أو اسم الصنف.</summary>
+    public string Search { get => _search; set => SetProperty(ref _search, value ?? ""); }
+    public AsyncRelayCommand ShowCommand { get; }
+    public AsyncRelayCommand TodayCommand { get; }
+    private bool Matches(params string?[] fields) =>
+        Search.Trim().Length == 0 || fields.Any(f => f?.Contains(Search.Trim(), StringComparison.OrdinalIgnoreCase) == true);
+
+    protected override bool ReloadOnActivate => true;
+    public ObservableCollection<ProductionLineRow> ReadyOrders { get; } = new();
+    public ObservableCollection<ItemPackagingLevel> Levels { get; } = new();
+    public ObservableCollection<Data.ProjectDb.Entities.Warehouse> Warehouses { get; } = new();
+    public ObservableCollection<PackingRow> History { get; } = new();
+
+    public ProductionLineRow? Order { get => _order; set { if (SetProperty(ref _order, value)) { OnPropertyChanged(nameof(RemainingText)); Background(LoadLevelsAsync()); } } }
+    public ItemPackagingLevel? Level
+    {
+        get => _level;
+        set
+        {
+            if (!SetProperty(ref _level, value)) return;
+            OnPropertyChanged(nameof(PiecesText));
+            OnPropertyChanged(nameof(RemainingText));
+            Units = DefaultUnits();
+        }
+    }
+    public decimal Units { get => _units; set { if (SetProperty(ref _units, value)) OnPropertyChanged(nameof(PiecesText)); } }
+    private decimal RemainingPieces => Order is null ? 0 : Order.QuantityToProduce - Order.PackedQuantity;
+    /// <summary>الافتراضي: كل المتبقي بالوحدة المختارة (العدد الصحيح منها).</summary>
+    private decimal DefaultUnits() => Level is { EquivalentBaseUnits: > 0 } l ? Math.Floor(RemainingPieces / l.EquivalentBaseUnits) : 0;
+    public Data.ProjectDb.Entities.Warehouse? Warehouse { get => _warehouse; set => SetProperty(ref _warehouse, value); }
+    /// <summary>المطلوب والمعبّأ والمتبقي بالعبوات (كارتون/شرنك)، والقطع بين قوسين للمرجعية.</summary>
+    public string RemainingText => Order is null ? "" : $"المطلوب {Order.QuantityText} — المعبّأ {Order.PackedText} — المتبقي {Order.RemainingText} ({RemainingPieces:N0} قطعة)";
+    public string PiecesText => Level is null ? "" : $"= {Units * Level.EquivalentBaseUnits:N0} قطعة";
+    public AsyncRelayCommand PackCommand { get; }
+    public AsyncRelayCommand PrintCommand { get; }
+
+    public override async Task LoadAsync()
+    {
+        await using var db = Session.NewDb();
+        var lineId = Order?.LineId;
+        ReadyOrders.Clear();
+        // كل دفعة (صنف) ناجحة بالمختبر ولم تُعبّأ كاملة
+        foreach (var o in (await new ProductionService(db).GetLinesAsync())
+                     .Where(o => o.Status == ProductionOrderStatus.InProgress && o.LastQc == QCOverallResult.Passed && o.PackedQuantity < o.QuantityToProduce)) ReadyOrders.Add(o);
+        if (Warehouses.Count == 0)
+        {
+            var candidates = await db.Warehouses.AsNoTracking()
+                .Where(w => w.IsActive && w.IsSellableStock && w.WarehouseType != WarehouseType.RepVan).ToListAsync();
+            foreach (var w in candidates.OrderBy(w => w.WarehouseType != WarehouseType.FinishedGoods).ThenBy(w => w.Name)) Warehouses.Add(w);
+            Warehouse = Warehouses.FirstOrDefault();
+        }
+        _order = ReadyOrders.FirstOrDefault(o => o.LineId == lineId) ?? ReadyOrders.FirstOrDefault();
+        OnPropertyChanged(nameof(Order));
+        OnPropertyChanged(nameof(RemainingText));
+        await LoadLevelsAsync();
+
+        if (To < From) To = From;
+        var (fromUtc, toUtc) = (From.ToUniversalTime(), To.AddDays(1).ToUniversalTime());   // التاريخ محفوظ بتوقيت UTC
+        var rows = await db.PackingOrders.AsNoTracking().Where(p => p.PackingDate >= fromUtc && p.PackingDate < toUtc).OrderByDescending(p => p.Id).Take(500)
+            .Select(p => new PackingRow
+            {
+                OrderId = p.ProductionOrderId, PackingDate = p.PackingDate, MONumber = p.ProductionOrder.MONumber, LevelName = p.PackagingLevel.LevelName, Units = p.UnitsPackaged,
+                Pieces = p.UnitsPackaged * p.PackagingLevel.EquivalentBaseUnits, WarehouseName = p.ResultingFinishedGoodsWarehouse.Name
+            }).ToListAsync();
+        History.Clear();
+        foreach (var r in rows.Where(r => Matches(r.MONumber, r.LevelName, r.WarehouseName)))
+            History.Add(new PackingRow { OrderId = r.OrderId, PackingDate = r.PackingDate.ToLocalTime(), MONumber = r.MONumber, LevelName = r.LevelName,
+                                         Units = r.Units, Pieces = r.Pieces, WarehouseName = r.WarehouseName });
+    }
+
+    /// <summary>
+    /// قد يُطلب التحميل مرتين متزامنتين (فتح الشاشة + إعادة تعبئة قائمة الأوامر)؛ يُعتمد آخر طلب فقط حتى لا تعرض القائمة
+    /// وحدة («قطعة») بينما الحساب يجري بوحدة أخرى («شرنك»). ويُحتفظ باختيار المستخدم إن بقي متاحًا.
+    /// </summary>
+    private async Task LoadLevelsAsync()
+    {
+        var token = ++_levelsLoad;
+        var keepId = Level?.Id;
+        var itemId = Order?.FinishedItemId;
+        List<ItemPackagingLevel> levels = new();
+        if (itemId is not null)
+        {
+            await using var db = Session.NewDb();
+            levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == itemId).OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync();
+        }
+        if (token != _levelsLoad) return;           // طلب أحدث سيتولى التعبئة
+        Levels.Clear();
+        foreach (var l in levels) Levels.Add(l);
+        _level = null;
+        Level = Levels.FirstOrDefault(l => l.Id == keepId) ?? Levels.FirstOrDefault();
+    }
+
+    private async Task PackAsync()
+    {
+        if (!Require(CanAdd || CanEdit, "التعبئة")) return;
+        if (Order is null || Level is null || Warehouse is null) { Dialogs.Error("اختر الأمر ووحدة التعبئة والمخزن"); return; }
+        if (Units <= 0) { Dialogs.Error("عدد الوحدات يجب أن يكون أكبر من صفر"); return; }
+        if (Units * Level.EquivalentBaseUnits > RemainingPieces)
+        {
+            Dialogs.Error($"{Units:N0} {Level.LevelName} أكثر من المتبقي من الأمر ({Order.RemainingText})"
+                          + (Level.EquivalentBaseUnits > 1 ? $" — الحد الأقصى {Math.Floor(RemainingPieces / Level.EquivalentBaseUnits):N0} {Level.LevelName}." : "."));
+            return;
+        }
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new ProductionService(db).PackAsync(Order.OrderId, Level.Id, Units, Warehouse.Id, Session.UserId, Order.LineId),
+                                    $"تمت تعبئة {Units:N0} {Level.LevelName} ودخولها {Warehouse.Name}"))
+        {
+            Units = 0;
+            await LoadAsync();
+        }
+    }
+}
+
+// ============================ اختبارات الجودة ============================
+public class QualityTestsSectionViewModel : CrudSectionViewModel<QualityTest>
+{
+    public QualityTestsSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.Lab, "اختبارات الجودة", Icons.List, "#EC4899", "تعريف الاختبارات وحدودها المقبولة") { }
+
+    public ObservableCollection<Item> ItemsLookup { get; } = new();
+
+    protected override int GetId(QualityTest e) => e.Id;
+    protected override string Describe(QualityTest e) => e.TestName;
+
+    protected override async Task LoadLookupsAsync(ProjectDbContext db)
+    {
+        ItemsLookup.Clear();
+        foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync())
+            ItemsLookup.Add(i);
+    }
+
+    protected override Task<List<QualityTest>> QueryAsync(ProjectDbContext db) =>
+        db.QualityTests.AsNoTracking().Include(t => t.ApplicableItem).OrderBy(t => t.TestName).ToListAsync();
+
+    protected override string? Validate(QualityTest e)
+    {
+        if (string.IsNullOrWhiteSpace(e.TestName)) return "أدخل اسم الاختبار";
+        if (e.StandardMin is null && e.StandardMax is null && string.IsNullOrWhiteSpace(e.StandardText))
+            return "حدّد حدًا أدنى/أعلى للاختبار الرقمي، أو النتيجة المقبولة للاختبار الوصفي";
+        if (e.StandardMin > e.StandardMax) return "الحد الأدنى أكبر من الأعلى";
+        return null;
+    }
+}
+
+// ============================ الوصفات المخصصة ============================
+public class RecipeLineRow
+{
+    public int Id { get; init; }
+    public string ComponentName { get; init; } = "";
+    public string ComponentLabel { get; init; } = "";
+    public decimal QuantityPerUnit { get; init; }
+    public string ReplacesName { get; init; } = "";
+}
+
+/// <summary>دور في معالج المتغير: يبقى أساسيًا، أو يُستبدل بصنف موجود، أو بصنف جديد يُنشأ باسمه.</summary>
+public class VariantRoleRow : ObservableObject
+{
+    private Item? _choice;
+    private bool _createNew;
+    private string _newItemName = "";
+    public VariantRoleRow(string role, string baseName, int rawItemId = 0, bool hasRole = true)
+    {
+        Role = role; BaseName = baseName; RawItemId = rawItemId; HasRole = hasRole;
+        // البادئة المقترحة للصنف الجديد: الدور («لاصق»)، أو أول كلمة من اسم المادة («ليبل») لمكوّن بلا دور
+        Prefix = hasRole ? role : baseName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? baseName;
+    }
+    public string Role { get; }
+    public string BaseName { get; }
+    public int RawItemId { get; }
+    public bool HasRole { get; }
+    public string Prefix { get; }
+    /// <summary>ما يُعرض عنوانًا للمكوّن: «لاصق — الأساسي: ليبل الرحمة»، أو اسم المادة وحده إن لم يكن له دور.</summary>
+    public string Display => HasRole ? $"{Role} — الأساسي: {BaseName}" : BaseName;
+    /// <summary>الليبل واللاصق هما الغالب تبديلهما باسم الزبون: يُقترح لهما صنف جديد تلقائيًا.</summary>
+    public bool LooksLikeLabel => Role.Contains("لاصق") || Role.Contains("ليبل") || BaseName.Contains("لاصق") || BaseName.Contains("ليبل") || BaseName.Contains("label", StringComparison.OrdinalIgnoreCase);
+    /// <summary>السدادة/الغطاء: لونها يُختار من أصناف موجودة، فلا يُعرض لها «صنف جديد باسم».</summary>
+    public bool IsCap => Role.Contains("سدادة") || Role.Contains("سداده") || Role.Contains("غطاء") || BaseName.Contains("سدادة") || BaseName.Contains("غطاء") || BaseName.Contains("cap", StringComparison.OrdinalIgnoreCase);
+    /// <summary>ما يتغير بين المتغيرات عادة: السدادة والليبل فقط. الأمبولة والكارتون وغيرهما تبقى من الوصفة الأساسية ولا تُعرض إلا بطلب.</summary>
+    public bool Changeable => IsCap || LooksLikeLabel;
+    public bool AllowNew => !IsCap;
+    public Item? Choice { get => _choice; set { if (SetProperty(ref _choice, value) && value is { Id: > 0 }) CreateNew = false; } }
+    public bool CreateNew { get => _createNew; set { if (SetProperty(ref _createNew, value) && value) Choice = CustomRecipesSectionViewModel.KeepBase; } }
+    public string NewItemName { get => _newItemName; set => SetProperty(ref _newItemName, value); }
+
+    /// <summary>اسم مقترح للصنف الجديد: «ليبل مطعم الحسون».</summary>
+    internal void SuggestName(string variant)
+    {
+        if (!string.IsNullOrWhiteSpace(variant)) NewItemName = $"{Prefix} {variant.Trim()}";
+    }
+}
+
+public class CustomRecipesSectionViewModel : CrudSectionViewModel<CustomRecipe>
+{
+    private CustomRecipe? _selectedRecipe;
+    private Item? _newComponent;
+    private string _newLabel = "";
+    private decimal _newQuantity = 1;
+    private Item? _newReplaces;
+
+    public CustomRecipesSectionViewModel(AppSession s, IDialogService d)
+        : base(s, d, ModuleCode.Production, "الوصفات المخصصة", Icons.Recipe, "#F59E0B", "وصفة باسم تجاري لعميل (غطاء/لاصق خاص يستبدل الأساسي)")
+    {
+        AddLineCommand = new AsyncRelayCommand(AddLineAsync);
+        DeleteLineCommand = new AsyncRelayCommand(p => p is RecipeLineRow r ? DeleteLineAsync(r) : Task.CompletedTask);
+        SetVariantCommand = new AsyncRelayCommand(SetVariantAsync);
+        OpenWizardCommand = new RelayCommand(OpenWizard);
+        CloseWizardCommand = new RelayCommand(() => IsWizardOpen = false);
+        CreateVariantCommand = new AsyncRelayCommand(CreateVariantAsync);
+    }
+
+    // ---------------- متغير جديد بخطوة واحدة ----------------
+    /// <summary>خيار «بلا عميل» في المعالج: ملصق مناسبة يُباع لمن يطلبه.</summary>
+    public static readonly Customer NoCustomer = new() { Id = 0, Name = "— مناسبة عامة (بلا عميل) —" };
+    /// <summary>خيار «بلا تغيير» لدور يبقى على مادته الأساسية.</summary>
+    public static readonly Item KeepBase = new() { Id = 0, ItemName = "— بلا تغيير —" };
+
+    private bool _isWizardOpen;
+    private Item? _wizardProduct;
+    private Customer? _wizardCustomer;
+    private string _wizardName = "";
+    public bool IsWizardOpen { get => _isWizardOpen; set => SetProperty(ref _isWizardOpen, value); }
+    public ObservableCollection<Customer> WizardCustomers { get; } = new();
+    public ObservableCollection<Item> WizardItems { get; } = new();
+    /// <summary>كل مكونات المنتج (المصدر عند الإنشاء)، ومنها يُشتق ما يُعرض: ما يتغير عادة (السدادة والليبل)، وبقية المكونات خلف «إظهار».</summary>
+    public ObservableCollection<VariantRoleRow> WizardRoles { get; } = new();
+    public ObservableCollection<VariantRoleRow> ChangeableRoles { get; } = new();
+    public ObservableCollection<VariantRoleRow> OtherRoles { get; } = new();
+    public bool HasOtherRoles => OtherRoles.Count > 0;
+    private bool _showOtherRoles;
+    public bool ShowOtherRoles { get => _showOtherRoles; set => SetProperty(ref _showOtherRoles, value); }
+    public Item? WizardProduct { get => _wizardProduct; set { if (SetProperty(ref _wizardProduct, value)) Background(LoadWizardRolesAsync()); } }
+    public Customer? WizardCustomer
+    {
+        get => _wizardCustomer;
+        set
+        {
+            if (!SetProperty(ref _wizardCustomer, value)) return;
+            if (value is { Id: > 0 } c) WizardName = c.Name;
+        }
+    }
+    public string WizardName
+    {
+        get => _wizardName;
+        set
+        {
+            if (!SetProperty(ref _wizardName, value)) return;
+            foreach (var r in WizardRoles.Where(r => r.NewItemName.Length == 0 || r.NewItemName.StartsWith(r.Prefix + " "))) r.SuggestName(value);
+        }
+    }
+    public RelayCommand OpenWizardCommand { get; }
+    public RelayCommand CloseWizardCommand { get; }
+    public AsyncRelayCommand CreateVariantCommand { get; }
+
+    private void OpenWizard()
+    {
+        if (!Require(CanAdd, "إضافة متغير")) return;
+        Editor = null;   // لوحة واحدة في الجانب
+        WizardCustomers.Clear();
+        WizardCustomers.Add(NoCustomer);
+        foreach (var c in Customers) WizardCustomers.Add(c);
+        WizardItems.Clear();
+        WizardItems.Add(KeepBase);
+        foreach (var i in RawItems) WizardItems.Add(i);
+        WizardName = "";
+        WizardCustomer = NoCustomer;
+        WizardProduct = FinishedItems.Count == 1 ? FinishedItems[0] : null;
+        IsWizardOpen = true;
+    }
+
+    private async Task LoadWizardRolesAsync()
+    {
+        WizardRoles.Clear(); ChangeableRoles.Clear(); OtherRoles.Clear();
+        ShowOtherRoles = false;
+        if (WizardProduct is null) { OnPropertyChanged(nameof(HasOtherRoles)); return; }
+        await using var db = Session.NewDb();
+        // كل مكونات المنتج تظهر مباشرة (بدور أو بلا دور)، والليبل/اللاصق يُقترح له صنف جديد باسم الزبون
+        foreach (var r in await new PackagingTemplateService(db).GetComponentsAsync(WizardProduct.Id))
+        {
+            var row = new VariantRoleRow(r.ComponentRole ?? r.RawMaterialItem.ItemName, r.RawMaterialItem.ItemName, r.RawMaterialItemId, r.ComponentRole is not null) { Choice = KeepBase };
+            row.SuggestName(WizardName);
+            if (row.LooksLikeLabel) row.CreateNew = true;
+            WizardRoles.Add(row);
+            (row.Changeable ? ChangeableRoles : OtherRoles).Add(row);
+        }
+        // منتج لا سدادة ولا ليبل فيه: تُعرض كل المكونات كما كانت بدل نافذة فارغة
+        if (ChangeableRoles.Count == 0) { foreach (var r in OtherRoles.ToList()) ChangeableRoles.Add(r); OtherRoles.Clear(); }
+        OnPropertyChanged(nameof(HasOtherRoles));
+        if (WizardRoles.Count == 0) StatusMessage = "المنتج بلا مكونات في قائمة المواد";
+    }
+
+    private async Task CreateVariantAsync()
+    {
+        if (!Require(CanAdd, "إضافة متغير")) return;
+        if (WizardProduct is null) { Dialogs.Error("اختر المنتج"); return; }
+        var roles = WizardRoles.Select(r => new VariantRoleInput(r.Role, r.Choice is { Id: > 0 } i ? i.Id : null, r.CreateNew ? r.NewItemName : null, r.RawItemId > 0 ? r.RawItemId : null)).ToList();
+        await using var db = Session.NewDb();
+        // تُلتقط القيم قبل إعادة التحميل: تفريغ القوائم يصفّر اختيارات القوائم المنسدلة المرتبطة بها
+        var name = WizardName.Trim();
+        var productId = WizardProduct.Id;
+        var customerId = WizardCustomer is { Id: > 0 } c ? c.Id : (int?)null;
+        if (await RunOperationAsync(async () => (await new PackagingTemplateService(db).CreateVariantAsync(new NewVariantRequest(
+                productId, customerId, name, roles))).result,
+                $"أُضيف المتغير «{name}» — يظهر الآن في إنتاج اليوم والبيع والتحميل"))
+        {
+            IsWizardOpen = false;
+            await LoadAsync();
+            SelectedRecipe = Items.FirstOrDefault(r => r.Name == name && r.FinishedItemId == productId);
+        }
+    }
+
+    // ---------------- بديل العميل حسب الدور (من قالب التعبئة) ----------------
+    private BOMLine? _selectedRole;
+    private Item? _variantItem;
+    public ObservableCollection<BOMLine> RoleOptions { get; } = new();
+    public BOMLine? SelectedRole { get => _selectedRole; set => SetProperty(ref _selectedRole, value); }
+    public Item? VariantItem { get => _variantItem; set => SetProperty(ref _variantItem, value); }
+    public AsyncRelayCommand SetVariantCommand { get; }
+
+    /// <summary>بديل العميل: يستبدل مكوّن الدور المختار بصنف مخزني خاص بالعميل (بنفس النسبة) في هذه الوصفة فقط.</summary>
+    private async Task SetVariantAsync()
+    {
+        if (!Require(CanEdit, "تعديل الوصفات")) return;
+        if (SelectedRecipe is null || SelectedRole?.ComponentRole is null || VariantItem is null)
+        { Dialogs.Error("اختر الوصفة من الجدول، ثم الدور، ثم الصنف البديل"); return; }
+        await using var db = Session.NewDb();
+        if (await RunOperationAsync(() => new PackagingTemplateService(db).SetCustomerVariantAsync(SelectedRecipe.Id, SelectedRole.ComponentRole, VariantItem.Id),
+                                    $"بديل {SelectedRole.ComponentRole} في {SelectedRecipe.Name}: {VariantItem.ItemName}"))
+        {
+            VariantItem = null;
+            await LoadLinesAsync();
+        }
+    }
+
+    public ObservableCollection<Item> FinishedItems { get; } = new();
+    public ObservableCollection<Item> RawItems { get; } = new();
+    public ObservableCollection<Customer> Customers { get; } = new BulkObservableCollection<Customer>();
+    public ObservableCollection<RecipeLineRow> Lines { get; } = new();
+
+    public CustomRecipe? SelectedRecipe { get => _selectedRecipe; set { if (SetProperty(ref _selectedRecipe, value)) { OnPropertyChanged(nameof(HasSelectedRecipe)); Background(LoadLinesAsync()); } } }
+    /// <summary>أدوات التعديل المتقدم على وصفة محددة تظهر عند اختيار وصفة من الجدول فقط.</summary>
+    public bool HasSelectedRecipe => _selectedRecipe is not null;
+    public Item? NewComponent { get => _newComponent; set => SetProperty(ref _newComponent, value); }
+    public string NewLabel { get => _newLabel; set => SetProperty(ref _newLabel, value); }
+    public decimal NewQuantity { get => _newQuantity; set => SetProperty(ref _newQuantity, value); }
+    public Item? NewReplaces { get => _newReplaces; set => SetProperty(ref _newReplaces, value); }
+    public AsyncRelayCommand AddLineCommand { get; }
+    public AsyncRelayCommand DeleteLineCommand { get; }
+
+    protected override int GetId(CustomRecipe e) => e.Id;
+    protected override string Describe(CustomRecipe e) => e.Name;
+    protected override void OnEditorChanged() { if (IsEditing) IsWizardOpen = false; }
+
+    protected override async Task LoadLookupsAsync(ProjectDbContext db)
+    {
+        FinishedItems.Clear();
+        var withBom = db.BillOfMaterials.Where(b => b.IsActive && b.Lines.Any()).Select(b => b.FinishedItemId);
+        foreach (var i in await db.Items.AsNoTracking().Where(i => withBom.Contains(i.Id) && i.SourcingMethod != SourcingMethod.Purchased).OrderBy(i => i.ItemName).ToListAsync()) FinishedItems.Add(i);
+        RawItems.Clear();
+        foreach (var i in await db.Items.AsNoTracking().Where(i => i.IsActive && i.SourcingMethod != SourcingMethod.Manufactured).OrderBy(i => i.ItemName).ToListAsync())
+            RawItems.Add(i);
+        Customers.ReplaceAll(await db.Customers.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync());
+    }
+
+    protected override Task<List<CustomRecipe>> QueryAsync(ProjectDbContext db) =>
+        db.CustomRecipes.AsNoTracking().Include(r => r.FinishedItem).Include(r => r.Customer).OrderBy(r => r.Name).ToListAsync();
+
+    protected override string? Validate(CustomRecipe e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Name)) return "أدخل اسم الوصفة";
+        if (e.ShortName is { Length: > 60 }) return "الاسم المختصر حتى 60 حرفًا";
+        e.ShortName = string.IsNullOrWhiteSpace(e.ShortName) ? null : e.ShortName.Trim();
+        if (e.FinishedItemId == 0) return "اختر المنتج (يجب أن تكون له قائمة مواد)";
+        return null;
+    }
+
+    private async Task LoadLinesAsync()
+    {
+        Lines.Clear();
+        RoleOptions.Clear();
+        if (SelectedRecipe is null) return;
+        await using var db = Session.NewDb();
+        foreach (var r in await new PackagingTemplateService(db).GetRolesAsync(SelectedRecipe.FinishedItemId)) RoleOptions.Add(r);
+        SelectedRole = RoleOptions.FirstOrDefault();
+        foreach (var l in await db.CustomRecipeLines.AsNoTracking().Where(l => l.CustomRecipeId == SelectedRecipe.Id)
+                     .Select(l => new RecipeLineRow
+                     {
+                         Id = l.Id, ComponentName = l.ComponentItem.ItemName, ComponentLabel = l.ComponentLabel, QuantityPerUnit = l.QuantityPerUnit,
+                         ReplacesName = l.ReplacesRawMaterialItem != null ? l.ReplacesRawMaterialItem.ItemName : "— مكوّن إضافي —"
+                     }).ToListAsync())
+            Lines.Add(l);
+    }
+
+    private async Task AddLineAsync()
+    {
+        if (!Require(CanEdit, "تعديل الوصفات")) return;
+        if (SelectedRecipe is null) { Dialogs.Error("اختر الوصفة من الجدول أولًا"); return; }
+        if (NewComponent is null || string.IsNullOrWhiteSpace(NewLabel) || NewQuantity <= 0)
+        { Dialogs.Error("اختر المكوّن واكتب وصفه (مثل: لاصق أمامي) وكمية أكبر من صفر"); return; }
+        await using var db = Session.NewDb();
+        db.CustomRecipeLines.Add(new CustomRecipeLine { CustomRecipeId = SelectedRecipe.Id, ComponentItemId = NewComponent.Id, ComponentLabel = NewLabel.Trim(),
+                                                        QuantityPerUnit = NewQuantity, ReplacesRawMaterialItemId = NewReplaces?.Id });
+        await db.SaveChangesAsync();
+        NewComponent = null;
+        NewReplaces = null;
+        NewLabel = "";
+        NewQuantity = 1;
+        await LoadLinesAsync();
+    }
+
+    private async Task DeleteLineAsync(RecipeLineRow row)
+    {
+        if (!Require(CanDelete, "الحذف")) return;
+        await using var db = Session.NewDb();
+        await db.CustomRecipeLines.Where(l => l.Id == row.Id).ExecuteDeleteAsync();
+        await LoadLinesAsync();
+    }
+}

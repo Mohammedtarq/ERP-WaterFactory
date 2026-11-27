@@ -1,0 +1,91 @@
+<UserControl x:Class="ERP.Desktop.Views.Reps.VanOperationsSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Reps;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:VanOperationsSectionViewModel}"
+             x:Name="Root">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="420"/>
+        </Grid.ColumnDefinitions>
+        <Border Style="{StaticResource Card}">
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <TextBlock Text="الكاش فان:" VerticalAlignment="Center" Margin="0,0,8,0" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding Vans}" SelectedItem="{Binding Van}" DisplayMemberPath="Name" Width="200" Margin="0,0,12,0"/>
+                    <TextBlock Text="{Binding RepName}" VerticalAlignment="Center" Style="{StaticResource Muted}" Margin="0,0,12,0"/>
+                    <Button Content="&#xE72C;" ToolTip="تحديث" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding RefreshCommand}"/>
+                </WrapPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <Button DockPanel.Dock="Left" Content="&#xE749;" ToolTip="طباعة جرد السيارة" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding PrintStockCommand}"/>
+                    <TextBlock Text="{Binding VanTotalPieces, StringFormat='المخزون الحالي في السيارة: {0:N0} قطعة'}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </DockPanel>
+                <DataGrid ItemsSource="{Binding VanStock}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
+                        <DataGridTextColumn Header="التشغيلة" Binding="{Binding BatchNumber}" Width="120"/>
+                        <DataGridTextColumn Header="الصلاحية" Binding="{Binding ExpiryDate, StringFormat=yyyy/MM/dd}" Width="100"/>
+                        <DataGridTextColumn Header="الكمية (قطعة)" Binding="{Binding QuantityBaseUnits, StringFormat=N0}" Width="110"/>
+                        <DataGridTextColumn Header="القيمة" Binding="{Binding Value, StringFormat=N0}" Width="110"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+
+        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="12,0,0,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="حركة جديدة" Style="{StaticResource SectionTitle}"/>
+                    <TextBlock Text="نوع العملية" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding Operations}" SelectedItem="{Binding Operation}" DisplayMemberPath="Label"/>
+                    <StackPanel Visibility="{Binding NeedsOtherWarehouse, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding OtherWarehouseLabel}" Style="{StaticResource FieldLabel}"/>
+                        <ComboBox ItemsSource="{Binding StoreWarehouses}" SelectedItem="{Binding OtherWarehouse}" DisplayMemberPath="Name"/>
+                    </StackPanel>
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="60"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox ItemsSource="{Binding ItemsLookup}" SelectedItem="{Binding LineItem}" DisplayMemberPath="ItemName" ToolTip="الصنف"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding LevelOptions}" SelectedItem="{Binding LineLevel}" DisplayMemberPath="LevelName" Margin="6,0,0,0"/>
+                        <TextBox Grid.Column="2" Text="{Binding LineQuantity}" Margin="6,0,0,0" FlowDirection="LeftToRight" ToolTip="الكمية"/>
+                        <Button Grid.Column="3" Content="&#xE710;" ToolTip="إضافة" Style="{StaticResource RowIconButton}" Tag="#0F766E" Command="{Binding AddLineCommand}" Margin="6,0,0,0"/>
+                    </Grid>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                    <TextBlock Text="ملاحظات (للتالف)" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding Notes}"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding ExecuteCommand}" Margin="0,12,0,0" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE73E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="تنفيذ الحركة"/>
+                        </StackPanel>
+                    </Button>
+                    <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                </StackPanel>
+                <DataGrid ItemsSource="{Binding Lines}" Margin="0,8,0,0">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="الصنف" Binding="{Binding ItemName}" Width="*"/>
+                        <DataGridTextColumn Header="الكمية" Binding="{Binding QuantityInLevel, StringFormat=N0}" Width="60"/>
+                        <DataGridTextColumn Header="الوحدة" Binding="{Binding LevelName}" Width="70"/>
+                        <DataGridTextColumn Header="بالقطعة" Binding="{Binding BaseUnits, StringFormat=N0}" Width="70"/>
+                        <DataGridTemplateColumn Header="" Width="40">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                            Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

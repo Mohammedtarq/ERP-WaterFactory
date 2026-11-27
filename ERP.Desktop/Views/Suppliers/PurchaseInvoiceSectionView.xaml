@@ -1,0 +1,109 @@
+<UserControl x:Class="ERP.Desktop.Views.Suppliers.PurchaseInvoiceSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:ERP.Presentation.ViewModels.Suppliers;assembly=ERP.Presentation"
+             mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:PurchaseInvoiceSectionViewModel}"
+             x:Name="Root">
+    <Border Style="{StaticResource Card}">
+        <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Text="فاتورة شراء" Style="{StaticResource SectionTitle}"/>
+            <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="1.5*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="المورد" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding SuppliersLookup}" SelectedItem="{Binding Supplier}" DisplayMemberPath="Name" IsTextSearchEnabled="True"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="مخزن الاستلام" Style="{StaticResource FieldLabel}"/>
+                    <ComboBox ItemsSource="{Binding Warehouses}" SelectedItem="{Binding Warehouse}" DisplayMemberPath="Name"/>
+                </StackPanel>
+                <StackPanel Grid.Column="4">
+                    <TextBlock Text="التاريخ" Style="{StaticResource FieldLabel}"/>
+                    <DatePicker SelectedDate="{Binding InvoiceDate}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="6">
+                    <TextBlock Text="رقم فاتورة المورد" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Text="{Binding SupplierInvoiceNumber, UpdateSourceTrigger=PropertyChanged}"/>
+                </StackPanel>
+            </Grid>
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                <WrapPanel>
+                    <TextBlock Text="{Binding Total, StringFormat='الإجمالي: {0:N0} د.ع'}" FontWeight="SemiBold" FontSize="15" Margin="0,0,24,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="المدفوع الآن نقدًا" Style="{StaticResource FieldLabel}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox Text="{Binding PaidNow, UpdateSourceTrigger=PropertyChanged}" Width="130" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                    <TextBlock Text="{Binding Remaining, StringFormat='الباقي على الحساب: {0:N0} د.ع'}" Style="{StaticResource Muted}" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                </WrapPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button Content="إضافة سطر" Style="{StaticResource SecondaryButton}" Command="{Binding AddLineCommand}"/>
+                    <Button Style="{StaticResource SuccessButton}" Command="{Binding SaveCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" Margin="0,0,6,0"/>
+                            <TextBlock Text="تسجيل الفاتورة (مخزن + ذمة + قيد)"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
+                <TextBlock Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                           Text="اختر وحدة الشراء كما في فاتورة المورد (كرتون، باليت، كغم، طن). يدخل المخزن بالقطع، ويُحدَّث متوسط الكلفة المرجّح للمادة تلقائيًا. الكغم والطن يظهران عند إدخال وزن القطعة في بطاقة الصنف."/>
+            </StackPanel>
+            <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="1.4*"/>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="110"/>
+                    <ColumnDefinition Width="110"/>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="36"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="المادة" Style="{StaticResource FieldLabel}"/>
+                <TextBlock Grid.Column="1" Text="وحدة الشراء" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                <TextBlock Grid.Column="2" Text="الكمية" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                <TextBlock Grid.Column="3" Text="سعر الوحدة" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                <TextBlock Grid.Column="4" Text="بالقطع" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                <TextBlock Grid.Column="5" Text="كلفة القطعة" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+                <TextBlock Grid.Column="6" Text="الإجمالي" Style="{StaticResource FieldLabel}" Margin="6,0,0,0"/>
+            </Grid>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Lines}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*"/>
+                                    <ColumnDefinition Width="1.4*"/>
+                                    <ColumnDefinition Width="90"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="100"/>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="36"/>
+                                </Grid.ColumnDefinitions>
+                                <ComboBox ItemsSource="{Binding DataContext.ItemsLookup, ElementName=Root}" SelectedItem="{Binding Material}" DisplayMemberPath="ItemName" IsTextSearchEnabled="True"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding Units}" SelectedItem="{Binding Unit}" Margin="6,0,0,0"/>
+                                <TextBox Grid.Column="2" Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                                <TextBox Grid.Column="3" Text="{Binding UnitPrice, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" FlowDirection="LeftToRight" HorizontalContentAlignment="Right"/>
+                                <TextBlock Grid.Column="4" Text="{Binding Pieces, StringFormat=N0}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="5" Text="{Binding CostPerPiece, StringFormat=N2}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="6" Text="{Binding LineTotal, StringFormat=N0}" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                                <Button Grid.Column="7" Content="&#xE74D;" Style="{StaticResource RowIconButton}" Tag="#DC2626"
+                                        Command="{Binding DataContext.RemoveLineCommand, ElementName=Root}" CommandParameter="{Binding}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>
