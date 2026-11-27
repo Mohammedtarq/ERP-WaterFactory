@@ -758,8 +758,13 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         }
         if (!ReferenceEquals(customer, Customer)) return;   // تغيّر الزبون أثناء القراءة: الأحدث هو من يطبَّق
         if (IsReadOnly) strict = false;
+        // لا نعيد بناء القوائم إلا إن تغيّر النطاق فعلًا (زبون عادي إلى زبون عادي: لا شيء يتغير فلا يُفقد الصنف المختار)
+        var changed = strict != _scopeStrict || !items.SetEquals(_scopeItems) || !recipes.SetEquals(_scopeRecipes);
         (_scopeStrict, _scopeItems, _scopeRecipes) = (strict, items, recipes);
+        if (!changed) { if (LineItem is not null) await RefreshLineStockAsync(); return; }   // المتاح يتبع محجوز الزبون
+        var keep = LineItem;
         RebuildItems();
+        if (keep is not null && LineItem is null && ItemsLookup.Contains(keep)) LineItem = keep;   // القائمة الظاهرة قد تفرّغ الاختيار عند إعادة التعبئة
         if (LineItem is not null) { if (IsReadOnly) await RefreshLineStockAsync(); else await OnLineItemChangedAsync(); }
     }
 
