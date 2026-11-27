@@ -26,7 +26,7 @@
                     </WrapPanel>
                     <TextBlock Text="{Binding StatusMessage}" Style="{StaticResource StatusText}"/>
                 </StackPanel>
-                <DataGrid ItemsSource="{Binding Materials}" AutoGenerateColumns="False" CanUserAddRows="False">
+                <DataGrid ItemsSource="{Binding Materials}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="False">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="المادة" Binding="{Binding ItemName}" Width="*" IsReadOnly="True"/>
                         <DataGridTextColumn Header="الحالي" Binding="{Binding Current, StringFormat=N2}" Width="75" IsReadOnly="True"/>
