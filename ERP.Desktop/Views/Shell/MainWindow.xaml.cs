@@ -29,14 +29,26 @@ public partial class MainWindow : Window
         _idleTimer.Start();
         DataContextChanged += (_, e) =>
         {
-            if (e.OldValue is MainShellViewModel old) old.AlertSoundRequested -= AlertChime.Play;
-            if (e.NewValue is MainShellViewModel now) now.AlertSoundRequested += AlertChime.Play;
+            if (e.OldValue is MainShellViewModel old) { old.AlertSoundRequested -= AlertChime.Play; old.PropertyChanged -= OnShellChanged; }
+            if (e.NewValue is MainShellViewModel now) { now.AlertSoundRequested += AlertChime.Play; now.PropertyChanged += OnShellChanged; ApplySidebar(now.IsSidebarCollapsed); }
         };
         Closed += (_, _) =>
         {
             _idleTimer.Stop();
             InputManager.Current.PreProcessInput -= OnInput;
         };
+    }
+
+    private void OnShellChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainShellViewModel.IsSidebarCollapsed) && sender is MainShellViewModel vm) ApplySidebar(vm.IsSidebarCollapsed);
+    }
+
+    /// <summary>إخفاء الشريط الجانبي (فاتورة فُتحت من القائمة) ليأخذ المحتوى العرض كاملًا.</summary>
+    private void ApplySidebar(bool collapsed)
+    {
+        SidebarColumn.Width = collapsed ? new GridLength(0) : new GridLength(260);
+        Sidebar.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void OnInput(object sender, PreProcessInputEventArgs e)

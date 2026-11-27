@@ -18,6 +18,12 @@ public class SalesModuleViewModel : ModuleViewModel
         Invoice = Add(new SalesInvoiceSectionViewModel(s, d));
         InvoiceList = Add(new SalesInvoiceListSectionViewModel(s, d, OpenInvoiceAsync));
         Invoice.ShowList = ShowInvoiceListAsync;
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(SelectedTab)) return;
+            if (!ReferenceEquals(SelectedTab, Invoice)) _invoiceFullWidth = false;   // غادر الفاتورة: يرجع الشريط
+            OnPropertyChanged(nameof(WantsFullWidth));
+        };
         Statement = Add(new CustomerStatementSectionViewModel(s, d));
         Returns = Add(new CustomerReturnSectionViewModel(s, d));
         Deposits = Add(new CustomerDepositsSectionViewModel(s, d));
@@ -30,6 +36,10 @@ public class SalesModuleViewModel : ModuleViewModel
         // صندوق موظف المبيعات: تدخله مبيعاته النقدية، ويسلّم منه للصندوق الرئيسي
         MyBox = Add(new Finance.CashBoxesSectionViewModel(s, d, ModuleCode.Sales, "صندوقي"));
     }
+
+    private bool _invoiceFullWidth;
+    /// <summary>الفاتورة المفتوحة من القائمة تأخذ العرض كاملًا (يختفي الشريط الجانبي) حتى الرجوع إلى القائمة.</summary>
+    public override bool WantsFullWidth => _invoiceFullWidth && ReferenceEquals(SelectedTab, Invoice);
 
     public Finance.CashBoxesSectionViewModel MyBox { get; }
     /// <summary>حدود تنبيه الأسماء الخاصة (يفتحها تنبيه الجرس).</summary>
@@ -45,14 +55,18 @@ public class SalesModuleViewModel : ModuleViewModel
     public async Task ShowInvoiceListAsync(int? invoiceId)
     {
         InvoiceList.RememberSelection(invoiceId);
+        _invoiceFullWidth = false;
         SelectedTab = InvoiceList;
+        OnPropertyChanged(nameof(WantsFullWidth));
         await LastActivation;
     }
 
     /// <summary>فتح فاتورة من القائمة داخل تبويب الفاتورة (مسودة للتعديل، مرحّلة للعرض فقط).</summary>
     public async Task OpenInvoiceAsync(int invoiceId)
     {
+        _invoiceFullWidth = true;
         SelectedTab = Invoice;
+        OnPropertyChanged(nameof(WantsFullWidth));
         await LastActivation;
         await Invoice.LoadInvoiceAsync(invoiceId);
     }
@@ -256,7 +270,6 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         get => _customer;
         set
         {
-            var previous = _customer;
             if (!SetProperty(ref _customer, value)) return;
             OnPropertyChanged(nameof(PricingTypeLabel));
             OnPropertyChanged(nameof(PricingTypeColor));
@@ -268,9 +281,8 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
             // رسوم التحميل للوكيل وعملائه فقط: العميل المباشر تسقط رسومه
             if (!IsAgentOrSub && Fees.Count > 0 && !_suppressReprice) { Fees.Clear(); RaiseTotals(); }
             if (!_suppressReprice) Background(RepriceAsync());
-            // قائمة التشغيلة تتبع خيار «المنتجات الظاهرة» للزبون: تُبنى من جديد إن اختلف الخيار بين الزبونين
-            if (LineItem is not null && (previous?.AssignedProductsOnly == true || value?.AssignedProductsOnly == true) && !IsReadOnly) Background(OnLineItemChangedAsync());
-            else if (LineItem is not null) Background(RefreshLineStockAsync());   // المتاح يتبع محجوز العميل
+            // الأصناف وقائمة التشغيلة تتبع خيار «المنتجات الظاهرة عند البيع» للزبون، ويتبع المتاح محجوز الزبون
+            Background(ApplyCustomerScopeAsync());
         }
     }
 
@@ -423,8 +435,10 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
     private readonly List<Data.ProjectDb.Entities.Warehouse> _allWarehouses = new();
     private readonly List<Item> _allItems = new();
     private List<PendingProductionService.InProduction> _inProduction = new();
-    /// <summary>صاحب كل متغير (طلب خاص): فارغ = مناسبة عامة. لفلترة قائمة التشغيلة لزبون «المخصص له فقط».</summary>
-    private Dictionary<int, int?> _recipeOwner = new();
+    // نطاق الزبون «المخصص له فقط» (يُقرأ من قاعدة البيانات عند كل اختيار زبون، لا من نسخة قديمة في الذاكرة)
+    private bool _scopeStrict;
+    private HashSet<int> _scopeItems = new();
+    private HashSet<int> _scopeRecipes = new();
     private Dictionary<(int wh, int item), decimal> _stock = new();
     private Dictionary<int, HashSet<string>> _itemLevels = new();
     private Dictionary<int, decimal> _topPack = new();   // قطع العبوة الكبرى لكل صنف (لعرض المتوفر بعددها)
@@ -487,6 +501,7 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
                 var inProduction = Mode == SaleMode.Direct && _inProduction.Any(x => x.ItemId == i.Id);
                 if (!inStock && !inProduction && !(pending && i.SourcingMethod == SourcingMethod.Manufactured)) continue;
                 if (PackFilter != AllPacks && !(_itemLevels.TryGetValue(i.Id, out var lv) && lv.Contains(PackFilter))) continue;
+                if (ScopeActive && !_scopeItems.Contains(i.Id)) continue;   // زبون «المخصص له فقط»: أصناف متغيراته فقط
                 (i.StockHint, i.StockState) = StockHint.Of(_stock.GetValueOrDefault((Warehouse.Id, i.Id)), _topPack.GetValueOrDefault(i.Id, 1), i.MinStockAlertLevel);
                 ItemsLookup.Add(i);
             }
@@ -667,7 +682,6 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
 
         // ما هو قيد الإنتاج (أوامر مفتوحة): يظهر في قائمة البيع حتى برصيد صفر، مع المتاح للبيع منه
         _inProduction = await new PendingProductionService(db).InProductionAsync();
-        _recipeOwner = await db.CustomRecipes.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.CustomerId);
 
         var keepFilter = PackFilter;
         PackFilters.Clear();
@@ -716,43 +730,74 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         LoadingRate = await new SalesService(db).GetLoadingRateAsync(InvoiceDate);
     }
 
+    /// <summary>الزبون «المخصص له فقط» وله منتج خاص فعلًا، في البيع المباشر.</summary>
+    private bool ScopeActive => _scopeStrict && Mode == SaleMode.Direct;
+
     /// <summary>
-    /// هل يظهر المتغير (أو تشغيلته) في قائمة التشغيلة لهذا الزبون؟ الزبون الذي خياره «المخصص له فقط» يرى متغيره الخاص والمتغيرات العامة
-    /// (مناسبات بلا عميل) والتشغيلات العادية، ولا يرى متغيرات الزبائن الآخرين. غيره يرى كل شيء كما كان.
+    /// هل يظهر المتغير (أو تشغيلته) لهذا الزبون؟ زبون «المخصص له فقط» (وله منتج خاص) لا يرى إلا متغيراته الخاصة: لا متغيرات الآخرين
+    /// ولا المتغيرات العامة ولا التشغيلات العادية بلا اسم. غيره يرى كل شيء كما كان.
     /// </summary>
-    internal bool RecipeVisible(int? recipeId)
+    internal bool RecipeVisible(int? recipeId) => !ScopeActive || (recipeId is int r && _scopeRecipes.Contains(r));
+
+    /// <summary>يقرأ من قاعدة البيانات خيار الزبون ومتغيراته الخاصة، ثم يعيد بناء قائمة الأصناف والتشغيلة.</summary>
+    private async Task ApplyCustomerScopeAsync()
     {
-        if (recipeId is null || Customer is not { AssignedProductsOnly: true } c) return true;
-        return !_recipeOwner.TryGetValue(recipeId.Value, out var owner) || owner is null || owner == c.Id;
+        var customer = Customer;
+        bool strict = false;
+        HashSet<int> items = new(), recipes = new();
+        if (customer is not null)
+        {
+            await using var db = Session.NewDb();
+            if (await db.Customers.AsNoTracking().Where(c => c.Id == customer.Id).Select(c => c.AssignedProductsOnly).FirstOrDefaultAsync())
+            {
+                var own = await db.CustomRecipes.AsNoTracking().Where(r => r.CustomerId == customer.Id && r.IsActive)
+                                  .Select(r => new { r.Id, r.FinishedItemId }).ToListAsync();
+                // المخصص له فقط بلا منتج خاص مسجّل: لا نُخفي كل شيء (لا بيع ممكن)، يرى كل المنتجات إلى أن يُربط له منتج
+                if (own.Count > 0) { strict = true; recipes = own.Select(r => r.Id).ToHashSet(); items = own.Select(r => r.FinishedItemId).ToHashSet(); }
+            }
+        }
+        if (!ReferenceEquals(customer, Customer)) return;   // تغيّر الزبون أثناء القراءة: الأحدث هو من يطبَّق
+        if (IsReadOnly) strict = false;
+        (_scopeStrict, _scopeItems, _scopeRecipes) = (strict, items, recipes);
+        RebuildItems();
+        if (LineItem is not null) { if (IsReadOnly) await RefreshLineStockAsync(); else await OnLineItemChangedAsync(); }
     }
+
+    private int _optionsVersion;
 
     private async Task OnLineItemChangedAsync()
     {
-        LevelOptions.Clear();
-        BatchOptions.Clear();
-        if (LineItem is null) { LineLevel = null; LineBatch = null; return; }
+        // نداءان متزامنان (تغيّر الصنف وتغيّر الزبون): الأحدث وحده يكتب القوائم، فلا تتكرر الخيارات
+        var version = ++_optionsVersion;
+        var item = LineItem;
+        var wh = Warehouse;
+        if (item is null) { LevelOptions.Clear(); BatchOptions.Clear(); LineLevel = null; LineBatch = null; return; }
+        var newLevels = new List<ItemPackagingLevel>();
+        var newBatches = new List<BatchOption>();
 
         await using var db = Session.NewDb();
         // بيع المواد الأولية يقبل أي وحدة للمادة (كرتون، قطعة...)؛ غيره وحدات البيع فقط
         var anyUnit = Mode == SaleMode.RawMaterials;
-        var levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == LineItem.Id && (l.IsSellableUnit || anyUnit))
+        var levels = await db.ItemPackagingLevels.AsNoTracking().Where(l => l.ItemId == item.Id && (l.IsSellableUnit || anyUnit))
                      .OrderByDescending(l => l.EquivalentBaseUnits).ToListAsync();
         // لا بيع بالقطعة: منتج له عبوة يُباع بعبوته فقط (بيع المواد الأولية مستثنى)
         if (!anyUnit && levels.Any(l => l.EquivalentBaseUnits > 1)) levels = levels.Where(l => l.EquivalentBaseUnits > 1).ToList();
-        foreach (var l in levels) LevelOptions.Add(l);
+        newLevels.AddRange(levels);
 
-        BatchOptions.Add(new BatchOption { BatchId = null, Label = "تلقائي (الأقرب انتهاءً)", ShortLabel = "تلقائي (الأقرب انتهاءً)" });
-        if (Warehouse is not null)
+        // «تلقائي (الأقرب انتهاءً)» يأخذ من أي تشغيلة: لا يظهر لزبون «المخصص له فقط» كي لا يُصرف له منتج غيره
+        if (!ScopeActive)
+            newBatches.Add(new BatchOption { BatchId = null, Label = "تلقائي (الأقرب انتهاءً)", ShortLabel = "تلقائي (الأقرب انتهاءً)" });
+        if (wh is not null)
         {
-            var batches = await db.StockTransactions.Where(t => t.ItemId == LineItem.Id && t.WarehouseId == Warehouse.Id && t.BatchId != null)
+            var batches = await db.StockTransactions.Where(t => t.ItemId == item.Id && t.WarehouseId == wh.Id && t.BatchId != null)
                 .GroupBy(t => new { t.BatchId, t.Batch!.BatchNumber, t.Batch.ExpiryDate, t.Batch.CustomRecipeId, Recipe = t.Batch.CustomRecipe != null ? t.Batch.CustomRecipe.Name : null })
                 .Select(g => new { g.Key.BatchId, g.Key.BatchNumber, g.Key.ExpiryDate, g.Key.CustomRecipeId, g.Key.Recipe, Qty = g.Sum(t => t.QuantityBaseUnits) })
                 .Where(x => x.Qty > 0).OrderBy(x => x.ExpiryDate).ToListAsync();
             // المتغيرات الموجودة في المخزن: صرف تلقائي من متغير بالاسم (المطعم أو المناسبة)
             foreach (var v in batches.Where(b => b.CustomRecipeId != null && RecipeVisible(b.CustomRecipeId)).GroupBy(b => new { b.CustomRecipeId, b.Recipe }))
-                BatchOptions.Add(new BatchOption { RecipeId = v.Key.CustomRecipeId, PriceRecipeId = v.Key.CustomRecipeId, Label = $"تلقائي — {v.Key.Recipe} — {v.Sum(b => b.Qty):N0} قطعة", ShortLabel = $"تلقائي — {v.Key.Recipe}" });
+                newBatches.Add(new BatchOption { RecipeId = v.Key.CustomRecipeId, PriceRecipeId = v.Key.CustomRecipeId, Label = $"تلقائي — {v.Key.Recipe} — {v.Sum(b => b.Qty):N0} قطعة", ShortLabel = $"تلقائي — {v.Key.Recipe}" });
             foreach (var b in batches.Where(b => RecipeVisible(b.CustomRecipeId)))
-                BatchOptions.Add(new BatchOption
+                newBatches.Add(new BatchOption
                 {
                     BatchId = b.BatchId, PriceRecipeId = b.CustomRecipeId, ShortLabel = b.Recipe is null ? b.BatchNumber : $"{b.BatchNumber} ({b.Recipe})",
                     Label = $"{b.BatchNumber}{(b.Recipe is null ? "" : $" — {b.Recipe}")} — ينتهي {b.ExpiryDate:yyyy/MM/dd} — {b.Qty:N0} قطعة"
@@ -760,14 +805,22 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         }
         // متغيرات قيد الإنتاج (أوامر مفتوحة) ولا رصيد لها بعد: تُعرض للبيع بانتظار الإنتاج بالاسم
         if (Mode == SaleMode.Direct)
-            foreach (var x in _inProduction.Where(x => x.ItemId == LineItem.Id && x.RecipeId != null && RecipeVisible(x.RecipeId) && !BatchOptions.Any(b => b.BatchId == null && b.RecipeId == x.RecipeId)))
-                BatchOptions.Add(new BatchOption
+            foreach (var x in _inProduction.Where(x => x.ItemId == item.Id && x.RecipeId != null && RecipeVisible(x.RecipeId) && !newBatches.Any(b => b.BatchId == null && b.RecipeId == x.RecipeId)))
+                newBatches.Add(new BatchOption
                 {
                     RecipeId = x.RecipeId, PriceRecipeId = x.RecipeId, ShortLabel = $"تلقائي — {x.RecipeName}",
-                    Label = $"قيد الإنتاج — {x.RecipeName} — المتاح من الإنتاج {PendingProductionService.FormatPacks(x.Available, LevelOptions.FirstOrDefault()?.LevelName, LevelOptions.FirstOrDefault()?.EquivalentBaseUnits ?? 1)}"
+                    Label = $"قيد الإنتاج — {x.RecipeName} — المتاح من الإنتاج {PendingProductionService.FormatPacks(x.Available, newLevels.FirstOrDefault()?.LevelName, newLevels.FirstOrDefault()?.EquivalentBaseUnits ?? 1)}"
                 });
+        // لا شيء يظهر لزبون مخصص (لا رصيد ولا إنتاج لمتغيره): يبقى الخيار التلقائي كي لا تفرغ القائمة
+        if (newBatches.Count == 0)
+            newBatches.Add(new BatchOption { BatchId = null, Label = "تلقائي (الأقرب انتهاءً)", ShortLabel = "تلقائي (الأقرب انتهاءً)" });
+        if (version != _optionsVersion) return;   // جاء نداء أحدث أثناء القراءة
+        LevelOptions.Clear();
+        foreach (var l in newLevels) LevelOptions.Add(l);
+        BatchOptions.Clear();
+        foreach (var o in newBatches) BatchOptions.Add(o);
         LineBatch = BatchOptions[0];
-        LineLevel = LevelOptions.FirstOrDefault();
+        LineLevel = newLevels.FirstOrDefault();
         await RefreshLineStockAsync();
     }
 
@@ -811,6 +864,8 @@ public class SalesInvoiceSectionViewModel : SectionViewModel
         if (LineItem is null || LineLevel is null) { Dialogs.Error("اختر الصنف ووحدة البيع"); return; }
         if (LineQuantity <= 0) { Dialogs.Error("الكمية يجب أن تكون أكبر من صفر"); return; }
         if (LinePrice < 0) { Dialogs.Error("السعر لا يمكن أن يكون سالبًا"); return; }
+        if (ScopeActive && (!_scopeItems.Contains(LineItem.Id) || !RecipeVisible(LineBatch?.RecipeId)))
+        { Dialogs.Error("هذا الزبون خياره «المخصص له فقط»: يُباع له منتجه الخاص فقط"); return; }
 
         var needed = LineQuantity * LineLevel.EquivalentBaseUnits
                      + Lines.Where(l => l.ItemId == LineItem.Id && l.BatchId == LineBatch?.BatchId && l.CustomRecipeId == LineBatch?.RecipeId).Sum(l => l.BaseUnits);

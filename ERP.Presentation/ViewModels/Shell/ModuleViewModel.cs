@@ -202,6 +202,9 @@ public class HomeSectionViewModel : ObservableObject
 
 public abstract class ModuleViewModel : ViewModelBase
 {
+    /// <summary>الشاشة الحالية تحتاج العرض كاملًا: يختفي الشريط الجانبي ما دامت ظاهرة (مثل فاتورة فُتحت من القائمة).</summary>
+    public virtual bool WantsFullWidth => false;
+
     private object? _selectedTab;
     private string? _moduleCode;
 

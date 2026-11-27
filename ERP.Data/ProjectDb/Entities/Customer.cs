@@ -25,8 +25,8 @@ public class Customer
     public DiscountKind? DiscountKind { get; set; }
 
     /// <summary>
-    /// false = تظهر له كل المتغيرات في قائمة التشغيلة (الافتراضي). true = المخصص له فقط: متغيره الخاص والمتغيرات العامة
-    /// (مناسبات بلا عميل) والتشغيلات العادية، ولا تظهر متغيرات الزبائن الآخرين (84_customer_assigned_products.sql).
+    /// false = تظهر له كل المنتجات في فاتورة البيع (الافتراضي). true = المخصص له فقط: لا يظهر له إلا منتجه (متغيره) الخاص المربوط به
+    /// في الأصناف وقائمة التشغيلة؛ ولو لم يُربط له منتج بعد يرى الكل (84_customer_assigned_products.sql).
     /// </summary>
     public bool AssignedProductsOnly { get; set; }
 

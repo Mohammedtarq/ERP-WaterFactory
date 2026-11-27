@@ -18,7 +18,7 @@
     </Window.InputBindings>
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260"/>
+            <ColumnDefinition x:Name="SidebarColumn" Width="260"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
@@ -143,7 +143,7 @@
         </StackPanel>
 
         <!-- ================= الشريط الجانبي ================= -->
-        <DockPanel Grid.Column="0" Grid.Row="0" Grid.RowSpan="2" Background="{DynamicResource SidebarBrush}">
+        <DockPanel x:Name="Sidebar" Grid.Column="0" Grid.Row="0" Grid.RowSpan="2" Background="{DynamicResource SidebarBrush}">
             <StackPanel DockPanel.Dock="Top" Margin="18,22,18,18" Orientation="Horizontal">
                 <Image Source="pack://application:,,,/Assets/app-256.png" Width="42" Height="42" RenderOptions.BitmapScalingMode="HighQuality"/>
                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">

@@ -623,7 +623,25 @@ public class MainShellViewModel : ViewModelBase
         }
     }
 
-    public object? CurrentModule { get => _currentModule; private set { if (SetProperty(ref _currentModule, value)) OnPropertyChanged(nameof(CurrentModuleVm)); } }
+    public object? CurrentModule
+    {
+        get => _currentModule;
+        private set
+        {
+            var old = _currentModule as ModuleViewModel;
+            if (!SetProperty(ref _currentModule, value)) return;
+            if (old is not null) old.PropertyChanged -= OnModuleChanged;
+            if (value is ModuleViewModel now) now.PropertyChanged += OnModuleChanged;
+            OnPropertyChanged(nameof(CurrentModuleVm));
+            OnPropertyChanged(nameof(IsSidebarCollapsed));
+        }
+    }
+    private void OnModuleChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ModuleViewModel.WantsFullWidth)) OnPropertyChanged(nameof(IsSidebarCollapsed));
+    }
+    /// <summary>الشريط الجانبي مخفي: الشاشة الحالية (فاتورة فُتحت من القائمة) تأخذ العرض كاملًا، ويرجع بالرجوع إلى القائمة.</summary>
+    public bool IsSidebarCollapsed => CurrentModuleVm?.WantsFullWidth == true;
     /// <summary>الوحدة الظاهرة إن كانت وحدة أقسام (لأقسامها ومجموعاتها في القائمة الجانبية).</summary>
     public ModuleViewModel? CurrentModuleVm => CurrentModule as ModuleViewModel;
 

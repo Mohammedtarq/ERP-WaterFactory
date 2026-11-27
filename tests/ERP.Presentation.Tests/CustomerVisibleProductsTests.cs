@@ -8,7 +8,7 @@ using Xunit;
 namespace ERP.Presentation.Tests;
 
 /// <summary>
-/// «المنتجات الظاهرة عند البيع» لكل زبون: «المخصص له فقط» يُظهر في قائمة التشغيلة متغيره الخاص والمتغيرات العامة ولا يُظهر متغيرات الزبائن الآخرين،
+/// «المنتجات الظاهرة عند البيع» لكل زبون: «المخصص له فقط» لا يُظهر في الأصناف وقائمة التشغيلة إلا منتجه (متغيره) الخاص،
 /// و«كل المنتجات» (الافتراضي) كما كان. وزر «قائمة الفواتير» داخل الفاتورة يرجع للقائمة ويحدد الفاتورة.
 /// </summary>
 [Collection("app")]
@@ -18,9 +18,9 @@ public class CustomerVisibleProductsTests
     public CustomerVisibleProductsTests(AppFixture f) => _f = f;
 
     [Fact]
-    public async Task Assigned_only_customer_sees_own_and_general_variants_but_not_other_customers()
+    public async Task Assigned_only_customer_sees_only_own_product_and_items()
     {
-        int waterId, recA, recB, recGeneral, custA, custB, custAll;
+        int waterId, otherId, recA, recB, recGeneral, custA, custB, custAll, custNone;
         await using (var db = _f.NewDb())
         {
             var branch = await db.Branches.FirstAsync();
@@ -45,7 +45,14 @@ public class CustomerVisibleProductsTests
             var a = new Customer { Name = "زبون خاص أ VP", CustomerType = CustomerType.Direct, AssignedProductsOnly = true };
             var b = new Customer { Name = "زبون خاص ب VP", CustomerType = CustomerType.Direct, AssignedProductsOnly = true };
             var all = new Customer { Name = "زبون عادي VP", CustomerType = CustomerType.Direct };
-            db.Customers.AddRange(a, b, all);
+            var none = new Customer { Name = "زبون مخصص بلا منتج VP", CustomerType = CustomerType.Direct, AssignedProductsOnly = true };
+            db.Customers.AddRange(a, b, all, none);
+            // صنف آخر برصيد في مخزن المنتج التام: لا يظهر لزبون «المخصص له فقط» لأن أحدًا لم يخصص له متغيرًا
+            var other = new Item { ItemCode = "VP-O", ItemName = "منتج آخر VP", SalePrice = 100 };
+            db.Items.Add(other);
+            await db.SaveChangesAsync();
+            var fgWh = await db.Warehouses.FirstAsync(w => w.WarehouseType == WarehouseType.FinishedGoods && w.IsActive);
+            db.StockTransactions.Add(new StockTransaction { ItemId = other.Id, WarehouseId = fgWh.Id, QuantityBaseUnits = 500, UnitCost = 1, TransactionType = StockTransactionType.Receipt, CreatedByUserId = admin.Id });
             db.Add(machine);
             await db.SaveChangesAsync();
             var ra = new CustomRecipe { FinishedItemId = water.Id, Name = "ليبل زبون أ", CustomerId = a.Id };
@@ -60,7 +67,7 @@ public class CustomerVisibleProductsTests
                 new ProductionLineInput(water.Id, 100, rg.Id, "9203")
             }, raw.Id, machine.Id, admin.Id);
             Assert.True(r.Success, r.ErrorMessage);   // ثلاثة متغيرات قيد الإنتاج تظهر في قائمة التشغيلة بالاسم
-            (waterId, recA, recB, recGeneral, custA, custB, custAll) = (water.Id, ra.Id, rb.Id, rg.Id, a.Id, b.Id, all.Id);
+            (waterId, otherId, recA, recB, recGeneral, custA, custB, custAll, custNone) = (water.Id, other.Id, ra.Id, rb.Id, rg.Id, a.Id, b.Id, all.Id, none.Id);
         }
 
         var (shell, dialogs) = await _f.LoginAsync(AppFixture.AdminUser, AppFixture.AdminPassword);
@@ -77,18 +84,28 @@ public class CustomerVisibleProductsTests
         // بلا زبون: كل المتغيرات
         Assert.Equal(new HashSet<int> { recA, recB, recGeneral }, Variants());
 
-        // زبون «المخصص له فقط»: متغيره الخاص + العام، ولا متغير الزبون الآخر
+        // زبون «المخصص له فقط»: متغيره الخاص وحده — لا متغير زبون آخر ولا المتغيرات العامة ولا «تلقائي» العام
         inv.Customer = inv.Customers.Single(c => c.Id == custA);
         await inv.IdleAsync();
-        Assert.Equal(new HashSet<int> { recA, recGeneral }, Variants());
-        Assert.DoesNotContain(inv.BatchOptions, o => o.Label.Contains("ليبل زبون ب"));
+        Assert.Equal(new HashSet<int> { recA }, Variants());
+        Assert.DoesNotContain(inv.BatchOptions, o => o.RecipeId is null && o.BatchId is null);
+        Assert.DoesNotContain(inv.BatchOptions, o => o.Label.Contains("ليبل زبون ب") || o.Label.Contains("مناسبة عامة"));
+        // والأصناف: صنفه الخاص فقط، لا الصنف الآخر الذي برصيد
+        Assert.Contains(inv.ItemsLookup, i => i.Id == waterId);
+        Assert.DoesNotContain(inv.ItemsLookup, i => i.Id == otherId);
 
         inv.Customer = inv.Customers.Single(c => c.Id == custB);
         await inv.IdleAsync();
-        Assert.Equal(new HashSet<int> { recB, recGeneral }, Variants());
+        Assert.Equal(new HashSet<int> { recB }, Variants());
 
-        // زبون «كل المنتجات» (الافتراضي): كما كان، وتُبنى القائمة من جديد عند الانتقال إليه
+        // زبون «كل المنتجات» (الافتراضي): كما كان — كل الأصناف وكل المتغيرات، وتُبنى القائمة من جديد عند الانتقال إليه
         inv.Customer = inv.Customers.Single(c => c.Id == custAll);
+        await inv.IdleAsync();
+        Assert.Equal(new HashSet<int> { recA, recB, recGeneral }, Variants());
+        Assert.Contains(inv.ItemsLookup, i => i.Id == otherId);
+
+        // «المخصص له فقط» ولم يُربط له منتج بعد: لا تُخفى كل المنتجات، يرى الكل إلى أن يُخصَّص له منتج
+        inv.Customer = inv.Customers.Single(c => c.Id == custNone);
         await inv.IdleAsync();
         Assert.Equal(new HashSet<int> { recA, recB, recGeneral }, Variants());
 
@@ -131,12 +148,17 @@ public class CustomerVisibleProductsTests
         await sales.Invoice.IdleAsync();
         Assert.Same(sales.Invoice, sales.SelectedTab);
         Assert.Equal(invoiceId, sales.Invoice.InvoiceId);
+        // الفاتورة المفتوحة من القائمة تأخذ العرض كاملًا: يختفي الشريط الجانبي، ويرجع بالرجوع إلى القائمة
+        Assert.True(sales.WantsFullWidth);
+        Assert.True(shell.IsSidebarCollapsed);
 
         dialogs.Confirms.Clear();
         await sales.Invoice.ShowListCommand.ExecuteAsync();
         await sales.LastActivation; await list.IdleAsync();
         Assert.Same(list, sales.SelectedTab);
         Assert.Equal(invoiceId, list.SelectedRow?.Id);
+        Assert.False(sales.WantsFullWidth);
+        Assert.False(shell.IsSidebarCollapsed);
         Assert.Empty(dialogs.Confirms);            // مسودة بلا سطور: لا سؤال
 
         // التحديد يبقى بعد إعادة تحميل القائمة (الفلاتر لم تتغير)
